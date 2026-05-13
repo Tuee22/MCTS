@@ -1,5 +1,11 @@
 # Haskell CLI Tool Design Notes
 
+**Status**: Authoritative source
+**Supersedes**: N/A
+**Referenced by**: README.md, AGENTS.md, CLAUDE.md, DEVELOPMENT_PLAN/README.md, DEVELOPMENT_PLAN/development_plan_standards.md, DEVELOPMENT_PLAN/00-overview.md, DEVELOPMENT_PLAN/system-components.md, DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md, DEVELOPMENT_PLAN/phase-0-planning-documentation.md, DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, DEVELOPMENT_PLAN/phase-2-transcript-codec-and-determinism.md, DEVELOPMENT_PLAN/phase-3-haskell-engine.md, DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md, DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md, DEVELOPMENT_PLAN/phase-6-cpp-functional-and-rust.md, DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md, DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, documents/documentation_standards.md, documents/engineering/README.md, documents/engineering/cli_command_surface.md, documents/engineering/code_quality.md, documents/engineering/unit_testing_policy.md, documents/engineering/haskell_code_guide.md, documents/engineering/determinism_contract.md, documents/engineering/transcript_format.md, documents/engineering/backend_ffi_contract.md, documents/engineering/compiler_runtime_tuning.md
+
+> **Purpose**: Authoritative CLI doctrine for every project under this discipline; the binding contract for module layout, parser generation, generated artefacts, subprocess handling, testing, lint, and error rendering. MCTS adopts the doctrine with explicit in-scope / out-of-scope splits recorded in [DEVELOPMENT_PLAN/00-overview.md → Doctrine Scope](DEVELOPMENT_PLAN/00-overview.md).
+
 ## Overview
 
 The best practice for writing CLI tools in Haskell is to keep the command-line layer thin, make the core logic testable, and treat the command topology as structured data that can be used for parsing, help, documentation, completions, and introspection.

@@ -6,6 +6,8 @@ This repository is the successor to `MCTS_legacy`, a hand-tuned imperative C++ i
 
 > **Status:** This README expresses the project's intent and roadmap. The repository is in its bootstrap phase; the first deliverable is the cross-language benchmark harness described below.
 
+> **Plan and doctrine:** The authoritative execution-ordered plan lives at [`DEVELOPMENT_PLAN/README.md`](DEVELOPMENT_PLAN/README.md); the authoritative CLI doctrine lives at [`HASKELL_CLI_TOOL.md`](HASKELL_CLI_TOOL.md).
+
 ---
 
 ## Why this exists
