@@ -38,9 +38,7 @@ cohort (Phase 4).
 ## Sprint 5.1: `cpp-imperative/` Source Tree and Build Flags 🔄
 
 **Status**: Active
-**Implementation**: `cpp-imperative/src/`, `cpp-imperative/include/`,
-`cpp-imperative/c-abi/`, `cpp-imperative/Makefile`,
-`cpp-imperative/CMakeLists.txt`
+**Implementation**: `cpp-imperative/c-abi/`, `cpp-imperative/Makefile`
 **Docs to update**: `documents/engineering/compiler_runtime_tuning.md`,
 `documents/engineering/backend_ffi_contract.md`,
 `DEVELOPMENT_PLAN/system-components.md`
@@ -83,7 +81,7 @@ backend-agnostic from the Haskell side.
 - Visit-count compression to `u16` when `per_move_sims < 65536`.
 - **Native RNG choice.** Under `--rng native`, backend (ii) uses
   `xoshiro256++` (the
-  [project README → Compiler and runtime tuning item 16](../README.md)
+  [project README → Compiler and runtime tuning item 15](../README.md)
   candidate; `wyrand` is the alternative). The choice is recorded in
   [../documents/engineering/determinism_contract.md → RNG Source Split → Per-Backend Native RNG Table](../documents/engineering/determinism_contract.md);
   swapping to `wyrand` post-Sprint-5.3 profiling is allowed, but the table
@@ -192,7 +190,7 @@ Not started.
 **Status**: Active
 **Implementation**: `src/MCTS/CLI/Build.hs`,
 `src/MCTS/CLI/Spec.hs` (Build subtree),
-`cpp-imperative/Makefile` (PGO and BOLT targets)
+`cpp-imperative/Makefile` (smoke target)
 **Docs to update**: `documents/engineering/compiler_runtime_tuning.md`,
 `documents/engineering/backend_ffi_contract.md`
 
@@ -280,9 +278,8 @@ that backend (v) Haskell must match.
 ## Sprint 5.4: Backend (ii) Game Driver and Transcript Output 🔄
 
 **Status**: Active
-**Implementation**: `src/MCTS/Driver/CppImperative.hs`,
-`src/MCTS/CLI/Bench.hs` (extend dispatch),
-`src/MCTS/CLI/Verify.hs` (extend dispatch)
+**Implementation**: `src/MCTS/Driver.hs`,
+`src/MCTS/CLI/Bench.hs`, `src/MCTS/CLI/Verify.hs`
 **Docs to update**: `documents/engineering/backend_ffi_contract.md`,
 `documents/engineering/cli_command_surface.md`
 
@@ -310,7 +307,7 @@ rollouts/selfplay/legacy-parity` (where cohort includes (ii)) run end-to-end.
 
 1. `mcts bench rollouts --backend cpp-imperative --threading single --rng cpp
    --games 8 --seed 42` runs to completion and writes 8 transcripts.
-2. Same-backend determinism: two runs produce identical transcript sets.
+2. Same-backend determinism: two runs produce identical determinism payload sets.
 3. `mcts verify rollouts --backend cpp-imperative,haskell --threading single
    --games 1 --seed 42 --max-plies 200 --sims 10` runs to completion (a
    cohort of two is the minimum parseable size). Bit-equality success or

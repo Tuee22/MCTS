@@ -23,17 +23,19 @@ project-specific.
 - **Memory-resident trees only.** Nothing about the in-memory tree is serialised;
   only the per-move action choices and visit-count vectors. Tree state at any
   given moment is reproducible by replaying the seed and move sequence.
-- **Content-addressed.** Transcripts live in
+- **Content-addressed per backend/game.** Transcripts live in
   `<cache-root>/transcripts/<arch>/<sha>.tr` (arch-partitioned per the
-  architecture envelope) where `<sha>` is `sha256(run_config)` (or
-  `sha256(run_config || move_history)` for `mcts play`-recorded transcripts;
-  see [Content Addressing](#content-addressing)).
+  architecture envelope) where `<sha>` is `sha256(run_config)`. The
+  `run_config` includes the backend and `game_index`, so a batch of N games
+  writes N per-game transcript files per backend. `mcts play`-recorded
+  transcripts use `sha256(run_config || move_history)` because human choices are
+  part of the provenance; see [Content Addressing](#content-addressing).
 
 ## Wire Format
 
-The authoritative wire format is specified by the project
-[../../README.md → Cross-backend verification → Transcript wire format](../../README.md).
-Little-endian everywhere, no padding.
+The project [../../README.md → Cross-backend verification](../../README.md)
+sketches the operator-facing format. This section is the authoritative byte-level
+specification. Little-endian everywhere, no padding.
 
 ### Header
 
@@ -64,15 +66,15 @@ Little-endian everywhere, no padding.
 ### Envelope Block
 
 The envelope block records every substrate-affecting field at the time the
-transcript was written — the build identity of every backend involved, the
-compiler and libm versions, the FP-relevant compiler flags, the CPU features
+transcript was written — the build identity of the backend that wrote the file,
+the compiler and libm versions, the FP-relevant compiler flags, the CPU features
 the binary actually dispatched, and the FP environment at engine-run time.
-It is part of the transcript file but **excluded from `sha256(RunConfig)`**:
-cross-backend visit-equality requires that two backends running the same
-`RunConfig` produce the same `<sha>.tr` filename even though their envelopes
-differ. See [determinism_contract.md → Engine Envelope](./determinism_contract.md)
-for the layered cohort-invariant vs per-backend-slot rule and how
-`mcts verify` enforces it.
+It is part of the transcript file but excluded from the cross-backend
+determinism payload: backend-specific cache filenames preserve provenance, while
+`mcts verify` compares the decoded common payload. See
+[determinism_contract.md → Engine Envelope](./determinism_contract.md) for the
+layered cohort-invariant vs per-backend-slot rule and how `mcts verify` enforces
+it.
 
 The block lives at `envelope_offset` (byte 48 in version-1 transcripts):
 
@@ -83,7 +85,7 @@ The block lives at `envelope_offset` (byte 48 in version-1 transcripts):
 | 6 | 1 | rng_source_envelope | `u8`; matches the header's `rng_source`. Recorded inside the envelope so the cohort-uniformity check is uniform across fields. |
 | 7 | 1 | host_arch_envelope | `u8`; matches the header's `host_arch`. Same rationale as `rng_source_envelope`. |
 | 8 | 32 | shared_rng_build_id | SHA-256 of the loaded `cpp_rng.so`. All-zero for `--rng native` transcripts. Under `mcts verify legacy-parity` pinned to backend (i)'s `engine_build_id`. |
-| 40 | 32 | run_config_hash | `sha256(RunConfig)`. Redundant with the filename; recorded inline for cohort-uniformity checks. |
+| 40 | 32 | cohort_config_hash | SHA-256 of the backend-independent cohort config: the common verify inputs excluding `backend`, the engine envelope, path, and cache metadata. Distinct from the backend-specific cache filename hash. |
 | 72 | 32 | engine_build_id | SHA-256 of the loaded backend shared library / executable that wrote this transcript. |
 | 104 | 40 | engine_git_commit | ASCII; project repo commit SHA at build time. Padded with NULs if shorter than 40 bytes. Informational; does not gate `verify`. |
 | 144 | 1 | compiler_id | `u8`; `0 = gcc`, `1 = clang`, `2 = rustc`, `3 = ghc`. |
@@ -99,11 +101,11 @@ Total block length in version-1 with default-length `compiler_version` and
 `libm_id` is bounded by `145 + 1 + 63 + 4 + 1 + 63 + 4 + 1 = 282` bytes;
 typical values land around 160-200 bytes.
 
-The envelope is **excluded from `sha256(RunConfig)`** (see [Content
-Addressing](#content-addressing) below): the encoder hashes the `RunConfig`
-record alone, so two backends producing the same `RunConfig` under
-`--rng cpp` write to the same `<sha>.tr` filename even though their
-envelopes differ. This is the property cross-backend visit-equality
+The envelope is excluded from the cross-backend **determinism payload** (see
+[Content Addressing](#content-addressing) below). The cached file hash remains
+backend-specific because `RunConfig` includes the backend, but `mcts verify`
+compares a canonical decoded payload that omits provenance fields such as
+`backend` and the envelope. This is the property cross-backend visit-equality
 requires.
 
 Version handling: a reader that recognises `envelope_version` reads
@@ -116,7 +118,7 @@ machine-readable across envelope-version drift.
 
 ### Per-Game Body
 
-After the header, the per-game body is:
+After the header and envelope, the body contains exactly one game:
 
 ```text
 # Example: per-game body schema
@@ -140,21 +142,20 @@ same set of `(action, visits)` data produce identical bytes.
 
 | Offset | Size | Field | Notes |
 |--------|------|-------|-------|
-| 0 | 1 | sentinel | `0xFF`; distinguishes a terminator from a per-move record (whose `move_index` low byte is never `0xFF` because the wire field is `u16`) |
-| 1 | 1 | winner | `0 = hero`, `1 = villain`, `2 = draw` |
-| 2 | 2 | total_moves | `u16`; the number of per-move records that preceded the terminator |
+| 0 | 2 | sentinel | `0xFFFF`; impossible for a valid `move_index` because `max_plies` is bounded by `u16` and the supported configurations never allow 65,535 moves |
+| 2 | 1 | winner | `0 = hero`, `1 = villain`, `2 = draw` |
+| 3 | 2 | total_moves | `u16`; the number of per-move records that preceded the terminator |
 
 ### File End
 
-The file ends immediately after the terminator of the last game. The
+The file ends immediately after the single game's terminator. The
 content-addressed cache uses `sha256(RunConfig)` as the filename (see
 [Content Addressing](#content-addressing) below) — the hash is computed
 over the canonical encoding of the `RunConfig` record alone, *not* over
 the whole file. The envelope block and per-game body are part of the
-file but excluded from the hash, so two backends running the same
-`RunConfig` under `--rng cpp` land at the same filename even though their
-envelopes differ — exactly the property cross-backend visit-equality
-requires.
+file but excluded from the cache-key hash. Cross-backend equality is
+checked with a separate canonical determinism payload decoded from the
+file.
 
 ## Action Enumeration
 
@@ -192,8 +193,8 @@ holds vacuously over the smart constructor's accepted subset.
 ### Standard Transcripts
 
 Transcripts produced by `mcts bench rollouts/selfplay` and by `mcts verify
-rollouts/selfplay/legacy-parity` are addressed by the SHA-256 of the canonical
-little-endian encoding of the `RunConfig` record:
+rollouts/selfplay/legacy-parity` are one-game files addressed by the SHA-256 of
+the canonical little-endian encoding of the backend-specific `RunConfig` record:
 
 ```haskell
 -- Example: RunConfig record hashed for transcript addressing
@@ -216,10 +217,20 @@ data RunConfig = RunConfig
   }
 ```
 
-The field order and on-wire byte width match the header layout above (game_index
-is appended after the on-wire header fields for hashing purposes only — it is
-the per-game discriminator and lives in the per-game body, not the header). The
-hash is the hex-encoded SHA-256 digest of this record.
+The field order and on-wire byte width match the header layout above; `game_index`
+is appended after the on-wire header fields for hashing purposes and must equal
+the `game_id u32` stored in the body. The hash is the hex-encoded SHA-256 digest
+of this record. Because `runConfigBackend` participates in this cache key,
+different backends never overwrite each other's provenance-bearing `.tr` files.
+
+For cross-backend `verify`, the comparator decodes each backend-specific file and
+computes a **determinism payload digest** over the common inputs and per-move
+records: `rng_source`, `c_param`, `master_seed`, `game_index`, `initial_sims`,
+`per_move_sims`, `max_plies`, the chosen action sequence, sorted `(action,
+visits)` vectors, `winner`, and `total_moves`. The payload excludes
+`runConfigBackend`, the engine envelope, the filesystem path, and cache metadata.
+Pairs whose payload digests differ are then scanned move-by-move to render the
+first divergent record.
 
 ### `mcts play`-Recorded Transcripts
 
@@ -242,14 +253,15 @@ On-disk layout under the cache root:
 
 ```text
 # Example: on-disk transcript cache layout under <cache-root>
-<cache-root>/transcripts/<arch>/<sha>.tr                                    # canonical transcript (hash-stable, visits only)
+<cache-root>/transcripts/<arch>/<sha>.tr                                    # one-game backend-specific transcript
 <cache-root>/transcripts/<arch>/<sha>/                                      # sidecar directory (one per transcript, lazily created)
   <backend>-<engine_build_id_prefix16>.eq                                   # per-backend equity series, see Equity Sidecar Cache
   <backend>-<engine_build_id_prefix16>.envelope                             # snapshot of the engine envelope that wrote this .eq
 ```
 
 `<arch>` is `amd64` or `arm64` per the host architecture the transcript was
-written on. The `<sha>` is the full 64-character hex-encoded SHA-256 digest.
+written on. The `<sha>` is the full 64-character hex-encoded backend-specific
+cache-key digest.
 Per-arch partitioning ensures that arm64 and amd64 caches do not collide on
 shared filesystems (e.g., NFS-mounted home directories or shared CI cache
 volumes), and hash-prefix lookup naturally scopes to the current host's arch.

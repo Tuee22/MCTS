@@ -104,10 +104,12 @@ The report card answers seven questions, verbatim from
    benchmark (a) random rollouts, single-threaded and on 8 workers?
 2. **Q2.** Does pure Haskell match backend (ii) on benchmark (b) self-play,
    single-threaded and on 8 workers?
-3. **Q3.** Do backends (ii), (iii), (iv), (v) agree bit-for-bit under
-   `--rng cpp` (round-robin verify on both rollouts and self-play)?
+3. **Q3.** Do backends (ii), (iii), (iv), (v) produce bit-for-bit identical
+   determinism payloads under `--rng cpp` (round-robin verify on both rollouts and
+   self-play)?
 4. **Q4.** Does same-backend determinism hold across runs (same backend, same
-   seed ⇒ identical transcripts) for every backend?
+   seed, same logical game inputs ⇒ identical determinism payloads) for every
+   backend?
 5. **Q5.** How does each backend scale from `--threading single` to
    `--threading multi --workers 8`? The text summary highlights Haskell and
    C++ (ii) as the two anchors; the full per-backend scaling table is

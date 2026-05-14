@@ -39,8 +39,7 @@ that pins `max_plies = 10000` so all five backends agree under the envelope.
 ## Sprint 4.1: `cpp-legacy/` Verbatim Re-Port 🔄
 
 **Status**: Active
-**Implementation**: `cpp-legacy/src/`, `cpp-legacy/include/`, `cpp-legacy/Makefile`,
-`cpp-legacy/c-abi/`
+**Implementation**: `cpp-legacy/c-abi/`, `cpp-legacy/Makefile`
 **Docs to update**: `documents/engineering/backend_ffi_contract.md`,
 `documents/engineering/compiler_runtime_tuning.md`,
 `DEVELOPMENT_PLAN/system-components.md`
@@ -161,7 +160,8 @@ Not started.
 ## Sprint 4.3: `--rng cpp` Shared `std::mt19937_64` Plumbing 🔄
 
 **Status**: Active
-**Implementation**: `cpp-legacy/c-abi/rng.{h,cc}`, `src/MCTS/Rng/Cpp.hs`
+**Implementation**: `cpp-legacy/c-abi/rng.h`, `cpp-legacy/c-abi/rng.cc`,
+`src/MCTS/Rng/Mix.hs`
 **Docs to update**: `documents/engineering/determinism_contract.md`,
 `documents/engineering/backend_ffi_contract.md`
 
@@ -208,7 +208,7 @@ is the determinism contract's shared-RNG path.
    `cppRngNextU64`-produced `Word64` sequence (the values come from a verbatim
    `std::mt19937_64` reference).
 2. Same-backend determinism: two runs of `mcts bench rollouts --backend
-   cpp-legacy --rng cpp --games 4 --seed 42` produce identical transcripts.
+   cpp-legacy --rng cpp --games 4 --seed 42` produce identical determinism payloads.
 3. The `prerequisiteRegistry` `libmcts-cpp-legacy-built` node passes its check.
 
 ### Remaining Work
@@ -224,7 +224,7 @@ is the determinism contract's shared-RNG path.
 ## Sprint 4.4: Backend (i) Game Driver and Transcript Output 🔄
 
 **Status**: Active
-**Implementation**: `src/MCTS/Driver/CppLegacy.hs`, `src/MCTS/CLI/Bench.hs`
+**Implementation**: `src/MCTS/Driver.hs`, `src/MCTS/CLI/Bench.hs`
 **Docs to update**: `documents/engineering/backend_ffi_contract.md`
 
 ### Objective
@@ -263,8 +263,8 @@ backend (i)'s no-draw-rule terminal semantics.
 
 1. `mcts bench rollouts --backend cpp-legacy --threading single --rng cpp
    --games 8 --seed 42` runs to completion and writes 8 transcripts.
-2. Same-backend determinism (Q4): two such runs produce identical transcript
-   sets.
+2. Same-backend determinism (Q4): two such runs produce identical determinism
+   payload sets.
 3. `mcts inspect show <prefix>` on a backend (i) transcript renders correctly in
    the legacy move notation.
 
@@ -306,15 +306,15 @@ this anchor (Q6).
 - The fixture set covers benchmark (b) self-play at the report-card legacy-parity
   knobs: seed `$S_LP = 42`, `$G_LP = 10` games, `$S_LP_SIMS = 10_000` sims/move,
   `--max-plies 10000` (the legacy parity envelope, so terminal semantics agree).
-- Fixtures are per-architecture: `test/golden/legacy/transcripts/<arch>/<S>.tr`
-  with `<arch>` ∈ `{amd64, arm64}`. Each supported host architecture ships its
-  own fixture set generated on that arch (per [../README.md → Architecture
-  envelope](../README.md)).
+- Fixtures are per-architecture and per game:
+  `test/golden/legacy/transcripts/<arch>/<sha>.tr` with `<arch>` ∈ `{amd64,
+  arm64}`. Each supported host architecture ships its own fixture set generated on
+  that arch (per [../README.md → Architecture envelope](../README.md)).
 - `test/integration/CppLegacyParity.hs` declares the Q6 golden cohort: it runs
   `mcts bench selfplay --backend cpp-legacy --rng cpp --max-plies 10000 --seed
-  $S_LP --games $G_LP --sims $S_LP_SIMS` and compares the resulting transcripts
-  byte-by-byte against `test/golden/legacy/transcripts/<arch>/$S_LP.tr` for the
-  current host arch. Sprint 7.1 wires this test into the `mcts-integration`
+  $S_LP --games $G_LP --sims $S_LP_SIMS` and compares the resulting per-game
+  transcript set byte-by-byte against `test/golden/legacy/transcripts/<arch>/`
+  for the current host arch. Sprint 7.1 wires this test into the `mcts-integration`
   stanza (it does **not** live in the `mcts-legacy-parity` stanza, which
   round-robins live binaries instead).
 - The fixture set is a frozen historical record: it regenerates only when
@@ -324,8 +324,8 @@ this anchor (Q6).
 
 ### Validation
 
-1. `test/golden/legacy/transcripts/<arch>/` contains the pinned-seed
-   `$S_LP.tr` fixture for each supported host arch.
+1. `test/golden/legacy/transcripts/<arch>/` contains the pinned-seed per-game
+   `.tr` fixture set for each supported host arch.
 2. The conversion script under `cpp-legacy/tools/` is documented but not invoked
    during normal testing — fixtures are checked in.
 3. A static check confirms `test/golden/legacy/` is named in the

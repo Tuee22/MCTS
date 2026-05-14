@@ -63,13 +63,15 @@ Status must describe reality, not intent.
 |-----------|---------|
 | ✅ | Completed and validated |
 | 🔄 | Active and partially complete |
-| 📋 | Planned and ready to start |
+| 📋 | Planned and waiting for execution to reach it |
 | ⏸️ | Blocked by an unmet prerequisite |
 
 - `Done` requires passing validation, aligned docs, and no remaining sprint-owned work.
 - `Active` requires a `Remaining Work` section.
 - `Blocked` requires a `Blocked by` line.
-- `Planned` means dependencies are already satisfied; it must not list unmet blockers.
+- `Planned` means the work is scheduled but not started; ordinary phase/sprint sequencing
+  may still be ahead of it. Use `Blocked` only for an unmet prerequisite outside normal
+  execution order or for a prior sprint that has failed to close when this one is reached.
 - Status is always scoped to the sprint or phase-owned surface. A later phase may remain
   `Done` when an earlier phase reopens, but the reopened dependency must be called out
   explicitly in `README.md` and `00-overview.md`.

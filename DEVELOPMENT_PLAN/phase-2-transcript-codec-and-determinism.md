@@ -42,9 +42,8 @@ backend lands yet; this phase is the format spec the engine writes into.
 ## Sprint 2.1: Wire-Format Header and Per-Move Record Codec 🔄
 
 **Status**: Active
-**Implementation**: `src/MCTS/Transcript/Header.hs`,
-`src/MCTS/Transcript/Record.hs`, `src/MCTS/Transcript/Action.hs`,
-`src/MCTS/Transcript/Codec.hs`
+**Implementation**: `src/MCTS/Transcript.hs`, `src/MCTS/Transcript/Action.hs`,
+`src/MCTS/Transcript/Codec.hs`, `src/MCTS/Types.hs`
 **Docs to update**: `documents/engineering/transcript_format.md`,
 `documents/engineering/determinism_contract.md`,
 `DEVELOPMENT_PLAN/system-components.md`
@@ -104,7 +103,7 @@ records of `(action_id, visits)` sorted ascending by action ID, equity excluded.
     terminator.
   - Per-move record: `move_index u16 | chosen u8 | n_actions u8` followed by
     `n_actions × (action u8, visits u32)` pairs sorted ascending by action.
-  - Terminator: `0xFF u8 | winner u8 | total_moves u16`, with
+  - Terminator: `0xFFFF u16 | winner u8 | total_moves u16`, with
     `winner ∈ {0 = hero, 1 = villain, 2 = draw}`. `winner = 2` (draw) is invalid for
     `backend = cpp-legacy` transcripts (backend (i) has no draw rule per
     [../README.md → Draw rule](../README.md)); the decoder rejects this combination
@@ -137,7 +136,7 @@ records of `(action_id, visits)` sorted ascending by action ID, equity excluded.
 - Split the monolithic codec into the planned header/record/envelope modules or update
   implementation ownership if the single-module layout is retained.
 - Tighten `decode . encode == id` so decoded `RunConfig` preserves all intended fields,
-  including workload and game count semantics.
+  including workload and per-game `game_index` semantics.
 - Add sorted-record properties and byte-level golden fixtures under the final
   `test/golden/transcript-codec/` layout.
 - Reject legacy-backend draw winners explicitly once the real backend (i) transcript
@@ -159,8 +158,8 @@ the `.gitignore` entry that keeps the cache out of version control.
 ### Deliverables
 
 - `src/MCTS/Transcript/Hash.hs` exposes `runConfigHash :: RunConfig -> ByteString`
-  computing `sha256(run_config)` over the canonical little-endian encoding of the run
-  config; `playTranscriptHash :: RunConfig -> [Move] -> ByteString` computes
+  computing the backend-specific cache key `sha256(run_config)` over the canonical
+  little-endian encoding of the run config; `playTranscriptHash` computes
   `sha256(run_config || move_history)` for `mcts play`-recorded transcripts. The
   `RunConfig` record shape (field list and on-wire byte widths) is owned by
   [../documents/engineering/transcript_format.md → Content
@@ -267,7 +266,7 @@ Sprint 7.4.
   - `mcts inspect list` scans `<cache-root>/transcripts/<arch>/*.tr` for the
     current host arch, decodes each header,
     prints one line per transcript: short hash (first 8 chars), backend, master
-    seed, threading (`ST` or `MT8`), sims, total games, total moves, mtime. Sorted
+    seed, threading (`ST` or `MT8`), sims, game id, total moves, mtime. Sorted
     by mtime descending. Honours `--format json|table|plain`.
   - `mcts inspect show <hash-prefix>` resolves the prefix via Sprint 2.3, decodes
     the transcript, prints the header summary followed by per-move records in the
@@ -314,8 +313,8 @@ Sprint 7.4.
 ## Sprint 2.5: `splitmix64` Seed Derivation and `--rng` Plumbing 🔄
 
 **Status**: Active
-**Implementation**: `src/MCTS/Rng/Mix.hs`, `src/MCTS/Rng/Native.hs`,
-`src/MCTS/Rng/Source.hs`, `src/MCTS/CLI/Spec.hs` (`--rng` option)
+**Implementation**: `src/MCTS/Rng/Mix.hs`, `src/MCTS/Types.hs`,
+`src/MCTS/CLI/Parser.hs` (`--rng` option), `src/MCTS/Engine.hs`
 **Docs to update**: `documents/engineering/determinism_contract.md`,
 `documents/engineering/cli_command_surface.md`,
 `DEVELOPMENT_PLAN/system-components.md`
@@ -409,10 +408,10 @@ layered cohort-invariant vs per-backend-slot semantics.
   carried by the header's `envelope_offset` field (which Sprint 2.1
   hard-coded to `48`); the existing decoder reads `envelope_offset`,
   jumps to it, parses the envelope, then continues to the per-game body.
-- `sha256(RunConfig)` hashing path verified by a property test to be
-  invariant under arbitrary envelope changes: the hash is computed
-  over the canonical encoding of the `RunConfig` record alone, and
-  the envelope block does not perturb it.
+- The backend-specific `sha256(RunConfig)` cache-key path is verified by a property
+  test to be invariant under arbitrary envelope changes: the hash is computed over
+  the canonical encoding of the `RunConfig` record alone, and the envelope block does
+  not perturb it.
 - Version-tolerance property test: a decoder built against
   `envelope_version = 1` must successfully read a transcript whose
   envelope block contains a hypothetical version-2 trailer (extra
@@ -445,7 +444,8 @@ layered cohort-invariant vs per-backend-slot semantics.
   v1 cohort-invariant and per-backend-slot field set.
 - Honour `envelope_byte_length` for forward-compatible decoding and version-2 trailer
   skipping.
-- Prove `sha256(RunConfig)` invariance under arbitrary envelope changes.
+- Prove backend-specific `sha256(RunConfig)` cache-key invariance under arbitrary
+  envelope changes.
 - Replace logical build IDs with live backend envelope capture from Sprints `3.6`,
   `4.7`, `5.5`, and `6.5`.
 
@@ -546,11 +546,11 @@ listing, and keep-current prune behavior.
 **Engineering docs to create/update:**
 
 - `documents/engineering/transcript_format.md` — fill in the wire format (including
-  the engine-envelope block placed at `envelope_offset` and excluded from
-  `sha256(RunConfig)`), the single-byte action enumeration, the content-addressing
-  scheme, the cache root resolution including the per-transcript sidecar directory
-  layout, the equity sidecar `.eq` / `.envelope` wire format, and the git-style
-  hash-prefix lookup contract.
+  the engine-envelope block placed at `envelope_offset` and excluded from the
+  backend-specific `sha256(RunConfig)` cache key), the single-byte action enumeration,
+  the content-addressing scheme, the cache root resolution including the per-transcript
+  sidecar directory layout, the equity sidecar `.eq` / `.envelope` wire format, and the
+  git-style hash-prefix lookup contract.
 - `documents/engineering/determinism_contract.md` — fill in the full determinism
   contract per the README. The eleven owned sections are: the `--rng native` vs
   `--rng cpp` split (and the verify-subtree pin); the per-game

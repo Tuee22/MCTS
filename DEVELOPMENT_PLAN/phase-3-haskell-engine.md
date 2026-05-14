@@ -39,8 +39,8 @@ baseline pins what `correct` means. `mcts bench rollouts --backend haskell` and
 ## Sprint 3.1: Corridors Game Engine and Board Representation 🔄
 
 **Status**: Active
-**Implementation**: `src/MCTS/Engine/Board.hs`, `src/MCTS/Engine/Move.hs`,
-`src/MCTS/Engine/Terminal.hs`, `src/MCTS/Engine/Legal.hs`
+**Implementation**: `src/MCTS/Engine.hs`, `src/MCTS/Types.hs`,
+`src/MCTS/Notation.hs`
 **Docs to update**: `documents/engineering/determinism_contract.md`,
 `DEVELOPMENT_PLAN/system-components.md`
 
@@ -162,8 +162,7 @@ Not started.
 ## Sprint 3.3: UCT Search and Random-Rollout Leaf Evaluation 🔄
 
 **Status**: Active
-**Implementation**: `src/MCTS/Search/Uct.hs`, `src/MCTS/Search/Rollout.hs`,
-`src/MCTS/Search/Search.hs`
+**Implementation**: `src/MCTS/Engine.hs`, `src/MCTS/Driver.hs`
 **Docs to update**: `documents/engineering/determinism_contract.md`
 
 ### Objective
@@ -222,7 +221,7 @@ ancestor path).
 ## Sprint 3.4: Per-Game Driver and Transcript Writer 🔄
 
 **Status**: Active
-**Implementation**: `src/MCTS/Driver/Game.hs`, `src/MCTS/Driver/Transcript.hs`
+**Implementation**: `src/MCTS/Driver.hs`, `src/MCTS/Transcript.hs`
 **Docs to update**: `documents/engineering/determinism_contract.md`,
 `documents/engineering/transcript_format.md`
 
@@ -263,7 +262,7 @@ in the Phase 2 wire format.
 ### Validation
 
 1. Same-backend determinism (Q4): `runGame` with the same `(master_seed,
-   game_index)` produces an identical transcript across runs.
+   game_index)` produces an identical determinism payload across runs.
 2. The transcript round-trips through `encode . decode` per Phase 2 Sprint 2.1.
 3. The transcript filename is `sha256(run_config).tr` with the canonical
    `run_config` byte encoding.
@@ -344,8 +343,8 @@ wall-clock time from a single `Data.Time.Clock.getMonotonicTimeNSec`, emit
    native --games 32 --seed 42 --sims 1000` runs to completion.
 3. Same-backend determinism (Q4): the transcripts in `.mcts-cache/transcripts/`
    for `--games 32 --threading single` and `--games 32 --threading multi
-   --workers 8` are identical sets (same 32 sha-addressed files); only wall-clock
-   differs.
+   --workers 8` decode to identical determinism payload sets; only wall-clock and
+   dispatcher provenance metadata differ.
 
 ### Remaining Work
 

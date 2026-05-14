@@ -23,7 +23,7 @@
 > and the retained state locations.
 
 The inventory documents the authoritative end state and the current implementation
-baseline. The repository now has a validated logical baseline that exercises the
+baseline. The repository now has an implemented logical baseline that exercises the
 operator-facing surfaces without claiming the final optimized backend artefacts are
 complete. Rows marked `🔄 Active` below have concrete code in the worktree but still
 retain sprint-owned remaining work before they can move to `✅ Done`.
@@ -39,7 +39,8 @@ and retirement history separately.
 | Transcript/cache baseline | `src/MCTS/Transcript.hs`, `src/MCTS/Crypto/SHA256.hs`, `src/MCTS/Transcript/EquitySidecar.hs`, plus wrapper modules; `.mcts-cache/` ignored; `inspect list` / `inspect show --envelope` / `inspect cache list` / `inspect cache prune` work | Complete engine-envelope capture and foreign-engine recompute sidecars |
 | Logical backend cohort | `src/MCTS/Engine.hs`, `src/MCTS/Driver.hs`, `src/MCTS/Verify.hs`; validation command is `mcts verify rollouts --backend cpp-imperative,cpp-functional,rust,haskell` | Replace logical in-process backends with real Haskell `ST` engine and FFI-backed C++/Rust engines |
 | Foreign backend homes | `cpp-legacy/`, `cpp-imperative/`, `cpp-functional/`, `rust/` contain smoke-buildable skeletons | Real legacy port, C++23 engines, Rust engine, FFI bindings, PGO+BOLT+`mimalloc` pipelines |
-| Test stanzas | `test/unit`, `test/integration`, `test/cross-backend`, `test/legacy-parity`, `test/haskell-style`; validation gate is `cabal test all` under the pinned toolchain | Strengthen to external golden fixtures, real FFI cohort, renderer goldens, and full property coverage |
+| Test stanzas | `test/unit`, `test/integration`, `test/cross-backend`, `test/legacy-parity`, `test/haskell-style`; validation gate is `cabal test all` under the pinned toolchain | Current stanzas use simple executable `Main.hs` checks; strengthen to doctrine-required `tasty`, external golden fixtures, real FFI cohort, renderer goldens, and full property coverage |
+| Generated docs gate | `src/MCTS/CLI/Docs.hs`, `documents/cli/commands.md`, `share/man/man1/mcts.1`, `share/completion/{bash,zsh,fish}/` | Current `documents/cli/commands.md` contains governed-doc metadata and extra command rows not emitted by `renderCommandMarkdown`; reconcile generator/output before treating `mcts docs check` as clean |
 
 ## Backends
 
@@ -67,9 +68,9 @@ and retirement history separately.
 | Sidecar cache list | `mcts inspect cache list` | Enumerate equity-sidecar `(backend, build)` slots cohabiting each cached transcript | 🔄 Active (baseline `.eq` / `.envelope` listing; live-envelope origin markers open) | Sprint 2.7 |
 | Sidecar cache prune | `mcts inspect cache prune [--keep-current]` | Delete equity sidecars; `--keep-current` retains current logical build slots in the baseline | 🔄 Active (live-envelope stale detection open) | Sprint 2.7 |
 | Divergence matrix | `mcts inspect divergence <hash-prefix>` | Emit divergence-rate metrics (`visit-Δ`, `move-Δ`, `equity-L2`) for a single transcript and cached backend columns | 🔄 Active (metric helper wired; foreign recompute matrix open) | Sprint 7.5 |
-| Test runner | `mcts test all` / `mcts test <stanza>` | Plan/Apply over Cabal test stanzas plus the pinned report-card workload | 🔄 Active (`--dry-run`; apply path still uses local `mcts` PATH assumption) | Sprint 7.3 |
+| Test runner | `mcts test all` / `mcts test <stanza>` | Plan/Apply over Cabal test stanzas plus the pinned report-card workload | 🔄 Active (`--dry-run`; apply path still uses local `mcts` PATH assumption and comma-list benchmark placeholders) | Sprint 7.3 |
 | Lint stack | `mcts lint files\|docs\|haskell\|all` | Whitespace, final newline, forbidden paths, generated sections, formatter + hlint + `cabal format` | 🔄 Active (external formatter/hlint open) | Sprint 1.4 |
-| Docs generation | `mcts docs check` / `mcts docs generate` | Paired generated-section check and write per the `GeneratedSectionRule` registry | 🔄 Active (commands doc, manpage, completions; richer registry metadata open) | Sprint 1.3 |
+| Docs generation | `mcts docs check` / `mcts docs generate` | Paired generated-section check and write per the `GeneratedSectionRule` registry | 🔄 Active (commands doc, manpage, completions wired; current command markdown drift plus richer registry metadata open) | Sprint 1.3 |
 | Command introspection | `mcts commands [--tree\|--json]` | Flat list, tree rendering, or JSON command schema from the `CommandSpec` registry | 🔄 Active | Sprint 1.2 |
 | Focused help | `mcts help <subcommand>` | Equivalent to `<subcommand> --help`; same renderer as the `--help` path | 🔄 Active (smoke help text) | Sprint 1.2 |
 | Code quality gate | `mcts check-code` | Doctrine-alignment enforcement, formatter, hlint, warning-clean build, forbidden-path scan | 🔄 Active (lint/docs/style/build gate wired; external formatter fidelity open) | Sprint 1.4 |
@@ -87,8 +88,8 @@ and retirement history separately.
 | Git-style hash-prefix lookup (≥ 4 hex chars; `AppError TranscriptNotFound` / `AppError TranscriptAmbiguous`) | `src/MCTS/Transcript/Lookup.hs` | 🔄 Active | Sprint 2.3 |
 | `splitmix64(master_seed, game_index)` per-game seed derivation | `src/MCTS/Rng/Mix.hs` | 🔄 Active | Sprint 2.5 |
 | `--rng cpp` shared `std::mt19937_64` FFI bridge | `cpp-legacy/c-abi/rng.h`, `cpp-legacy/c-abi/rng.cc` | 🔄 Active (C skeleton; Haskell FFI open) | Sprint 4.3 |
-| `--rng native` per-backend selection (splitmix for Haskell, `rand` for Rust, `xoshiro256++` / `wyrand` candidate for C++) | `src/MCTS/Engine.hs` | 🔄 Active (logical selection; real per-backend RNG open) | Sprint 2.5 |
-| Engine envelope codec (envelope block in transcript header; cohort-invariant vs per-backend-slot fields; excluded from `sha256(RunConfig)`) | `src/MCTS/Transcript.hs` | 🔄 Active (minimal envelope; full contract open) | Sprint 2.6 |
+| `--rng native` per-backend selection (`splitmix` for Haskell, `rand_xoshiro::Xoshiro256PlusPlus` for Rust, `xoshiro256++` by default with `wyrand` as the C++ alternative) | `src/MCTS/Engine.hs` | 🔄 Active (logical selection; real per-backend RNG open) | Sprint 2.5 |
+| Engine envelope codec (envelope block in transcript header; cohort-invariant vs per-backend-slot fields; excluded from the backend-specific `sha256(RunConfig)` cache key) | `src/MCTS/Transcript.hs` | 🔄 Active (minimal envelope; full contract open) | Sprint 2.6 |
 | Per-backend envelope capture (build-id, compiler ID/version, fp_flags, libm_id, cpu_features, fp_env) | `<backend>/c-abi/envelope.{h,cc}` (Phase 4/5/6 for cpp/rust); `src/MCTS/Engine/Envelope.hs` (Phase 3 for haskell) | 📋 Planned | Sprint 3.6, 4.7, 5.5, 6.5 |
 | Equity sidecar codec (`.eq` + `.envelope` neighbour, atomic-write, multi-build cohabitation) | `src/MCTS/Transcript/EquitySidecar.hs` | 🔄 Active (baseline text codec and multi-build cache layout; atomic write/full binary format open) | Sprint 2.7 |
 | Foreign-engine recompute (`mcts_<backend>_recompute_equities` FFI; in-process `Recompute.hs` for haskell) | per-backend C ABI + `src/MCTS/Engine/Recompute.hs` | 📋 Planned | Sprint 3.6, 4.7, 5.5, 6.5 |
@@ -143,16 +144,18 @@ consume them. Citations name the doctrine sections they implement per standards 
 ## Test Stanzas
 
 Per doctrine `Test Organization`, each tier is a separate Cabal `test-suite` with
-`type: exitcode-stdio-1.0` and `tasty` as the in-stanza runner. A single `tasty` tree
-spanning all tiers is forbidden.
+`type: exitcode-stdio-1.0`; the target runner is `tasty` in every stanza, and a
+single `tasty` tree spanning all tiers is forbidden. The current baseline stanzas
+are separate executable `Main.hs` smoke/property checks and do not yet depend on
+`tasty`.
 
 | Stanza | Tier | Scope | Status | Owning Sprint |
 |--------|------|-------|--------|---------------|
-| `mcts-unit` | Pure logic | Engine invariants, parser tests via `execParserPure`, property tests (`decode . encode == id`, `render is deterministic`, `parser roundtrips`), golden tests for `CommandSpec` output and `inspect show` rendering, transcript codec roundtrips, RNG mixer properties | 🔄 Active (baseline present; full tasty/golden coverage open) | Sprint 7.1 |
-| `mcts-integration` | Subprocess | Exercises the real `mcts` binary across the FFI to every backend; same-backend determinism (same seed ⇒ same transcripts, three seeds per backend) covering Q4 and Q6 | 🔄 Active (logical backend determinism baseline; real FFI/Q6 open) | Sprint 7.1 |
+| `mcts-unit` | Pure logic | Current `test/unit/Main.hs` covers command registry/parser smoke, SHA-256, action/notation roundtrips, transcript roundtrip, envelope checks, sidecars, and divergence metrics; target adds parser tests via `execParserPure`, property tests, and renderer goldens | 🔄 Active (baseline present; full tasty/golden coverage open) | Sprint 7.1 |
+| `mcts-integration` | Logical integration baseline | Current `test/integration/Main.hs` checks same-backend determinism directly through `MCTS.Driver`; target exercises the real `mcts` binary across the FFI to every backend and covers Q4/Q6 | 🔄 Active (logical backend determinism baseline; real FFI/Q6 open) | Sprint 7.1 |
 | `mcts-cross-backend` | Round-robin verify | The `verify` cohort under `--rng cpp` covering backends `(ii)`, `(iii)`, `(iv)`, `(v)`; backend `(i)` excluded by the `VerifyBackend` type | 🔄 Active (logical cohort baseline; real FFI cohort open) | Sprint 7.2 |
 | `mcts-legacy-parity` | Round-robin verify, legacy envelope | `verify legacy-parity` across all five backends with `max_plies = 10000` pinned and the fixture seed `S_LP = 42`; pre-flight guard asserts (i) neither throws nor reaches the cap | 🔄 Active (logical cohort baseline; external legacy fixture open) | Sprint 7.2 |
-| `mcts-haskell-style` | Lint | `fourmolu --mode check`, `hlint --with-group=default --with-group=extra` plus `.hlint.yaml`, `cabal format` temp-file round-trip byte equality | 🔄 Active (style stanza baseline; external fourmolu/hlint/cabal-format fidelity open) | Sprint 1.4 |
+| `mcts-haskell-style` | Lint | Current `test/haskell-style/Main.hs` checks tab characters in Haskell sources; target runs `fourmolu --mode check`, `hlint --with-group=default --with-group=extra`, and `cabal format` temp-file round-trip byte equality | 🔄 Active (style stanza baseline; external fourmolu/hlint/cabal-format fidelity open) | Sprint 1.4 |
 
 ## POC Report-Card Knobs
 
@@ -189,7 +192,7 @@ Pinned in `cabal.project` for reproducibility across hosts; see
 
 | State Class | Authority | Durable Home | Notes |
 |-------------|-----------|--------------|-------|
-| Transcript cache | `mcts` CLI | `--cache-dir <path>` → `$MCTS_CACHE_DIR` → `./.mcts-cache/transcripts/<arch>/<sha>.tr` (arch ∈ `{amd64, arm64}`); per-transcript sidecar directory `./.mcts-cache/transcripts/<arch>/<sha>/<backend>-<engine_build_id_prefix16>.eq` plus `.envelope` neighbour for cached equity series | `.gitignore`'d when inside the project tree; transcript files content-addressed by `sha256(run_config)` (or `sha256(run_config \|\| move_history)` for `mcts play`-recorded transcripts); arch-partitioned per [../README.md → Architecture envelope](../README.md); sidecar `.eq` files multi-build-cohabitable (one per `(backend, build)` slot), prunable via `mcts inspect cache prune` |
+| Transcript cache | `mcts` CLI | `--cache-dir <path>` → `$MCTS_CACHE_DIR` → `./.mcts-cache/transcripts/<arch>/<sha>.tr` (arch ∈ `{amd64, arm64}`); per-transcript sidecar directory `./.mcts-cache/transcripts/<arch>/<sha>/<backend>-<engine_build_id_prefix16>.eq` plus `.envelope` neighbour for cached equity series | `.gitignore`'d when inside the project tree; one-game transcript files are content-addressed by `sha256(run_config)`, where `run_config` includes backend and `game_index` (or `sha256(run_config \|\| move_history)` for `mcts play`-recorded transcripts); arch-partitioned per [../README.md → Architecture envelope](../README.md); sidecar `.eq` files multi-build-cohabitable (one per `(backend, build)` slot), prunable via `mcts inspect cache prune`; cross-backend verify compares decoded determinism payloads rather than cache filenames |
 | Legacy fixture set | Out-of-band from `~/MCTS_legacy/` | `test/golden/legacy/` | Authoritative Q6 reference; checked into the repo |
 | Retirement golden anchors | `mcts` CLI on retirement | `test/golden/<backend>/` | Frozen transcripts and throughput numbers for each retired backend; populated by the retirement protocol in Phase 8 |
 | Build outputs | `cabal` plus per-backend `make` / `cargo` | `dist-newstyle/` (Cabal), per-backend `build/` directories | Operator-visible artefacts; rebuilt on demand |

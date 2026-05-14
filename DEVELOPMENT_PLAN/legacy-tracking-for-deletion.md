@@ -54,6 +54,8 @@ backend until Phase `8` retirement closes Q6.
 |------|----------|--------|---------------|
 | Logical five-backend in-process stand-in | `src/MCTS/Engine.hs`, `src/MCTS/Driver.hs`, `src/MCTS/Verify.hs` | Lets CLI and tests validate determinism surfaces before real Haskell/C++/Rust engines are complete; must be replaced by real backend dispatch | Sprint 3.3, Sprint 4.4, Sprint 5.4, Sprint 6.2, Sprint 6.4 |
 | Foreign backend smoke skeletons | `cpp-legacy/`, `cpp-imperative/`, `cpp-functional/`, `rust/` | Provides concrete source homes and smoke build targets; final contract requires verbatim legacy port, optimized C++ engines, Rust engine, and Haskell FFI bindings | Sprint 4.1, Sprint 5.1, Sprint 6.1, Sprint 6.3 |
+| Generated command-doc drift | `src/MCTS/CLI/Docs.hs`, `documents/cli/commands.md` | The on-disk command markdown currently contains governed-doc metadata and an extra command row not emitted by `renderCommandMarkdown`; final docs generation must be byte-stable before `mcts docs check` can close | Sprint 1.3 |
+| Comma-list report-card benchmark placeholder | `src/MCTS/CLI/Test.hs`, `src/MCTS/CLI/Parser.hs` | `mcts test all` passes comma-separated backend lists to `bench`, while the current bench parser selects a single backend; final report-card execution must iterate the typed backend matrix | Sprint 7.3 |
 | Logical report-card placeholders | `src/MCTS/ReportCard.hs` | Allows `mcts test all --dry-run` and renderer smoke tests; final report card must use measured Q1-Q7 evidence | Sprint 7.3, Sprint 8.3 |
 
 ## Pending Removal Notes

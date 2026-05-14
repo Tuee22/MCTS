@@ -141,7 +141,7 @@ typedef struct {
   uint8_t  rng_source_envelope;         // matches the transcript header's rng_source
   uint8_t  host_arch_envelope;          // matches the transcript header's host_arch
   uint8_t  shared_rng_build_id[32];     // SHA-256 of cpp_rng.so; all-zero for --rng native
-  uint8_t  run_config_hash[32];         // sha256(RunConfig); filled by the codec, not by the backend
+  uint8_t  cohort_config_hash[32];      // backend-independent cohort hash; filled by the codec
   uint8_t  engine_build_id[32];         // SHA-256 of THIS backend's loaded .so / executable
   char     engine_git_commit[40];       // project repo commit at build time, NUL-padded
   uint8_t  compiler_id;                 // 0=gcc, 1=clang, 2=rustc, 3=ghc

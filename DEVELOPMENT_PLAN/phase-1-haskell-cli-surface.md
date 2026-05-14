@@ -120,7 +120,7 @@ the reproducible Docker development environment that every later sprint builds o
 
 **Status**: Active
 **Implementation**: `src/MCTS/CLI/Spec.hs`, `src/MCTS/CLI/Parser.hs`,
-`src/MCTS/CLI/Command.hs`, `src/MCTS/CLI/Tree.hs`, `src/MCTS/CLI/Json.hs`
+`src/MCTS/CLI/Command.hs`
 **Docs to update**: `documents/engineering/cli_command_surface.md`,
 `DEVELOPMENT_PLAN/system-components.md`
 
@@ -389,9 +389,8 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
 ## Sprint 1.3: Generated Artefacts Registry and Docs Pipeline 🔄
 
 **Status**: Active
-**Implementation**: `src/MCTS/CLI/Docs.hs`, `src/MCTS/Generated/Sections.hs`,
-`src/MCTS/Generated/Paths.hs`, `documents/cli/commands.md`,
-`share/man/man1/mcts.1`, `share/man/man1/mcts-*.1`, `share/completion/bash/mcts`,
+**Implementation**: `src/MCTS/CLI/Docs.hs`, `documents/cli/commands.md`,
+`share/man/man1/mcts.1`, `share/completion/bash/mcts`,
 `share/completion/zsh/_mcts`, `share/completion/fish/mcts.fish`
 **Docs to update**: `documents/engineering/code_quality.md`,
 `documents/documentation_standards.md`,
@@ -449,6 +448,10 @@ text-artefact derived from the `CommandSpec` registry.
 - Baseline landed: `mcts docs check` / `mcts docs generate` compare and write
   `documents/cli/commands.md`, `share/man/man1/mcts.1`, and the bash/zsh/fish
   completion files from the command registry.
+- Current drift to close: `documents/cli/commands.md` includes governed-doc metadata
+  and an extra `inspect show --envelope` row that `renderCommandMarkdown` does not
+  emit, so the generator/output contract must be reconciled before this sprint can
+  close.
 - Add explicit `GeneratedSectionRule` and `trackingGeneratedPaths` registries instead
   of the current local `generatedFiles` list.
 - Support marker-delimited generated sections in addition to fully generated paths.
@@ -458,8 +461,8 @@ text-artefact derived from the `CommandSpec` registry.
 ## Sprint 1.4: Lint Stack, `fourmolu.yaml`, `mcts-haskell-style` Stanza 🔄
 
 **Status**: Active
-**Implementation**: `fourmolu.yaml`, `.hlint.yaml`, `src/MCTS/Lint.hs`,
-`src/MCTS/CheckCode.hs`, `test/haskell-style/Main.hs`, `mcts.cabal`
+**Implementation**: `fourmolu.yaml`, `.hlint.yaml`, `src/MCTS/CLI/Lint.hs`,
+`src/MCTS/App.hs` (`CheckCode` branch), `test/haskell-style/Main.hs`, `mcts.cabal`
 **Docs to update**: `documents/engineering/code_quality.md`,
 `documents/engineering/unit_testing_policy.md`,
 `DEVELOPMENT_PLAN/system-components.md`
@@ -483,15 +486,15 @@ forbidden-symbol HLint rules behind the `mcts-haskell-style` test stanza plus th
   formatting forbidden outside `src/MCTS/CLI/Output.hs`; `callProcess`,
   `readCreateProcess`, `System.Process.createProcess`, `System.Process.proc`,
   `System.Process.shell` forbidden outside `src/MCTS/Subprocess.hs`.
-- `src/MCTS/Lint.hs` owns the `mcts lint files|docs|haskell|all` runners.
+- `src/MCTS/CLI/Lint.hs` owns the current `mcts lint files|docs|haskell|all` runners.
   `mcts lint files` enforces the `forbiddenPathRegistry` (`.github/workflows/`,
   `.husky/`, `.githooks/`, `.pre-commit-config.yaml`, `pre-commit-*.yaml`, root
   `Makefile`, root `justfile`, root `Taskfile.yml`) plus the
   `trackingGeneratedPaths` no-hand-edit check, per
   [../HASKELL_CLI_TOOL.md → Forbidden Surfaces](../HASKELL_CLI_TOOL.md).
-- `src/MCTS/CheckCode.hs` owns `mcts check-code`, which dispatches lint, formatter,
-  hlint, warning-clean `cabal build all`, and the `mcts docs check` gate in one
-  command per
+- The current `src/MCTS/App.hs` `CheckCode` branch dispatches lint, docs check, and
+  warning-clean `cabal build all`; a dedicated `src/MCTS/CheckCode.hs` module remains
+  open if that ownership split is retained per
   [../HASKELL_CLI_TOOL.md → CLI surface](../HASKELL_CLI_TOOL.md).
 - `src/MCTS/CLI/Command.hs` gains the `CheckCode` constructor on the top-level
   `Command` ADT and a matching `CommandSpec` leaf in the registry per
@@ -753,7 +756,7 @@ Implement the single `AppError` ADT, the `renderError` boundary, and the `--form
   - `EngineEnvelopeMismatch` is raised by `mcts verify` when the layered
     engine-envelope check finds a disagreement: either a cohort-invariant
     field (`host_arch`, `rng_source`, `shared_rng_build_id`,
-    `run_config_hash`) disagrees across the cohort, or a per-backend-slot
+    `cohort_config_hash`) disagrees across the cohort, or a per-backend-slot
     field (`engine_build_id`, `compiler_id`, `compiler_version`,
     `fp_flags`, `libm_id`, `cpu_features`, `fp_env`) disagrees between
     a cached transcript and the live binary for the same backend slot.

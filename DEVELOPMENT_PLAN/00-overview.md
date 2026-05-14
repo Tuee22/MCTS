@@ -95,13 +95,14 @@ cross-language second opinion.
   Owned by [phase-1-haskell-cli-surface.md](phase-1-haskell-cli-surface.md).
 - **Transcript codec, RNG, determinism contract.** The transcript wire format is
   little-endian binary with no schema-library dependency: header carrying the run config,
-  per-move records of `(action_id, visits)` sorted ascending by action ID, equity
-  excluded from the hash. An engine-envelope block follows the fixed header (excluded
-  from `sha256(RunConfig)`) so substrate drift is detectable on replay; equity is
-  cached lazily per `(backend, build)` in a sidecar `.eq` directory next to the
-  `.tr`. The canonical single-byte action enumeration covers all legal Corridors actions
-  (pawn moves at `y*9 + x` for x,y ∈ [0,8], horizontal walls at `81 + y*8 + x`, vertical
-  walls at `145 + y*8 + x`, with 209..254 reserved and 255 as sentinel). Per-game RNG
+  per-move records of `(action_id, visits)` sorted ascending by action ID, and no stored
+  equity floats. An engine-envelope block follows the fixed header (excluded from the
+  backend-specific `sha256(RunConfig)` cache key) so substrate drift is detectable on
+  replay; equity is cached lazily per `(backend, build)` in a sidecar `.eq` directory
+  next to the `.tr`. The canonical single-byte action enumeration covers all legal
+  Corridors actions (pawn moves at `y*9 + x` for x,y ∈ [0,8], horizontal walls at
+  `81 + y*8 + x`, vertical walls at `145 + y*8 + x`, with 209..254 reserved and
+  255 as sentinel). Per-game RNG
   seeds derive from `splitmix64(master_seed, game_index)` so per-game output is
   independent of worker count and scheduling order. Owned by
   [phase-2-transcript-codec-and-determinism.md](phase-2-transcript-codec-and-determinism.md).
@@ -305,19 +306,21 @@ referenceability.
    `MCTS_legacy`.
 10. The legacy parity envelope pins `max_plies = 10000` (= `MAX_ROLLOUT_ITERS` in the
     legacy). Under that envelope all five backends terminate every rollout on a
-    positional win, so transcripts must be bit-equal. The `mcts verify legacy-parity`
-    subcommand pins this; a fixture seed is chosen so (i) never trips
+    positional win, so decoded determinism payloads must be bit-equal. The
+    `mcts verify legacy-parity` subcommand pins this; a fixture seed is chosen so (i) never trips
     `MAX_ROLLOUT_ITERS`. If (i) throws, the cohort fails with
     `AppError LegacyParityRolloutOverflow` carrying `(seed, game_index, move_index)`.
 11. The transcript wire format is little-endian binary with no schema-library
     dependency. No protobuf, no flatbuffers, no Cap'n Proto, no CBOR. The header carries
     the run config; per-move records are sparse `(action_id, visits)` pairs sorted
     ascending by action ID. Equity is excluded from the wire format.
-12. Transcripts are content-addressed by `sha256(run_config)` (or
-    `sha256(run_config || move_history)` for `mcts play`-recorded transcripts where the
-    human's move choices make the post-config bytes non-deterministic). The cache root
-    resolves `--cache-dir <path>` → `$MCTS_CACHE_DIR` → `./.mcts-cache/` and is
-    `.gitignore`'d when inside the project tree.
+12. Transcripts are one-game files content-addressed by `sha256(run_config)`, where
+    `run_config` includes the backend and `game_index` so provenance-bearing cache files
+    never collide across backends or games. `mcts play`-recorded transcripts use
+    `sha256(run_config || move_history)` because the human's move choices make the
+    post-config bytes non-deterministic. The cache root resolves
+    `--cache-dir <path>` → `$MCTS_CACHE_DIR` → `./.mcts-cache/` and is `.gitignore`'d
+    when inside the project tree.
 13. Hash-prefix lookup is git-style: shortest unique prefix accepted, minimum 4 hex
     chars. `AppError TranscriptNotFound` on no match; `AppError TranscriptAmbiguous`
     carrying the candidate list on multi-match.
@@ -412,9 +415,10 @@ referenceability.
     [../documents/engineering/determinism_contract.md → Architecture
     Envelope](../documents/engineering/determinism_contract.md).
 37. Every transcript carries a versioned **engine envelope** block immediately after
-    the fixed header, excluded from `sha256(RunConfig)`. The envelope decomposes into
+    the fixed header, excluded from the backend-specific `sha256(RunConfig)` cache key.
+    The envelope decomposes into
     cohort-invariant fields (`host_arch`, `rng_source`, `shared_rng_build_id`,
-    `run_config_hash`) and per-backend-slot fields (`engine_build_id`,
+    `cohort_config_hash`) and per-backend-slot fields (`engine_build_id`,
     `engine_git_commit`, `compiler_id` + `compiler_version`, `fp_flags`, `libm_id`,
     `cpu_features`, `fp_env`). `mcts verify` hard-fails with
     `AppError EngineEnvelopeMismatch` when cohort-invariant fields disagree across the
@@ -462,12 +466,12 @@ referenceability.
 
 | Surface | Current Repo State | Intended End State |
 |---------|--------------------|--------------------|
-| Repository layout | `app/`, `src/MCTS/`, `cpp-legacy/`, `cpp-imperative/`, `cpp-functional/`, `rust/`, `bench/`, `test/`, `docker/`, `cabal.project`, `fourmolu.yaml`, `.hlint.yaml`, `.gitignore`, `mcts.cabal`, generated `documents/cli/commands.md`, `share/man/man1/mcts.1`, and `share/completion/{bash,zsh,fish}/` | Same layout, with the placeholder backend trees replaced by the real optimized implementations and retained golden anchors |
+| Repository layout | `app/`, `src/MCTS/`, `cpp-legacy/`, `cpp-imperative/`, `cpp-functional/`, `rust/`, `bench/`, `test/`, `docker/`, `cabal.project`, `fourmolu.yaml`, `.hlint.yaml`, `.gitignore`, `mcts.cabal`, generated-artefact targets `documents/cli/commands.md`, `share/man/man1/mcts.1`, and `share/completion/{bash,zsh,fish}/` | Same layout, with the placeholder backend trees replaced by the real optimized implementations and retained golden anchors |
 | Build artefacts | `mcts.cabal` declares the `mcts` binary and all Haskell test stanzas; `cabal build all` is the validation gate under the pinned toolchain. Foreign backend directories contain smoke-buildable C ABI / `cdylib` skeletons but are not linked into the Haskell binary. | `cabal build all`-produced `mcts` binary, plus per-backend shared libraries (`cpp-legacy/libmcts_cpp_legacy.so`, `cpp-imperative/libmcts_cpp_imperative.so`, `cpp-functional/libmcts_cpp_functional.so`, `rust/target/release/libmcts_rust.so`) |
-| CLI surface | The complete command family parses and runs for the validated logical baseline: `bench`, `verify`, `inspect`, `test`, `lint`, `docs`, `commands`, `help`, `check-code`, `build`, and smoke `play`. | Same surface backed by real Haskell, C++, and Rust engines plus interactive TUIs |
-| Test stanzas | Five Cabal stanzas exist: `mcts-unit`, `mcts-integration`, `mcts-cross-backend`, `mcts-legacy-parity`, `mcts-haskell-style`; `cabal test all` is the validation gate under the pinned toolchain. | Same stanzas, strengthened to run the real FFI-backed cohort and external golden fixtures |
+| CLI surface | The complete command family is wired for the logical baseline: `bench`, `verify`, `inspect`, `test`, `lint`, `docs`, `commands`, `help`, `check-code`, `build`, and smoke `play`. The docs/check-code surfaces still have generated-doc drift and local `mcts` PATH assumptions recorded in the active phase gaps. | Same surface backed by real Haskell, C++, and Rust engines plus interactive TUIs |
+| Test stanzas | Five Cabal stanzas exist: `mcts-unit`, `mcts-integration`, `mcts-cross-backend`, `mcts-legacy-parity`, `mcts-haskell-style`; the current tests are simple executable `Main.hs` smoke/property checks, and `cabal test all` is the validation gate under the pinned toolchain. | Same stanzas, strengthened to use the doctrine-required `tasty` runners, real FFI-backed cohort, and external golden fixtures |
 | Toolchain | `mcts.cabal` pins `tested-with: ghc ==9.14.1`; `cabal.project` pins `with-compiler: ghc-9.14.1` and report-card knobs. | GHC `9.14.1`, Cabal `3.16.1.0`, GCC latest stable on `ubuntu:24.04`, Rust latest stable with pinned minor, LLVM pinned in the Dockerfile |
-| Determinism contract | Enforced for the logical in-process five-backend baseline under `mcts verify` and the Cabal tests. Transcript codec, SHA-256 content addressing, cache root resolution, prefix lookup, baseline equity sidecars, and transcript-pair divergence metrics are implemented. | Enforced by real cross-backend `mcts verify {rollouts,selfplay,legacy-parity}` plus same-backend determinism cases under `mcts-integration` |
+| Determinism contract | Implemented for the logical in-process five-backend baseline under `mcts verify` and the Cabal tests. Transcript codec, SHA-256 content addressing, cache root resolution, prefix lookup, baseline equity sidecars, and transcript-pair divergence metrics are implemented. | Enforced by real cross-backend `mcts verify {rollouts,selfplay,legacy-parity}` plus same-backend determinism cases under `mcts-integration` |
 | Performance parity | Not proven. Report-card rendering exists as a logical baseline and explicitly marks external fixture parity pending. | Haskell (v) within tolerance of C++ (ii) on Q1 and Q2, single-threaded and on 8 workers, recorded in the `mcts test all` report card |
 
 ## Related Documents

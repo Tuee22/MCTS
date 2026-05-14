@@ -94,7 +94,7 @@ command also live in
 |------|----------|---------|-------|
 | `--backend <list>` | `bench`, `verify`, `play` | required | Comma-separated `NonEmpty Backend` for bench/verify; single `Backend` for play. |
 | `--vs <backend>` | `play` | `Nothing` (human plays) | When set, AI-vs-AI spectator mode. |
-| `--side hero\|villain` | `play` | required | Human-controlled side; ignored when `--vs` is set. |
+| `--side hero\|villain` | `play` | required | Side controlled by `--backend`; with `--vs`, the `--vs` backend controls the opposite side and the human spectates. |
 | `--threading single\|multi` | `bench`, `verify` | `multi` for `bench`, `single` for `verify` | Threading mode for the batch dispatcher. |
 | `--workers N` | `bench` (when `--threading multi`) | `8` | Worker count for the batch pool. |
 | `--rng native\|cpp` | `bench`, `play` | `native` | Pinned to `cpp` on the `verify` subtree at parse time. |
@@ -106,7 +106,7 @@ command also live in
 | `--with-equity` | `inspect show` | `False` | Re-runs the deterministic search to populate the equity column. Reads the originator's cached `.eq` if envelope-matched (instant); otherwise recomputes locally and writes a fresh sidecar. |
 | `--envelope` | `inspect show` | `False` | Dump the transcript's engine-envelope block as plain text (one field per line) before the per-move output. Useful for scripting (`diff`-friendly) and forensics. |
 | `--cache-states N` | `inspect replay` | `20` | In-memory MCTS-state LRU cache for back-navigation. |
-| `--allow-stale` | `verify rollouts`, `verify selfplay`, `verify legacy-parity` | off | Downgrade per-backend-slot `EngineEnvelopeMismatch` from hard fail to a warning; verify proceeds on visit counts only. Cohort-level mismatches (`host_arch`, `shared_rng_build_id`, `run_config_hash`) remain hard fails. Forensic use only. |
+| `--allow-stale` | `verify rollouts`, `verify selfplay`, `verify legacy-parity` | off | Downgrade per-backend-slot `EngineEnvelopeMismatch` from hard fail to a warning; verify proceeds on visit counts only. Cohort-level mismatches (`host_arch`, `shared_rng_build_id`, `cohort_config_hash`) remain hard fails. Forensic use only. |
 | `--keep-current` | `inspect cache prune` | off | Only delete sidecar slots whose envelope does NOT match a live binary; preserves the current build's cached recomputes. |
 | `--cache-dir <path>` | every cache-touching command | `$MCTS_CACHE_DIR` else `./.mcts-cache/` | Resolves before the env-var fallback. |
 | `--format json\|table\|plain` | every non-TUI command | `table` on TTY, `plain` otherwise | Per [HASKELL_CLI_TOOL.md → Output Rules](../../HASKELL_CLI_TOOL.md). TUI commands (`play`, `inspect replay`) ignore the flag. |
@@ -246,7 +246,7 @@ cpp-imperative locally to populate)`.
 [determinism_contract.md → Engine Envelope](./determinism_contract.md):
 
 - **Cohort-level**: every transcript in the cohort must agree on
-  `host_arch`, `rng_source`, `run_config_hash`, and `shared_rng_build_id`.
+  `host_arch`, `rng_source`, `cohort_config_hash`, and `shared_rng_build_id`.
   Mismatch → exit non-zero with `AppError EngineEnvelopeMismatch
   CohortLevel field expected got`. Not overridable by `--allow-stale`.
 - **Per backend slot**: each cached transcript's per-backend-slot

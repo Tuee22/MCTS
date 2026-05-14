@@ -37,8 +37,7 @@ settings from the project README.
 ## Sprint 6.1: `cpp-functional/` Functional-Style C++ Engine 🔄
 
 **Status**: Active
-**Implementation**: `cpp-functional/src/`, `cpp-functional/include/`,
-`cpp-functional/c-abi/`, `cpp-functional/Makefile`
+**Implementation**: `cpp-functional/c-abi/`, `cpp-functional/Makefile`
 **Docs to update**: `documents/engineering/compiler_runtime_tuning.md`,
 `documents/engineering/backend_ffi_contract.md`,
 `DEVELOPMENT_PLAN/system-components.md`
@@ -120,10 +119,9 @@ underneath so the optimisation stack still applies.
 ## Sprint 6.2: FFI Bindings, Build Harness, Driver for Backend (iii) 🔄
 
 **Status**: Active
-**Implementation**: `src/MCTS/FFI/CppFunctional.hs`,
-`src/MCTS/Driver/CppFunctional.hs`, `mcts.cabal`,
-`src/MCTS/CLI/Build.hs` (extend), `src/MCTS/CLI/Bench.hs` (extend dispatch),
-`src/MCTS/CLI/Verify.hs` (extend dispatch)
+**Implementation**: `cpp-functional/c-abi/`, `cpp-functional/Makefile`,
+`src/MCTS/CLI/Build.hs`, `src/MCTS/Driver.hs`, `src/MCTS/CLI/Bench.hs`,
+`src/MCTS/CLI/Verify.hs`
 **Docs to update**: `documents/engineering/backend_ffi_contract.md`,
 `documents/engineering/cli_command_surface.md`
 
@@ -162,7 +160,7 @@ variant.
    `.so`.
 3. `mcts bench rollouts --backend cpp-functional --threading single --rng cpp
    --games 8 --seed 42` runs to completion.
-4. Same-backend determinism: two runs produce identical transcript sets.
+4. Same-backend determinism: two runs produce identical determinism payload sets.
 
 ### Remaining Work
 
@@ -176,9 +174,7 @@ variant.
 ## Sprint 6.3: `rust/` Rust Engine and `cdylib` 🔄
 
 **Status**: Active
-**Implementation**: `rust/Cargo.toml`, `rust/src/lib.rs`, `rust/src/board.rs`,
-`rust/src/tree.rs`, `rust/src/search.rs`, `rust/src/rollout.rs`,
-`rust/src/c_abi.rs`
+**Implementation**: `rust/Cargo.toml`, `rust/src/lib.rs`
 **Docs to update**: `documents/engineering/compiler_runtime_tuning.md`,
 `documents/engineering/backend_ffi_contract.md`,
 `DEVELOPMENT_PLAN/system-components.md`
@@ -258,10 +254,9 @@ exposed as a `cdylib` for the Haskell FFI.
 ## Sprint 6.4: FFI Bindings, PGO+BOLT Build Harness, Driver for Backend (iv) 🔄
 
 **Status**: Active
-**Implementation**: `src/MCTS/FFI/Rust.hs`, `src/MCTS/Driver/Rust.hs`,
-`mcts.cabal`, `src/MCTS/CLI/Build.hs` (extend),
-`src/MCTS/CLI/Bench.hs` (extend dispatch),
-`src/MCTS/CLI/Verify.hs` (extend dispatch)
+**Implementation**: `rust/Cargo.toml`, `rust/src/lib.rs`, `mcts.cabal`,
+`src/MCTS/CLI/Build.hs`, `src/MCTS/Driver.hs`, `src/MCTS/CLI/Bench.hs`,
+`src/MCTS/CLI/Verify.hs`
 **Docs to update**: `documents/engineering/backend_ffi_contract.md`,
 `documents/engineering/cli_command_surface.md`,
 `documents/engineering/compiler_runtime_tuning.md`
@@ -324,7 +319,7 @@ dispatch, and the verify dispatch.
    selfplay --backend rust --games 100`.
 3. `mcts bench rollouts --backend rust --threading single --rng cpp --games 8
    --seed 42` runs to completion.
-4. Same-backend determinism: two runs produce identical transcript sets.
+4. Same-backend determinism: two runs produce identical determinism payload sets.
 5. `mcts verify rollouts --backend cpp-imperative,cpp-functional,rust,haskell
    --threading single --games 1 --seed 42 --max-plies 200 --sims 10` runs to
    completion. Bit-equality success or failure at this stage is informational

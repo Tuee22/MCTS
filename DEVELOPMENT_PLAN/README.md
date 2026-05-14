@@ -31,14 +31,16 @@ rules that govern this plan suite.
 
 ## Closure Status
 
-Phase `0` Sprint `0.1` remains `Done` on plan-suite bootstrap. Phases `1` through
-`7` are now `Active` on an implementation baseline: the worktree contains a Cabal
-package, the `mcts` executable, the command registry and parser, generated command
-documentation/manpage/completions, a deterministic transcript/cache layer, a simplified Corridors driver,
-baseline equity-sidecar cache inspection/pruning, logical five-backend verification,
-smoke-buildable foreign-backend placeholder trees,
-and all five Cabal test-suite stanzas. The validation gate for this baseline remains
-`cabal test all` under the pinned GHC `9.14.1` toolchain.
+Phase `0` Sprint `0.1` remains `Done` on plan-suite bootstrap; Sprint `0.2`
+keeps Phase `0` `Active` until the doctrine-driven scheduling audit closes.
+Phases `1` through `7` are now `Active` on an implementation baseline: the
+worktree contains a Cabal package with an `mcts` executable stanza and thin
+entrypoint, the command registry and manual parser, generated-artefact targets,
+a deterministic transcript/cache layer, a simplified Corridors driver, baseline
+equity-sidecar cache inspection/pruning, logical five-backend verification,
+smoke-buildable foreign-backend placeholder trees, and all five Cabal test-suite
+stanzas. The validation gate for this baseline remains `cabal test all` under
+the pinned GHC `9.14.1` toolchain.
 
 This is **not** the final parity-proven architecture. The implemented backend cohort is
 a deterministic logical baseline used to validate the CLI, transcript, cache, and test
@@ -74,7 +76,7 @@ than being marked `Done` until their validation gates pass against the real arte
 | **Done** | Deliverables implemented for the sprint-owned surface, validated, and aligned in docs | ✅ |
 | **Active** | Work has started and remaining implementation or documentation work is explicitly listed | 🔄 |
 | **Planned** | Ready to start once execution reaches the sprint in sequence | 📋 |
-| **Blocked** | Closure depends on an unmet prerequisite or prior sprint closure | ⏸️ |
+| **Blocked** | Closure depends on an unmet prerequisite outside ordinary sprint order, or on a prior sprint that has not closed when this work is reached | ⏸️ |
 
 ## Definition of Done
 
@@ -96,13 +98,13 @@ A sprint can move to `Done` only when all of the following are true:
 | Phase | Name | Status | Document |
 |-------|------|--------|----------|
 | 0 | Planning and Documentation Topology | 🔄 Active (Sprint 0.1 ✅; Sprint 0.2 📋) | [phase-0-planning-documentation.md](phase-0-planning-documentation.md) |
-| 1 | Haskell CLI Surface, `CommandSpec`, Lint Stack | 🔄 Active (validated baseline; doctrine-complete lint stack still open) | [phase-1-haskell-cli-surface.md](phase-1-haskell-cli-surface.md) |
+| 1 | Haskell CLI Surface, `CommandSpec`, Lint Stack | 🔄 Active (wired baseline; doctrine-complete lint/docs stack still open) | [phase-1-haskell-cli-surface.md](phase-1-haskell-cli-surface.md) |
 | 2 | Transcript Codec, RNG, and Determinism Contract | 🔄 Active (codec/cache/SHA-256/sidecar baseline; full envelope completion open) | [phase-2-transcript-codec-and-determinism.md](phase-2-transcript-codec-and-determinism.md) |
 | 3 | Backend (v) Haskell Engine | 🔄 Active (logical engine baseline; ST arena/search parity engine open) | [phase-3-haskell-engine.md](phase-3-haskell-engine.md) |
 | 4 | Backend (i) C++ Legacy Port and FFI Bridge | 🔄 Active (C ABI skeleton; verbatim legacy port/FFI open) | [phase-4-cpp-legacy-port-and-ffi-bridge.md](phase-4-cpp-legacy-port-and-ffi-bridge.md) |
 | 5 | Backend (ii) C++ Imperative Steelman with PGO+BOLT | 🔄 Active (smoke skeleton; steelman engine and PGO+BOLT open) | [phase-5-cpp-imperative-steelman.md](phase-5-cpp-imperative-steelman.md) |
 | 6 | Backends (iii) C++ Functional-Style and (iv) Rust | 🔄 Active (smoke skeletons; real engines and pipelines open) | [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md) |
-| 7 | Cross-Backend Verify, Test Stanzas, POC Report Card | 🔄 Active (test stanzas and logical verify pass; real cohort/TUIs/report-card evidence open) | [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md) |
+| 7 | Cross-Backend Verify, Test Stanzas, POC Report Card | 🔄 Active (test stanzas and logical verify wiring present; real cohort/TUIs/report-card evidence open) | [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md) |
 | 8 | Haskell Performance Parity Closure | 📋 Planned | [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md) |
 
 ## Current Plan Status
@@ -130,6 +132,12 @@ Implemented in the worktree:
   `mcts check-code` runs lint/docs plus `cabal build all`.
 - Smoke backend source homes under `cpp-legacy/`, `cpp-imperative/`,
   `cpp-functional/`, and `rust/`.
+- Current baseline gaps inside these wired surfaces are tracked explicitly:
+  `documents/cli/commands.md` is richer than the current `src/MCTS/CLI/Docs.hs`
+  renderer and must be reconciled before `mcts docs check` can be a clean gate,
+  `mcts test all` still assumes a locally runnable `mcts` on `PATH`, and its
+  benchmark report-card steps pass comma-separated backend lists to a single-backend
+  `bench` parser.
 
 Remaining work is the difference between this baseline and the target end state:
 full engine envelopes and foreign-engine recompute sidecars, the optimized Haskell `ST` arena engine,
@@ -208,8 +216,8 @@ This plan is complete only when all of the following are true:
    gap is recorded against the one-known-asymmetry PGO note in
    `documents/engineering/compiler_runtime_tuning.md` rather than papered over.
 7. Same-backend determinism (Q4) holds for every backend across 3 seeds: same backend,
-   same master seed, same RNG source produces identical transcripts under the
-   `mcts-integration` stanza.
+   same master seed, same RNG source, and same logical game inputs produce identical
+   determinism payloads under the `mcts-integration` stanza.
 8. Backend (i) reproduces `MCTS_legacy` byte-for-byte on benchmark (b) (Q6), validated by
    the `test/golden/legacy/` fixture set written out-of-band from the legacy
    implementation under `~/MCTS_legacy`.
@@ -250,10 +258,10 @@ This plan is complete only when all of the following are true:
     `mcts-haskell-style` stanza enforces them plus the `cabal format` temp-file
     round-trip byte-equality check.
 20. The transcript wire format is little-endian binary with no schema-library
-    dependency: header carrying the run config, per-move records of
-    `(action_id, visits)` sorted ascending by action ID, equity excluded. The canonical
-    single-byte action enumeration in [system-components.md](system-components.md) is
-    authoritative.
+    dependency: one-game files, header carrying the backend-specific run config,
+    per-move records of `(action_id, visits)` sorted ascending by action ID, equity
+    excluded. The canonical single-byte action enumeration in
+    [system-components.md](system-components.md) is authoritative.
 21. The transcript cache root resolves `--cache-dir <path>` → `$MCTS_CACHE_DIR` →
     `./.mcts-cache/` and is `.gitignore`'d when inside the project tree. Hash-prefix
     lookup is git-style: shortest unique prefix ≥ 4 hex chars; `AppError

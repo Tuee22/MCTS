@@ -108,7 +108,7 @@ alongside the user-facing variants:
   [determinism_contract.md → Architecture Envelope](./determinism_contract.md).
 - `EngineEnvelopeMismatch` — `mcts verify` detects a layered engine-envelope
   disagreement: either a cohort-invariant field
-  (`host_arch`, `rng_source`, `shared_rng_build_id`, `run_config_hash`)
+  (`host_arch`, `rng_source`, `shared_rng_build_id`, `cohort_config_hash`)
   disagrees across the cohort, or a per-backend-slot field
   (`engine_build_id`, `compiler_id`, `compiler_version`, `fp_flags`,
   `libm_id`, `cpu_features`, `fp_env`) disagrees between a cached

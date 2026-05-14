@@ -16,14 +16,15 @@
 
 ## Phase Status
 
-🔄 **Active**. All five Cabal test stanzas exist and pass against the logical
+🔄 **Active**. All five Cabal test stanzas exist and are wired against the logical
 backend cohort. `mcts verify rollouts`, `mcts verify selfplay`, `mcts verify
 legacy-parity`, `mcts test all --dry-run`, report-card rendering, and non-interactive
 replay/divergence smoke surfaces are present. Remaining Phase `7` closure work is to
-run the same tests against real FFI-backed engines, strengthen golden/property
-coverage, implement the `brick` / `vty` TUIs, expand layered envelope verification to
-the real backend FFI envelope fields, connect divergence scoring to foreign recompute sidecars, and replace logical
-report-card placeholders with measured Q1-Q7 evidence.
+run the tests through doctrine-required `tasty` runners against real FFI-backed
+engines, strengthen golden/property coverage, implement the `brick` / `vty` TUIs,
+expand layered envelope verification to the real backend FFI envelope fields, connect
+divergence scoring to foreign recompute sidecars, and replace logical report-card
+placeholders with measured Q1-Q7 evidence.
 
 ## Phase Summary
 
@@ -45,10 +46,7 @@ land here, completing the user-facing CLI surface.
 
 **Status**: Active
 **Implementation**: `mcts.cabal` (`mcts-unit`, `mcts-integration` stanzas),
-`test/unit/Main.hs`, `test/unit/Parser.hs`, `test/unit/Properties.hs`,
-`test/unit/Codec.hs`, `test/unit/Notation.hs`, `test/unit/CommandSpec.hs`,
-`test/integration/Main.hs`, `test/integration/SameBackend.hs`,
-`test/integration/LegacyGolden.hs`
+`test/unit/Main.hs`, `test/integration/Main.hs`
 **Docs to update**: `documents/engineering/unit_testing_policy.md`,
 `documents/engineering/determinism_contract.md`,
 `DEVELOPMENT_PLAN/system-components.md`
@@ -96,7 +94,7 @@ the real `mcts` binary across the FFI to every backend.
     cpp-imperative, cpp-functional, rust, haskell}`, run `mcts bench selfplay
     --backend <B> --threading single --rng cpp --games 4 --seed <S> --sims 100`
     at three pinned seeds `(42, 43, 44)` and assert two consecutive runs
-    produce identical transcript sets.
+    produce identical determinism payload sets.
   - **Q6 legacy golden comparison.** For backend (i), run `mcts bench selfplay
     --backend cpp-legacy --rng cpp --max-plies 10000 --seed <S> --games 1
     --sims <S_LP_SIMS>` at the seeds covered by `test/golden/legacy/`
@@ -163,9 +161,9 @@ constraint at the type level and `LegacyParityBackend` requiring (i) at parse ti
   two-phase protocol per
   [../README.md → Cross-backend verification → Typical transcript sizes](../README.md)
   and `documents/engineering/determinism_contract.md` → Verify Mismatch Output:
-  1. **Digest-equality first.** Compute and compare the SHA-256 of each
-     transcript file pairwise across the cohort. Cohorts whose digests all agree
-     pass immediately.
+  1. **Determinism-payload digest first.** Decode each backend-specific transcript
+     and compare the SHA-256 of the canonical determinism payload pairwise across
+     the cohort. Cohorts whose payload digests all agree pass immediately.
   2. **Move-by-move scan on mismatch.** For each pair with disagreeing digests,
      decode both transcripts move-by-move until the first divergent record;
      emit `AppError VerifyMismatch` carrying
@@ -194,7 +192,7 @@ constraint at the type level and `LegacyParityBackend` requiring (i) at parse ti
 ### Remaining Work
 
 - Baseline landed: `mcts-cross-backend` and `mcts-legacy-parity` Cabal stanzas exist
-  and pass against the logical five-backend cohort.
+  and are wired against the logical five-backend cohort.
 - Replace logical in-process comparisons with the real FFI-backed `(ii)..(v)` cohort
   and real legacy-parity cohort.
 - Enforce the final `VerifyBackend` / `LegacyParityBackend` GADT shapes rather than
@@ -206,7 +204,7 @@ constraint at the type level and `LegacyParityBackend` requiring (i) at parse ti
 **Status**: Active
 **Implementation**: `src/MCTS/CLI/Test.hs`,
 `src/MCTS/CLI/Spec.hs` (Test subtree),
-`src/MCTS/ReportCard.hs`, `src/MCTS/ReportCard/Render.hs`
+`src/MCTS/ReportCard.hs`
 **Docs to update**: `documents/engineering/cli_command_surface.md`,
 `documents/engineering/unit_testing_policy.md`
 
@@ -384,10 +382,9 @@ so the contract is reviewable in one place:
 ## Sprint 7.4: `mcts play` and `mcts inspect replay` TUIs 🔄
 
 **Status**: Active
-**Implementation**: `src/MCTS/CLI/Play.hs`, `src/MCTS/CLI/Replay.hs`,
-`src/MCTS/CLI/Tui/Board.hs`, `src/MCTS/CLI/Tui/Prompt.hs`,
-`src/MCTS/CLI/Spec.hs` (Play and Inspect.Replay subtrees), `mcts.cabal`
-(`brick`, `vty` deps gated to TUI modules)
+**Implementation**: `src/MCTS/App.hs` (`runPlay` smoke path),
+`src/MCTS/CLI/Inspect.hs` (`inspectReplay` smoke path),
+`src/MCTS/CLI/Spec.hs` (Play and Inspect.Replay subtrees)
 **Docs to update**: `documents/engineering/cli_command_surface.md`,
 `documents/engineering/haskell_code_guide.md`
 

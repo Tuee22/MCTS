@@ -11,7 +11,11 @@ A high-performance runtime for Monte Carlo Tree Search (MCTS), targeting the Cor
 
 This repository is the successor to `MCTS_legacy`, a hand-tuned imperative C++ implementation. The goal here is to **progressively refactor that codebase, maintaining multiple parallel implementations side-by-side, until a pure Haskell version equals the original C++ in throughput**. The proof of concept is that purely functional Haskell can rival C++ on a workload this performance-sensitive, using only the game engine and rollout-based MCTS.
 
-> **Bootstrap note:** The repository is in its bootstrap phase; the first deliverable is the cross-language benchmark harness described below.
+> **Current status:** The repository has moved past bootstrap into an active logical
+> baseline: the Cabal package, command surface, transcript/cache layer, logical
+> five-backend verification, smoke backend skeletons, and five Cabal test stanzas
+> exist. The authoritative phase-by-phase status remains
+> [`DEVELOPMENT_PLAN/README.md`](DEVELOPMENT_PLAN/README.md).
 
 > **Plan and doctrine:** The authoritative execution-ordered plan lives at [`DEVELOPMENT_PLAN/README.md`](DEVELOPMENT_PLAN/README.md); the authoritative CLI doctrine lives at [`HASKELL_CLI_TOOL.md`](HASKELL_CLI_TOOL.md); the documentation-topology rules live at [`documents/documentation_standards.md`](documents/documentation_standards.md).
 
@@ -58,7 +62,7 @@ The two modes:
 - **Single-threaded.** Games run sequentially on one worker. The per-game wall-clock from this mode is the basic "how fast is one game" measurement, with no scheduling overhead attached.
 - **Multi-threaded.** Default **8 workers** (`--workers N` to override). The batch of games is dispatched into a pool of workers; each worker plays one game at a time, single-threaded internally, and picks up the next when done. The point of this mode is to measure how each implementation's runtime *scales* — how `games/sec` changes as the worker count grows. Different runtimes (GHC's RTS, Tokio, raw pthreads, ...) have very different concurrency overheads, allocator-contention behaviour, and locality characteristics; the MT benchmark is what surfaces them.
 
-Each game's RNG stream is seeded by `splitmix64(master_seed, game_index)`, so per-game output is independent of worker count, scheduling order, and worker-to-game assignment. Running `--games 32 --threading single` and `--games 32 --threading multi --workers 8` produce the same 32 game transcripts; only the wall-clock differs. Every backend is single-threaded internally per game (matching the legacy implementation) and is dispatched into the same worker pool as the others, so all five backends measure under identical scheduling semantics.
+Each game's RNG stream is seeded by `splitmix64(master_seed, game_index)`, so per-game output is independent of worker count, scheduling order, and worker-to-game assignment. Running `--games 32 --threading single` and `--games 32 --threading multi --workers 8` must produce the same 32 determinism payloads; only the wall-clock and provenance metadata differ. Every backend is single-threaded internally per game (matching the legacy implementation) and is dispatched into the same worker pool as the others, so all five backends measure under identical scheduling semantics.
 
 ---
 
@@ -66,7 +70,7 @@ Each game's RNG stream is seeded by `splitmix64(master_seed, game_index)`, so pe
 
 Different RNG algorithms cannot be expected to produce identical byte streams, so we cannot assert cross-implementation equality under each language's native RNG. Instead, every backend except (i) supports **two RNG sources**:
 
-- **`--rng native`** — each backend uses the fastest RNG it can defend statistically. Backends (ii)/(iii) may use `xoshiro256++` or `wyrand` (see [Compiler and runtime tuning](#compiler-and-runtime-tuning) item 16) instead of `std::mt19937_64`; (iv) Rust uses `rand`; (v) Haskell uses `splitmix` or equivalent. Used for benchmarks and any workload where raw throughput matters.
+- **`--rng native`** — each backend uses the fastest RNG it can defend statistically. Backends (ii)/(iii) use `xoshiro256++` by default, with `wyrand` as the documented profiling-driven alternative (see [Compiler and runtime tuning](#compiler-and-runtime-tuning) item 15), (iv) Rust uses `rand_xoshiro`'s `Xoshiro256PlusPlus`, and (v) Haskell uses `splitmix` or equivalent. Used for benchmarks and any workload where raw throughput matters.
 - **`--rng cpp`** — every participating backend draws its random bytes from **the same C++ `std::mt19937_64` generator** (the one the legacy uses). Backends (ii) and (iii) use it directly; (iv) Rust and (v) Haskell reach it through the FFI. Used for correctness validation.
 
 Backend (i) is verbatim from `MCTS_legacy` and always uses `std::mt19937_64` — it has no separate native/cpp axis. When (i) appears in a mixed cohort that passes `--rng native`, the flag is silently ignored for (i): it draws from `std::mt19937_64` while the other backends draw from their native RNGs.
@@ -76,7 +80,7 @@ The split is deliberate:
 - **Native RNG** isolates language-level overhead from RNG overhead and gives each implementation a fair throughput measurement. We do **not** assert cross-backend bit equality here.
 - **C++ RNG** factors RNG choice out of the equation, leaving only the search algorithm and the game engine. Under `--rng cpp`, backends (ii), (iii), (iv), (v) must produce **identical visit counts, identical action orderings, and identical rollout sequences** for the same seed and move history. Backend (i) is excluded from the default `verify` cohort because its terminal-state semantics differ (see [Draw rule](#draw-rule)); it rejoins the cohort under `mcts verify legacy-parity`, which pins `max_plies = 10000` so the divergence collapses. This is what the `mcts verify` subcommands check; see [Cross-backend verification](#cross-backend-verification) below.
 
-Same-language determinism (same backend, same master seed, same RNG source ⇒ same set of game transcripts) is required unconditionally. Each game's RNG stream is seeded by `splitmix64(master_seed, game_index)` (or the C++-RNG equivalent under `--rng cpp`), so worker count, scheduling order, and worker-to-game assignment never affect any individual game's output — only the total wall-clock.
+Same-language determinism (same backend, same master seed, same RNG source, same logical game inputs ⇒ same set of game determinism payloads) is required unconditionally. Each game's RNG stream is seeded by `splitmix64(master_seed, game_index)` (or the C++-RNG equivalent under `--rng cpp`), so worker count, scheduling order, and worker-to-game assignment never affect any individual game's output — only the total wall-clock and provenance metadata.
 
 ---
 
@@ -84,11 +88,11 @@ Same-language determinism (same backend, same master seed, same RNG source ⇒ s
 
 The `mcts verify` subcommands run the requested backends under `--rng cpp` and check that their game transcripts agree.
 
-**Round-robin, no oracle.** Every requested backend produces a transcript; transcripts are compared pairwise. Any mismatched pair fails the test. No backend is privileged as "truth" — disagreement between any two backends is a bug somewhere.
+**Round-robin, no oracle.** Every requested backend produces a transcript; decoded determinism payloads are compared pairwise. Any mismatched pair fails the test. No backend is privileged as "truth" — disagreement between any two backends is a bug somewhere.
 
-**Nothing is committed.** Transcripts live in a local `.mcts-cache/transcripts/` directory which is `.gitignore`'d. Files are content-addressed by `sha256(run_config)`, so the same `(backend, master_seed, threading, workers, sim_params)` reuses prior output across runs. The MC seed is the provenance: any transcript can be regenerated from scratch, so persisting them in version control buys nothing.
+**Operator cache is local.** Runtime transcripts live in a local `.mcts-cache/transcripts/` directory which is `.gitignore`'d. Files are content-addressed by `sha256(run_config)`, where `run_config` includes the backend, master seed, threading, workers, sim params, and per-game index, so the same backend/game run reuses prior output across runs. Cross-backend verification compares a canonical determinism payload decoded from those backend-specific files; it does not require different backends to share a filename. Curated golden transcript fixtures under `test/golden/` are the explicit exception: they are checked in as regression anchors.
 
-**Compile-time toggle for instrumentation.** Each backend produces two build targets: `*-bench` (no instrumentation — the binary is byte-identical to one where the feature doesn't exist) and `*-instrumented` (transcript writer plus FFI hooks that expose per-move tree state; used by `verify`, `play`, and `inspect replay`). The toggle is a template / type-level flag on the self-play driver, not a runtime branch in the hot loop. The MCTS engine itself (search, rollout, board, RNG) is one shared artefact between the two targets; only the small driver compiles twice. Because the bench binary has nothing to disable, no benchmark phase is needed to demonstrate zero overhead — the instrumentation code literally does not exist in it.
+**Compile-time toggle for instrumentation.** Backends (ii)–(v) produce two build targets: `*-bench` (no instrumentation — the binary is byte-identical to one where the feature doesn't exist) and `*-instrumented` (transcript writer plus hooks that expose per-move tree state; used by `verify`, `play`, and `inspect replay`). The toggle is a template / type-level flag on the self-play driver, not a runtime branch in the hot loop. Backend (i) `cpp-legacy` is the only exemption: it ships one verbatim shared library, with transcript writing and instrumentation layered in the Haskell driver. The MCTS engine itself (search, rollout, board, RNG) is one shared artefact between paired targets; only the small driver compiles twice. Because the bench binary has nothing to disable, no benchmark phase is needed to demonstrate zero overhead — the instrumentation code literally does not exist in it.
 
 **Format: dense binary, fully owned.** No schema-library dependency: protobuf, flatbuffers, Cap'n Proto, and CBOR all have library-version-dependent encoding latitude that would have to be imported into the determinism contract. The header carries the run config; per-move records are sparse `(action_id, visits)` pairs sorted ascending by action ID.
 
@@ -117,7 +121,7 @@ header     : magic u32 = "MCTR" | version u16 | backend u8 | threading u8
 
 envelope   : envelope_version u16 | envelope_byte_length u32
              | cohort-invariant fields (host_arch, rng_source, shared_rng_build_id,
-               run_config_hash)
+               cohort_config_hash)
              | per-backend-slot fields (engine_build_id, engine_git_commit,
                compiler_id, compiler_version, fp_flags, libm_id, cpu_features, fp_env)
              | -- NOT part of sha256(RunConfig); see Engine envelope below
@@ -125,7 +129,7 @@ envelope   : envelope_version u16 | envelope_byte_length u32
 per game   : game_id u32, then per-move records, then terminator
 per move   : move_index u16 | chosen u8 | n_actions u8
              | n_actions × (action u8, visits u32) sorted ascending by action
-terminator : 0xFF u8 | winner u8 | total_moves u16
+terminator : 0xFFFF u16 | winner u8 | total_moves u16
              winner ∈ {0 = hero, 1 = villain, 2 = draw}
 ```
 
@@ -137,7 +141,7 @@ Field semantics:
 - **`initial_sims u32` / `per_move_sims u32`** together encode the `SimBudget`. For `FixedSims N`, both fields are set to N (so `initial_sims == per_move_sims` is the on-wire discriminator for `FixedSims`); for `RampedSims N0 N1`, `initial_sims = N0` and `per_move_sims = N1`.
 - **`_reserved u16`** must be zero on write and is ignored on read.
 
-Each game is single-threaded internally regardless of the batch's `--threading` setting, so the per-move record carries exactly one `(action, visits)` list — there are no per-worker blocks. The header's `threading` / `workers` fields are batch-level metadata (useful for `inspect list`), not per-game content. Typical sizes: ~30 bytes per move, ~2 KB per game; a thousand games is in the low megabytes. SHA-256 is computed on the fly during write; comparison is digest-equality first, with the decoder scanning move-by-move to print the first divergent record on failure.
+Each game is single-threaded internally regardless of the batch's `--threading` setting, so the per-move record carries exactly one `(action, visits)` list — there are no per-worker blocks. A `--games N` batch writes N backend-specific transcript files, one per `game_id`; the header's `threading` / `workers` fields record the batch dispatcher that produced that game. Typical sizes: ~30 bytes per move, ~2 KB per game; a thousand game transcripts is in the low megabytes. Verification first compares an in-memory SHA-256 over the decoded canonical determinism payload, then scans move-by-move to print the first divergent record on failure.
 
 **RNG FFI contract.** Under `--rng cpp`, Rust and Haskell consume `u64` values from a shared C++ `std::mt19937_64` via:
 
@@ -164,17 +168,17 @@ Re-running the deterministic search recovers equity values; the bit-exactness of
 - **Same backend, different envelope** (the user has rebuilt — different commit, different optimisation flags, or a libm point upgrade): equities recomputed by the rebuilt binary are *not* bit-equal to the originally-recorded engine's. Visit counts under `--rng cpp` remain bit-equal (integer arithmetic, byte-consumption contract); only the floats drift, typically by a few ULPs. `inspect replay` shows a persistent yellow `envelope: BUILD MISMATCH` banner whenever this happens, so the user is never silently shown drifted numbers as if they were the originator's.
 - **Different backend** (foreign-engine view): equities are not bit-equal to *any* originator's numbers — they are the foreign backend's own view of the position. This is the multi-backend overlay's intended use: cross-engine comparison. `inspect replay` marks the originator column with ★ and shows a persistent orange `envelope: FOREIGN VIEW` banner whenever the live binary is a different backend than the originator.
 
-This asymmetry is why the wire format excludes equity from `sha256(RunConfig)`: visit counts (integer) are bit-equal across backends and form the determinism contract; equities (float) are not, and requiring float bit-equality would force every backend to fix a canonical summation order and a canonical libm — a much bigger contract. The recomputed-per-substrate floats are cached out-of-band in the [equity sidecar cache](#multi-backend-replay) instead.
+This asymmetry is why the wire format and determinism payload exclude equity: visit counts (integer) are bit-equal across backends and form the determinism contract; equities (float) are not, and requiring float bit-equality would force every backend to fix a canonical summation order and a canonical libm — a much bigger contract. The recomputed-per-substrate floats are cached out-of-band in the [equity sidecar cache](#multi-backend-replay) instead.
 
 **Cross-backend equity tolerance is implicit.** The verify subcommands do not compare equities directly. The contract is that equity differences across backends must never be large enough to swap a tie-break in `(equity desc, non_terminal_rank asc)`. This is enforced transitively: any equity drift that swaps a chosen action surfaces as a visit-count mismatch on the next move (because subsequent searches diverge from that point onward), and visit counts are what `verify` compares. Backends that drift further than this implicit tolerance fail verify on visits, not on equities.
 
 ### Engine envelope
 
-Every transcript carries an **engine envelope** block (immediately after the fixed header, excluded from `sha256(RunConfig)`) recording every substrate-affecting field at the time the engine ran: the build hash of the loaded shared library, the compiler ID and version, the FP-relevant compiler flags, the libm identity, the CPU features the binary's runtime dispatch actually selected, and the FP environment. Two backends running the same `RunConfig` under `--rng cpp` produce the same `<sha>.tr` filename even though their envelopes differ — exactly the property cross-backend visit-equality requires.
+Every transcript carries an **engine envelope** block (immediately after the fixed header, excluded from the cross-backend determinism payload) recording every substrate-affecting field at the time the engine ran: the build hash of the loaded shared library, the compiler ID and version, the FP-relevant compiler flags, the libm identity, the CPU features the binary's runtime dispatch actually selected, and the FP environment. Two backends running the same common inputs under `--rng cpp` produce backend-specific `<sha>.tr` files, but the decoded canonical determinism payload must hash identically — exactly the property cross-backend visit-equality requires.
 
 The envelope is layered:
 
-- **Cohort-invariant fields** (`host_arch`, `rng_source`, `shared_rng_build_id`, `run_config_hash`) must match across every transcript in a `verify` cohort. Cohort-level mismatch — most commonly two transcripts that consumed bytes from *physically different* shared `cpp_rng.so` builds — is meaningless for bit-equality and `verify` hard-fails with `AppError EngineEnvelopeMismatch CohortLevel ...`. Not overridable.
+- **Cohort-invariant fields** (`host_arch`, `rng_source`, `shared_rng_build_id`, `cohort_config_hash`) must match across every transcript in a `verify` cohort. `cohort_config_hash` is the SHA-256 of the backend-independent logical inputs, not the backend-specific cache filename hash. Cohort-level mismatch — most commonly two transcripts that consumed bytes from *physically different* shared `cpp_rng.so` builds — is meaningless for bit-equality and `verify` hard-fails with `AppError EngineEnvelopeMismatch CohortLevel ...`. Not overridable.
 - **Per-backend-slot fields** (`engine_build_id`, `compiler_id`/`compiler_version`, `fp_flags`, `libm_id`, `cpu_features`, `fp_env`, plus informational `engine_git_commit`) legitimately differ across backends in a cohort — that's the whole point of cross-backend `verify`. They must match between a *cached transcript* and the *current live binary* for the same backend slot; per-backend-slot mismatch is the stale-cache case and `verify` hard-fails with `AppError EngineEnvelopeMismatch (BackendSlot b) ...`. Overridable by `--allow-stale` for forensic comparisons that knowingly accept envelope drift.
 
 See [`documents/engineering/determinism_contract.md`](documents/engineering/determinism_contract.md) §Engine Envelope for the authoritative contract, [`documents/engineering/transcript_format.md`](documents/engineering/transcript_format.md) §Envelope Block for the wire format, and [`documents/engineering/backend_ffi_contract.md`](documents/engineering/backend_ffi_contract.md) §Engine Envelope Surface for the FFI capture protocol.
@@ -195,7 +199,7 @@ The full UX is documented in [`documents/engineering/cli_command_surface.md`](do
 
 ### Architecture envelope
 
-The project supports two host architectures: **amd64 Linux** and **arm64 Linux**. Bit-equality of visit counts and (same-backend) equity floats is per-architecture, not cross-architecture. Within a single architecture, every backend's determinism guarantees hold as documented above. Across architectures, the `c_param u64` IEEE-754 bit-cast is portable in shape (both arches are IEEE-754) but `libm` and SIMD lowering can differ; visit counts remain bit-equal but equity floats are within ULPs, not bit-equal.
+The project supports two host architectures: **amd64 Linux** and **arm64 Linux**. Bit-equality guarantees are per-architecture, not cross-architecture. Within a single architecture, every backend's determinism guarantees hold as documented above. Across architectures, the `c_param u64` IEEE-754 bit-cast is portable in shape (both arches are IEEE-754) but `libm`, FMA contraction, SIMD lowering, and denormal handling can differ. Cross-arch verify cohorts are therefore rejected instead of being treated as determinism evidence.
 
 Every transcript header carries the `host_arch u8` field (see [transcript wire format](#cross-backend-verification) above). The transcript cache is partitioned by arch — the on-disk layout is `<cache-root>/transcripts/<arch>/<sha>.tr`, where `<arch>` is `amd64` or `arm64`. Verify subcommands reject mixed-arch cohorts at parse time with `AppError ArchEnvelopeMismatch`. See [`documents/engineering/determinism_contract.md`](documents/engineering/determinism_contract.md) §Architecture Envelope for the full contract.
 
@@ -206,11 +210,11 @@ The game's terminal-state semantics differ between backend (i) and backends (ii)
 - **Backend (i)** — `is_terminal()` ↔ `hero_wins() || villain_wins()` (verbatim from `MCTS_legacy/backend/core/board.cpp:247`). A game has no draw outcome; rollouts that exceed `MAX_ROLLOUT_ITERS = 10000` plies abort the search via an exception (the legacy's behaviour). Because (i) is the strictly verbatim regression-sanity port, it is excluded from cross-backend `verify` cohorts.
 - **Backends (ii)–(v)** — `is_terminal()` ↔ `hero_wins() || villain_wins() || ply_count >= max_plies`. The board state carries a `uint16_t` ply counter. When termination is by ply cap, `get_terminal_eval()` returns `0.0` (draw); rollouts back this value up like any other terminal.
 
-`max_plies` is a run-configuration parameter (default **200**), exposed on the CLI as `--max-plies N`, pinned in the transcript header (`max_plies u16`), and part of the determinism contract: two backends (ii)–(v) with the same `max_plies`, same seed, and same chosen sequence must produce identical transcripts.
+`max_plies` is a run-configuration parameter (default **200**), exposed on the CLI as `--max-plies N`, pinned in the transcript header (`max_plies u16`), and part of the determinism contract: two backends (ii)–(v) with the same `max_plies`, same seed, and same chosen sequence must produce identical determinism payloads.
 
 The wire format's `winner u8` field is a 3-value enum: `0 = hero`, `1 = villain`, `2 = draw`. The decoder reports draws in `inspect show` / `inspect replay` as `<draw>` in the same position move notation otherwise occupies.
 
-**Legacy parity envelope.** The new draw rule is the only thing keeping backend (i) out of the cross-backend `verify` cohort. Setting `max_plies = MAX_ROLLOUT_ITERS = 10000` collapses that divergence: in this envelope all five backends terminate every rollout the same way (on a positional win), so transcripts must be bit-equal. The `mcts verify legacy-parity` subcommand drives this cohort with `max_plies` and `--rng cpp` pinned, under a fixture seed chosen so that (i) never trips `MAX_ROLLOUT_ITERS`. If a future change causes (i) to throw, the cohort fails with `AppError LegacyParityRolloutOverflow` carrying `(seed, game_index, move_index)` so the seed can be replaced. The test also fails if (i) survives but its longest rollout reaches the cap, since that means the legacy is one change away from the cliff. This complements Q6: Q6 asks "does (i) reproduce `MCTS_legacy`?", legacy-parity asks "do all five backends agree?" within the envelope. Composed with Q6 they give a transitive parity chain `MCTS_legacy ≡ (i) ≡ (ii)..(v)`.
+**Legacy parity envelope.** The new draw rule is the only thing keeping backend (i) out of the cross-backend `verify` cohort. Setting `max_plies = MAX_ROLLOUT_ITERS = 10000` collapses that divergence: in this envelope all five backends terminate every rollout the same way (on a positional win), so decoded determinism payloads must be bit-equal. The `mcts verify legacy-parity` subcommand drives this cohort with `max_plies` and `--rng cpp` pinned, under a fixture seed chosen so that (i) never trips `MAX_ROLLOUT_ITERS`. If a future change causes (i) to throw, the cohort fails with `AppError LegacyParityRolloutOverflow` carrying `(seed, game_index, move_index)` so the seed can be replaced. The test also fails if (i) survives but its longest rollout reaches the cap, since that means the legacy is one change away from the cliff. This complements Q6: Q6 asks "does (i) reproduce `MCTS_legacy`?", legacy-parity asks "do all five backends agree?" within the envelope. Composed with Q6 they give a transitive parity chain `MCTS_legacy ≡ (i) ≡ (ii)..(v)`.
 
 ---
 
@@ -244,7 +248,7 @@ Per doctrine §Test Organization, each tier is a separate cabal stanza:
 | Stanza | Tier | Scope |
 |---|---|---|
 | `mcts-unit` | pure logic | engine invariants, parser tests (`execParserPure`), property tests, golden tests for `CommandSpec` output and `inspect show` rendering, transcript codec roundtrips, RNG mixer properties |
-| `mcts-integration` | subprocess | exercises the real `mcts` binary across the FFI to every backend; same-backend determinism (same seed ⇒ same transcripts, three seeds per backend) |
+| `mcts-integration` | subprocess | exercises the real `mcts` binary across the FFI to every backend; same-backend determinism (same seed and logical game inputs ⇒ same determinism payloads, three seeds per backend) |
 | `mcts-cross-backend` | round-robin verify | the `verify` cohort under `--rng cpp` covering backends (ii), (iii), (iv), (v); backend (i) excluded by the `VerifyBackend` type |
 | `mcts-legacy-parity` | round-robin verify, legacy envelope | `verify legacy-parity` across all five backends with `max_plies = 10000` pinned and a fixture seed; pre-flight guard asserts (i) neither throws nor reaches the cap, see [Draw rule](#draw-rule) |
 | `mcts-haskell-style` | lint | `fourmolu --mode check`, `hlint --with-group=default --with-group=extra + .hlint.yaml`, `cabal format` round-trip equality |
@@ -257,8 +261,8 @@ The report-card workload runs *after* `cabal test` succeeds and answers:
 
 1. **Q1.** Does pure Haskell match maximally-optimised C++ (backend ii) on benchmark (a) random rollouts, single-threaded and on 8 workers?
 2. **Q2.** Does pure Haskell match backend (ii) on benchmark (b) self-play, single-threaded and on 8 workers?
-3. **Q3.** Do backends (ii), (iii), (iv), (v) agree bit-for-bit under `--rng cpp` (round-robin verify on both rollouts and self-play)?
-4. **Q4.** Does same-backend determinism hold across runs (same backend, same seed ⇒ identical transcripts) for every backend?
+3. **Q3.** Do backends (ii), (iii), (iv), (v) produce bit-for-bit identical determinism payloads under `--rng cpp` (round-robin verify on both rollouts and self-play)?
+4. **Q4.** Does same-backend determinism hold across runs (same backend, same seed, same logical game inputs ⇒ identical determinism payloads) for every backend?
 5. **Q5.** How does each backend scale from `--threading single` to `--threading multi --workers 8`? The text summary block highlights Haskell and C++ (ii) as the two anchors; the full per-backend scaling table is available via `mcts test all --format json`.
 6. **Q6.** Does the verbatim port (i) faithfully reproduce `MCTS_legacy` on benchmark (b)?
 7. **Q7.** Do all five backends agree round-robin under the legacy-parity envelope (`max_plies = 10000`, fixture seed where (i) does not throw)?
@@ -384,6 +388,13 @@ data InspectCommand
   = InspectList                    -- enumerate the local transcript cache
   | InspectShow   ShowOptions      -- dump one transcript, legacy notation
   | InspectReplay ReplayOptions    -- interactive TUI replay
+  | InspectCache  CacheCommand      -- list/prune equity sidecars
+  | InspectDivergence DivergenceOptions -- show divergence metrics for one transcript
+  deriving stock (Show, Eq)
+
+data CacheCommand
+  = InspectCacheList
+  | InspectCachePrune CachePruneOptions
   deriving stock (Show, Eq)
 
 data TestCommand
@@ -453,7 +464,7 @@ data BenchOptions = BenchOptions
 
 data VerifyOptions = VerifyOptions
   { verifyBackends  :: NonEmpty VerifyBackend  -- (i) cannot appear: see VerifyBackend above
-  , verifyThreading :: Threading              -- default: SingleThreaded; transcripts are identical either way, ST is the simpler default
+  , verifyThreading :: Threading              -- default: SingleThreaded; determinism payloads are identical either way, ST is the simpler default
   , verifyGames     :: Int
   , verifySeed      :: Word64
   , verifyMaxPlies  :: Word16             -- default: 200; pinned across the cohort
@@ -491,12 +502,21 @@ data ShowOptions = ShowOptions
   { showRef        :: TranscriptRef
   , showTopN       :: Int                -- default 10; 0 = all
   , showWithEquity :: Bool               -- default False; True re-runs search
+  , showEnvelope   :: Bool               -- default False; dump the engine envelope
   } deriving stock (Show, Eq)
 
 data ReplayOptions = ReplayOptions
   { replayRef         :: TranscriptRef
   , replayTopN        :: Int             -- default 10; 0 = all; live-adjustable in-app
   , replayCacheStates :: Int             -- default 20; in-memory MCTS state cache size
+  } deriving stock (Show, Eq)
+
+newtype CachePruneOptions = CachePruneOptions
+  { keepCurrent :: Bool                   -- --keep-current
+  } deriving stock (Show, Eq)
+
+newtype DivergenceOptions = DivergenceOptions
+  { divergenceRef :: TranscriptRef
   } deriving stock (Show, Eq)
 ```
 
@@ -542,7 +562,7 @@ mcts build cpp-imperative --dry-run     # prints the typed Subprocess sequence a
 mcts build cpp-imperative               # executes the plan and produces cpp-imperative/libmcts_cpp_imperative.so
 ```
 
-The `verify` subtree pins `--rng cpp`, drives every requested backend over the same seed and same move sequence, and round-robin-compares their transcripts (see [Cross-backend verification](#cross-backend-verification) above). Same-backend determinism tests live alongside as `tasty` cases under the `mcts-integration` stanza (see [`mcts test all`](#mcts-test-all)).
+The `verify` subtree pins `--rng cpp`, drives every requested backend over the same seed and same move sequence, and round-robin-compares their decoded determinism payloads (see [Cross-backend verification](#cross-backend-verification) above). Same-backend determinism tests live alongside as `tasty` cases under the `mcts-integration` stanza (see [`mcts test all`](#mcts-test-all)).
 
 `mcts check-code` is the canonical doctrine-alignment gate: it dispatches `mcts lint files`, `mcts lint docs`, `mcts lint haskell`, then `cabal build all` and fails if any step is non-clean. `mcts build <backend>` is a Plan/Apply harness per doctrine §Subprocesses as Typed Values; `--dry-run` and `--plan-file <path>` apply identically to the way they do on [`mcts test all`](#mcts-test-all).
 
@@ -583,7 +603,7 @@ The `forbiddenPathRegistry` defaults, the per-artifact lint subcommands (`mcts l
 
 **Cache root.** The transcript cache root resolves to `--cache-dir <path>` if given, else `$MCTS_CACHE_DIR` if set, else `./.mcts-cache/` resolved against the current working directory. The on-disk layout under that root is `transcripts/<arch>/<sha>.tr` (where `<arch>` is `amd64` or `arm64` per [Architecture envelope](#architecture-envelope)); this is the `.mcts-cache/transcripts/<arch>/` directory referenced throughout the rest of this document. The cache root is `.gitignore`'d when it falls inside the project tree.
 
-**`play`** — interactive game against any backend. Left pane shows the Corridors board; the right pane carries whose turn it is, move count, last move played, and (during the AI's turn) a live counter of simulations completed. The human types moves into a prompt at the bottom. The AI side runs MCTS through `playBackend` under `playSims` and the configured RNG. With `--vs <backend>` the AI plays both sides and the human is a spectator.
+**`play`** — interactive game against any backend. Left pane shows the Corridors board; the right pane carries whose turn it is, move count, last move played, and (during the AI's turn) a live counter of simulations completed. The human types moves into a prompt at the bottom. The AI side runs MCTS through `playBackend` under `playSims` and the configured RNG. With `--vs <backend>`, `--backend` controls the side named by `--side`, the `--vs` backend controls the opposite side, and the human is a spectator.
 
 In-app prompt grammar. Lines beginning with `:` are commands; everything else is parsed as a move in legacy notation. Recognised commands:
 
@@ -594,7 +614,7 @@ In-app prompt grammar. Lines beginning with `:` are commands; everything else is
 
 Any other `:`-prefixed input renders an `AppError UnknownCommand` to the status bar and leaves game state untouched. Malformed move notation renders an `AppError InvalidMove` similarly. `Ctrl-C` during the AI's turn cancels the in-progress search and returns control to the prompt; `Ctrl-C` at the prompt is equivalent to `:quit`. All four error renderings go through the same `renderError` boundary the non-interactive commands use.
 
-**`inspect list`** — non-interactive. Scans `<cache-root>/transcripts/<arch>/*.tr` for the current host arch, decodes each header, prints one line per transcript: short hash (first 8 chars), backend, master seed, threading (`ST` or `MT8`), sims, total games, total moves, mtime. Sorted by mtime descending. Honours `--format json|table|plain`.
+**`inspect list`** — non-interactive. Scans `<cache-root>/transcripts/<arch>/*.tr` for the current host arch, decodes each header, prints one line per per-game transcript: short hash (first 8 chars), backend, game id, master seed, threading (`ST` or `MT8`), sims, total moves, mtime. Sorted by mtime descending. Honours `--format json|table|plain`.
 
 **`inspect show <hash-prefix>`** — non-interactive dump in legacy notation. Header summary followed by per-move records:
 

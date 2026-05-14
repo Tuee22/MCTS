@@ -26,7 +26,7 @@ Each backend uses the fastest RNG it can defend statistically.
   that passes `--rng native`, the flag is silently ignored for (i).
 - Backend (ii) / (iii) may use `xoshiro256++` or `wyrand` instead of
   `std::mt19937_64` per
-  [../../README.md → Compiler and runtime tuning item 16](../../README.md).
+  [../../README.md → Compiler and runtime tuning item 15](../../README.md).
 - Backend (iv) Rust uses `Xoshiro256PlusPlus` via the `rand_xoshiro`
   crate (see [Per-Backend Native RNG Table](#per-backend-native-rng-table)
   below for the pinned per-backend choices).
@@ -120,8 +120,8 @@ Per
 ## Same-Backend Determinism (Q4)
 
 Required unconditionally for every backend. Same backend, same master seed, same
-RNG source → same set of game transcripts. The `mcts-integration` Cabal stanza
-asserts this at three pinned seeds per backend per
+RNG source, same logical game inputs → same set of game determinism payloads. The
+`mcts-integration` Cabal stanza asserts this at three pinned seeds per backend per
 [unit_testing_policy.md → Test Stanzas](./unit_testing_policy.md#test-stanzas).
 
 ## Cross-Backend Determinism (Q3)
@@ -174,7 +174,7 @@ other terminal.
 Run-configuration parameter, default `200`, exposed on the CLI as
 `--max-plies N`. Pinned in the transcript header (`max_plies u16`). Part of the
 determinism contract: two backends (ii)–(v) with the same `max_plies`, same seed,
-and same chosen sequence must produce identical transcripts.
+and same chosen sequence must produce identical determinism payloads.
 
 ### `winner` Enum
 
@@ -187,7 +187,7 @@ move notation otherwise occupies.
 
 Setting `max_plies = MAX_ROLLOUT_ITERS = 10000` collapses the (i)-vs-(ii)–(v)
 divergence: in this envelope all five backends terminate every rollout the same
-way (on a positional win), so transcripts must be bit-equal.
+way (on a positional win), so decoded determinism payloads must be bit-equal.
 
 `mcts verify legacy-parity` drives this cohort with `max_plies` and `--rng cpp`
 pinned. The fixture seed `S_LP = 42` is chosen so that (i) never trips
@@ -370,8 +370,11 @@ legacy-parity` finds a disagreement between two backends in the cohort, the
 output protocol is two-phase per
 [../../README.md → Cross-backend verification → Typical transcript sizes](../../README.md):
 
-1. **Digest-equality first.** Compare the SHA-256 of the transcript files
-   pairwise. If two digests differ, the pair has a mismatch.
+1. **Determinism-payload digest first.** Decode each backend-specific
+   transcript file and compute the SHA-256 of the canonical determinism
+   payload described in
+   [transcript_format.md → Content Addressing](./transcript_format.md). If two
+   payload digests differ, the pair has a mismatch.
 2. **Move-by-move scan on mismatch.** The decoder scans both transcripts
    move-by-move and stops at the first divergent record. The renderer emits
    `AppError VerifyMismatch` carrying
@@ -463,7 +466,8 @@ is only ever about running independent games concurrently. The default
 each worker plays one game at a time, single-threaded internally.
 
 Per the per-game seed derivation, running 32 games on 1 worker and 32 games on 8
-workers produces identical transcript sets; only wall-clock differs.
+workers produces identical determinism payloads; only wall-clock and
+provenance-bearing dispatcher metadata differ.
 
 ## Architecture Envelope
 
@@ -476,12 +480,12 @@ per-architecture, not cross-architecture:
   determinism guarantee in this document holds bit-for-bit: same-backend
   determinism, cross-backend visit equality, replay equity bit-equality, and the
   byte-consumption / backprop / tie-breaking contracts.
-- **Across architectures** (amd64-vs-arm64), bit-equality is **not** guaranteed.
-  The `c_param u64` IEEE-754 bit-cast is portable in shape (both arches are
-  IEEE-754) but backend-internal floating-point arithmetic may differ at the ULP
-  level due to FMA contraction differences, denormal handling, and library
-  implementations (`libm`, `std::log`, `std::sqrt`). Visit-count integer paths
-  are bit-equal across arches; equity floats are within ULPs but not bit-equal.
+- **Across architectures** (amd64-vs-arm64), bit-equality is **not** part of the
+  contract. The `c_param u64` IEEE-754 bit-cast is portable in shape (both arches
+  are IEEE-754) but backend-internal floating-point arithmetic may differ at the
+  ULP level due to FMA contraction differences, denormal handling, and library
+  implementations (`libm`, `std::log`, `std::sqrt`). Cross-arch cohorts are
+  rejected before comparison rather than treated as determinism evidence.
 
 To make this safe, transcript headers and report-card metadata carry a
 `host_arch` tag with allowed values `"amd64"` and `"arm64"` per
@@ -506,11 +510,10 @@ contraction decisions); their visit counts remain bit-equal. To detect
 that condition reliably, every transcript carries an **engine envelope**
 block immediately after the fixed header, recording every
 substrate-affecting field at the time the engine ran. The envelope is
-part of the transcript file but **excluded from the
-`sha256(RunConfig)` content hash** so cross-backend visit-equality
-continues to work unchanged: two backends running the same `RunConfig`
-land at the same `<sha>.tr` filename even though their envelopes are
-different.
+part of the transcript file but excluded from the cross-backend
+determinism payload, so backend-specific cache filenames can preserve
+provenance while `mcts verify` still compares the common visit-count
+contract.
 
 The envelope decomposes into two layers with very different invariance
 semantics under `mcts verify`.
@@ -527,7 +530,7 @@ the determinism contract for the cohort and `verify` hard-fails with
 | `host_arch` | u8 | Matches the existing header field. Cross-arch cohorts are already rejected by [Architecture Envelope](#architecture-envelope) above; recording it inside the envelope makes the cohort-uniformity check uniform. |
 | `rng_source` | u8 | Matches the existing header field. `verify` pins this to `cpp` at parse time per [Flag Default on `verify`](#flag-default-on-verify); cohort-uniformity is therefore trivially satisfied unless a transcript was crafted out-of-band. |
 | `shared_rng_build_id` | 32 bytes | SHA-256 of the loaded `cpp_rng.so` (the Phase 4 Sprint 4.3 FFI-exported `std::mt19937_64`). All backends in a `--rng cpp` cohort consume bytes from this same generator; two transcripts that recorded different `shared_rng_build_id` values consumed bytes from *physically different generators* and visit-equality between them is meaningless. Set to all-zero for `--rng native` transcripts. |
-| `run_config_hash` | 32 bytes | `sha256(RunConfig)`. Redundant with the filename but recorded inline so `verify` can confirm cohort uniformity without filename gymnastics. |
+| `cohort_config_hash` | 32 bytes | SHA-256 of the backend-independent cohort config: common verify inputs excluding `backend`, the engine envelope, path, and cache metadata. Distinct from the backend-specific `sha256(RunConfig)` cache filename hash. |
 
 ### Per-Backend-Slot Fields
 
@@ -562,19 +565,21 @@ authoritative byte layout.
 
 ### Hash Exclusion
 
-`sha256(RunConfig)` is computed from the `RunConfig` record exclusively
-(see [transcript_format.md → Content Addressing](./transcript_format.md));
-the envelope's existence does not perturb cache addressing. Two backends
-running the same `RunConfig` under `--rng cpp` therefore produce the
-same `<sha>.tr` filename even though their envelopes are different —
-exactly the property cross-backend visit-equality requires.
+`sha256(RunConfig)` is computed from the backend-specific `RunConfig` record
+exclusively (see [transcript_format.md → Content
+Addressing](./transcript_format.md)); the envelope's existence does not perturb
+cache addressing. Because `RunConfig` includes the backend, different backends
+produce different provenance-bearing `<sha>.tr` files. `mcts verify` compares a
+separate determinism-payload digest decoded from those files; that payload
+excludes the backend and envelope so cross-backend visit-equality remains the
+contract.
 
 ### Layered Verify Rule
 
 `mcts verify` enforces both layers:
 
 1. **Cohort-level**: every transcript in the cohort must agree on
-   `host_arch`, `rng_source`, `run_config_hash`, and `shared_rng_build_id`.
+   `host_arch`, `rng_source`, `cohort_config_hash`, and `shared_rng_build_id`.
 2. **Per backend slot**: each cached transcript's per-backend-slot
    fields (`engine_build_id`, `compiler_id`, `compiler_version`,
    `fp_flags`, `libm_id`, `cpu_features`, `fp_env`) must match the live
@@ -710,9 +715,9 @@ below.
 | 1 | (i) `cpp-legacy` vs (ii)–(v) | Terminal-state semantics: (i) has no game-level ply cap; (ii)–(v) treat `ply_count >= max_plies` as a draw with eval `0.0` | (i) is a verbatim port and inherits the legacy's behaviour; the ply-cap draw rule is a behavioural improvement adopted only by the steelman backends | (i) is excluded from the default `verify` cohort by the `VerifyBackend` GADT; rejoins under `mcts verify legacy-parity` with `max_plies = MAX_ROLLOUT_ITERS = 10000` pinned, where the divergence collapses |
 | 2 | (i) | RNG: always `std::mt19937_64`; no `--rng native` axis | Verbatim port of the legacy's RNG choice; the legacy ships only `std::mt19937_64` | `--rng native` is silently ignored for (i) when it appears in a mixed cohort; `mcts verify` cohorts under `--rng cpp` are unaffected |
 | 3 | (ii) / (iii) under `--rng native` | RNG: `xoshiro256++` or `wyrand`, not `std::mt19937_64` | Smaller state and faster `next_u64` for benchmark throughput; statistical quality adequate for rollout selection. See [compiler_runtime_tuning.md → Native-RNG item](./compiler_runtime_tuning.md) and [../../README.md → Compiler and runtime tuning](../../README.md) item 15 | Bench-only divergence: visit-count bit-equality is not asserted under `--rng native`; under `--rng cpp` all four steelman backends draw from the shared `std::mt19937_64` and remain bit-equal |
-| 4 | (iv) Rust / (v) Haskell under `--rng native` | RNG: each backend's idiomatic generator (Rust `rand`, Haskell `splitmix`) | Same rationale as #3; raw-throughput measurement should not be taxed by an artificial RNG choice | Bench-only divergence; visit-count bit-equality is not asserted across `--rng native` cohorts. Same-backend determinism (Q4) still holds under `--rng native` |
+| 4 | (iv) Rust / (v) Haskell under `--rng native` | RNG: each backend's idiomatic generator (Rust `rand_xoshiro::Xoshiro256PlusPlus`, Haskell `splitmix`) | Same rationale as #3; raw-throughput measurement should not be taxed by an artificial RNG choice | Bench-only divergence; visit-count bit-equality is not asserted across `--rng native` cohorts. Same-backend determinism (Q4) still holds under `--rng native` |
 | 5 | (i) under any `max_plies != MAX_ROLLOUT_ITERS` | Q1 / Q2 / Q5 throughput basis: (i)'s games run to a positional win and are on average longer than the ply-capped games of (ii)–(v) | (i) has no ply cap (#1), so games/sec for (i) is not on the same engine-budget basis as (ii)–(v) | Throughput **is published** with a `backendBasisFootnotes` warning per [unit_testing_policy.md → Backend (i) basis caveat](./unit_testing_policy.md) and [../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md → Sprint 7.3](../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md); the load-bearing Q1 / Q2 comparison is Haskell (v) vs C++ (ii). |
-| 6 | All backends, amd64 ↔ arm64 | Equity float bits | `libm`, FMA, denormal handling, SIMD reduction differ across arches | Cross-arch cohorts rejected at parse time with `AppError ArchEnvelopeMismatch`; per-arch cache partitioning makes accidental cross-arch comparison impossible. Visit counts remain bit-equal even across arches. |
+| 6 | All backends, amd64 ↔ arm64 | Full determinism evidence, especially equity float bits | `libm`, FMA, denormal handling, SIMD reduction, and runtime dispatch can differ across arches | Cross-arch cohorts rejected at parse time with `AppError ArchEnvelopeMismatch`; per-arch cache partitioning makes accidental cross-arch comparison impossible. No cross-arch bit-equality result is treated as contractual evidence. |
 | 7 | Same backend across different build envelopes | Equity float bits and (under `--rng native`) potentially visit counts | A rebuild changes `engine_build_id`, often `libm_id`/`compiler_version`, and may change `fp_flags`/`cpu_features`. Equity drift is unavoidable; visit drift can occur if FP differences swap a tie-break upstream of a subsequent rollout under `--rng native` | `mcts verify` hard-fails with `AppError EngineEnvelopeMismatch (BackendSlot b)` unless `--allow-stale` is passed. `mcts inspect replay` shows a persistent yellow banner `envelope: BUILD MISMATCH — recomputed locally; equities may drift at ULP from origin`; multi-build sidecar cache (one `.eq` per `(backend, build_prefix16)`) lets the user compare across builds. Visit drift under cross-build `--rng cpp` is still expected to be zero in practice (the byte-consumption contract pins it) but is not a contract |
 
 The set is closed in the literal sense: review rejects any PR that
