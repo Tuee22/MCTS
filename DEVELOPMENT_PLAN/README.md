@@ -45,8 +45,10 @@ the README, the LICENCE, and the agent-guardrail files. Sprints `1.1`–`8.N` de
 sequential buildout to the end state declared in [00-overview.md](00-overview.md):
 five backends behind one `mcts` binary, two pinned POC benchmark workloads, bit-for-bit
 cross-backend visit-count equality under `--rng cpp`, and pure Haskell within the
-documented tolerance of maximally-optimised C++ on both Q1 random rollouts and Q2/Q5
-self-play.
+parity tolerance defined in
+[../documents/engineering/compiler_runtime_tuning.md → Parity Tolerance](../documents/engineering/compiler_runtime_tuning.md)
+(`HASKELL_PARITY_TOLERANCE = 0.05`) of maximally-optimised C++ on both Q1 random
+rollouts and Q2/Q5 self-play.
 
 ## Document Index
 
@@ -112,7 +114,7 @@ Haskell, C++, or Rust source on the supported path; every implementation sprint 
 that confirms every in-scope doctrine identifier (CommandSpec, OptionSpec, execParserPure,
 renderError, forbiddenPathRegistry, GeneratedSectionRule, prerequisiteRegistry, Subprocess
 + runStreaming + capture, the twelve `fourmolu.yaml` settings, the property invariants
-`decode . encode == id` / `render is deterministic` / `parser roundtrips`, the four cabal
+`decode . encode == id` / `render is deterministic` / `parser roundtrips`, the five cabal
 test-suite stanzas, `splitmix64`, `VerifyBackend`, `LegacyParityBackend`, the report-card
 knobs, GHC 9.14.1 / Cabal 3.16.1.0 pin) appears as an owned deliverable somewhere in
 Phases `1`–`8`. Phase `0` re-closes once Sprint `0.2` lands; Phases `1`–`8` then execute
@@ -182,10 +184,12 @@ This plan is complete only when all of the following are true:
    `G_S=1_000`, `G_V=50`, `G_LP=10`, `S_BENCH=10_000`, `S_VERIFY=10_000`,
    `S_LP_SIMS=10_000`, `S_LP=42` pinned in `cabal.project`.
 6. Pure Haskell backend (v) matches backend (ii) C++ steelman on Q1 (random rollouts) and
-   Q2 (self-play) within the documented tolerance, both single-threaded and on 8 workers.
-   If Haskell falls short by 5–15% the gap is recorded against the one-known-asymmetry
-   PGO note in `documents/engineering/compiler_runtime_tuning.md` rather than papered
-   over.
+   Q2 (self-play) within the parity tolerance per
+   [../documents/engineering/compiler_runtime_tuning.md → Parity Tolerance](../documents/engineering/compiler_runtime_tuning.md)
+   (`HASKELL_PARITY_TOLERANCE = 0.05`), both single-threaded and on 8 workers.
+   If Haskell falls short — including shortfalls in the 5–15% PGO-attributable band — the
+   gap is recorded against the one-known-asymmetry PGO note in
+   `documents/engineering/compiler_runtime_tuning.md` rather than papered over.
 7. Same-backend determinism (Q4) holds for every backend across 3 seeds: same backend,
    same master seed, same RNG source produces identical transcripts under the
    `mcts-integration` stanza.
@@ -231,7 +235,7 @@ This plan is complete only when all of the following are true:
 20. The transcript wire format is little-endian binary with no schema-library
     dependency: header carrying the run config, per-move records of
     `(action_id, visits)` sorted ascending by action ID, equity excluded. The canonical
-    255-action enumeration in [system-components.md](system-components.md) is
+    single-byte action enumeration in [system-components.md](system-components.md) is
     authoritative.
 21. The transcript cache root resolves `--cache-dir <path>` → `$MCTS_CACHE_DIR` →
     `./.mcts-cache/` and is `.gitignore`'d when inside the project tree. Hash-prefix

@@ -122,7 +122,7 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
   `CommandSpec`; `longName`, `shortName`, `metavar`, `description`, `required` for
   `OptionSpec`. Every leaf `CommandSpec` carries at least one `Example` entry.
 - `src/MCTS/CLI/Command.hs` declares the full ADT cascade verbatim per
-  [../README.md → CLI command topology](../README.md) (lines 296–443). The
+  [../README.md → CLI command topology](../README.md) (lines 301–454). The
   declarations below are authoritative for every later phase that adds a new
   subcommand. Each constructor is given its concrete shape — no "mirroring the
   shape" delegation; later phases extend by adding constructors or fields, not by
@@ -132,17 +132,28 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
 
   ```haskell
   data Command
-    = Bench    BenchCommand
-    | Verify   VerifyCommand
-    | Play     PlayOptions
-    | Inspect  InspectCommand
-    | Test     TestCommand           -- inner constructors owned by Sprint 7.3
-    | Lint     LintCommand
-    | Docs     DocsCommand
-    | Commands CommandsOptions
-    | Help     HelpOptions
+    = Bench     BenchCommand
+    | Verify    VerifyCommand
+    | Play      PlayOptions
+    | Inspect   InspectCommand
+    | Test      TestCommand          -- inner constructors owned by Sprint 7.3
+    | Lint      LintCommand
+    | Docs      DocsCommand
+    | Commands  CommandsOptions
+    | Help      HelpOptions
+    | CheckCode                      -- inner dispatcher owned by Sprint 1.4
+    | Build     BuildCommand         -- inner constructors owned by Phases 4–6 (per-backend sprints)
     deriving stock (Show, Eq)
   ```
+
+  > **Ownership note.** `CheckCode` lands in Sprint 1.4 alongside the
+  > `src/MCTS/CheckCode.hs` dispatcher. The `Build BuildCommand` family is
+  > filled in by the per-backend sprints: `BuildCppLegacy` in Phase 4
+  > Sprint 4.1 (legacy-flags subset; no PGO/BOLT/mimalloc),
+  > `BuildCppImperative` in Phase 5 Sprint 5.3, `BuildCppFunctional` and
+  > `BuildRust` in Phase 6 Sprints 6.2 and 6.4. Sprint 1.2's obligation is
+  > the eleven top-level constructors above; the `BuildCommand` family is
+  > extended incrementally by the owning sprints.
 
   Subcommand families:
 
@@ -174,6 +185,13 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
   data DocsCommand
     = DocsCheck                      -- compare rendered output against on-disk markers
     | DocsGenerate                   -- splice rendered output into markers (idempotent)
+    deriving stock (Show, Eq)
+
+  data BuildCommand
+    = BuildCppLegacy                 -- legacy-flags subset (no PGO/BOLT/mimalloc); Phase 4 Sprint 4.1
+    | BuildCppImperative             -- steelman: two-stage PGO + BOLT + mimalloc; Phase 5 Sprint 5.3
+    | BuildCppFunctional             -- functional-style; same stack as cpp-imperative; Phase 6 Sprint 6.2
+    | BuildRust                      -- cdylib; rustc PGO + BOLT + mimalloc; Phase 6 Sprint 6.4
     deriving stock (Show, Eq)
 
   data CommandsOptions = CommandsOptions
@@ -301,9 +319,9 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
   `--json` form is the externally-stable schema for downstream tooling.
 - `src/MCTS/CLI/Tree.hs` and `src/MCTS/CLI/Json.hs` carry the renderers; both share
   the same `CommandSpec` value as input.
-- The nine worked invocations in
+- The twelve worked invocations in
   [../README.md → CLI command topology → Concrete invocations](../README.md)
-  (lines 451–478) are bound to the registry as seed `Example` entries on the
+  (lines 460–495) are bound to the registry as seed `Example` entries on the
   corresponding `CommandSpec` leaves so the `mcts <subcommand> --help` text, the
   `documents/cli/commands.md` rendering, and the `mcts commands --json` schema
   all carry them. Sprint 7.1's `mcts-unit` golden over `mcts commands --json`
@@ -317,7 +335,12 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
   (Haskell-vs-(ii) spectate);
   `inspect list`;
   `inspect show 7a2f --top 10 --with-equity`;
-  `inspect replay 7a2f --top 15`.
+  `inspect replay 7a2f --top 15`;
+  `check-code` (the canonical doctrine-alignment gate);
+  `build cpp-imperative --dry-run` (Plan/Apply prints the typed Subprocess
+  sequence and exits 0);
+  `build cpp-imperative` (Plan/Apply executes the plan and produces
+  `cpp-imperative/libmcts_cpp_imperative.so`).
 
 ### Validation
 
@@ -368,6 +391,14 @@ text-artefact derived from the `CommandSpec` registry.
   three-element error message: file path, marker key, literal remedy
   `` `mcts docs generate` ``) and `mcts docs generate` (splice the renderer output
   between the marker pair, idempotent).
+- `mcts docs generate` is a Plan/Apply command per
+  [../HASKELL_CLI_TOOL.md → Plan / Apply](../HASKELL_CLI_TOOL.md): the plan
+  enumerates the marker substitutions to splice and the `trackingGeneratedPaths`
+  writes that will be applied. `--dry-run` renders the plan to stdout and exits
+  0 without touching the worktree; `--plan-file <path>` writes the rendered
+  plan to disk for out-of-band review per
+  [00-overview.md → Hard Constraints item 24](00-overview.md). Both flags are
+  required on every Plan/Apply command.
 - Marker conventions follow
   [../HASKELL_CLI_TOOL.md → Generated Artifacts → Marker conventions](../HASKELL_CLI_TOOL.md):
   `<!-- mcts:<key>:start -->` / `<!-- mcts:<key>:end -->` for Markdown,
@@ -419,12 +450,20 @@ forbidden-symbol HLint rules behind the `mcts-haskell-style` test stanza plus th
   `System.Process.shell` forbidden outside `src/MCTS/Subprocess.hs`.
 - `src/MCTS/Lint.hs` owns the `mcts lint files|docs|haskell|all` runners.
   `mcts lint files` enforces the `forbiddenPathRegistry` (`.github/workflows/`,
-  `.husky/`, `.githooks/`, root `Makefile`, root `justfile`, root `Taskfile.yml`)
-  plus the `trackingGeneratedPaths` no-hand-edit check.
+  `.husky/`, `.githooks/`, `.pre-commit-config.yaml`, `pre-commit-*.yaml`, root
+  `Makefile`, root `justfile`, root `Taskfile.yml`) plus the
+  `trackingGeneratedPaths` no-hand-edit check, per
+  [../HASKELL_CLI_TOOL.md → Forbidden Surfaces](../HASKELL_CLI_TOOL.md).
 - `src/MCTS/CheckCode.hs` owns `mcts check-code`, which dispatches lint, formatter,
   hlint, warning-clean `cabal build all`, and the `mcts docs check` gate in one
   command per
   [../HASKELL_CLI_TOOL.md → CLI surface](../HASKELL_CLI_TOOL.md).
+- `src/MCTS/CLI/Command.hs` gains the `CheckCode` constructor on the top-level
+  `Command` ADT and a matching `CommandSpec` leaf in the registry per
+  [Sprint 1.2 ownership note](#sprint-12-commandspec-registry-and-parser-generation-).
+  The leaf carries a single `Example` (literal `mcts check-code`) so the
+  `mcts <subcommand> --help`, `documents/cli/commands.md`, and `mcts commands --json`
+  outputs all reflect the new surface.
 - `mcts.cabal` declares the `mcts-haskell-style` test-suite with
   `type: exitcode-stdio-1.0`, `main-is: Main.hs`, `hs-source-dirs: test/haskell-style`.
   The suite asserts `fourmolu --mode check` succeeds, `hlint --with-group=default
@@ -582,9 +621,17 @@ Thread one shared `Env` record through every command runner via `ReaderT Env IO`
 
 - `src/MCTS/Env.hs` declares `data Env = Env { ... }` with fields for the
   log handle, the cache root, the parsed CLI options, the `CommandSpec` registry, the
-  `GeneratedSectionRule` registry, the `trackingGeneratedPaths` registry, the
-  `prerequisiteRegistry`, and test-hook fields with no-op defaults in production per
+  `GeneratedSectionRule` registry, the `trackingGeneratedPaths` registry, and the
+  `prerequisiteRegistry` per
   [../HASKELL_CLI_TOOL.md → Application Environment](../HASKELL_CLI_TOOL.md).
+  Optional test-hook fields with no-op production defaults are admitted from
+  [../HASKELL_CLI_TOOL.md → Test hooks in Env](../HASKELL_CLI_TOOL.md) — that
+  subsection lives inside the otherwise-out-of-scope daemon section
+  ([00-overview.md → Out of scope](00-overview.md)), but the test-hook pattern
+  itself is portable to short-running CLIs and is required for the Phase 3
+  Sprint 3.5 monotonic-clock bracket assertion. No other daemon discipline
+  (lifecycle, `BootConfig`/`LiveConfig` split, hot reload, signal handling,
+  `/healthz` endpoints) is admitted.
 - `newtype App a = App { runApp :: ReaderT Env IO a }` plus the standard typeclass
   instances.
 - Every command runner under `src/MCTS/CLI/` has type `... -> App ()` or
@@ -613,20 +660,55 @@ Implement the single `AppError` ADT, the `renderError` boundary, and the `--form
 
 ### Deliverables
 
-- `src/MCTS/Error.hs` declares the single `AppError` ADT covering at minimum:
+- `src/MCTS/Error.hs` declares the single `AppError` ADT covering the canonical
+  15-variant set:
   `TranscriptNotFound`, `TranscriptAmbiguous`, `TranscriptFormatUnsupported`,
-  `VerifyMismatch`, `VerifyCohortTooSmall`, `LegacyParityRolloutOverflow`,
-  `PrerequisiteUnmet`, `UnknownCommand`, `InvalidMove`, `SubprocessFailed`,
-  `FFIFailure`, `DocsCheckDrift`, plus the generic catchalls per
-  [../HASKELL_CLI_TOOL.md → Error Handling](../HASKELL_CLI_TOOL.md).
-  `SubprocessFailed` is reserved for the typed `Subprocess` boundary
-  (`runStreaming` / `capture` non-zero exit); `FFIFailure` is reserved for C
-  ABI exceptions surfaced through the FFI bridge (Phase 4 Sprint 4.2 owns
-  the constructor's payload shape).
-  `TranscriptFormatUnsupported` is raised by `MCTS.Transcript.Codec.decode` when a
-  transcript carries a non-zero `flags u32` (reserved for future format
-  extensions); see
-  [phase-2-transcript-codec-and-determinism.md → Sprint 2.1](phase-2-transcript-codec-and-determinism.md).
+  `VerifyMismatch`, `VerifyCohortTooSmall`, `RecomputeMismatch`,
+  `LegacyParityRolloutOverflow`,
+  `ArchEnvelopeMismatch`, `EngineEnvelopeMismatch`, `PrerequisiteUnmet`,
+  `SubprocessFailed`, `FFIFailure`, `DocsCheckDrift`, `UnknownCommand`,
+  `InvalidMove`, plus the generic catchalls per
+  [../HASKELL_CLI_TOOL.md → Error Handling](../HASKELL_CLI_TOOL.md). The set
+  matches [../README.md → Output and error discipline](../README.md) exactly;
+  `SubprocessFailed`, `FFIFailure`, `DocsCheckDrift`, and
+  `EngineEnvelopeMismatch` are the MCTS-specific failure surfaces enumerated
+  alongside the user-facing variants.
+  Semantic distinctions:
+  - `SubprocessFailed` is reserved for the typed `Subprocess` boundary
+    (`runStreaming` / `capture` non-zero exit).
+  - `FFIFailure` is reserved for C ABI exceptions surfaced through the FFI bridge
+    (Phase 4 Sprint 4.2 owns the constructor's payload shape).
+  - `TranscriptFormatUnsupported` is raised by `MCTS.Transcript.Codec.decode`
+    when a transcript carries a non-zero `flags u32` (reserved for future format
+    extensions); see
+    [phase-2-transcript-codec-and-determinism.md → Sprint 2.1](phase-2-transcript-codec-and-determinism.md).
+  - `ArchEnvelopeMismatch` is raised when a verify cohort or `inspect` comparison
+    spans more than one `host_arch` per
+    [../README.md → Architecture envelope](../README.md); see
+    [../documents/engineering/determinism_contract.md → Architecture Envelope](../documents/engineering/determinism_contract.md).
+  - `EngineEnvelopeMismatch` is raised by `mcts verify` when the layered
+    engine-envelope check finds a disagreement: either a cohort-invariant
+    field (`host_arch`, `rng_source`, `shared_rng_build_id`,
+    `run_config_hash`) disagrees across the cohort, or a per-backend-slot
+    field (`engine_build_id`, `compiler_id`, `compiler_version`,
+    `fp_flags`, `libm_id`, `cpu_features`, `fp_env`) disagrees between
+    a cached transcript and the live binary for the same backend slot.
+    Payload carries an `EnvelopeMismatchScope` discriminator
+    (`CohortLevel | BackendSlot Backend`) plus the field, expected,
+    and got values. Cohort-level mismatches are unconditionally hard
+    fails; per-backend-slot mismatches are downgradeable to a warning
+    via `mcts verify --allow-stale`. See
+    [../documents/engineering/determinism_contract.md → Engine Envelope](../documents/engineering/determinism_contract.md).
+  - `DocsCheckDrift` is raised by `mcts docs check` when a marker region's
+    on-disk slice differs from the renderer's output.
+  - `RecomputeMismatch` is raised by `src/MCTS/Engine/Recompute.hs` when a
+    `mcts inspect show` / `inspect replay` recompute under `--rng cpp`
+    disagrees with the transcript's recorded visits at a move; payload is
+    `(Backend, GameId, MoveIndex, recomputed_record, recorded_record)`.
+    Distinct from `VerifyMismatch` (cross-backend) because the live backend
+    has become non-deterministic against its own prior recording — a bug
+    bell, not an expected outcome. See
+    [../documents/engineering/determinism_contract.md → Recompute Mismatch Output](../documents/engineering/determinism_contract.md).
 - `src/MCTS/CLI/Output.hs` defines `renderError :: AppError -> Text` plus the
   `--format json|table|plain` and `--color auto|always|never` / `--no-color`
   renderers per

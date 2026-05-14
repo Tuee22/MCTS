@@ -9,7 +9,9 @@
 [../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md)
 
 > **Purpose**: Close the project hypothesis. Tune the Haskell engine until backend
-> (v) matches backend (ii) on Q1 and Q2 within the documented tolerance, record the
+> (v) matches backend (ii) on Q1 and Q2 within the parity tolerance defined in
+> [../documents/engineering/compiler_runtime_tuning.md → Parity Tolerance](../documents/engineering/compiler_runtime_tuning.md)
+> (`HASKELL_PARITY_TOLERANCE = 0.05`), record the
 > one-known-asymmetry PGO note, and execute the retirement protocol
 > (i)→(ii)→(iii)→(v) with frozen golden anchors.
 
@@ -28,8 +30,13 @@ doctrine-named GHC flags, the LLVM `-mcpu=native` lowering, RTS `-A64m -n4m -qg1
 everywhere, no `Maybe` / `Either` in the rollout inner loop, the per-rollout scratch
 arena, and the `MutableByteArray#` migration if `MutablePrimArray` profiles cold.
 The one-known-asymmetry PGO note is recorded honestly: GHC 9.14 has no production-
-grade PGO comparable to GCC/Clang `-fprofile-use` or `rustc -Cprofile-use`, and a
-5–15% Haskell-shortfall is attributable to that asymmetry rather than papered over.
+grade PGO comparable to GCC/Clang `-fprofile-use` or `rustc -Cprofile-use`, so a
+5–15% Haskell-shortfall is *attributable* to that asymmetry rather than papered over
+— but per
+[../documents/engineering/compiler_runtime_tuning.md → Parity Tolerance](../documents/engineering/compiler_runtime_tuning.md)
+the pass/fail threshold is `HASKELL_PARITY_TOLERANCE = 0.05`, so any shortfall in
+the 5–15% band still renders `Shortfall <ratio>` (with the PGO note attached as
+attribution, not as exemption).
 Once parity holds, the retirement protocol runs: backend (i) retires after Q6
 closure, backend (ii) retires after backend (iii) reaches parity, backend (iii)
 retires after backend (v) reaches parity. Backend (iv) Rust stays live as the
@@ -112,7 +119,9 @@ Not started.
 ### Objective
 
 Iterate on the Haskell hot-path profile until the bottleneck moves out of the search
-loop or `mcts bench` numbers reach backend (ii) parity within tolerance.
+loop or `mcts bench` numbers reach backend (ii) parity within the parity tolerance
+defined in
+[../documents/engineering/compiler_runtime_tuning.md → Parity Tolerance](../documents/engineering/compiler_runtime_tuning.md).
 
 ### Deliverables
 
@@ -129,7 +138,8 @@ loop or `mcts bench` numbers reach backend (ii) parity within tolerance.
   and the GHC Core change observed.
 - The sprint closes when the profile no longer surfaces a Haskell-specific
   hotspot that the tuning levers can reach, or when `mcts bench` reports
-  Haskell within the documented tolerance of backend (ii) on Q1 and Q2,
+  Haskell within the parity tolerance of backend (ii) on Q1 and Q2 per
+  [../documents/engineering/compiler_runtime_tuning.md → Parity Tolerance](../documents/engineering/compiler_runtime_tuning.md),
   whichever comes first.
 
 ### Validation
@@ -158,16 +168,21 @@ Not started.
 ### Objective
 
 Record the final parity verdict on the project hypothesis. If Haskell matches (ii)
-within tolerance, the project hypothesis is proved; if Haskell falls short by 5–15%,
-the gap is recorded against the one-known-asymmetry PGO note.
+within the parity tolerance per
+[../documents/engineering/compiler_runtime_tuning.md → Parity Tolerance](../documents/engineering/compiler_runtime_tuning.md)
+(`HASKELL_PARITY_TOLERANCE = 0.05`), the project hypothesis is proved. If Haskell
+falls short — including shortfalls in the 5–15% PGO-attributable band — the verdict
+is `Shortfall <ratio>`, with the one-known-asymmetry PGO note attached as
+attribution rather than as exemption.
 
 ### Deliverables
 
-- The report-card `Verdict` field carries one of:
-  - `Within tolerance` (Haskell (v) within the documented tolerance of (ii) on
-    both Q1 and Q2 in both threading modes).
-  - `Shortfall <ratio>` (Haskell short by `ratio` on the slower of the two
-    benchmarks).
+- The report-card `Verdict` field carries one of, per
+  [../documents/engineering/compiler_runtime_tuning.md → Parity Tolerance](../documents/engineering/compiler_runtime_tuning.md):
+  - `Within tolerance` (Haskell (v) within `HASKELL_PARITY_TOLERANCE = 0.05` of
+    (ii) on both Q1 and Q2 in both threading modes).
+  - `Shortfall <ratio>` where `ratio = max(Q1_ratio, Q2_ratio) - 1` (Haskell
+    short by `ratio` on the slower of the two benchmarks).
 - The summary block's `Verdict:` line per the project [README → Tidy
   summary block](../README.md) is rendered from this field.
 - `documents/engineering/compiler_runtime_tuning.md` finalises the
@@ -196,7 +211,7 @@ Not started.
 
 **Status**: Planned
 **Implementation**: `legacy-tracking-for-deletion.md`,
-`test/golden/cpp-legacy/transcripts/*.tr`,
+`test/golden/cpp-legacy/transcripts/<arch>/*.tr`,
 `test/golden/cpp-legacy/throughput.json`,
 `mcts.cabal` (remove `cpp-legacy` extra-libs declaration),
 `cpp-legacy/RETIRED.md`
@@ -214,10 +229,25 @@ record the retirement in the cleanup ledger.
 
 ### Deliverables
 
-- `test/golden/cpp-legacy/transcripts/` captures the canonical transcript set
-  for backend (i) at the report-card knob seeds. `test/golden/cpp-legacy/
-  throughput.json` captures the canonical games/sec / sims/sec numbers in a
-  schema-checked JSON format.
+- `test/golden/cpp-legacy/<arch>/transcripts/` captures the canonical transcript
+  set for backend (i) at the report-card knob seeds, partitioned by host arch
+  (`<arch>` ∈ `{amd64, arm64}`) per [../README.md → Architecture
+  envelope](../README.md). Each transcript ships alongside its per-`(backend,
+  build)` equity sidecar — the originator `.eq` file produced by the
+  retiring backend at retirement time — so post-retirement REPL viewing of
+  the originator column survives without backend (i)'s binary being
+  available locally: `test/golden/cpp-legacy/<arch>/transcripts/<sha>/cpp-legacy-<engine_build_id_prefix16>.eq`
+  with its `.envelope` neighbour holds the bit-equal originator equities
+  frozen at retirement, and `inspect replay` reads them as cached
+  originator values with a special `archived` envelope status (not
+  envelope-mismatched against the missing live binary, but flagged so the
+  user knows the originator binary no longer exists in the repo). See
+  [../documents/engineering/transcript_format.md → Equity Sidecar
+  Cache](../documents/engineering/transcript_format.md).
+  `test/golden/cpp-legacy/throughput.json` captures the canonical games/sec
+  / sims/sec numbers in a schema-checked JSON format rendered by the same
+  `ReportCard` JSON encoder; arch-specific throughput rows are tagged
+  under the `host_arch` field.
 - `legacy-tracking-for-deletion.md` `Pending Removal` enqueues the row for the
   `cpp-legacy` CLI flag value, the FFI bindings module
   `src/MCTS/FFI/CppLegacy.hs`, the driver module `src/MCTS/Driver/CppLegacy.hs`,
@@ -256,7 +286,7 @@ Not started.
 
 **Status**: Planned
 **Implementation**: `legacy-tracking-for-deletion.md`,
-`test/golden/cpp-imperative/transcripts/*.tr`,
+`test/golden/cpp-imperative/transcripts/<arch>/*.tr`,
 `test/golden/cpp-imperative/throughput.json`,
 `mcts.cabal` (remove `cpp-imperative` extra-libs declaration),
 `cpp-imperative/RETIRED.md`
@@ -268,8 +298,10 @@ Not started.
 ### Objective
 
 Once backend (iii) C++ functional-style reaches parity with backend (ii) C++
-imperative on Q1 and Q2 within tolerance, retire backend (ii): freeze its golden
-anchor, remove its CLI flag value, record the retirement.
+imperative on Q1 and Q2 within the parity tolerance defined in
+[../documents/engineering/compiler_runtime_tuning.md → Parity Tolerance](../documents/engineering/compiler_runtime_tuning.md),
+retire backend (ii): freeze its golden anchor, remove its CLI flag value, record
+the retirement.
 
 ### Deliverables
 
@@ -303,7 +335,7 @@ Not started.
 
 **Status**: Planned
 **Implementation**: `legacy-tracking-for-deletion.md`,
-`test/golden/cpp-functional/transcripts/*.tr`,
+`test/golden/cpp-functional/transcripts/<arch>/*.tr`,
 `test/golden/cpp-functional/throughput.json`,
 `mcts.cabal` (remove `cpp-functional` extra-libs declaration),
 `cpp-functional/RETIRED.md`
@@ -315,7 +347,9 @@ Not started.
 ### Objective
 
 Once backend (v) Haskell reaches parity with backend (iii) C++ functional-style on
-Q1 and Q2 within tolerance, retire backend (iii). The surviving cohort is now
+Q1 and Q2 within the parity tolerance defined in
+[../documents/engineering/compiler_runtime_tuning.md → Parity Tolerance](../documents/engineering/compiler_runtime_tuning.md),
+retire backend (iii). The surviving cohort is now
 `(rust, haskell)` — Rust as the long-running cross-language second opinion and
 Haskell as the target.
 

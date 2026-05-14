@@ -205,10 +205,14 @@ that backend (v) Haskell must match.
   1. **Instrumented PGO build.** `g++ ... -fprofile-generate=cpp-imperative/pgo-profile/ ...`
      for both targets.
   2. **Training run.** Run `mcts bench selfplay --backend cpp-imperative
-     --threading single --rng cpp --games 100 --seed 42 --sims 10000` (benchmark
-     (b) at a representative game count). The PGO-instrumented binary writes
-     profile data into the `pgo-profile/` directory. Training drives only the
-     `_bench` target (whose throughput is what the report card measures).
+     --threading multi --workers 8 --rng cpp --games $PGO_TRAINING_GAMES
+     --seed 42 --sims $PGO_TRAINING_SIMS` (benchmark (b) at a representative game
+     count). The pinned tuple `($PGO_TRAINING_GAMES, $PGO_TRAINING_SIMS) =
+     (100, 10_000)` lives in `cabal.project` alongside the report-card knobs so
+     the training workload is reproducible across hosts. The PGO-instrumented
+     binary writes profile data into the `pgo-profile/` directory. Training
+     drives only the `_bench` target (whose throughput is what the report card
+     measures).
   3. **Optimised build.** `g++ ... -fprofile-use=cpp-imperative/pgo-profile/
      -fprofile-correction ...` producing the PGO-optimised
      `libmcts_cpp_imperative_bench.so` and `libmcts_cpp_imperative_instrumented.so`.
@@ -229,6 +233,13 @@ that backend (v) Haskell must match.
      `mcts verify`/`play`/`inspect replay` loads.
 - `src/MCTS/CLI/Build.hs` builds and applies the plan, with `--dry-run` rendering
   the typed `Subprocess` sequence and exiting 0.
+- `src/MCTS/CLI/Command.hs` gains the `BuildCppImperative` constructor on the
+  `BuildCommand` family per
+  [phase-1-haskell-cli-surface.md → Sprint 1.2 ownership note](phase-1-haskell-cli-surface.md),
+  with a matching `CommandSpec` leaf and at least one `Example`
+  (`mcts build cpp-imperative --dry-run`) wired into the registry so the
+  `mcts <subcommand> --help`, `documents/cli/commands.md`, and
+  `mcts commands --json` outputs all carry the new surface.
 - The `prerequisiteRegistry` gains nodes for `llvm-bolt`, `perf` (for BOLT
   profile generation), `mimalloc-static`, and the PGO and BOLT profile
   directories.
@@ -296,6 +307,55 @@ rollouts/selfplay/legacy-parity` (where cohort includes (ii)) run end-to-end.
 ### Remaining Work
 
 Not started.
+
+## Sprint 5.5: Backend (ii) Engine Envelope and Foreign-Engine Recompute 📋
+
+### Objective
+
+Backend (ii) implements the same envelope-capture + foreign-engine
+recompute pattern as Sprint 4.7, with `compiler_id` = `0` (g++),
+`compiler_version` derived from the build-time GCC version, and
+`fp_flags` reflecting the (ii) build's `-O3 -march=native -mtune=native
+-flto -fno-plt -fno-semantic-interposition -fvisibility=hidden
+-fvisibility-inlines-hidden -fno-exceptions` flag set. `engine_build_id`
+hashes the bolted `libmcts_cpp_imperative.so` (the `_bench` variant
+that ships at the canonical FFI load path).
+
+### Deliverables
+
+- `cpp-imperative/c-abi/envelope.{h,cc}` mirroring Sprint 4.7's pattern.
+- `cpp-imperative/c-abi/recompute.{h,cc}` exposing
+  `mcts_imperative_recompute_equities` over the foreign-engine FFI
+  surface from
+  [../documents/engineering/backend_ffi_contract.md → Foreign-Engine
+  Recompute](../documents/engineering/backend_ffi_contract.md).
+- Build harness extension: the PGO+BOLT pipeline gains a final
+  post-link `objcopy --update-section .envelope_build_id`
+  step that computes the SHA-256 of the bolted `.so` and embeds it
+  as the `engine_build_id` constant. The patch is performed *after*
+  BOLT runs, so the embedded digest reflects the final shipping
+  binary.
+
+### Validation
+
+- `mcts-integration`: `mcts_imperative_get_envelope()` returns a
+  struct whose `engine_build_id` equals
+  `sha256(cpp-imperative/libmcts_cpp_imperative.so)` measured
+  externally.
+- `mcts-cross-backend`: write a (ii) transcript, rebuild (ii) with
+  a different `-march=` value, re-run `mcts verify rollouts
+  --backend cpp-imperative,cpp-functional` against the cached
+  transcript, assert `AppError EngineEnvelopeMismatch (BackendSlot
+  CppImperative) CpuFeatures expected got`.
+- `mcts-cross-backend`: foreign-engine recompute of a
+  `cpp-functional` transcript on (ii) returns visits identical to
+  the transcript under `--rng cpp` (the existing determinism
+  contract) and acceptable `equity_l2_drift`.
+
+### Remaining Work
+
+Not started. Blocked by Sprint 5.4 (driver and transcript writer) and
+Sprint 2.7 (sidecar codec).
 
 ## Documentation Requirements
 

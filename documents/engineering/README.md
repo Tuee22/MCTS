@@ -39,7 +39,7 @@ only project-specific elaborations. The four project-specific docs
 | [unit_testing_policy.md](./unit_testing_policy.md) | The five Cabal test stanzas (`mcts-unit`, `mcts-integration`, `mcts-cross-backend`, `mcts-legacy-parity`, `mcts-haskell-style`), the `mcts test all` Plan/Apply command, and the report-card workload; defers to the doctrine on Test Organization |
 | [haskell_code_guide.md](./haskell_code_guide.md) | How the project uses `Subprocess`, `Plan / Apply`, `prerequisiteRegistry`, `Env`, `AppError`, and GADT state machines; defers to the doctrine on each pattern |
 | [determinism_contract.md](./determinism_contract.md) | RNG split, per-game `splitmix64(master_seed, game_index)` seed derivation, ply-cap draw rule, visit-count vs equity asymmetry, legacy parity envelope |
-| [transcript_format.md](./transcript_format.md) | Little-endian binary wire format, 255-action canonical enumeration, content addressing, git-style hash-prefix lookup |
+| [transcript_format.md](./transcript_format.md) | Little-endian binary wire format, single-byte action enumeration, content addressing, git-style hash-prefix lookup |
 | [backend_ffi_contract.md](./backend_ffi_contract.md) | C ABI shape across the four C-ABI backends, `unsafe`/`safe` import policy, `--rng cpp` plumbing, `*-bench` vs `*-instrumented` build targets |
 | [compiler_runtime_tuning.md](./compiler_runtime_tuning.md) | Per-backend tuning stack: legacy (i) exemption, (ii)/(iii) doctrine flag set, (iv) Rust `[profile.release]`, (v) Haskell GHC/LLVM/RTS tuning, one-known-asymmetry PGO note |
 
@@ -63,7 +63,7 @@ only project-specific elaborations. The four project-specific docs
 ### Transcript Format
 
 - [Wire Format](./transcript_format.md#wire-format)
-- [255-Action Canonical Enumeration](./transcript_format.md#action-enumeration)
+- [Single-Byte Action Enumeration](./transcript_format.md#action-enumeration)
 - [Content Addressing](./transcript_format.md#content-addressing)
 - [Hash-Prefix Lookup](./transcript_format.md#hash-prefix-lookup)
 

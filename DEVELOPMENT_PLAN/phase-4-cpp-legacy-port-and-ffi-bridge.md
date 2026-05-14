@@ -55,7 +55,11 @@ add a C ABI shim layer (`cpp-legacy/c-abi/`); rename the build product to
   `Board`, `Tree`, `Rng`; `mcts_legacy_new_board`, `mcts_legacy_apply_move`,
   `mcts_legacy_is_terminal`, `mcts_legacy_select_uct_move`, `mcts_legacy_rollout`,
   `mcts_legacy_backprop`, `mcts_legacy_free_board`, `mcts_legacy_free_tree`, and
-  the `mcts_legacy_rng_*` family.
+  the `mcts_legacy_rng_*` family. The complete C ABI function inventory (every
+  backend's symbols, opaque-handle types, lifecycle, ownership) is canonical in
+  [../documents/engineering/backend_ffi_contract.md → C ABI
+  Shape](../documents/engineering/backend_ffi_contract.md); this sprint conforms
+  to that contract rather than redefining it.
 - `cpp-legacy/c-abi/mcts_cpp_legacy.cc` implements the shims by delegating to the
   unchanged C++ types from `cpp-legacy/src/`.
 - `cpp-legacy/Makefile` builds with the legacy's exact flags per
@@ -73,6 +77,13 @@ add a C ABI shim layer (`cpp-legacy/c-abi/`); rename the build product to
 - The `prerequisiteRegistry` (Phase 1 Sprint 1.7) gains a `gcc-cpp17` node
   declaring the `g++` minimum version with a remedy hint pointing at the
   `docker compose` entrypoint.
+- `src/MCTS/CLI/Command.hs` gains the `BuildCppLegacy` constructor on the
+  `BuildCommand` family per
+  [phase-1-haskell-cli-surface.md → Sprint 1.2 ownership note](phase-1-haskell-cli-surface.md).
+  The matching `mcts build cpp-legacy` Plan/Apply runs `make -C cpp-legacy`
+  (the legacy-flags subset only — no PGO/BOLT/mimalloc) as a typed
+  `[Subprocess]` sequence; the constructor exists for ADT symmetry rather
+  than to apply the steelman optimisation regime.
 
 ### Validation
 
@@ -249,7 +260,7 @@ Not started.
 
 **Status**: Planned
 **Implementation**: `test/golden/legacy/README.md`,
-`test/golden/legacy/transcripts/*.tr`,
+`test/golden/legacy/transcripts/<arch>/*.tr`,
 `test/integration/CppLegacyParity.hs`
 **Docs to update**: `documents/engineering/determinism_contract.md`,
 `documents/engineering/unit_testing_policy.md`,
@@ -267,23 +278,32 @@ this anchor (Q6).
   out-of-band from `~/MCTS_legacy/` using the legacy's own binary on a
   pinned seed set, then byte-converted to the Phase 2 wire format via a one-time
   conversion script that lives under `cpp-legacy/tools/legacy-to-wire.cc` (or
-  equivalent).
-- The fixture set covers benchmark (b) self-play at three pinned seeds (e.g. 42,
-  43, 44) with `--max-plies 10000` (the legacy parity envelope, so terminal
-  semantics agree).
+  equivalent). The conversion script stamps the canonical `host_arch u8` byte for
+  the host it ran on (see [../documents/engineering/transcript_format.md →
+  Header](../documents/engineering/transcript_format.md)).
+- The fixture set covers benchmark (b) self-play at the report-card legacy-parity
+  knobs: seed `$S_LP = 42`, `$G_LP = 10` games, `$S_LP_SIMS = 10_000` sims/move,
+  `--max-plies 10000` (the legacy parity envelope, so terminal semantics agree).
+- Fixtures are per-architecture: `test/golden/legacy/transcripts/<arch>/<S>.tr`
+  with `<arch>` ∈ `{amd64, arm64}`. Each supported host architecture ships its
+  own fixture set generated on that arch (per [../README.md → Architecture
+  envelope](../README.md)).
 - `test/integration/CppLegacyParity.hs` declares the Q6 golden cohort: it runs
   `mcts bench selfplay --backend cpp-legacy --rng cpp --max-plies 10000 --seed
-  <S>` for each pinned seed and compares the resulting transcripts byte-by-byte
-  against `test/golden/legacy/transcripts/<S>.tr`. Sprint 7.1 wires this test
-  into the `mcts-integration` stanza.
-- The fixture set is a frozen historical record: it does **not** regenerate from
-  this repository. If a future audit needs to refresh it, that's a separate
-  scheduled sprint that touches `~/MCTS_legacy` and is enqueued as cleanup.
+  $S_LP --games $G_LP --sims $S_LP_SIMS` and compares the resulting transcripts
+  byte-by-byte against `test/golden/legacy/transcripts/<arch>/$S_LP.tr` for the
+  current host arch. Sprint 7.1 wires this test into the `mcts-integration`
+  stanza (it does **not** live in the `mcts-legacy-parity` stanza, which
+  round-robins live binaries instead).
+- The fixture set is a frozen historical record: it regenerates only when
+  `MCTS_legacy` is upgraded **or** the wire format's `flags u32` bumps. Otherwise
+  it's a checked-in artefact; any other refresh is a separate scheduled sprint
+  that touches `~/MCTS_legacy` and is enqueued as cleanup.
 
 ### Validation
 
-1. `test/golden/legacy/transcripts/` contains exactly the three pinned-seed
-   transcripts.
+1. `test/golden/legacy/transcripts/<arch>/` contains the pinned-seed
+   `$S_LP.tr` fixture for each supported host arch.
 2. The conversion script under `cpp-legacy/tools/` is documented but not invoked
    during normal testing — fixtures are checked in.
 3. A static check confirms `test/golden/legacy/` is named in the
@@ -324,8 +344,11 @@ the legacy parity envelope (`max_plies = 10000`, fixture seed pinned, `--rng cpp
 - `src/MCTS/CLI/Verify.hs` runs the cohort: for each requested backend, run
   `mcts bench {rollouts,selfplay}`-equivalent with the pinned envelope, collect
   the transcripts, round-robin compare on visit counts. Any mismatched pair
-  emits `AppError VerifyMismatch` with the offending `(backend_a, backend_b,
-  seed, game_index, move_index)`. If backend (i) throws or reaches
+  emits `AppError VerifyMismatch` with the canonical payload
+  `(left_backend, right_backend, game_id, move_index, left_record, right_record)`
+  per
+  [../documents/engineering/determinism_contract.md → Verify Mismatch Output](../documents/engineering/determinism_contract.md).
+  If backend (i) throws or reaches
   `MAX_ROLLOUT_ITERS`, the cohort emits `AppError LegacyParityRolloutOverflow`
   carrying `(seed, game_index, move_index)`.
 - The Q3 cousin (`mcts verify rollouts` / `mcts verify selfplay` for the four-
@@ -350,6 +373,77 @@ the legacy parity envelope (`max_plies = 10000`, fixture seed pinned, `--rng cpp
 ### Remaining Work
 
 Not started.
+
+## Sprint 4.7: Backend (i) Engine Envelope and Foreign-Engine Recompute 📋
+
+### Objective
+
+Backend (i) populates its engine envelope from build-time constants
+and exposes a foreign-engine recompute entry point. The `cpp_rng.so`
+that backend (i) ships also stamps the canonical
+`shared_rng_build_id` (the SHA-256 of `libmcts_cpp_legacy.so` itself,
+since backend (i) IS the canonical `std::mt19937_64` owner under both
+`--rng cpp` and `mcts verify legacy-parity` cohorts). See
+[../documents/engineering/determinism_contract.md → Engine Envelope](../documents/engineering/determinism_contract.md)
+and [../documents/engineering/backend_ffi_contract.md → Engine
+Envelope Surface](../documents/engineering/backend_ffi_contract.md).
+
+### Deliverables
+
+- `cpp-legacy/c-abi/envelope.h` / `envelope.cc` — the per-process
+  static `mcts_legacy_envelope` struct populated at build time.
+  `engine_build_id` is filled by a post-link build step that hashes
+  `libmcts_cpp_legacy.so` and writes the digest into a reserved
+  `.envelope_build_id` ELF section (`objcopy
+  --update-section`). `compiler_id` = `0` (gcc); `compiler_version`
+  derived from `__GNUC__` / `__GNUC_MINOR__` /
+  `__GNUC_PATCHLEVEL__`. `fp_flags` reflects the legacy's exact
+  flag set: `FP_FAST_MATH=0`, `FP_FMA_ALLOWED=1` (default GCC),
+  `FP_CONTRACT_ON=1`, `FP_DENORMALS_ON=1`, `FP_X87_USED=0`.
+  `libm_id` filled from a probe of `getconf GNU_LIBC_VERSION` at
+  build time. `cpu_features` populated at the first
+  `mcts_legacy_get_envelope` call via `__builtin_cpu_supports`.
+  `fp_env` captured at the same call via `fegetround` + MXCSR
+  inspection.
+- `cpp-legacy/c-abi/recompute.cc` — `mcts_legacy_recompute_equities`
+  re-uses the existing per-game driver from Sprint 4.4 with a
+  transcript-replay code path: parse the `RunConfig` from the
+  transcript bytes, run the search game-by-game using the
+  transcript's seed and budget, and stream `(move_index, action_id[],
+  visits[], equity[])` records back to Haskell through the `EqStream`
+  FFI. Recompute respects the transcript's `--rng cpp` envelope: if
+  the transcript was written with `rng_source = cpp`, the recompute
+  draws from the shared `cpp_rng.so` (which backend (i) itself owns)
+  and hard-asserts visit-agreement.
+- Build harness extension: `mcts build cpp-legacy` Plan/Apply gains
+  a post-link "envelope patch" step that computes
+  `sha256(libmcts_cpp_legacy.so)` and `objcopy
+  --update-section`s the result into `.envelope_build_id`. The patch
+  is bytewise idempotent across rebuilds with no content changes;
+  reproducible builds remain reproducible.
+
+### Validation
+
+- `mcts-integration`: after `mcts build cpp-legacy`, the loaded
+  `mcts_legacy_get_envelope()` returns a struct whose
+  `engine_build_id` equals
+  `sha256(cpp-legacy/libmcts_cpp_legacy.so)` measured externally
+  (`sha256sum` matches the embedded constant).
+- `mcts-integration`: write a transcript with backend (i), modify
+  `libmcts_cpp_legacy.so` (e.g., re-link with a different commit
+  embedded in `engine_git_commit`), re-run `mcts verify
+  legacy-parity` against the cached transcript, assert it fails
+  with `AppError EngineEnvelopeMismatch (BackendSlot CppLegacy)
+  EngineBuildId expected got`.
+- `mcts-cross-backend`: re-run the foreign-engine recompute path for
+  a `cpp-imperative` transcript on backend (i)'s recompute FFI,
+  assert visit-agreement under `--rng cpp` and acceptable
+  `equity_l2_drift` under the divergence-smell thresholds.
+
+### Remaining Work
+
+Not started. Blocked by Sprint 4.4 (driver and transcript writer) and
+Sprint 2.7 (sidecar codec).
 
 ## Documentation Requirements
 

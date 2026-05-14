@@ -44,11 +44,16 @@ project hypothesis is proven when backend (v) Haskell matches backend (ii) — n
 Compiler flags per
 [../../DEVELOPMENT_PLAN/00-overview.md → Hard Constraints item 18](../../DEVELOPMENT_PLAN/00-overview.md):
 
-```
+```text
+# Example: mandatory C++ compile flags for backends (ii) and (iii)
 -std=c++23 -O3 -march=native -mtune=native -flto -fno-plt
 -fno-semantic-interposition -fvisibility=hidden -fvisibility-inlines-hidden
 -fno-exceptions
 ```
+
+`-fno-exceptions` is mandatory (promoted from Tier 3 conditional per
+[../../README.md → Compiler and runtime tuning](../../README.md)): the engine
+core does not throw, so landing-pad cost is unconditional dead weight.
 
 **Excluded deliberately:** `-ffast-math`, `-Ofast`. Equity backprop is
 summation-order-sensitive and we want backend-internal determinism even though
@@ -133,13 +138,15 @@ required unless profiling shows the change is neutral or harmful.
     measurement supports it.
 14. `thread_local` scratch buffers for the multi-threaded driver (per-worker,
     not per-game).
-15. `-fno-exceptions` for the engine core if no engine code throws — eliminates
-    landing-pad cost.
+
+`-fno-exceptions` is promoted to the mandatory flag block at the top of this
+section: the engine core does not throw, so landing-pad cost is unconditional
+dead weight.
 
 **Native-RNG benchmark only** (not under `--rng cpp`, which is pinned to
 `std::mt19937_64` by the determinism contract):
 
-16. Replace `std::mt19937_64` with `xoshiro256++` or `wyrand` — smaller state,
+15. Replace `std::mt19937_64` with `xoshiro256++` or `wyrand` — smaller state,
     faster `next_u64`, equivalent statistical quality for rollouts.
 
 ### Backend (iii) Functional-Style Discipline
@@ -155,6 +162,7 @@ optimisation regime so (iii)-vs-(ii) isolates *style* as the variable.
 [../../DEVELOPMENT_PLAN/00-overview.md → Hard Constraints item 19](../../DEVELOPMENT_PLAN/00-overview.md):
 
 ```toml
+# Example: rust/Cargo.toml release profile stanza
 [profile.release]
 opt-level = 3
 lto = "fat"
@@ -195,7 +203,8 @@ The `mcts build rust` Plan/Apply command runs:
 GHC flags (in `cabal.project` or per-library stanza) per
 [../../DEVELOPMENT_PLAN/00-overview.md → Hard Constraints item 20](../../DEVELOPMENT_PLAN/00-overview.md):
 
-```
+```cabal
+-- Example: cabal ghc-options stanza for backend (v)
 ghc-options:
   -O2 -fllvm
   -funbox-strict-fields
@@ -215,13 +224,21 @@ LLVM codegen tuned via `-optlo-mcpu=native` (through to LLVM `opt`) and
 
 Baked into the executable's `ghc-options`:
 
-```
+```cabal
+-- Example: cabal ghc-options RTS-tuning stanza
 -with-rtsopts=-A64m -n4m -qg1 -qb -T
 ```
 
 Large nursery to push major GC out, `-qg1` so major GC is parallel from
 generation 1, `-qb` for load balancing across capabilities, `-T` to expose GC
 stats for `+RTS -s` profiling.
+
+Backend (v) uses **GHC's built-in RTS allocator**. Alternate allocators
+(e.g., `mimalloc` via `LD_PRELOAD`, `jemalloc`, etc.) are **out of scope**
+for backend (v): it is the pure-Haskell baseline and replacing the allocator
+would muddy the GHC-as-shipped parity claim. `mimalloc` static-linking
+applies to backends (ii), (iii), (iv) only — see
+[../../DEVELOPMENT_PLAN/system-components.md](../../DEVELOPMENT_PLAN/system-components.md).
 
 ### Code-Level Requirements
 
@@ -258,8 +275,34 @@ rather than to any property of pure functional code per se. We document this
 rather than paper over it.
 
 The Phase 8 Sprint 8.3 parity verdict records the result honestly: either
-`Within tolerance` or `Shortfall <ratio>` with the gap attributed to this
-asymmetry where appropriate.
+`Within tolerance` or `Shortfall <ratio>` per the [Parity Tolerance](#parity-tolerance)
+section below, with the gap attributed to this asymmetry where appropriate.
+
+## Parity Tolerance
+
+The Phase 8 Sprint 8.3 verdict pins on a single constant:
+
+**`HASKELL_PARITY_TOLERANCE = 0.05`** (5% shortfall ceiling).
+
+Sprint 8.3 renders `Within tolerance` iff
+
+    haskell_time / cpp_imperative_time <= 1 + HASKELL_PARITY_TOLERANCE
+
+holds on **both** Q1 and Q2, in both threading modes the report card runs.
+Otherwise the verdict is `Shortfall <ratio>`, where
+`ratio = max(Q1_ratio, Q2_ratio) - 1` (the worst-case shortfall over the
+two workloads, expressed as a fraction).
+
+The 5% ceiling is independent of, and stricter than, the 5–15% PGO-attributable
+shortfall band described in [PGO Asymmetry](#pgo-asymmetry). A shortfall that
+lands inside the 5–15% band still renders `Shortfall <ratio>` — the PGO note
+is attached as the attribution, not as an exemption. Only a shortfall of
+`<= 5%` clears the bar.
+
+The constant is mirrored in `cabal.project` as
+`HASKELL_PARITY_TOLERANCE = 0.05` so `src/MCTS/ReportCard.hs` can reference
+it symbolically. Any change to the threshold must update both this section
+and `cabal.project` in lock-step.
 
 ## Toolchain Pin
 

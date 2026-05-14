@@ -283,11 +283,11 @@ target file. The marker key is dotted, hierarchical, and unique across the
 Example: a generated command-registry table inside this file might look like:
 
 ```markdown
-<!-- mcts:command-registry:start -->
+<!-- mcts:<key>:start -->
 | Command | Summary |
 |---------|---------|
 | `mcts bench rollouts` | Random-rollouts benchmark across the live backend cohort |
-<!-- mcts:command-registry:end -->
+<!-- mcts:<key>:end -->
 ```
 
 ### Authoritative List of Files with Generated Regions

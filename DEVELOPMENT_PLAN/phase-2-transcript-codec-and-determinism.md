@@ -8,7 +8,7 @@
 [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md),
 [../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md)
 
-> **Purpose**: Land the transcript wire format, the 255-action canonical enumeration,
+> **Purpose**: Land the transcript wire format, the single-byte action enumeration,
 > the per-game RNG seed derivation, the cache root resolution and hash-prefix lookup,
 > and the non-interactive `mcts inspect list` / `mcts inspect show` surfaces — the
 > determinism contract every backend will honour.
@@ -21,8 +21,8 @@ boundary, the `Plan` ADT, the `AppError` ADT, and the `Env` record established t
 ## Phase Summary
 
 Phase `2` writes the deterministic byte-level layer of the project: the little-endian
-binary transcript wire format with no schema-library dependency, the 255-action
-canonical enumeration that gives every legal Corridors action a single `u8` ID, the
+binary transcript wire format with no schema-library dependency, the single-byte
+action enumeration that gives every legal Corridors action a `u8` ID, the
 `splitmix64(master_seed, game_index)` per-game RNG seed derivation that makes per-game
 output independent of worker count and scheduling order, the `--rng native` vs
 `--rng cpp` split, and the content-addressed transcript cache under
@@ -47,8 +47,9 @@ records of `(action_id, visits)` sorted ascending by action ID, equity excluded.
 
 ### Deliverables
 
-- `src/MCTS/Transcript/Action.hs` declares the canonical 255-action enumeration as a
-  pure conversion between Corridors action types and `Word8`:
+- `src/MCTS/Transcript/Action.hs` declares the canonical single-byte action enumeration
+  as a pure conversion between Corridors action types and `Word8`. The byte namespace
+  packs 209 legal actions plus 46 reserved codes plus 1 sentinel into 256 codes:
   - `0..80` pawn moves: `y*9 + x` for `x,y ∈ [0,8]`
   - `81..144` horizontal walls: `81 + y*8 + x` for `x,y ∈ [0,7]`
   - `145..208` vertical walls: `145 + y*8 + x` for `x,y ∈ [0,7]`
@@ -63,9 +64,13 @@ records of `(action_id, visits)` sorted ascending by action ID, equity excluded.
   - `threading u8` — 0=single, 1=multi.
   - `workers u16` — meaningful only when `threading = multi`.
   - `rng_source u8` — 0=native, 1=cpp.
-  - `_reserved u8` — must be zero on write, ignored on read.
+  - `host_arch u8` — 0=amd64 (Linux x86-64), 1=arm64 (Linux aarch64). Cross-arch
+    comparison rejects with `AppError ArchEnvelopeMismatch` per
+    [../documents/engineering/determinism_contract.md → Architecture
+    Envelope](../documents/engineering/determinism_contract.md).
   - `c_param u64` — UCT exploration constant stored as IEEE-754 `double` bit-cast to
-    `u64` little-endian. Portability pins x86-64 Linux (the project's only target).
+    `u64` little-endian. Portability pins amd64 Linux and arm64 Linux as a two-arch
+    envelope (both IEEE-754); bit-equality is per-arch.
   - `flags u32` — reserved for future format extensions. All bits **must** be zero
     in v1; non-zero bits cause `decode` to reject the file with
     `AppError TranscriptFormatUnsupported`.
@@ -77,13 +82,24 @@ records of `(action_id, visits)` sorted ascending by action ID, equity excluded.
   - `max_plies u16` — default `200`; pinned to `10000` under the legacy-parity
     envelope.
   - `_reserved u16` — must be zero on write, ignored on read.
+  - `envelope_offset u32` — byte offset from file start where the Envelope Block
+    begins. The fixed header ends at byte 48; in Sprint 2.1 no envelope block is
+    written yet, so the encoder hard-codes `envelope_offset = 48` (the byte
+    immediately after the fixed header) and Sprint 2.6 starts writing the block
+    at that offset. The field exists from v1 so future header growth never breaks
+    envelope readers, per
+    [../documents/engineering/transcript_format.md → Header](../documents/engineering/transcript_format.md).
+    Property test `decode . encode == id` covers it.
 - `src/MCTS/Transcript/Record.hs` carries the per-game and per-move layout:
   - Per-game body starts with `game_id u32`, then per-move records, then a
     terminator.
   - Per-move record: `move_index u16 | chosen u8 | n_actions u8` followed by
     `n_actions × (action u8, visits u32)` pairs sorted ascending by action.
   - Terminator: `0xFF u8 | winner u8 | total_moves u16`, with
-    `winner ∈ {0 = hero, 1 = villain, 2 = draw}`.
+    `winner ∈ {0 = hero, 1 = villain, 2 = draw}`. `winner = 2` (draw) is invalid for
+    `backend = cpp-legacy` transcripts (backend (i) has no draw rule per
+    [../README.md → Draw rule](../README.md)); the decoder rejects this combination
+    with `AppError TranscriptFormatUnsupported`.
 - `src/MCTS/Transcript/Codec.hs` exposes pure `encode` and `decode` functions
   satisfying the canonical property invariant `decode . encode == id` per
   [../HASKELL_CLI_TOOL.md → Test Categories → Property Tests](../HASKELL_CLI_TOOL.md);
@@ -124,16 +140,21 @@ the `.gitignore` entry that keeps the cache out of version control.
 ### Deliverables
 
 - `src/MCTS/Transcript/Hash.hs` exposes `runConfigHash :: RunConfig -> ByteString`
-  computing `sha256(run_config)` over the canonical big-endian encoding of the run
+  computing `sha256(run_config)` over the canonical little-endian encoding of the run
   config; `playTranscriptHash :: RunConfig -> [Move] -> ByteString` computes
-  `sha256(run_config || move_history)` for `mcts play`-recorded transcripts.
+  `sha256(run_config || move_history)` for `mcts play`-recorded transcripts. The
+  `RunConfig` record shape (field list and on-wire byte widths) is owned by
+  [../documents/engineering/transcript_format.md → Content
+  Addressing](../documents/engineering/transcript_format.md); this sprint imports
+  the type from there rather than redefining it.
 - `src/MCTS/Transcript/Cache.hs` resolves the cache root in this order, per
   [00-overview.md → Hard Constraints item 12](00-overview.md):
   1. `--cache-dir <path>` if provided
   2. `$MCTS_CACHE_DIR` if set
   3. `./.mcts-cache/` resolved against the current working directory
-- On-disk layout under the cache root: `transcripts/<sha>.tr`. The full sha is the
-  hex-encoded `sha256` digest.
+- On-disk layout under the cache root: `transcripts/<arch>/<sha>.tr`, where
+  `<arch>` is `amd64` or `arm64` per [../README.md → Architecture
+  envelope](../README.md). The full sha is the hex-encoded `sha256` digest.
 - `.gitignore` excludes `.mcts-cache/` when the cache resolves inside the project
   tree.
 
@@ -172,7 +193,9 @@ transcript with the doctrine-flavoured error rendering.
     list so the operator can re-issue with a longer prefix.
   - On unique match, return the resolved `TranscriptRef`.
 - The lookup is purely lexical over filenames under
-  `<cache-root>/transcripts/*.tr`; no transcript bytes are read.
+  `<cache-root>/transcripts/<arch>/*.tr` for the current host arch; no
+  transcript bytes are read. The host arch is the one returned by the
+  toolchain prereq probe (Sprint 1.7).
 
 ### Validation
 
@@ -208,7 +231,8 @@ Sprint 7.4.
   `V(x,y)` vertical wall, with `x,y ∈ [0,8]` for pawns and `∈ [0,7]` for walls.
   Draws render as `<draw>`.
 - `src/MCTS/CLI/Inspect.hs` owns the runners:
-  - `mcts inspect list` scans `<cache-root>/transcripts/*.tr`, decodes each header,
+  - `mcts inspect list` scans `<cache-root>/transcripts/<arch>/*.tr` for the
+    current host arch, decodes each header,
     prints one line per transcript: short hash (first 8 chars), backend, master
     seed, threading (`ST` or `MT8`), sims, total games, total moves, mtime. Sorted
     by mtime descending. Honours `--format json|table|plain`.
@@ -227,7 +251,11 @@ Sprint 7.4.
     renderer signature so that hooking the recompute path is a one-line wiring
     change in 7.4.
 - The `CommandSpec` entries for `inspect list` and `inspect show` carry at least
-  one `Example` entry each.
+  one `Example` entry each, per
+  [../HASKELL_CLI_TOOL.md → Command Topology](../HASKELL_CLI_TOOL.md) and
+  [../HASKELL_CLI_TOOL.md → Automatically Generated Documentation](../HASKELL_CLI_TOOL.md).
+  Both commands honour `--format json|table|plain` and the standard color flags
+  per [../HASKELL_CLI_TOOL.md → Output Rules](../HASKELL_CLI_TOOL.md).
 
 ### Validation
 
@@ -236,7 +264,7 @@ Sprint 7.4.
 2. `mcts inspect list --format json` emits valid JSON; the schema is pinned in
    `test/golden/inspect-list-schema.json`.
 3. A unit test asserts the move-notation renderer / parser round-trips over every
-   action in the 255-action enumeration.
+   action in the single-byte action enumeration.
 
 ### Remaining Work
 
@@ -304,13 +332,136 @@ consumer is wired in Phase 4 once the FFI bridge exists.
 
 Not started.
 
+## Sprint 2.6: Engine Envelope Codec 📋
+
+### Objective
+
+Implement the encoder/decoder for the engine-envelope block that lives
+between the fixed header and the per-game body of every transcript.
+See [../documents/engineering/transcript_format.md → Envelope
+Block](../documents/engineering/transcript_format.md) for the wire
+format and [../documents/engineering/determinism_contract.md → Engine
+Envelope](../documents/engineering/determinism_contract.md) for the
+layered cohort-invariant vs per-backend-slot semantics.
+
+### Deliverables
+
+- `src/MCTS/Transcript/Envelope.hs` — `Envelope` ADT, `encodeEnvelope ::
+  Envelope -> Builder`, `decodeEnvelope :: Get Envelope`, plus the
+  field-by-field record matching the wire format.
+- `src/MCTS/Transcript/Codec.hs` — the existing transcript encoder is
+  extended to write the envelope block starting at the offset already
+  carried by the header's `envelope_offset` field (which Sprint 2.1
+  hard-coded to `48`); the existing decoder reads `envelope_offset`,
+  jumps to it, parses the envelope, then continues to the per-game body.
+- `sha256(RunConfig)` hashing path verified by a property test to be
+  invariant under arbitrary envelope changes: the hash is computed
+  over the canonical encoding of the `RunConfig` record alone, and
+  the envelope block does not perturb it.
+- Version-tolerance property test: a decoder built against
+  `envelope_version = 1` must successfully read a transcript whose
+  envelope block contains a hypothetical version-2 trailer (extra
+  bytes past the version-1 field set), skipping the unrecognised
+  trailing bytes via `envelope_byte_length`.
+- Envelope round-trip property test: `decodeEnvelope . encodeEnvelope
+  == id` over an arbitrary `Envelope` (generator covers all field
+  ranges including empty `libm_id`, max-length `compiler_version`,
+  zero `shared_rng_build_id`).
+- Same-backend FFI handshake: at process start, the Haskell driver
+  calls every loaded backend's `mcts_<backend>_get_envelope` (via the
+  Phase 4/5/6 FFI shims) and constructs an `Envelope` value from the
+  returned C struct. The `Envelope` is then stamped into every
+  transcript that backend writes.
+
+### Validation
+
+- `mcts-unit`: envelope round-trip property, version-tolerance
+  property, hash-stability property.
+- `mcts-integration`: write a transcript with a known envelope,
+  re-read it, assert byte-for-byte equality of the envelope block
+  and `sha256(RunConfig)` invariance.
+
+### Remaining Work
+
+Not started. Blocked by Sprint 2.1 (the existing fixed-header codec).
+
+## Sprint 2.7: Equity Sidecar Codec 📋
+
+### Objective
+
+Implement the `.eq` / `.envelope` sidecar codec for the multi-backend
+overlay (REPL) and the lazy-recompute cache. See
+[../documents/engineering/transcript_format.md → Equity Sidecar
+Cache](../documents/engineering/transcript_format.md) for the wire
+format and the on-disk layout.
+
+### Deliverables
+
+- `src/MCTS/Transcript/EquitySidecar.hs` — `EqStream` ADT, encoder /
+  decoder for the `.eq` file (header + per-move records + terminator),
+  plus the `.envelope` neighbour file (the same envelope bytes
+  extracted from the `.eq` header for easy `cat .envelope` access).
+- `src/MCTS/Transcript/Cache.hs` extended: given a transcript hash and
+  a `(backend, engine_build_id_prefix16)` pair, resolve the sidecar
+  path; create the `<sha>/` directory lazily on first write; list
+  cohabiting `(backend, build)` slots for the `mcts inspect cache
+  list` subcommand.
+- `src/MCTS/CLI/Inspect/Cache.hs` — `mcts inspect cache list` and
+  `mcts inspect cache prune [--keep-current]`. `cache list` enumerates
+  every `(backend, build)` slot per transcript via the helper above.
+  `cache prune` walks the cache and deletes sidecars whose embedded
+  envelope's per-backend-slot fields no longer match the live binary
+  returned by `mcts_<backend>_get_envelope()`; `--keep-current` retains
+  slots that still match. Live-envelope lookups depend on the per-
+  backend `get_envelope` FFI landing in Sprint 3.6 (haskell), 4.7
+  (cpp-legacy), 5.5 (cpp-imperative), and 6.5 (cpp-functional / rust);
+  until each backend's FFI lands, `cache prune` skips that backend's
+  slots with a warning rendered through `renderError`.
+- Originator-vs-foreign discrimination: the codec exposes a helper
+  `isOriginator :: TranscriptHeader -> EqSidecar -> Bool` that
+  compares the `.eq`'s embedded `backend` against the transcript's
+  recorded `backend` field. The REPL uses this to mark the originator
+  column with ★.
+- Atomic-write contract: the `.eq` writer writes to a temp file in
+  the same directory, fsyncs, then renames — mirroring the existing
+  transcript writer in Sprint 2.1.
+- `inspect cache list` and `inspect cache prune` `CommandSpec` entries
+  carry at least one `Example` each and honour the standard
+  `--format json|table|plain` and color flags per
+  [../HASKELL_CLI_TOOL.md → Command Topology](../HASKELL_CLI_TOOL.md),
+  [../HASKELL_CLI_TOOL.md → Automatically Generated Documentation](../HASKELL_CLI_TOOL.md),
+  and [../HASKELL_CLI_TOOL.md → Output Rules](../HASKELL_CLI_TOOL.md).
+  The `cache prune` runner is `Plan / Apply`-shaped per
+  [../HASKELL_CLI_TOOL.md → Plan / Apply](../HASKELL_CLI_TOOL.md): the
+  planner produces the set of sidecars to delete (and the skipped-
+  backend warnings), and `apply` performs the deletions.
+
+### Validation
+
+- `mcts-unit`: `.eq` round-trip property (arbitrary `EqStream`
+  encodes and decodes to itself); originator-vs-foreign discrimination
+  unit test; cache-key prefix derivation collision-tolerance test
+  over a 100-build synthetic corpus.
+- `mcts-integration`: write a `.tr` with a known originator, write a
+  `.eq` for that originator, write a second `.eq` for a foreign
+  backend, list the sidecar directory, assert both slots are
+  enumerated with correct origin markers.
+
+### Remaining Work
+
+Not started. Blocked by Sprint 2.6 (envelope codec) because the `.eq`
+header embeds an envelope block.
+
 ## Documentation Requirements
 
 **Engineering docs to create/update:**
 
-- `documents/engineering/transcript_format.md` — fill in the wire format, the
-  255-action enumeration, the content-addressing scheme, the cache root resolution,
-  and the git-style hash-prefix lookup contract.
+- `documents/engineering/transcript_format.md` — fill in the wire format (including
+  the engine-envelope block placed at `envelope_offset` and excluded from
+  `sha256(RunConfig)`), the single-byte action enumeration, the content-addressing
+  scheme, the cache root resolution including the per-transcript sidecar directory
+  layout, the equity sidecar `.eq` / `.envelope` wire format, and the git-style
+  hash-prefix lookup contract.
 - `documents/engineering/determinism_contract.md` — fill in the full determinism
   contract per the README. The eleven owned sections are: the `--rng native` vs
   `--rng cpp` split (and the verify-subtree pin); the per-game

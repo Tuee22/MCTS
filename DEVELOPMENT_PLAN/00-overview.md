@@ -38,7 +38,21 @@ simultaneously:
   preserved by keeping public types and operations pure.
 - **Bit-for-bit deterministic.** Given a seed, an RNG source, and a sequence of moves,
   every implementation produces identical visit counts, identical action orderings, and
-  identical rollouts. Reproducibility is a first-class invariant, not a debugging aid.
+  identical rollouts — within an architecture envelope and an engine-build envelope (see
+  Hard Constraint 36 below and the **Engine Envelope** section in
+  [../documents/engineering/determinism_contract.md](../documents/engineering/determinism_contract.md)).
+  Reproducibility is a first-class invariant, not a debugging aid; the engine envelope
+  captured in every transcript lets `inspect replay` and `mcts verify` detect substrate
+  drift rather than silently displaying ULP-shifted floats as if they were the
+  originator's.
+
+**Long-term horizon (out of scope for this plan).** The project
+[../README.md](../README.md) declares an eventual AlphaZero-style ANN evaluation goal.
+Phases `0`–`8` own the rollout-based MCTS hypothesis only; no ANN, no learned
+evaluator, and no Python ML stack appears on the supported path. The retirement
+protocol's frozen golden anchors (Phase `8`) leave the door open for a successor
+effort to inherit a parity-proven Haskell engine; that work is a future plan, not a
+deliverable here.
 
 ## Target Outcome
 
@@ -81,7 +95,10 @@ cross-language second opinion.
 - **Transcript codec, RNG, determinism contract.** The transcript wire format is
   little-endian binary with no schema-library dependency: header carrying the run config,
   per-move records of `(action_id, visits)` sorted ascending by action ID, equity
-  excluded. The canonical 255-action enumeration covers all legal Corridors actions
+  excluded from the hash. An engine-envelope block follows the fixed header (excluded
+  from `sha256(RunConfig)`) so substrate drift is detectable on replay; equity is
+  cached lazily per `(backend, build)` in a sidecar `.eq` directory next to the
+  `.tr`. The canonical single-byte action enumeration covers all legal Corridors actions
   (pawn moves at `y*9 + x` for x,y ∈ [0,8], horizontal walls at `81 + y*8 + x`, vertical
   walls at `145 + y*8 + x`, with 209..254 reserved and 255 as sentinel). Per-game RNG
   seeds derive from `splitmix64(master_seed, game_index)` so per-game output is
@@ -102,11 +119,11 @@ cross-language second opinion.
   [phase-4-cpp-legacy-port-and-ffi-bridge.md](phase-4-cpp-legacy-port-and-ffi-bridge.md).
 - **Backend (ii) C++ imperative steelman.** The performance ceiling. C++23 with `-O3
   -march=native -mtune=native -flto -fno-plt -fno-semantic-interposition
-  -fvisibility=hidden -fvisibility-inlines-hidden`, no `-ffast-math`; two-stage PGO via
-  `-fprofile-generate` / `-fprofile-use`, BOLT post-link, `mimalloc` static link; arena
-  tree, per-rollout scratch board with undo, flat children layout, move-list buffer
-  reuse, branch hints, `__builtin_prefetch`, `__builtin_popcountll` /
-  `__builtin_ctzll`, `alignas(64)`, `thread_local` scratch, `-fno-exceptions`. Owned by
+  -fvisibility=hidden -fvisibility-inlines-hidden -fno-exceptions`, no `-ffast-math`;
+  two-stage PGO via `-fprofile-generate` / `-fprofile-use`, BOLT post-link, `mimalloc`
+  static link; arena tree, per-rollout scratch board with undo, flat children layout,
+  move-list buffer reuse, branch hints, `__builtin_prefetch`, `__builtin_popcountll` /
+  `__builtin_ctzll`, `alignas(64)`, `thread_local` scratch. Owned by
   [phase-5-cpp-imperative-steelman.md](phase-5-cpp-imperative-steelman.md).
 - **Backends (iii) C++ functional-style and (iv) Rust.** Backend (iii) runs the same
   optimisation stack as (ii) so the (ii)-vs-(iii) comparison isolates *style* as the
@@ -129,7 +146,9 @@ cross-language second opinion.
   `-fworker-wrapper`, `-fstatic-argument-transformation`, RTS `-A64m -n4m -qg1 -qb -T`,
   `INLINABLE` + `SPECIALIZE` on the search loop, unboxed strict fields everywhere, no
   `Maybe`/`Either` in the rollout inner loop, until backend (v) matches backend (ii) on
-  Q1 and Q2 within the documented tolerance. The retirement protocol then closes
+  Q1 and Q2 within the parity tolerance per
+  [../documents/engineering/compiler_runtime_tuning.md → Parity Tolerance](../documents/engineering/compiler_runtime_tuning.md)
+  (`HASKELL_PARITY_TOLERANCE = 0.05`). The retirement protocol then closes
   (i)→(ii)→(iii)→(v) with frozen golden anchors. Owned by
   [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md).
 
@@ -178,19 +197,34 @@ inherits that split verbatim. No sprint may schedule adoption of an out-of-scope
   `table` on TTY else `plain`; `--color auto|always|never` / `--no-color`. The TUI
   commands (`play`, `inspect replay`) own their own rendering and ignore both flag
   families.
-- Error Handling — single `AppError` ADT covering at minimum `TranscriptNotFound`,
-  `TranscriptAmbiguous`, `VerifyMismatch`, `VerifyCohortTooSmall`,
-  `LegacyParityRolloutOverflow`, `PrerequisiteUnmet`, `SubprocessFailed`,
-  `FFIFailure`, `UnknownCommand`, `InvalidMove`; `renderError :: AppError ->
-  Text` boundary in `src/MCTS/CLI/Output.hs`; hlint rules forbid `print`,
-  `exitFailure`, and direct terminal formatting outside that boundary.
+- Error Handling — single `AppError` ADT covering the canonical 15-variant set:
+  `TranscriptNotFound`, `TranscriptAmbiguous`, `TranscriptFormatUnsupported`,
+  `VerifyMismatch`, `VerifyCohortTooSmall`, `RecomputeMismatch`,
+  `LegacyParityRolloutOverflow`,
+  `ArchEnvelopeMismatch`, `EngineEnvelopeMismatch`, `PrerequisiteUnmet`,
+  `SubprocessFailed`, `FFIFailure`, `DocsCheckDrift`, `UnknownCommand`,
+  `InvalidMove`. The set matches
+  [../README.md → Output and error discipline](../README.md) exactly;
+  `SubprocessFailed`, `FFIFailure`, and `DocsCheckDrift` cover the typed
+  `Subprocess` boundary, the C ABI bridge, and `mcts docs check` marker
+  drift respectively. `renderError :: AppError -> Text` is the boundary in
+  `src/MCTS/CLI/Output.hs`; hlint rules forbid `print`, `exitFailure`, and
+  direct terminal formatting outside that boundary.
   `SubprocessFailed` is reserved for the typed `Subprocess` boundary
-  (`runStreaming` / `capture` non-zero exit); `FFIFailure` is reserved for C
-  ABI exceptions surfaced through the FFI bridge — the two are kept
-  semantically distinct.
-- GADT-indexed state machines where naturally indicated (`SimBudget`, `Threading`,
-  `Side`, `VerifyBackend`, `LegacyParityBackend`; the `RngSource` axis encoded so that
-  `--rng cpp` is the parse-time default for `verify`).
+  (`runStreaming` / `capture` non-zero exit); `FFIFailure` is reserved for C ABI
+  exceptions surfaced through the FFI bridge; `TranscriptFormatUnsupported`
+  fires on non-zero `flags u32` in a transcript header;
+  `ArchEnvelopeMismatch` fires when a transcript or verify cohort spans more
+  than one `host_arch`; `EngineEnvelopeMismatch` fires when the layered
+  engine-envelope check (cohort-invariant fields across the cohort,
+  per-backend-slot fields against the live binary) finds a disagreement —
+  the variants are kept semantically distinct.
+- GADT-indexed state machines where naturally indicated (`VerifyBackend`,
+  `LegacyParityBackend`); the `RngSource` axis encoded so that `--rng cpp` is the
+  parse-time default for `verify`. `SimBudget`, `Threading`, and `Side` remain plain
+  ADTs — the doctrine's GADT mandate applies only to state machines with more than
+  two conceptual states per
+  [../HASKELL_CLI_TOOL.md → GADT-Indexed State Machines](../HASKELL_CLI_TOOL.md).
 - Project-level documentation standards — the six elements live in
   [../documents/documentation_standards.md](../documents/documentation_standards.md):
   marker convention with literal `<!-- mcts:<key>:start -->` etc. examples, authoritative
@@ -209,6 +243,15 @@ inherits that split verbatim. No sprint may schedule adoption of an out-of-scope
   `BootConfig` / `LiveConfig` split, `SIGHUP` hot reload, `/healthz` / `/readyz` /
   `/metrics` endpoints, structured `co-log` logging, and the daemon-internal
   "Configuration: Dhall file with mandatory hot reload" subsection.
+  - **Exception: `Test hooks in Env`.** Though the doctrine places this subsection
+    inside the daemon section, the test-hook pattern (`Env` fields with no-op
+    production defaults that tests override to observe or control async behavior)
+    is admitted as in-scope. It is required for the
+    [phase-1-haskell-cli-surface.md → Sprint 1.8](phase-1-haskell-cli-surface.md)
+    `Env` record and the
+    [phase-3-haskell-engine.md → Sprint 3.5](phase-3-haskell-engine.md)
+    monotonic-clock bracket assertion. No other daemon discipline (lifecycle,
+    hot reload, signal handling, `/healthz` endpoints, `co-log`) is admitted.
 - Capability Classes and Service Errors — no external subsystems (no MinIO, Redis,
   PostgreSQL on the supported path).
 - Retry Policy as First-Class Values — no external subsystems with retryable errors.
@@ -292,9 +335,10 @@ referenceability.
     `std::shared_ptr<uct_node>` trees and `std::mt19937_64` unchanged.
 18. Backends (ii) and (iii) compile with `-std=c++23 -O3 -march=native -mtune=native
     -flto -fno-plt -fno-semantic-interposition -fvisibility=hidden
-    -fvisibility-inlines-hidden`. No `-ffast-math` and no `-Ofast`. PGO+BOLT pipeline
-    plus `mimalloc` static link required. `g++` only — Clang is not supported on the
-    C++ side.
+    -fvisibility-inlines-hidden -fno-exceptions`. `-fno-exceptions` is mandatory
+    (the engine core does not throw, so landing-pad cost is unconditional dead
+    weight). No `-ffast-math` and no `-Ofast`. PGO+BOLT pipeline plus `mimalloc`
+    static link required. `g++` only — Clang is not supported on the C++ side.
 19. Backend (iv) Rust uses `[profile.release]` with `opt-level = 3`, `lto = "fat"`,
     `codegen-units = 1`, `panic = "abort"`, `strip = "symbols"`. `RUSTFLAGS=-C
     target-cpu=native -C link-arg=-fuse-ld=lld`. `mimalloc` as `#[global_allocator]`.
@@ -355,6 +399,49 @@ referenceability.
     counts produced must equal the transcript record byte-for-byte as a built-in
     determinism check that fires on every navigation. The last `replayCacheStates` MCTS
     states (default 20, `--cache-states N`) are kept in memory for back-navigation.
+36. Supported target platforms are **amd64 Linux** and **arm64 Linux**. Reproducibility
+    envelopes are per-architecture: a transcript written on amd64 is bit-identical on
+    replay against the same backend on amd64, and a transcript written on arm64 is
+    bit-identical on replay against the same backend on arm64, but cross-architecture
+    bit-equality is **not** guaranteed (the `c_param u64` IEEE-754 bit-cast and the
+    backend-internal floating-point arithmetic differ at the ULP level across arches).
+    Transcript headers and report-card metadata carry a `host_arch` tag (`"amd64"` |
+    `"arm64"`); cross-backend `verify` and same-backend `verify` checks are only valid
+    when the comparison set shares a `host_arch`. See
+    [../documents/engineering/determinism_contract.md → Architecture
+    Envelope](../documents/engineering/determinism_contract.md).
+37. Every transcript carries a versioned **engine envelope** block immediately after
+    the fixed header, excluded from `sha256(RunConfig)`. The envelope decomposes into
+    cohort-invariant fields (`host_arch`, `rng_source`, `shared_rng_build_id`,
+    `run_config_hash`) and per-backend-slot fields (`engine_build_id`,
+    `engine_git_commit`, `compiler_id` + `compiler_version`, `fp_flags`, `libm_id`,
+    `cpu_features`, `fp_env`). `mcts verify` hard-fails with
+    `AppError EngineEnvelopeMismatch` when cohort-invariant fields disagree across the
+    cohort, or when per-backend-slot fields disagree between a cached transcript and
+    the live binary for the same backend slot (downgradeable to a warning via the
+    `--allow-stale` flag for forensic comparisons). Cross-backend differences in
+    per-backend-slot fields are expected and silent — `verify`'s contract is "different
+    binaries, identical visits." See
+    [../documents/engineering/determinism_contract.md → Engine Envelope](../documents/engineering/determinism_contract.md).
+38. Equity sidecar cache layout under the existing transcript cache root:
+    `<cache-root>/transcripts/<arch>/<sha>/<backend>-<engine_build_id_prefix16>.eq`
+    plus a `.envelope` neighbour file holding the envelope of the build that wrote
+    the `.eq`. Multi-build cohabitation is automatic — a rebuild lands in a fresh
+    cache slot keyed by the new `engine_build_id` prefix; old slots remain for
+    forensic comparison until explicitly pruned (`mcts inspect cache prune`). The
+    sidecar is read on `inspect replay` and `inspect show --with-equity` for instant
+    cache hits; misses trigger lazy on-demand recompute via the per-backend FFI
+    `mcts_<backend>_recompute_equities`. See
+    [../documents/engineering/transcript_format.md → Equity Sidecar Cache](../documents/engineering/transcript_format.md).
+39. Divergence-smell thresholds per
+    [../documents/engineering/determinism_contract.md → Divergence Smell](../documents/engineering/determinism_contract.md):
+    same-substrate and `--rng cpp` cross-backend cohorts (ii)–(v) hard-fail on any
+    visit-count or move disagreement (the existing contract); `--rng native`
+    cross-backend and cross-build same-backend comparisons surface
+    `move_disagreement_rate` and `visit_disagreement_rate` annotations in the REPL
+    column headers and in the `mcts test all` report-card matrix, warning when the
+    measured rate exceeds the thresholds (pinned in `cabal.project` once empirically
+    calibrated in Phase 7).
 
 ## Dependency Chain
 
@@ -374,9 +461,9 @@ referenceability.
 
 | Surface | Current Repo State (Bootstrap) | Intended End State |
 |---------|-------------------------------|--------------------|
-| Repository layout | `AGENTS.md`, `CLAUDE.md`, `HASKELL_CLI_TOOL.md`, `LICENCE`, `README.md`, `DEVELOPMENT_PLAN/`, `documents/` | `app/`, `src/MCTS/`, `cpp-legacy/`, `cpp-imperative/`, `cpp-functional/`, `rust/`, `bench/`, `test/` (including `test/golden/legacy/`), `docker/`, `cabal.project`, `fourmolu.yaml`, `mcts.cabal`, `prodbox`-style governed docs under `documents/` |
+| Repository layout | `AGENTS.md`, `CLAUDE.md`, `HASKELL_CLI_TOOL.md`, `LICENCE`, `README.md`, `DEVELOPMENT_PLAN/`, `documents/` | `app/`, `src/MCTS/`, `cpp-legacy/`, `cpp-imperative/`, `cpp-functional/`, `rust/`, `bench/`, `test/` (including `test/golden/legacy/`), `docker/`, `cabal.project`, `fourmolu.yaml`, `mcts.cabal`, MCTS-specific engineering elaborations under `documents/engineering/` |
 | Build artefacts | None | `cabal build all`-produced `mcts` binary, plus per-backend shared libraries (`cpp-legacy/libmcts_cpp_legacy.so`, `cpp-imperative/libmcts_cpp_imperative.so`, `cpp-functional/libmcts_cpp_functional.so`, `rust/target/release/libmcts_rust.so`) |
-| CLI surface | None | `mcts bench {rollouts,selfplay}`, `mcts verify {rollouts,selfplay,legacy-parity}`, `mcts play`, `mcts inspect {list,show,replay}`, `mcts test {all,<stanza>}`, `mcts lint {files,docs,haskell,all}`, `mcts docs {check,generate}`, `mcts commands [--tree|--json]`, `mcts help <subcommand>`, `mcts check-code` |
+| CLI surface | None | `mcts bench {rollouts,selfplay}`, `mcts verify {rollouts,selfplay,legacy-parity {rollouts,selfplay}}`, `mcts play`, `mcts inspect {list,show,replay}`, `mcts test {all,<stanza>}`, `mcts lint {files,docs,haskell,all}`, `mcts docs {check,generate}`, `mcts commands [--tree|--json]`, `mcts help <subcommand>`, `mcts check-code`, `mcts build {cpp-legacy,cpp-imperative,cpp-functional,rust}` |
 | Test stanzas | None | Five Cabal stanzas: `mcts-unit`, `mcts-integration`, `mcts-cross-backend`, `mcts-legacy-parity`, `mcts-haskell-style` |
 | Toolchain | None pinned in the worktree | GHC `9.14.1`, Cabal `3.16.1.0`, GCC latest stable on `ubuntu:24.04`, Rust latest stable with pinned minor, LLVM pinned in the Dockerfile |
 | Determinism contract | Documented in `README.md`; not yet enforced by code | Enforced by `mcts verify {rollouts,selfplay,legacy-parity}` plus same-backend determinism cases under `mcts-integration` |

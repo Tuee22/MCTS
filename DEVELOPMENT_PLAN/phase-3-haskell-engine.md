@@ -62,6 +62,11 @@ the ply-cap draw rule for backends (ii)–(v)), and legal-move enumeration.
     }
   ```
 
+- `boardPly` initialises to `0` and is incremented by `applyMove` **after** the
+  move is applied. `plyCount == max_plies` therefore corresponds to a draw if no
+  positional win has been recorded; `isTerminal` is checked next, before the next
+  move is selected. The counter is restored to its start-of-rollout value as part of
+  the per-rollout scratch snapshot/undo path (wired in Phase 8).
 - `src/MCTS/Engine/Move.hs` exposes `applyMove :: Move -> Board -> Board` plus the
   unapply path for the per-rollout scratch board reuse (the scratch path is wired
   in Phase 8; this sprint provides the pure version).
@@ -69,10 +74,19 @@ the ply-cap draw rule for backends (ii)–(v)), and legal-move enumeration.
   `isTerminal :: Word16 -> Board -> Bool` honouring the ply cap:
   `hero_wins || villain_wins || ply_count >= max_plies` per
   [00-overview.md → Hard Constraints item 9](00-overview.md). On ply-cap
-  termination, `terminalEval` returns `0.0`.
+  termination, `terminalEval` returns `0.0`. `isTerminal` is called after each
+  `applyMove` inside the rollout loop and immediately before each selection step
+  inside the UCT descent; a terminal node is never expanded.
 - `src/MCTS/Engine/Legal.hs` exposes `legalMoves :: Board -> Vector Move` plus the
   variant that writes into a caller-provided buffer (`legalMovesInto`); the
   buffer-reuse path matters in Phase 8.
+- The legal-move generator must enforce the Corridors path-existence invariant per
+  [../README.md → Game: Corridors](../README.md): walls cannot fully enclose
+  either player. A wall placement is legal only if both pawns retain at least one
+  path to their respective goal rows after the placement. The invariant is
+  checked by a flood-fill (BFS) on the wall-bitboard-derived graph against each
+  candidate wall placement; pawn moves do not need this check. The brute-force
+  property test in Validation step 1 below covers this rule on the random sample.
 - Bitboard primitives go through `Data.Bits` (lowering to `popcnt`/`tzcnt` under
   `-fllvm` with `-optlo-mcpu=native`).
 
@@ -308,6 +322,67 @@ wall-clock time from a single `Data.Time.Clock.getMonotonicTimeNSec`, emit
 ### Remaining Work
 
 Not started.
+
+## Sprint 3.6: Backend (v) Engine Envelope and Foreign-Engine Recompute 📋
+
+### Objective
+
+Backend (v) Haskell populates its engine envelope from build-time
+constants and exposes a foreign-engine recompute entry point so the
+REPL's multi-backend overlay can recompute equity series for any
+transcript using the in-process Haskell engine. See
+[../documents/engineering/determinism_contract.md → Engine Envelope](../documents/engineering/determinism_contract.md)
+and
+[../documents/engineering/backend_ffi_contract.md → Foreign-Engine
+Recompute](../documents/engineering/backend_ffi_contract.md).
+
+### Deliverables
+
+- `src/MCTS/Engine/Envelope.hs` — a module that constructs the
+  `Envelope` for the in-process Haskell backend from build-time
+  values. Compiler ID/version comes from `__GLASGOW_HASKELL__` via
+  a CPP-passed `MCTS_GHC_VERSION` macro in `cabal.project`. `fp_flags`
+  is filled from `-DMCTS_FP_FAST_MATH=0 -DMCTS_FP_FMA_ALLOWED=...`
+  emitted by the Cabal stanza. `libm_id` is empty (the Haskell hot
+  path makes no libm transcendental calls — `log` / `sqrt` go through
+  GHC primops on `Double#`, which compile to LLVM IR and inline; the
+  envelope captures this as `libm_id = ""`). `engine_build_id` is the
+  SHA-256 of the linked `mcts` binary (since the Haskell engine is
+  in-process), embedded by a post-link patcher invoked from the
+  `Subprocess` boundary of the build harness. `cpu_features` is
+  captured at startup via `cpuid` via a small C shim or via inspecting
+  `getCpuModel`-style introspection; the resulting bitfield is
+  cached for the process lifetime.
+- `src/MCTS/Engine/Recompute.hs` — the in-process foreign-engine
+  recompute path: given a transcript's bytes, parse the `RunConfig`,
+  replay the search from move 0, emit `(move_index, n_alternatives,
+  action_id[], visits[], equity[])` records that the REPL writes into
+  an `.eq` sidecar (Sprint 2.7). Under `--rng cpp` the recompute
+  hard-asserts visit-agreement with the transcript's recorded visits
+  at every move; mismatch aborts with `AppError RecomputeMismatch
+  (backend, game_id, move_index, recomputed_record, recorded_record)`
+  per
+  [../documents/engineering/determinism_contract.md → Recompute Mismatch Output](../documents/engineering/determinism_contract.md).
+- The Haskell driver's existing search loop is invoked from this
+  recompute path with an instrumentation hook to record per-move
+  equity values into a streaming buffer.
+
+### Validation
+
+- `mcts-integration`: invoke `inspect replay <hash>` on a transcript
+  produced by a different backend (e.g., a `cpp-imperative`
+  transcript), trigger the haskell column with `r`, assert the
+  sidecar `.eq` writes successfully, assert the recompute's visits
+  agree byte-for-byte with the transcript's recorded visits under
+  `--rng cpp`.
+- `mcts-integration`: produce a transcript with backend (v); on
+  subsequent `inspect replay` open, the originator `.eq` is read if
+  the live binary's envelope matches.
+
+### Remaining Work
+
+Not started. Blocked by Sprint 3.4 (the Haskell driver) and Sprint
+2.7 (the equity sidecar codec).
 
 ## Documentation Requirements
 

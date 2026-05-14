@@ -157,8 +157,9 @@ constraint at the type level and `LegacyParityBackend` requiring (i) at parse ti
   2. **Move-by-move scan on mismatch.** For each pair with disagreeing digests,
      decode both transcripts move-by-move until the first divergent record;
      emit `AppError VerifyMismatch` carrying
-     `(left_backend, right_backend, seed, game_id, move_index, left_record,
-     right_record)` and stop the scan for that pair.
+     `(left_backend, right_backend, game_id, move_index, left_record,
+     right_record)` and stop the scan for that pair, per
+     [../documents/engineering/determinism_contract.md → Verify Mismatch Output](../documents/engineering/determinism_contract.md).
 
   Cohorts of size 1 emit `AppError VerifyCohortTooSmall` at parse time (not at
   scan time).
@@ -203,13 +204,27 @@ and emits the tidy summary block answering Q1–Q7 in one screenful.
   test <stanza>` runs the named Cabal stanza (e.g. `mcts test mcts-unit`).
 - `src/MCTS/CLI/Test.hs` owns `mcts test all` as a Plan/Apply command. The plan is
   a typed `[Subprocess]` sequence per the project
-  [README → mcts test all](../README.md):
-  1. Run `cabal test mcts-haskell-style`.
-  2. Run `cabal test mcts-unit`.
-  3. Run `cabal test mcts-integration`.
-  4. Run `cabal test mcts-cross-backend`.
-  5. Run `cabal test mcts-legacy-parity`.
-  6. Run the pinned report-card workload — the **seven invocations** below,
+  [README → mcts test all](../README.md), with the lint-first prelude required by
+  [../HASKELL_CLI_TOOL.md → Lint, Format, and Code-Quality Stack → Aggregate
+  dispatch](../HASKELL_CLI_TOOL.md) (`tool test all` includes the full
+  lint surface plus `cabal build all` as its first step before `cabal test`) —
+  cited per standards rule L:
+  1. Run `mcts lint files` (whitespace, final newline, `forbiddenPathRegistry`,
+     `trackingGeneratedPaths` no-hand-edit) per
+     [phase-1-haskell-cli-surface.md → Sprint 1.4](phase-1-haskell-cli-surface.md).
+  2. Run `mcts lint docs` (generated-section drift on the `GeneratedSectionRule`
+     registry) per
+     [phase-1-haskell-cli-surface.md → Sprint 1.3](phase-1-haskell-cli-surface.md).
+  3. Run `cabal build all` warning-clean under the pinned toolchain. (`mcts lint
+     haskell` is exercised inside the `mcts-haskell-style` Cabal stanza in step 4;
+     it does not need its own plan step here.)
+  4. Run `cabal test mcts-haskell-style` (`fourmolu --mode check` + `hlint
+     --with-group=default --with-group=extra` + `cabal format` round-trip).
+  5. Run `cabal test mcts-unit`.
+  6. Run `cabal test mcts-integration`.
+  7. Run `cabal test mcts-cross-backend`.
+  8. Run `cabal test mcts-legacy-parity`.
+  9. Run the pinned report-card workload — the **seven invocations** below,
      enumerated verbatim from
      [../README.md → mcts test all → Report-card workload](../README.md)
      (README lines 223–246). The `--dry-run` plan must render these seven
@@ -225,7 +240,7 @@ and emits the tidy summary block answering Q1–Q7 in one screenful.
      Sprint 7.3 closes only when this enumeration is regenerated from a
      literal scrape of README lines 223–246 and a golden test asserts
      byte-equality with the rendered `--dry-run` plan.
-  7. Render the tidy summary block from the collected `ReportCard` value.
+  10. Render the tidy summary block from the collected `ReportCard` value.
 - `--dry-run` renders the entire `[Subprocess]` plan and exits 0. `--plan-file
   <path>` writes the rendered plan to a file.
 - `src/MCTS/ReportCard.hs` declares the typed `ReportCard` record carrying the
@@ -319,11 +334,16 @@ so the contract is reviewable in one place:
 
 ### Validation
 
-1. `mcts test all --dry-run` renders the twelve-step plan (five `cabal test`
-   stanzas plus the seven pinned `mcts bench` / `mcts verify` report-card
-   invocations enumerated above) and exits 0. The rendered plan byte-equals
-   the literal README workload block (lines 223–246) with the `$G_*` / `$S_*`
-   knobs substituted from `cabal.project`.
+1. `mcts test all --dry-run` renders the full plan and exits 0. The plan
+   carries fifteen typed-`Subprocess` steps: three lint/build prerequisites
+   (`mcts lint files`, `mcts lint docs`, `cabal build all`); five `cabal test`
+   stanzas (`mcts-haskell-style`, `mcts-unit`, `mcts-integration`,
+   `mcts-cross-backend`, `mcts-legacy-parity`); and the seven pinned
+   `mcts bench` / `mcts verify` report-card invocations enumerated above
+   (rendering the summary block is a pure final step, not a subprocess). The
+   seven report-card lines byte-equal the literal README workload block
+   (lines 223–246) with the `$G_*` / `$S_*` knobs substituted from
+   `cabal.project`.
 2. `mcts test all` runs end-to-end with all five backends and emits the tidy
    summary block.
 3. `mcts test all --format json` emits valid JSON that schema-checks against a
@@ -373,7 +393,10 @@ a stored transcript with equity recomputed on the fly.
   - `Ctrl-C` during AI turn cancels the in-progress search; `Ctrl-C` at the
     prompt is `:quit`.
   - Any other `:`-prefixed input renders `AppError UnknownCommand` to the
-    status bar.
+    status bar. Malformed move notation renders `AppError InvalidMove` the same
+    way. Game state is left untouched in both cases; control returns to the
+    prompt. All in-app error renderings route through the same `renderError`
+    boundary the non-interactive commands use.
   - **Seed handling.** `playSeed :: Maybe Word64`. When `--seed` is not
     supplied, the driver draws a fresh `Word64` from system entropy (the
     standard splitmix seeder), records it in the transcript header's
@@ -433,6 +456,95 @@ a stored transcript with equity recomputed on the fly.
 ### Remaining Work
 
 Not started.
+
+## Sprint 7.5: Layered Envelope Verify and Divergence Matrix 📋
+
+### Objective
+
+Enforce the layered engine-envelope rule in `mcts verify` per
+[../documents/engineering/determinism_contract.md → Engine
+Envelope](../documents/engineering/determinism_contract.md), add the
+`--allow-stale` escape hatch for forensic comparisons, and extend the
+`mcts test all` report-card workload with the cross-backend
+divergence-rate matrix from
+[../documents/engineering/determinism_contract.md → Divergence
+Smell](../documents/engineering/determinism_contract.md).
+
+### Deliverables
+
+- `src/MCTS/Verify/Envelope.hs` — `checkCohortInvariant ::
+  NonEmpty Transcript -> Either AppError ()` and
+  `checkBackendSlot :: LiveBinaries -> Transcript -> Either
+  AppError ()`. The first reduces over the cohort and emits
+  `EngineEnvelopeMismatch CohortLevel field expected got` on the
+  first cohort-invariant disagreement; the second compares the
+  cached transcript's per-backend-slot envelope against the live
+  binary's `mcts_<backend>_get_envelope()` value and emits
+  `EngineEnvelopeMismatch (BackendSlot b) field expected got` on the
+  first disagreement.
+- `VerifyOptions` gains `verifyAllowStale :: Bool` (CLI flag
+  `--allow-stale`). When set, `BackendSlot` mismatches are downgraded
+  to warnings rendered through `renderError` to stderr; verify
+  continues on visits. `CohortLevel` mismatches remain hard fails
+  regardless.
+- `src/MCTS/Verify/Divergence.hs` — `divergenceRate :: Transcript ->
+  EqStream -> DivergenceMetrics` computes
+  `visit_disagreement_rate`, `move_disagreement_rate`, and
+  `equity_l2_drift` for a `(transcript, foreign-backend recompute)`
+  pair. The full divergence matrix is `forM
+  cohort_backends (recompute_then_score)`.
+- `cabal.project` gains four pinned thresholds:
+  `MOVE_DELTA_NATIVE_MAX = 0.005`, `VISIT_DELTA_NATIVE_MAX = 0.05`,
+  `MOVE_DELTA_CROSS_BUILD_MAX = 0.001`, `VISIT_DELTA_CROSS_BUILD_MAX
+  = 0.01`. Phase 7 calibration runs may relax these; commits must
+  update both `cabal.project` and
+  [../documents/engineering/determinism_contract.md → Divergence
+  Smell → Thresholds](../documents/engineering/determinism_contract.md)
+  in the same change.
+- `mcts test all` report-card workload extension: the tidy summary
+  block gains a per-backend-pair divergence matrix
+  (`visit_disagreement_rate` / `move_disagreement_rate` over the
+  recorded `G_V = 50` games). Under `--rng cpp` every off-diagonal
+  element should read `0.0% / 0.0%`; anything else triggers a warn
+  banner in the summary.
+- `src/MCTS/CLI/Inspect/Divergence.hs` — `mcts inspect divergence
+  <hash-prefix>` emits the divergence matrix for a single transcript
+  across every cached `(backend, build)` slot, computed via the same
+  `divergenceRate` helper. Forensic command; output renders through
+  the same `--format json|table|plain` discipline as the rest of the
+  non-TUI surface.
+
+### Validation
+
+- `mcts-cross-backend`: a cohort whose two transcripts disagree on
+  `shared_rng_build_id` (synthesized via a build-harness flag for
+  test purposes only) fails verify with `AppError
+  EngineEnvelopeMismatch CohortLevel SharedRngBuildId`. The test
+  also confirms `--allow-stale` does NOT rescue this case (cohort-
+  level mismatches are hard-fail by contract).
+- `mcts-cross-backend`: stale-cache test — write a transcript with
+  the current `cpp-imperative` binary, rebuild `cpp-imperative` with
+  a `compiler_version` bump (simulated), re-run `mcts verify`,
+  assert `AppError EngineEnvelopeMismatch (BackendSlot
+  CppImperative) CompilerVersion expected got` without
+  `--allow-stale`, and assert success-with-warning when
+  `--allow-stale` is passed.
+- `mcts-integration` REPL multi-backend overlay test: open a stored
+  transcript in `inspect replay`, request the haskell column with
+  `r`, assert the `.eq` sidecar is created and the recompute path
+  matches visits; re-open the same transcript, assert the column
+  populates instantly from cache (no FFI compute invoked, via a
+  test-hook counter).
+- `mcts-integration` report-card divergence matrix: the `mcts test
+  all` summary contains a four-row matrix with `--rng cpp`
+  diagonals at zero and a footnote on the empirically-pinned
+  threshold values.
+
+### Remaining Work
+
+Not started. Blocked by Sprints 4.7, 5.5, 6.5 (per-backend envelopes
+and recompute FFI), Sprint 7.4 (REPL), and Sprint 2.7 (sidecar
+codec).
 
 ## Documentation Requirements
 

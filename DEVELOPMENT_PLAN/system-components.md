@@ -44,17 +44,21 @@ preserves cleanup and retirement history separately.
 | Self-play benchmark | `mcts bench selfplay` | Full UCT search with random-rollout leaf evaluation, adversarial self-play | 📋 Planned | Sprint 7.1 |
 | Rollouts verify | `mcts verify rollouts` | Round-robin visit-count equality across the `(ii)..(v)` cohort under `--rng cpp` | 📋 Planned | Sprint 7.2 |
 | Self-play verify | `mcts verify selfplay` | Round-robin self-play visit-count equality across the `(ii)..(v)` cohort | 📋 Planned | Sprint 7.2 |
-| Legacy parity verify | `mcts verify legacy-parity` | 5-backend round-robin under `max_plies = 10000`, pinned fixture seed, `--rng cpp` | 📋 Planned | Sprint 7.2 |
+| Legacy parity verify | `mcts verify legacy-parity {rollouts\|selfplay}` | 5-backend round-robin under `max_plies = 10000`, pinned fixture seed, `--rng cpp`; workload dispatched by `LegacyParityWorkload` | 📋 Planned | Sprint 7.2 |
 | Interactive game | `mcts play` | TUI human-vs-AI or AI-vs-AI spectate with live board rendering | 📋 Planned | Sprint 7.4 |
 | Transcript list | `mcts inspect list` | Non-interactive enumeration of the local transcript cache | 📋 Planned | Sprint 2.4 |
 | Transcript show | `mcts inspect show <hash-prefix>` | Non-interactive dump in legacy move notation, optional `--with-equity` recompute | 📋 Planned | Sprint 2.4 |
 | Transcript replay | `mcts inspect replay <hash-prefix>` | Interactive `brick` TUI for forward/back navigation with equity recompute | 📋 Planned | Sprint 7.4 |
+| Sidecar cache list | `mcts inspect cache list` | Enumerate equity-sidecar `(backend, build)` slots cohabiting each cached transcript | 📋 Planned | Sprint 2.7 |
+| Sidecar cache prune | `mcts inspect cache prune [--keep-current]` | Delete envelope-mismatched equity sidecars; `--keep-current` retains slots matching live binaries | 📋 Planned | Sprint 2.7 |
+| Divergence matrix | `mcts inspect divergence <hash-prefix>` | Emit the cross-backend divergence-rate matrix (`visit-Δ`, `move-Δ`, `equity-L2`) for a single transcript across cached backend columns | 📋 Planned | Sprint 7.5 |
 | Test runner | `mcts test all` / `mcts test <stanza>` | Plan/Apply over Cabal test stanzas plus the pinned report-card workload | 📋 Planned | Sprint 7.3 |
 | Lint stack | `mcts lint files\|docs\|haskell\|all` | Whitespace, final newline, forbidden paths, generated sections, formatter + hlint + `cabal format` | 📋 Planned | Sprint 1.4 |
 | Docs generation | `mcts docs check` / `mcts docs generate` | Paired generated-section check and write per the `GeneratedSectionRule` registry | 📋 Planned | Sprint 1.3 |
 | Command introspection | `mcts commands [--tree\|--json]` | Flat list, tree rendering, or JSON command schema from the `CommandSpec` registry | 📋 Planned | Sprint 1.2 |
 | Focused help | `mcts help <subcommand>` | Equivalent to `<subcommand> --help`; same renderer as the `--help` path | 📋 Planned | Sprint 1.2 |
-| Code quality gate | `mcts check-code` | Doctrine-alignment enforcement, formatter, hlint, warning-clean build, forbidden-path scan | 📋 Planned | Sprint 1.5 |
+| Code quality gate | `mcts check-code` | Doctrine-alignment enforcement, formatter, hlint, warning-clean build, forbidden-path scan | 📋 Planned | Sprint 1.4 |
+| Per-backend build harness | `mcts build {cpp-legacy\|cpp-imperative\|cpp-functional\|rust}` | Plan/Apply per-backend PGO+BOLT+`mimalloc` pipeline (legacy-flags subset for `cpp-legacy`) | 📋 Planned | Sprint 4.1, Sprint 5.3, Sprint 6.2, Sprint 6.4 |
 
 ## Transcript Codec and Determinism
 
@@ -62,13 +66,27 @@ preserves cleanup and retirement history separately.
 |-----------|----------------|--------|---------------|
 | Wire-format header | `src/MCTS/Transcript/Header.hs` | 📋 Planned | Sprint 2.1 |
 | Per-move record codec | `src/MCTS/Transcript/Record.hs` | 📋 Planned | Sprint 2.1 |
-| 255-action canonical enumeration | `src/MCTS/Transcript/Action.hs` | 📋 Planned | Sprint 2.1 |
+| Single-byte action enumeration | `src/MCTS/Transcript/Action.hs` | 📋 Planned | Sprint 2.1 |
 | Content-addressed hash (`sha256(run_config)`) | `src/MCTS/Transcript/Hash.hs` | 📋 Planned | Sprint 2.2 |
 | Cache root resolution (`--cache-dir` → `$MCTS_CACHE_DIR` → `./.mcts-cache/`) | `src/MCTS/Transcript/Cache.hs` | 📋 Planned | Sprint 2.2 |
 | Git-style hash-prefix lookup (≥ 4 hex chars; `AppError TranscriptNotFound` / `AppError TranscriptAmbiguous`) | `src/MCTS/Transcript/Lookup.hs` | 📋 Planned | Sprint 2.3 |
 | `splitmix64(master_seed, game_index)` per-game seed derivation | `src/MCTS/Rng/Mix.hs` | 📋 Planned | Sprint 2.5 |
 | `--rng cpp` shared `std::mt19937_64` FFI bridge | `src/MCTS/Rng/Cpp.hs`, `cpp-legacy/c-abi/rng.h` | 📋 Planned | Sprint 4.3 |
 | `--rng native` per-backend selection (splitmix for Haskell, `rand` for Rust, `xoshiro256++` / `wyrand` candidate for C++) | `src/MCTS/Rng/Native.hs` | 📋 Planned | Sprint 2.5 |
+| Engine envelope codec (envelope block in transcript header; cohort-invariant vs per-backend-slot fields; excluded from `sha256(RunConfig)`) | `src/MCTS/Transcript/Envelope.hs` | 📋 Planned | Sprint 2.6 |
+| Per-backend envelope capture (build-id, compiler ID/version, fp_flags, libm_id, cpu_features, fp_env) | `<backend>/c-abi/envelope.{h,cc}` (Phase 4/5/6 for cpp/rust); `src/MCTS/Engine/Envelope.hs` (Phase 3 for haskell) | 📋 Planned | Sprint 3.6, 4.7, 5.5, 6.5 |
+| Equity sidecar codec (`.eq` + `.envelope` neighbour, atomic-write, multi-build cohabitation) | `src/MCTS/Transcript/EquitySidecar.hs` | 📋 Planned | Sprint 2.7 |
+| Foreign-engine recompute (`mcts_<backend>_recompute_equities` FFI; in-process `Recompute.hs` for haskell) | per-backend C ABI + `src/MCTS/Engine/Recompute.hs` | 📋 Planned | Sprint 3.6, 4.7, 5.5, 6.5 |
+| Layered envelope verify (`CohortLevel` + `BackendSlot` rule with `--allow-stale`) | `src/MCTS/Verify/Envelope.hs` | 📋 Planned | Sprint 7.5 |
+| Divergence-rate metric (`visit_disagreement_rate`, `move_disagreement_rate`, `equity_l2_drift`) | `src/MCTS/Verify/Divergence.hs` | 📋 Planned | Sprint 7.5 |
+
+The engine envelope is a **cross-component invariant**: every transcript
+writer (Phases 3, 4, 5, 6 per-backend drivers) stamps it; every transcript
+reader (the codec, `mcts verify`, `mcts inspect show --envelope`, `mcts
+inspect replay`'s status line) inspects it; the report card surfaces its
+match status. Adding a new substrate-affecting build dimension (e.g.,
+switching from glibc to musl in the Dockerfile) requires updating the
+envelope's `libm_id` capture path, not the determinism contract itself.
 
 ## CLI Doctrine Components
 
@@ -86,17 +104,17 @@ consume them. Citations name the doctrine sections they implement per standards 
 | `mcts commands --tree` and `mcts commands --json` introspection | Progressive Introspection | 📋 Planned | Sprint 1.2 |
 | `Subprocess` ADT plus `runStreaming` / `capture` interpreter; pure `renderSubprocess` | Architecture → Subprocesses as Typed Values | 📋 Planned | Sprint 1.6 |
 | Forbidden subprocess primitives (`callProcess`, `readCreateProcess`, `System.Process` constructors, `typed-process` smart constructors) | Architecture → Subprocesses as Typed Values | 📋 Planned | Sprint 1.6 |
-| `Plan` / `apply` boundary with `--dry-run` and `--plan-file <path>` | Plan / Apply | 📋 Planned | Sprint 1.7 |
-| `prerequisiteRegistry` with `nodeId`, `nodeDescription`, remedy hint, transitive closure | Prerequisites as Typed Effects | 📋 Planned | Sprint 1.8 |
-| Single `Env` record threaded via `ReaderT Env IO` | Application Environment | 📋 Planned | Sprint 1.9 |
-| Single `AppError` ADT (`TranscriptNotFound`, `TranscriptAmbiguous`, `VerifyMismatch`, `VerifyCohortTooSmall`, `LegacyParityRolloutOverflow`, `PrerequisiteUnmet`, `SubprocessFailed`, `FFIFailure`, `UnknownCommand`, `InvalidMove`, …) | Error Handling | 📋 Planned | Sprint 1.9 |
+| `Plan` / `apply` boundary with `--dry-run` and `--plan-file <path>` | Plan / Apply | 📋 Planned | Sprint 1.5 |
+| `prerequisiteRegistry` with `nodeId`, `nodeDescription`, remedy hint, transitive closure | Prerequisites as Typed Effects | 📋 Planned | Sprint 1.7 |
+| Single `Env` record threaded via `ReaderT Env IO` | Application Environment | 📋 Planned | Sprint 1.8 |
+| Single `AppError` ADT (`TranscriptNotFound`, `TranscriptAmbiguous`, `TranscriptFormatUnsupported`, `VerifyMismatch`, `VerifyCohortTooSmall`, `RecomputeMismatch`, `LegacyParityRolloutOverflow`, `ArchEnvelopeMismatch`, `EngineEnvelopeMismatch`, `PrerequisiteUnmet`, `SubprocessFailed`, `FFIFailure`, `DocsCheckDrift`, `UnknownCommand`, `InvalidMove`) | Error Handling | 📋 Planned | Sprint 1.9 |
 | `renderError :: AppError -> Text` boundary | Error Handling | 📋 Planned | Sprint 1.9 |
 | HLint rules refusing `print`, `exitFailure`, direct terminal formatting outside the output module | Error Handling | 📋 Planned | Sprint 1.4 |
 | `--format json\|table\|plain` (default `table` on TTY else `plain`) | Output Rules | 📋 Planned | Sprint 1.9 |
 | `--color auto\|always\|never` plus `--no-color` | Output Rules | 📋 Planned | Sprint 1.9 |
 | `fourmolu.yaml` 12-setting list at repo root | Lint, Format, and Code-Quality Stack → Pinned fourmolu.yaml | 📋 Planned | Sprint 1.4 |
 | `cabal format` temp-file round-trip byte-equality check | Lint, Format, and Code-Quality Stack | 📋 Planned | Sprint 1.4 |
-| `forbiddenPathRegistry` (`.github/workflows/`, `.husky/`, `.githooks/`, root `Makefile`/`justfile`/`Taskfile.yml`) | Lint, Format, and Code-Quality Stack → Forbidden Surfaces | 📋 Planned | Sprint 1.4 |
+| `forbiddenPathRegistry` (`.github/workflows/`, `.husky/`, `.githooks/`, `.pre-commit-config.yaml`, `pre-commit-*.yaml`, root `Makefile`/`justfile`/`Taskfile.yml`) | Lint, Format, and Code-Quality Stack → Forbidden Surfaces | 📋 Planned | Sprint 1.4 |
 | `GeneratedSectionRule` registry for marker-delimited generated regions | Generated Artifacts → The generated-section registry | 📋 Planned | Sprint 1.3 |
 | `trackingGeneratedPaths` registry for fully-generated files (manpages, shell completions) | Generated Artifacts → Two categories of generation | 📋 Planned | Sprint 1.3 |
 | Canonical property-test invariants (`decode . encode == id`, `render is deterministic`, `parser roundtrips`) | Test Categories → Property Tests | 📋 Planned | Sprint 7.1 |
@@ -150,12 +168,13 @@ Pinned in `cabal.project` for reproducibility across hosts; see
 | `mimalloc` | Pinned in `docker/Dockerfile` | System allocator for backends (ii), (iii), (iv); static link preferred for FFI determinism | 📋 Planned | Sprint 5.3, Sprint 6.4 |
 | BOLT | Pinned LLVM version | Post-link binary reordering after PGO for backends (ii), (iii), (iv) | 📋 Planned | Sprint 5.3 |
 | `ghcup` | Latest stable | Manages the pinned GHC and Cabal versions inside the container | 📋 Planned | Sprint 1.1 |
+| Target platforms | `amd64` Linux + `arm64` Linux | Both architectures supported; reproducibility envelope is per-architecture (transcripts and report-card metadata carry a `host_arch` tag); cross-arch bit-equality not guaranteed. See [00-overview.md → Hard Constraints item 36](00-overview.md) and [../documents/engineering/determinism_contract.md → Architecture Envelope](../documents/engineering/determinism_contract.md) | 📋 Pinned | n/a |
 
 ## State Locations
 
 | State Class | Authority | Durable Home | Notes |
 |-------------|-----------|--------------|-------|
-| Transcript cache | `mcts` CLI | `--cache-dir <path>` → `$MCTS_CACHE_DIR` → `./.mcts-cache/transcripts/<sha>.tr` | `.gitignore`'d when inside the project tree; per-game files content-addressed by `sha256(run_config)` (or `sha256(run_config \|\| move_history)` for `mcts play`-recorded transcripts) |
+| Transcript cache | `mcts` CLI | `--cache-dir <path>` → `$MCTS_CACHE_DIR` → `./.mcts-cache/transcripts/<arch>/<sha>.tr` (arch ∈ `{amd64, arm64}`); per-transcript sidecar directory `./.mcts-cache/transcripts/<arch>/<sha>/<backend>-<engine_build_id_prefix16>.eq` plus `.envelope` neighbour for cached equity series | `.gitignore`'d when inside the project tree; transcript files content-addressed by `sha256(run_config)` (or `sha256(run_config \|\| move_history)` for `mcts play`-recorded transcripts); arch-partitioned per [../README.md → Architecture envelope](../README.md); sidecar `.eq` files multi-build-cohabitable (one per `(backend, build)` slot), prunable via `mcts inspect cache prune` |
 | Legacy fixture set | Out-of-band from `~/MCTS_legacy/` | `test/golden/legacy/` | Authoritative Q6 reference; checked into the repo |
 | Retirement golden anchors | `mcts` CLI on retirement | `test/golden/<backend>/` | Frozen transcripts and throughput numbers for each retired backend; populated by the retirement protocol in Phase 8 |
 | Build outputs | `cabal` plus per-backend `make` / `cargo` | `dist-newstyle/` (Cabal), per-backend `build/` directories | Operator-visible artefacts; rebuilt on demand |

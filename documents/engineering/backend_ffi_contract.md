@@ -50,6 +50,7 @@ backend-specific symbol prefix. The header lives in
 ### Opaque Handle Types
 
 ```c
+// Example: C ABI opaque handle types (per backend)
 typedef struct mcts_<backend>_board   mcts_<backend>_board;
 typedef struct mcts_<backend>_tree    mcts_<backend>_tree;
 typedef struct mcts_<backend>_rng     mcts_<backend>_rng;
@@ -61,6 +62,7 @@ state.
 ### Lifecycle
 
 ```c
+// Example: C ABI lifecycle entry points
 mcts_<backend>_board *mcts_<backend>_new_board(uint16_t max_plies);
 void                  mcts_<backend>_free_board(mcts_<backend>_board *b);
 
@@ -72,11 +74,16 @@ void                  mcts_<backend>_free_rng(mcts_<backend>_rng *r);
 ```
 
 `rng_kind` is `0 = native` or `1 = cpp`. Backend (i) always returns the
-`std::mt19937_64` generator regardless of `rng_kind`.
+`std::mt19937_64` generator regardless of `rng_kind`. The per-backend
+native generator that each backend returns for `rng_kind = 0` is pinned
+in [determinism_contract.md → Per-Backend Native RNG
+Table](./determinism_contract.md); profiling-driven swaps must update
+that table in the same change.
 
 ### Engine Operations
 
 ```c
+// Example: C ABI engine operations
 int                    mcts_<backend>_is_terminal(const mcts_<backend>_board *b);
 float                  mcts_<backend>_terminal_eval(const mcts_<backend>_board *b);
 void                   mcts_<backend>_apply_move(mcts_<backend>_board *b, uint8_t action_id);
@@ -87,6 +94,7 @@ uint8_t                mcts_<backend>_legal_moves(const mcts_<backend>_board *b,
 ### Search Operations
 
 ```c
+// Example: C ABI search operations
 uint8_t                mcts_<backend>_select_uct_move(mcts_<backend>_tree *t,
                                                       const mcts_<backend>_board *b,
                                                       mcts_<backend>_rng *r,
@@ -105,6 +113,7 @@ For `inspect replay`, `mcts verify`, and the Q6 golden comparison, each backend
 provides a read-only instrumentation surface:
 
 ```c
+// Example: C ABI instrumentation read accessor (instrumented build only)
 uint32_t               mcts_<backend>_read_visits(const mcts_<backend>_tree *t,
                                                    uint32_t node_idx,
                                                    uint8_t *out_action,
@@ -115,6 +124,116 @@ uint32_t               mcts_<backend>_read_visits(const mcts_<backend>_tree *t,
 Returns the sorted (action, visits) vector for a given node. Available only when
 the backend is built in instrumented mode (see [Paired Build
 Targets](#paired-build-targets) below).
+
+### Engine Envelope Surface
+
+Each backend exposes a read-only envelope that captures its substrate
+metadata (build identity, compiler, libm, CPU features, FP environment)
+so the transcript codec can stamp the envelope into every transcript
+and `mcts verify` can enforce the layered cohort-invariant vs
+per-backend-slot rule from
+[determinism_contract.md → Engine Envelope](./determinism_contract.md).
+
+```c
+// Example: C ABI engine envelope struct and read accessor
+typedef struct {
+  uint16_t envelope_version;            // = 1
+  uint8_t  rng_source_envelope;         // matches the transcript header's rng_source
+  uint8_t  host_arch_envelope;          // matches the transcript header's host_arch
+  uint8_t  shared_rng_build_id[32];     // SHA-256 of cpp_rng.so; all-zero for --rng native
+  uint8_t  run_config_hash[32];         // sha256(RunConfig); filled by the codec, not by the backend
+  uint8_t  engine_build_id[32];         // SHA-256 of THIS backend's loaded .so / executable
+  char     engine_git_commit[40];       // project repo commit at build time, NUL-padded
+  uint8_t  compiler_id;                 // 0=gcc, 1=clang, 2=rustc, 3=ghc
+  uint8_t  compiler_version_len;        // ≤63
+  char     compiler_version[63];        // length-prefixed ASCII; NOT NUL-terminated
+  uint32_t fp_flags;                    // bitfield per envelope spec
+  uint8_t  libm_id_len;                 // ≤63
+  char     libm_id[63];                 // length-prefixed ASCII
+  uint32_t cpu_features;                // bitfield per envelope spec
+  uint8_t  fp_env;                      // rounding mode + FTZ + DAZ
+} mcts_<backend>_envelope;
+
+const mcts_<backend>_envelope *mcts_<backend>_get_envelope(void);
+```
+
+The pointer returned by `mcts_<backend>_get_envelope` references
+process-static memory and is valid for the lifetime of the loaded shared
+library — no allocation, no ownership transfer, no free. The C struct
+layout above mirrors the wire-format envelope in
+[transcript_format.md → Envelope Block](./transcript_format.md);
+marshalling the struct to the wire format is a memcpy of the
+non-length-prefixed fields plus length-prefixed copies of
+`compiler_version[0..compiler_version_len)` and
+`libm_id[0..libm_id_len)`.
+
+#### Field Capture Protocol
+
+- **`engine_build_id`**: filled by a build step that hashes the linked
+  shared library / executable and embeds the digest as a `const char[32]`
+  at link time (`objcopy --update-section .build_id=<digest>` or
+  equivalent for each toolchain). The `engine_build_id` is therefore
+  the SHA-256 of the same binary that exports it; computing it requires
+  the build harness to link, hash, then patch the embedded constant.
+- **`engine_git_commit`**: the project repo commit SHA, passed at
+  compile time via `-DMCTS_GIT_COMMIT="..."` (or Cargo build env).
+- **`compiler_id` / `compiler_version`**: derived at compile time from
+  toolchain-provided macros (`__GNUC__` / `__GNUC_MINOR__` /
+  `__GNUC_PATCHLEVEL__` for GCC; `__clang_major__` etc.; `RUSTC_VERSION`
+  for Rust; `__GLASGOW_HASKELL__` for GHC).
+- **`fp_flags`**: derived at compile time from explicit
+  `-D` markers the build harness emits to mirror its own flag set
+  (e.g., `-DMCTS_FP_FAST_MATH=0 -DMCTS_FP_FMA_ALLOWED=1`).
+- **`libm_id`**: derived at compile time from a probe (the build
+  harness reads `getconf GNU_LIBC_VERSION` on glibc systems, `ldd --version`
+  fallback, or "rust-libm-x.y" for Rust which links its own libm).
+- **`cpu_features`**: captured at runtime when the static envelope is
+  first referenced, via `__builtin_cpu_supports` (GCC/Clang),
+  `is_x86_feature_detected!` (Rust), or build-flag inspection (Haskell).
+  The first call to `mcts_<backend>_get_envelope` triggers the probe
+  and caches the result for the process lifetime.
+- **`fp_env`**: captured at runtime at first `get_envelope` call via
+  `fegetround` plus a probe of MXCSR / SSE control bits for FTZ/DAZ.
+
+### Foreign-Engine Recompute
+
+The REPL's multi-backend overlay needs to recompute the per-move equity
+series for any backend on a transcript that any *other* backend
+produced. Each backend exposes:
+
+```c
+// Example: foreign-engine equity-recompute stream API
+// Streams (move_index, action_id, visits, equity) records for the given transcript bytes.
+// Returns NULL on parse failure; on success, the caller must call `mcts_<backend>_free_eq_stream`.
+mcts_<backend>_eq_stream *mcts_<backend>_recompute_equities(
+    const uint8_t *transcript_bytes, size_t transcript_len);
+
+// Pulls one per-move record. Returns 1 on success, 0 on stream end, -1 on error.
+int mcts_<backend>_eq_stream_next(
+    mcts_<backend>_eq_stream *s,
+    uint16_t *out_move_index,
+    uint16_t *out_n_alternatives,
+    uint8_t  *out_action_buf,      // capacity ≥ 209
+    uint32_t *out_visits_buf,      // capacity ≥ 209
+    double   *out_equity_buf);     // capacity ≥ 209
+
+void mcts_<backend>_free_eq_stream(mcts_<backend>_eq_stream *s);
+```
+
+The recompute reads the transcript's `RunConfig`, replays the search
+from move 0 using the transcript's seed and budget, and emits one record
+per move. Under `--rng cpp` the recompute **hard-asserts** visit-
+agreement with the transcript's recorded visits at every move and
+returns `-1` on disagreement (the determinism contract is binding);
+under `--rng native` or for a foreign backend on a `--rng cpp`
+transcript, the recompute does not abort on visit disagreement but the
+disagreement contributes to the divergence-smell metric (see
+[determinism_contract.md → Divergence Smell](./determinism_contract.md)).
+
+This is the FFI the REPL's per-backend column populates from. The result
+caches in `<cache-root>/transcripts/<arch>/<sha>/<backend>-<build_prefix16>.eq`
+(see [transcript_format.md → Equity Sidecar Cache](./transcript_format.md))
+so subsequent column opens are instant.
 
 ## Haskell-Side Import Policy
 
@@ -153,6 +272,7 @@ the four exact symbols required by
 [../../README.md → Cross-backend verification → RNG FFI contract](../../README.md):
 
 ```c
+// Example: shared cpp_rng C ABI (unprefixed canonical symbols)
 cpp_rng* cpp_rng_new(uint64_t seed);
 uint64_t cpp_rng_next_u64(cpp_rng*);
 cpp_rng* cpp_rng_split(uint64_t master_seed, uint64_t game_index);
@@ -192,7 +312,24 @@ about the `cpp-legacy` shared library directly.
 
 ## Paired Build Targets
 
-Each backend produces two build targets:
+Each backend produces two build targets — **except backend (i) `cpp-legacy`,
+which is exempt** and ships a single shared library
+`cpp-legacy/libmcts_cpp_legacy.so`. The verbatim port has no instrumentation
+to disable: the legacy C++ engine has neither a transcript writer nor a
+`read_visits` symbol of its own, and the C ABI shim is too thin to host a
+template flag. The Haskell-side `src/MCTS/Driver/CppLegacy.hs` carries the
+transcript writer and the instrumentation surface on top of the shared library.
+The exemption is end-to-end: backend (i) has neither a paired pair of
+`.so` artefacts nor a paired pair of Haskell-side Cabal stanzas. The
+single `libmcts_cpp_legacy.so` is what every consumer — `mcts bench`,
+`mcts verify`, `mcts play`, `mcts inspect replay` — loads, and the
+Haskell driver gates instrumentation behaviourally rather than by build
+target. See
+[../../DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md → Sprint 4.4](../../DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md)
+for the exemption rationale.
+
+For the four steelman backends — (ii) `cpp-imperative`, (iii) `cpp-functional`,
+(iv) `rust`, and (v) `haskell` (the in-process Haskell backend's two stanzas):
 
 - `*-bench` — no instrumentation. The binary is byte-identical to one where the
   instrumentation feature does not exist. Used for benchmark runs where any
@@ -223,6 +360,7 @@ and elaborated in
 The carried payload is:
 
 ```haskell
+-- Example: AppError carrying FFIFailure (distinct from SubprocessFailed)
 data AppError
   = ...
   | FFIFailure
@@ -258,6 +396,53 @@ per-symbol `unsafe`/`safe` policy above, not the `Subprocess` interpreter.
 - `legal_moves` writes into a caller-provided buffer; the buffer is allocated
   Haskell-side and the C++/Rust side only fills it. No buffer ownership crosses
   the FFI boundary.
+
+## Domain-to-ABI Conversion Discipline
+
+The Haskell domain types — `Board`, `Action`, `Move`, `Tree`, `RunConfig` —
+**never** carry C ABI shape. They never embed `Ptr a`, `CInt`, `CDouble`,
+`CSize`, `CUChar`, or any other `Foreign.C.Types` member; they never expose
+`Storable` instances; and they never carry pinned `ForeignPtr` fields on
+their public surface. The domain is unambiguously Haskell-shaped: an
+`Action` is an `ActionId` (the bounded `Word8` newtype from
+[transcript_format.md → Action Enumeration](./transcript_format.md)), a
+`Move` is `(Action, Side)`, and so on.
+
+The conversion lives at the FFI boundary module and only there:
+
+- C struct shapes live in `src/MCTS/FFI/<Backend>.hsc` (or `.chs` if
+  `c2hs` is preferred for a given backend). The `.hsc` file `#include`s
+  the corresponding `<backend>/c-abi/mcts_<backend>.h` and exposes
+  `Storable` instances on FFI-only newtypes (e.g. `FFIBoardPtr`,
+  `FFITreeHandle`, `FFIActionByte`). These newtypes are not re-exported
+  from `MCTS.FFI.<Backend>` — the module re-exports only typed Haskell
+  surface (`SearchHandle`, `BoardHandle`, ...) and the `withBoard` /
+  `withTree` / `withRng` bracket helpers.
+- Marshalling functions are named `fromDomain` and `toDomain` (one
+  matched pair per domain type per backend), live next to the `foreign
+  import` declarations, and are the only functions in the module that
+  touch both a domain type and an FFI type. They are total when the
+  domain type's smart constructor has already enforced the input range
+  (`fromDomain (a :: Action) :: FFIActionByte` is total because `Action`
+  carries only `0..208 ∪ {255}`); the inverse `toDomain :: FFIActionByte
+  -> Either AppError Action` re-validates on decode because the C ABI
+  side may return arbitrary bytes.
+- Engine modules under `src/MCTS/Engine/` and CLI modules under
+  `src/MCTS/CLI/` import the typed Haskell surface only. A `Ptr CChar`
+  in `src/MCTS/Engine/Search.hs` would fail review.
+
+The benefit is concentrated, not theoretical: when a Haskell-level
+refactor reshuffles `Action` or `Board`, only the four FFI boundary
+modules need to update their marshalling. When a backend reshapes its
+struct layout (e.g. Phase 6's Rust backend changing `repr(C)`), only
+that backend's `.hsc` updates. The engine, the CLI, and the determinism
+property tests stay put.
+
+This discipline also keeps the `unsafe`/`safe` import policy easy to
+audit: every `foreign import ccall` is co-located with its
+`fromDomain` / `toDomain` pair, so the per-symbol classification (hot
+path → `unsafe`, lifecycle → `safe`) can be eyeballed by reading one
+file per backend rather than chasing call sites.
 
 ## Cross-References
 

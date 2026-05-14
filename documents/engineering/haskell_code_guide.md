@@ -81,13 +81,43 @@ the `prerequisiteRegistry`, and test-hook fields. The `newtype App = App
 
 ### `AppError` and `renderError`
 
-The single `AppError` ADT (Phase 1 Sprint 1.9) declares constructors for the
-project's named error conditions:
+The single `AppError` ADT (Phase 1 Sprint 1.9) declares the canonical 15-variant
+set. The set matches
+[../../README.md → Output and error discipline](../../README.md) exactly;
+`SubprocessFailed`, `FFIFailure`, `DocsCheckDrift`, and
+`EngineEnvelopeMismatch` are the MCTS-specific failure surfaces named
+alongside the user-facing variants:
 
 - `TranscriptNotFound`, `TranscriptAmbiguous` — hash-prefix lookup failures.
+- `TranscriptFormatUnsupported` — `MCTS.Transcript.Codec.decode` rejects a
+  transcript carrying a non-zero `flags u32` (reserved for future format
+  extensions); see
+  [transcript_format.md → Header](./transcript_format.md).
 - `VerifyMismatch`, `VerifyCohortTooSmall` — cross-backend verify failures.
+- `RecomputeMismatch` — `mcts inspect` recompute of an existing transcript
+  under `--rng cpp` disagrees with the recorded visits. Carries
+  `(Backend, GameId, MoveIndex, recomputed_record, recorded_record)`.
+  Distinct from `VerifyMismatch` because it indicates a single backend's
+  own determinism has broken against its prior recording (a bug bell), not
+  the expected cross-backend disagreement `verify` exists to surface. See
+  [determinism_contract.md → Recompute Mismatch Output](./determinism_contract.md).
 - `LegacyParityRolloutOverflow` — backend (i) throws or hits
   `MAX_ROLLOUT_ITERS`.
+- `ArchEnvelopeMismatch` — a transcript cohort or verify cohort spans more than
+  one `host_arch`; see
+  [determinism_contract.md → Architecture Envelope](./determinism_contract.md).
+- `EngineEnvelopeMismatch` — `mcts verify` detects a layered engine-envelope
+  disagreement: either a cohort-invariant field
+  (`host_arch`, `rng_source`, `shared_rng_build_id`, `run_config_hash`)
+  disagrees across the cohort, or a per-backend-slot field
+  (`engine_build_id`, `compiler_id`, `compiler_version`, `fp_flags`,
+  `libm_id`, `cpu_features`, `fp_env`) disagrees between a cached
+  transcript and the live binary for the same backend slot. Carries
+  an `EnvelopeMismatchScope` discriminator (`CohortLevel | BackendSlot
+  Backend`) plus `(field, expected, got)`. Cohort-level mismatches are
+  unconditionally hard fails; per-backend-slot mismatches are
+  downgradeable to a warning via `mcts verify --allow-stale`. See
+  [determinism_contract.md → Engine Envelope](./determinism_contract.md).
 - `PrerequisiteUnmet` — `prerequisiteRegistry` failure carrying the failing
   `nodeId`, `nodeDescription`, and remedy hint.
 - `SubprocessFailed` — `runStreaming` / `capture` returns a non-zero exit code
@@ -108,20 +138,116 @@ this.
 
 ### GADT-Indexed State Machines
 
-Three project state machines use phantom-type indices:
+Two project state machines use phantom-type indices per the doctrine's "more
+than two states ⇒ GADT-indexed" rule, with backend cohort membership encoded
+at the type level:
 
-- `SimBudget = FixedSims Int | RampedSims Int Int` — single-budget and per-move
-  ramped variants.
-- `Threading = SingleThreaded | MultiThreaded { workers :: Int }` — single and
-  multi-worker dispatch.
-- `VerifyBackend` and `LegacyParityBackend` — the type-level exclusion of
-  backend (i) from the default `verify` cohort and the type-level requirement of
-  backend (i) for the legacy-parity cohort. Phase 7 Sprint 7.2 owns the GADT
-  shape.
+- `VerifyBackend` — type-level exclusion of backend (i) from the default
+  `verify` cohort. Constructors: `VCppImperative | VCppFunctional | VRust |
+  VHaskell`. See
+  [determinism_contract.md → Cross-Backend Determinism (Q3)](./determinism_contract.md).
+- `LegacyParityBackend` — type-level requirement of backend (i) for the
+  legacy-parity cohort. Constructors: `LpCppLegacy | LpCppImperative |
+  LpCppFunctional | LpRust | LpHaskell` with `LpCppLegacy` mandated at parse
+  time. See
+  [determinism_contract.md → Legacy Parity Envelope](./determinism_contract.md).
 
-The doctrine's "more than two states ⇒ GADT-indexed" guidance applies; the
-two-state ADTs above (`SimBudget` is a sum of two constructors but the state
-space is conceptually two; `Threading` similarly) are allowed as plain ADTs.
+Phase 7 Sprint 7.2 owns the GADT shapes per
+[../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md →
+Sprint 7.2](../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md).
+
+`SimBudget`, `Threading`, and `Side` remain plain ADTs per
+[../../DEVELOPMENT_PLAN/00-overview.md → Doctrine Scope](../../DEVELOPMENT_PLAN/00-overview.md):
+each has a two-conceptual-state state space (fixed vs ramped budget; single vs
+multi threading; hero vs villain) and the doctrine's GADT mandate applies only
+to state machines with more than two conceptual states.
+
+### Total Functions on the Supported Path
+
+MCTS is a determinism-critical project: bottoms in transcript decoding, RNG
+state derivation, or move generation do not surface as graceful failures —
+they surface as cross-backend `verify` mismatches, golden-test diffs, or
+silent disagreement between two implementations of the same engine. The
+project therefore bans partial functions outright on the supported path.
+`Prelude.head`, `Prelude.tail`, `Prelude.init`, `Prelude.last`,
+`Prelude.read`, `Data.List.(!!)`, `Data.Maybe.fromJust`,
+`Data.Either.fromLeft`, and `Data.Either.fromRight` are forbidden;
+[code_quality.md → HLint Rules](./code_quality.md) carries the enforcement.
+Use `Data.List.NonEmpty` when the call site genuinely owns a non-empty
+list, `readMaybe` from `Text.Read` for parses, the `safe` package's
+`headMay` / `lastMay` when a `Maybe` is appropriate, or pattern-match with
+an explicit `AppError` branch. The hot inner loops of the Haskell engine
+(see [../../README.md → Backend (v) — Haskell](../../README.md)) use
+unboxed mutable arrays inside `ST s`, so the partial-function set on lists
+rarely shows up in the engine itself — but it bites in the CLI, transcript,
+and FFI marshalling layers, which is exactly where determinism damage
+would propagate the furthest.
+
+### Smart Constructors for Bounded Domain Types
+
+The transcript wire format and the determinism contract pin two
+range-bounded domains the type system can make unrepresentable when
+violated:
+
+- **Action enumeration** (single-byte action IDs). Valid: `0..208`
+  (`0..80` pawn moves, `81..144` horizontal walls, `145..208` vertical
+  walls). Reserved-for-extensions: `209..254`. Sentinel: `255`. See
+  [transcript_format.md → Action Enumeration](./transcript_format.md) for
+  the layout the wire format pins and
+  [../../README.md → Cross-backend verification](../../README.md) for the
+  contract.
+- **Ply counter** (`Word16` per board state). Valid: `0..max_plies`
+  (default `200`; pinned at `MAX_ROLLOUT_ITERS = 10000` for the
+  legacy-parity envelope). See
+  [../../README.md → Draw rule](../../README.md) and
+  [determinism_contract.md → Ply-Cap Draw Rule](./determinism_contract.md).
+
+The canonical pattern is a newtype with a smart constructor that returns
+`Either AppError`, the data constructor hidden from the module's exports,
+and a paired raw accessor for the inverse direction:
+
+```haskell
+-- Example: newtype + smart-constructor + raw-accessor pattern
+-- | Single-byte action identifier per the transcript wire format.
+--   Valid: 0..208 ∪ {255}.  209..254 reserved (must be rejected on decode).
+newtype ActionId = ActionId Word8
+  deriving stock (Eq, Ord, Show)
+  -- ^ Data constructor NOT exported from MCTS.Action.
+
+mkActionId :: Word8 -> Either AppError ActionId
+mkActionId w
+  | w <= 208 || w == 255 = Right (ActionId w)
+  | otherwise            = Left (TranscriptFormatUnsupported ...)
+
+unActionId :: ActionId -> Word8
+unActionId (ActionId w) = w
+
+-- | Game-state ply counter bounded by the run configuration's max_plies.
+newtype Ply = Ply Word16
+  deriving stock (Eq, Ord, Show)
+
+mkPly :: Word16 -> Word16 -> Either AppError Ply
+mkPly maxPlies w
+  | w <= maxPlies = Right (Ply w)
+  | otherwise     = Left (LegacyParityRolloutOverflow ...)
+```
+
+Two consequences worth pinning:
+
+1. **Phase 2's `decode . encode == id` property holds vacuously on the
+   valid-range subset.** Decoding constructs `ActionId` via the smart
+   constructor; the only `Word8` values the decoder will accept are exactly
+   the ones the encoder emits, so the QuickCheck generator over
+   `Word8 \ {209..254}` round-trips without further axioms.
+2. **The reserved range and the sentinel are encoded once.** Every reader
+   of the format reuses the smart constructor; there is no second copy of
+   the predicate to drift.
+
+The same pattern applies to other bounded scalars introduced later (sim
+budgets enforced positive, worker counts enforced `>= 1`, etc.). New
+bounded domains land alongside their smart constructor — adding the raw
+type without the constructor and validating ad-hoc at call sites is
+forbidden by review.
 
 ## Stack Deviations from Doctrine
 
@@ -138,6 +264,28 @@ Two recorded deviations from
   [../../DEVELOPMENT_PLAN/00-overview.md → Doctrine
   Scope](../../DEVELOPMENT_PLAN/00-overview.md), so the dependency does not
   enter the stack.
+
+## Doctrine Out of Scope
+
+[../../README.md → Doctrine scope](../../README.md) marks the following
+sections of `HASKELL_CLI_TOOL.md` as informational only — not binding on this
+project. Each is read as background context; none imposes obligations on the
+code:
+
+- **Long-Running Daemons in the Same Binary** (the CLI is short-running only;
+  this also covers the daemon-internal "Configuration: Dhall file with
+  mandatory hot reload" subsection).
+- **Capability Classes and Service Errors** (no external subsystems).
+- **Retry Policy as First-Class Values** (no external subsystems).
+- **At-Least-Once Event Processing** (no event stream).
+- **Reconcilers: Idempotent Mutation as a Single Command** (no managed state
+  in the world).
+- **Smart Constructors for Paired Resources** (no paired resources).
+- **Pulumi-Orchestrated Infrastructure Tests** (no cloud surface).
+
+Adding new code that invokes any of these patterns is a doctrine-scope change
+and requires updating
+[../../README.md → Doctrine scope](../../README.md) first.
 
 ## Cross-References
 

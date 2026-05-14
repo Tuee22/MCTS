@@ -72,19 +72,71 @@ identifiers, GHC build IDs) renders as sentinel placeholders in the golden file.
 The doctrine-mandatory canonical test command. Phase 7 Sprint 7.3 owns the
 implementation. The plan is a typed `[Subprocess]` sequence run via `Plan / Apply`:
 
-1. `cabal test mcts-haskell-style` (lint-first per the doctrine's `prodbox test
-   lint`-style lint-first ordering)
-2. `cabal test mcts-unit`
-3. `cabal test mcts-integration`
-4. `cabal test mcts-cross-backend`
-5. `cabal test mcts-legacy-parity`
-6. Pinned report-card workload (the eight `mcts bench` / `mcts verify` invocations
-   from the project [../../README.md → Report-card workload](../../README.md))
-7. Render the tidy summary block from the collected `ReportCard` value
+1. `mcts lint files` (whitespace, final newline, `forbiddenPathRegistry`,
+   `trackingGeneratedPaths` no-hand-edit) — first per the doctrine's
+   [Aggregate dispatch](../../HASKELL_CLI_TOOL.md) lint-first ordering.
+2. `mcts lint docs` (generated-section drift on the `GeneratedSectionRule` registry).
+3. `cabal build all` warning-clean under the pinned toolchain.
+4. `cabal test mcts-haskell-style` (`fourmolu --mode check` + `hlint` + `cabal
+   format` round-trip).
+5. `cabal test mcts-unit`.
+6. `cabal test mcts-integration`.
+7. `cabal test mcts-cross-backend`.
+8. `cabal test mcts-legacy-parity`.
+9. Pinned report-card workload — the seven `mcts bench` / `mcts verify`
+   invocations from the project
+   [../../README.md → Report-card workload](../../README.md) lines 223–246,
+   enumerated verbatim by
+   [../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md →
+   Sprint 7.3](../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md).
+10. Render the tidy summary block from the collected `ReportCard` value.
 
 `--dry-run` renders the typed plan and exits 0. `--plan-file <path>` writes the
 rendered plan for out-of-band review. `--format json` emits the JSON form of the
 `ReportCard` value for CI consumption.
+
+## POC Headline Questions
+
+The report card answers seven questions, verbatim from
+[../../README.md → POC headline questions](../../README.md):
+
+1. **Q1.** Does pure Haskell match maximally-optimised C++ (backend (ii)) on
+   benchmark (a) random rollouts, single-threaded and on 8 workers?
+2. **Q2.** Does pure Haskell match backend (ii) on benchmark (b) self-play,
+   single-threaded and on 8 workers?
+3. **Q3.** Do backends (ii), (iii), (iv), (v) agree bit-for-bit under
+   `--rng cpp` (round-robin verify on both rollouts and self-play)?
+4. **Q4.** Does same-backend determinism hold across runs (same backend, same
+   seed ⇒ identical transcripts) for every backend?
+5. **Q5.** How does each backend scale from `--threading single` to
+   `--threading multi --workers 8`? The text summary highlights Haskell and
+   C++ (ii) as the two anchors; the full per-backend scaling table is
+   available via `mcts test all --format json`.
+6. **Q6.** Does the verbatim port (i) faithfully reproduce `MCTS_legacy` on
+   benchmark (b)?
+7. **Q7.** Do all five backends agree round-robin under the legacy-parity
+   envelope (`max_plies = 10000`, fixture seed where (i) does not throw)?
+
+**Backend (i) basis caveat.** Backend (i) `cpp-legacy` is a verbatim port and
+inherits the legacy's lack of a game-level ply cap (see
+[../../README.md → Draw rule](../../README.md) and
+[determinism_contract.md](./determinism_contract.md)). Its Q1 / Q2 / Q5
+throughput numbers are therefore **not on the same basis** as backends
+(ii)–(v) under any `max_plies` other than `MAX_ROLLOUT_ITERS = 10000`: (i)'s
+games run to a positional win and are on average longer than the ply-capped
+games of (ii)–(v), so directly comparing games/sec misreads the engine
+budget. The report-card renderer appends the `backendBasisFootnotes`
+warning from [../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md
+→ Sprint 7.3](../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md)
+to any Q1 / Q2 / Q5 row produced for backend (i) under
+`max_plies != 10000`. The load-bearing Q1 / Q2 comparison is Haskell (v)
+versus C++ (ii), where both backends terminate identically; backend (i) is
+otherwise compared on equal footing only under the legacy-parity envelope
+(Q7), where the ply cap is pinned to `10000` and all five backends
+terminate identically. See
+[compiler_runtime_tuning.md](./compiler_runtime_tuning.md) for the
+backend (i) build flags that make the verbatim port non-comparable on raw
+throughput.
 
 ## Report Card
 
@@ -100,6 +152,13 @@ block](../../README.md). Renderer is pure; wall-clock numbers render to fixed
 precision (three significant figures for ratios, one decimal for throughputs in
 kilogames/s); no timestamps, no locale-dependent ordering, no terminal-width-
 dependent wrapping.
+
+A `mcts-unit` golden test asserts byte-equality between the rendered tidy
+summary block (with sentinel placeholders substituted for the live wall-clock
+numbers and host arch) and the literal layout pinned at
+[../../README.md → Tidy summary block](../../README.md) lines 255–273. Drift
+from the README layout fails the golden — the README's tidy summary is the
+source of truth for the renderer.
 
 ## Cross-References
 

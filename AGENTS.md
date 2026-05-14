@@ -16,3 +16,4 @@ This restriction applies to all variants and equivalents (e.g., `git commit -a`,
 
 - [`DEVELOPMENT_PLAN/README.md`](DEVELOPMENT_PLAN/README.md) — authoritative execution-ordered development plan.
 - [`HASKELL_CLI_TOOL.md`](HASKELL_CLI_TOOL.md) — authoritative CLI doctrine.
+- [`documents/documentation_standards.md`](documents/documentation_standards.md) — authoritative documentation-topology rules (SSoT, bidirectional links, generated sections).

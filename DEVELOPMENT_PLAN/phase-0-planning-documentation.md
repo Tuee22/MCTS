@@ -224,7 +224,19 @@ rule L.
     `plain`, `--color auto|always|never`, `--no-color`.
   - **Error Handling**: single `AppError` ADT, `renderError :: AppError -> Text`,
     forbidden `print`, `exitFailure`, direct terminal formatting outside the output
-    layer.
+    layer. The audit confirms the canonical 15-variant list is named in
+    [system-components.md → CLI Doctrine Components](system-components.md),
+    [phase-1-haskell-cli-surface.md → Sprint 1.9](phase-1-haskell-cli-surface.md),
+    and the doctrine-scope Error Handling bullet in [00-overview.md](00-overview.md):
+    `TranscriptNotFound`, `TranscriptAmbiguous`, `TranscriptFormatUnsupported`,
+    `VerifyMismatch`, `VerifyCohortTooSmall`, `RecomputeMismatch`,
+    `LegacyParityRolloutOverflow`,
+    `ArchEnvelopeMismatch`, `EngineEnvelopeMismatch`, `PrerequisiteUnmet`,
+    `SubprocessFailed`, `FFIFailure`, `DocsCheckDrift`, `UnknownCommand`,
+    `InvalidMove`. `TranscriptFormatUnsupported`, `ArchEnvelopeMismatch`, and
+    `EngineEnvelopeMismatch` are doctrine-required because the project README
+    pins them; the others mirror the README's enumeration plus the three
+    project-added surfaces.
   - **GADT-Indexed State Machines**: phantom-type indices, singleton witnesses, the
     forbidden runtime-status-enum-with-manual-validation pattern.
   - **Project-level documentation standards**: the six elements
@@ -349,7 +361,7 @@ doctrine — are:
   visit-count vs equity asymmetry, legacy parity envelope, the `VerifyBackend` /
   `LegacyParityBackend` GADT split.
 - `documents/engineering/transcript_format.md` — project-specific: little-endian
-  binary wire format, 255-action canonical enumeration, content addressing,
+  binary wire format, single-byte action enumeration, content addressing,
   hash-prefix lookup, header layout.
 - `documents/engineering/backend_ffi_contract.md` — project-specific: C ABI shape,
   `--rng cpp` plumbing through the FFI, instrumented vs bench build targets, the

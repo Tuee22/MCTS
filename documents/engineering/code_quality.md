@@ -58,8 +58,10 @@ one canonical `mcts` operator surface:
 
 - `.github/workflows/` — CI workflows are out of scope for this project's supported
   path.
-- `.husky/`, `.githooks/` — git hooks are out of scope; `mcts check-code` is the
-  only doctrine-alignment gate.
+- `.husky/`, `.githooks/`, `.pre-commit-config.yaml`, `pre-commit-*.yaml` — git
+  hooks and pre-commit shims are out of scope per
+  [../../HASKELL_CLI_TOOL.md → Forbidden Surfaces](../../HASKELL_CLI_TOOL.md);
+  `mcts check-code` is the only doctrine-alignment gate.
 - Root `Makefile`, `justfile`, `Taskfile.yml` — competing build orchestrators are
   refused. Per-backend Makefiles under `cpp-legacy/`, `cpp-imperative/`,
   `cpp-functional/`, and per-backend `Cargo.toml` under `rust/` are allowed and
@@ -86,6 +88,21 @@ plus negative-space rules:
   constructors are forbidden outside `src/MCTS/Subprocess.hs`.
 - Direct terminal-formatting calls (escape-sequence emission, raw ANSI codes)
   are forbidden outside `src/MCTS/CLI/Output.hs`.
+- **Partial functions are forbidden on the supported path.** `Prelude.head`,
+  `Prelude.tail`, `Prelude.init`, `Prelude.last`, `Prelude.read`,
+  `Data.List.(!!)`, `Data.Maybe.fromJust`, `Data.Either.fromLeft`, and
+  `Data.Either.fromRight` raise on inputs the type system already permits, so
+  a silent bottom in transcript decoding, RNG state derivation, or move
+  generation surfaces as a mysterious cross-backend `verify` mismatch instead
+  of a typed `AppError`. Remedy hint: use `Data.List.NonEmpty.head` /
+  `NonEmpty.tail` on a `NonEmpty`, `readMaybe` from `Text.Read`, pattern
+  matching with an explicit `AppError` branch, or the `safe` package's
+  `headMay` / `lastMay`. The `mcts-haskell-style` stanza picks these up
+  through `hlint --with-group=default --with-group=extra`; the bans appear
+  explicitly in `.hlint.yaml` so they survive future HLint default-set
+  changes. See [haskell_code_guide.md → Total functions on the supported
+  path](./haskell_code_guide.md) for the same rule expressed in code-guide
+  form.
 
 ### HLint Invocation
 
@@ -93,7 +110,8 @@ The `mcts-haskell-style` Cabal stanza invokes `hlint` with the exact flag pair
 pinned by [../../README.md → `mcts test all` → Test-suite
 stanzas](../../README.md):
 
-```
+```bash
+# Example: hlint invocation pinned by mcts-haskell-style
 hlint --with-group=default --with-group=extra
 ```
 
@@ -104,12 +122,30 @@ above ride alongside.
 
 ### `fourmolu.yaml`
 
-At repository root. Pins the twelve doctrine-mandated settings per
+At repository root. Pins the twelve doctrine-mandated settings (plus
+`respectful: true`) verbatim per
 [../../HASKELL_CLI_TOOL.md → Pinned fourmolu.yaml](../../HASKELL_CLI_TOOL.md):
-`indentation`, `column-limit`, `function-arrows`, `comma-style`,
-`import-export-style`, `indent-wheres`, `record-brace-space`,
-`newlines-between-decls`, `haddock-style`, `let-style`, `in-style`, `unicode`. Plus
-`respectful: true`.
+
+```yaml
+# Example: fourmolu.yaml at repository root
+indentation: 2
+column-limit: 100
+function-arrows: leading
+comma-style: leading
+import-export-style: leading
+indent-wheres: false
+record-brace-space: true
+newlines-between-decls: 1
+haddock-style: single-line
+let-style: auto
+in-style: right-align
+unicode: never
+respectful: true
+```
+
+`column-limit` is finite per doctrine (an unset or infinite column-limit
+defeats the readability proxy). The value `100` is the project's chosen ceiling
+within the doctrine's permitted range.
 
 The `mcts-haskell-style` Cabal stanza in `test/haskell-style/Main.hs` enforces the
 formatter, the linter, and the `cabal format` round-trip in one suite.

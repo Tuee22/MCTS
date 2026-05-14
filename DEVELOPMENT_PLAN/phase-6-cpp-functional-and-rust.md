@@ -136,6 +136,11 @@ variant.
   `mcts build cpp-functional`; the plan structure (instrumented build →
   training run → optimised build → BOLT post-link → `mimalloc` link) mirrors
   Phase 5 Sprint 5.3.
+- `src/MCTS/CLI/Command.hs` gains the `BuildCppFunctional` constructor on the
+  `BuildCommand` family per
+  [phase-1-haskell-cli-surface.md → Sprint 1.2 ownership note](phase-1-haskell-cli-surface.md),
+  with a matching `CommandSpec` leaf and an `Example`
+  (`mcts build cpp-functional --dry-run`) wired into the registry.
 - `src/MCTS/CLI/Bench.hs` dispatch table adds `--backend cpp-functional`.
 - `src/MCTS/CLI/Verify.hs` `VerifyBackend` GADT gains `VCppFunctional`.
 - The `prerequisiteRegistry` gains `libmcts-cpp-functional-built` plus the
@@ -266,7 +271,14 @@ dispatch, and the verify dispatch.
   1. **Instrumented build.** `cargo build --release` with
      `RUSTFLAGS="-Cprofile-generate=rust/pgo-profile/ -C target-cpu=native ..."`.
   2. **Training run.** Run `mcts bench selfplay --backend rust --threading
-     single --rng cpp --games 100 --seed 42 --sims 10000`.
+     multi --workers 8 --rng cpp --games $PGO_TRAINING_GAMES --seed 42 --sims
+     $PGO_TRAINING_SIMS` using the same pinned tuple
+     (`($PGO_TRAINING_GAMES, $PGO_TRAINING_SIMS) = (100, 10_000)`) as backend
+     (ii) per
+     [phase-5-cpp-imperative-steelman.md → Sprint 5.3](phase-5-cpp-imperative-steelman.md).
+     Symmetric workload across backends so the PGO profile reflects the
+     multi-threaded hot path that `mcts verify` and the report card actually
+     exercise.
   3. **Optimised build.** `cargo build --release` with
      `RUSTFLAGS="-Cprofile-use=rust/pgo-profile/ -C target-cpu=native ..."`.
   4. **BOLT post-link.** Same shape as the C++ backends.
@@ -278,6 +290,11 @@ dispatch, and the verify dispatch.
 - `src/MCTS/CLI/Verify.hs` `VerifyBackend` GADT gains `VRust`. The full
   four-backend `(ii)..(v)` cohort is now parseable; Phase 7 wires the
   cross-backend `verify` test stanzas.
+- `src/MCTS/CLI/Command.hs` gains the `BuildRust` constructor on the
+  `BuildCommand` family per
+  [phase-1-haskell-cli-surface.md → Sprint 1.2 ownership note](phase-1-haskell-cli-surface.md),
+  with a matching `CommandSpec` leaf and an `Example`
+  (`mcts build rust --dry-run`) wired into the registry.
 - The `prerequisiteRegistry` gains `rustup-toolchain-pinned`,
   `libmcts-rust-built`, the `rust/pgo-profile/` directory node, and
   `lld-linker`.
@@ -300,6 +317,71 @@ dispatch, and the verify dispatch.
 ### Remaining Work
 
 Not started.
+
+## Sprint 6.5: Backends (iii) and (iv) Engine Envelope and Foreign-Engine Recompute 📋
+
+### Objective
+
+Backends (iii) `cpp-functional` and (iv) `rust` implement the same
+envelope-capture + foreign-engine recompute pattern as Sprints 4.7 and
+5.5. Backend (iii) shares (ii)'s capture protocol (gcc, same flag
+set); backend (iv) uses Rust-specific sources for the per-backend-slot
+fields.
+
+### Deliverables (backend (iii) `cpp-functional`)
+
+- `cpp-functional/c-abi/envelope.{h,cc}` and `recompute.{h,cc}`
+  mirroring Sprint 5.5. Because (iii) intentionally shares the
+  optimisation stack of (ii), the populated envelope's `compiler_id`,
+  `compiler_version`, `fp_flags`, and `libm_id` are byte-identical
+  to (ii)'s under matched build trees (style-only divergence). The
+  `engine_build_id` differs because the binaries are linked
+  separately.
+
+### Deliverables (backend (iv) `rust`)
+
+- `rust/src/envelope.rs` building the envelope at compile time:
+  - `compiler_id = 2` (rustc).
+  - `compiler_version` from the `RUSTC_VERSION` env var Cargo
+    exposes at build time (read by `build.rs` and emitted as a
+    `rustc-env=` directive).
+  - `fp_flags` from `--cfg` markers the `Cargo.toml`'s
+    `[profile.release]` section emits to mirror its own settings
+    (`opt-level = 3`, `lto = "fat"`, `codegen-units = 1`,
+    `panic = "abort"`, `strip = "symbols"` — none of which sets
+    fast-math; the envelope's `FP_FAST_MATH` bit is zero).
+  - `libm_id` filled by a `build.rs` probe that detects glibc /
+    musl / Rust's own libm and emits the appropriate constant
+    string.
+  - `engine_build_id` from a post-link `objcopy
+    --update-section .envelope_build_id` step in `mcts build rust`
+    that hashes `target/release/libmcts_rust.so`.
+  - `cpu_features` from `is_x86_feature_detected!` cached at
+    startup.
+  - `fp_env` from a startup probe via the `core::arch` MXCSR
+    intrinsics.
+- `rust/src/recompute.rs` exposing
+  `mcts_rust_recompute_equities` via `#[no_mangle] extern "C"` per
+  the foreign-engine recompute FFI surface.
+
+### Validation
+
+- `mcts-integration`: per-backend
+  `mcts_<backend>_get_envelope()` returns a struct whose
+  `engine_build_id` matches the externally-measured SHA-256 of the
+  loaded `.so`.
+- `mcts-cross-backend`: write transcripts from (iii) and (iv);
+  foreign-engine recompute each on every other live backend under
+  `--rng cpp` and assert visit-agreement.
+- `mcts-cross-backend`: envelope-mismatch test (re-link (iv) with a
+  different `-C target-cpu`, re-run verify, assert
+  `EngineEnvelopeMismatch (BackendSlot Rust) CpuFeatures expected
+  got`).
+
+### Remaining Work
+
+Not started. Blocked by Sprint 6.2 (functional driver), Sprint 6.4
+(Rust driver), and Sprint 2.7 (sidecar codec).
 
 ## Documentation Requirements
 
