@@ -12,6 +12,7 @@
 [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md),
 [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md),
 [../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md)
+**Generated sections**: none
 
 > **Purpose**: Record every surviving compatibility helper, deprecated path, doctrine
 > deviation, and tooling residue still slated for deletion, plus the completed
@@ -22,10 +23,11 @@
 
 ## Ledger Status
 
-The repository is at the bootstrap phase at Sprint `0.1` closure. There is no
-implementation code on the supported path, so the ledger is initially empty in both
-sections. The structure exists in advance so Phases `4`–`8` can enqueue rows without
-schema churn.
+The repository now contains an active logical baseline. The rows below track
+intentional stand-ins that keep the CLI, transcript, cache, and test surfaces runnable
+while the real backend and parity work lands. These rows must move to `Completed` only
+when the owning sprint replaces the stand-in with the target implementation and the
+validation gate passes.
 
 Two classes of entries populate this ledger over time:
 
@@ -50,7 +52,9 @@ backend until Phase `8` retirement closes Q6.
 
 | Item | Location | Reason | Owning Sprint |
 |------|----------|--------|---------------|
-| _(none)_ | _(repository at bootstrap; no implementation code exists yet)_ | _(rows populate as Phases 1–8 introduce retirable shims and identify doctrine deviations)_ | _(N/A at Sprint 0.1 closure)_ |
+| Logical five-backend in-process stand-in | `src/MCTS/Engine.hs`, `src/MCTS/Driver.hs`, `src/MCTS/Verify.hs` | Lets CLI and tests validate determinism surfaces before real Haskell/C++/Rust engines are complete; must be replaced by real backend dispatch | Sprint 3.3, Sprint 4.4, Sprint 5.4, Sprint 6.2, Sprint 6.4 |
+| Foreign backend smoke skeletons | `cpp-legacy/`, `cpp-imperative/`, `cpp-functional/`, `rust/` | Provides concrete source homes and smoke build targets; final contract requires verbatim legacy port, optimized C++ engines, Rust engine, and Haskell FFI bindings | Sprint 4.1, Sprint 5.1, Sprint 6.1, Sprint 6.3 |
+| Logical report-card placeholders | `src/MCTS/ReportCard.hs` | Allows `mcts test all --dry-run` and renderer smoke tests; final report card must use measured Q1-Q7 evidence | Sprint 7.3, Sprint 8.3 |
 
 ## Pending Removal Notes
 
@@ -80,7 +84,9 @@ The expected populating events are:
 
 | Item | Removed In | Notes |
 |------|------------|-------|
-| _(none)_ | _(no retirement events have occurred yet)_ | _(rows populate as the (i)→(ii)→(iii)→(v) retirement chain closes in Phase 8)_ |
+| Deterministic placeholder transcript hash | Sprint 2.2 baseline closure | Replaced `pseudoSha256Hex` in `src/MCTS/Transcript.hs` with the pure SHA-256 implementation in `src/MCTS/Crypto/SHA256.hs`; `runConfigHash` and `playTranscriptHash` now emit SHA-256 hex digests. |
+| No-op sidecar cache and divergence inspect placeholders | Sprint 2.7 / Sprint 7.5 baseline closure | Replaced fixed `inspect cache list`, `inspect cache prune`, and `inspect divergence` output with `MCTS.Transcript.EquitySidecar` cache discovery/pruning and `MCTS.Verify.Divergence` metric rendering. |
+| Missing baseline envelope verification and legacy-parity workload dispatch | Sprint 7.5 baseline closure | Added `MCTS.Verify.Envelope`, `--allow-stale` parser/execution plumbing, `inspect show --envelope`, and fixed `verify legacy-parity rollouts` so the parsed workload reaches execution. |
 
 ## Retirement Protocol Reference
 

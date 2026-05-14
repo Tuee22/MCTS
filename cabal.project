@@ -1,0 +1,20 @@
+packages: .
+
+with-compiler: ghc-9.14.1
+
+-- Cabal 3.16.1.0 is the pinned project tool.
+-- Report-card knobs:
+-- G_R=100000
+-- G_S=1000
+-- G_V=50
+-- G_LP=10
+-- S_BENCH=10000
+-- S_VERIFY=10000
+-- S_LP_SIMS=10000
+-- S_LP=42
+-- PGO_TRAINING_GAMES=100
+-- PGO_TRAINING_SIMS=10000
+-- MOVE_DELTA_NATIVE_MAX=0.005
+-- VISIT_DELTA_NATIVE_MAX=0.05
+-- MOVE_DELTA_CROSS_BUILD_MAX=0.001
+-- VISIT_DELTA_CROSS_BUILD_MAX=0.01

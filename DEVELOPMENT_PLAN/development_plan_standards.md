@@ -16,6 +16,7 @@
 [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md),
 [../documents/documentation_standards.md](../documents/documentation_standards.md),
 [../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md)
+**Generated sections**: none
 
 > **Purpose**: Define the maintenance rules for the MCTS development plan so the repository
 > keeps one coherent, execution-ordered plan and one explicit ledger of cleanup work

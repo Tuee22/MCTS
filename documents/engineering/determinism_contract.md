@@ -614,6 +614,18 @@ for the on-disk layout and the `.eq` wire format, and
 [../../DEVELOPMENT_PLAN/00-overview.md → Hard Constraints item
 38](../../DEVELOPMENT_PLAN/00-overview.md) for the constraint pin.
 
+Current implementation baseline: `inspect show --with-equity` writes the
+logical originator sidecar, `inspect cache list` enumerates sidecar slots, and
+`inspect cache prune --keep-current` retains `<backend>-logical` build ids until
+live backend envelopes are available through FFI. Foreign recompute sidecars and
+originator markers remain Sprint `2.7` / `7.5` closure work.
+
+Baseline layered envelope verification exists in `MCTS.Verify.Envelope`: verify cohorts
+check `host_arch` and envelope version at cohort level, compare each transcript's
+`backend` and logical `build_id` against its requested backend slot, and honor
+`--allow-stale` only for backend-slot mismatches. The full per-backend substrate fields
+remain tied to the real FFI envelope capture work.
+
 ## Divergence Smell
 
 The determinism contract above is binary on the cohorts it governs
@@ -627,6 +639,13 @@ being violated in a way verify's cohort failed to catch.
 
 The Divergence Smell metric quantifies "how much" so the REPL and the
 report card can surface it.
+
+Current implementation baseline: `MCTS.Verify.Divergence.divergenceRate`
+computes the visit and chosen-move disagreement rates for two decoded
+transcripts and reports `0.0` equity drift because the baseline transcript
+format still excludes foreign recompute equity vectors. The final
+`Transcript -> EqStream -> DivergenceMetrics` scorer remains Sprint `7.5`
+closure work.
 
 ### Metrics
 

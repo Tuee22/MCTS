@@ -64,6 +64,15 @@ registry that drives this table. Phase-owned per
 | `mcts check-code` | Doctrine alignment, formatter, hlint, warning-clean build, docs check |
 | `mcts build {cpp-legacy\|cpp-imperative\|cpp-functional\|rust} [--dry-run] [--plan-file <path>]` | Plan/Apply: per-backend build harness (PGO+BOLT pipeline) |
 
+Current implementation baseline: `inspect show --with-equity` writes a logical
+originator sidecar, `inspect cache list` enumerates `.eq` / `.envelope` slots,
+`inspect cache prune --keep-current` retains the logical `<backend>-logical`
+build id, `inspect show --envelope` renders the current envelope fields, and
+`inspect divergence` renders transcript-pair metrics from `MCTS.Verify.Divergence`.
+`mcts verify ... --allow-stale` is routed through the baseline envelope verifier.
+Live backend-envelope stale detection, foreign recompute, and the full cross-backend
+matrix remain active plan work.
+
 ## ADT Source of Truth
 
 All command, option, and backend ADTs — `Command`, `BenchCommand`,

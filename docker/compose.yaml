@@ -1,0 +1,9 @@
+services:
+  mcts:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    working_dir: /workspace/MCTS
+    volumes:
+      - ..:/workspace/MCTS
+    command: sleep infinity

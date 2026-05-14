@@ -7,6 +7,7 @@
 [system-components.md](system-components.md),
 [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md),
 [../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md)
+**Generated sections**: none
 
 > **Purpose**: Land backend (ii) — the performance ceiling — as a maximally-tuned
 > imperative C++23 implementation with arena allocation, per-rollout scratch board,
@@ -15,9 +16,11 @@
 
 ## Phase Status
 
-📋 Planned. Blocked by Phase `3` closure (the FFI bridge and `--rng cpp` plumbing
-established in Phase 4 are reused; Phase 5 may proceed in parallel with Phase 4 once
-Phase 3 closes because the FFI pattern is the same).
+🔄 **Active**. `cpp-imperative/` now exists with a smoke-buildable C ABI skeleton, and
+the Haskell CLI can exercise `cpp-imperative` as a logical backend in benchmark and
+verify flows. Remaining Phase `5` closure work is the real C++23 steelman engine,
+paired bench/instrumented artefacts, Haskell FFI bindings, PGO+BOLT+`mimalloc` build
+harness, envelope capture, and foreign-engine recompute.
 
 ## Phase Summary
 
@@ -32,9 +35,9 @@ Phase 1 `Subprocess` boundary. Backend (ii) participates in the four-backend
 `(ii)..(v)` cross-backend `verify` cohort (Phase 7) and in the legacy parity envelope
 cohort (Phase 4).
 
-## Sprint 5.1: `cpp-imperative/` Source Tree and Build Flags 📋
+## Sprint 5.1: `cpp-imperative/` Source Tree and Build Flags 🔄
 
-**Status**: Planned
+**Status**: Active
 **Implementation**: `cpp-imperative/src/`, `cpp-imperative/include/`,
 `cpp-imperative/c-abi/`, `cpp-imperative/Makefile`,
 `cpp-imperative/CMakeLists.txt`
@@ -138,7 +141,12 @@ backend-agnostic from the Haskell side.
 
 ### Remaining Work
 
-Not started.
+- Baseline landed: `cpp-imperative/` has a smoke-buildable C ABI skeleton, Makefile,
+  README, and `build/libmcts_cpp_imperative.so` output path.
+- Replace the smoke implementation with the real C++23 imperative steelman engine.
+- Add the final compiler/link flags, allocator link strategy, and source layout
+  described by the sprint.
+- Validate warning-clean builds and update tuning docs with any final flag decisions.
 
 ## Sprint 5.2: FFI Bindings for Backend (ii) 📋
 
@@ -179,9 +187,9 @@ pattern as backend (i), reusing the `MCTS.FFI.Common` RAII wrappers from Phase 4
 
 Not started.
 
-## Sprint 5.3: PGO+BOLT+`mimalloc` Build Harness 📋
+## Sprint 5.3: PGO+BOLT+`mimalloc` Build Harness 🔄
 
-**Status**: Planned
+**Status**: Active
 **Implementation**: `src/MCTS/CLI/Build.hs`,
 `src/MCTS/CLI/Spec.hs` (Build subtree),
 `cpp-imperative/Makefile` (PGO and BOLT targets)
@@ -261,11 +269,17 @@ that backend (v) Haskell must match.
 
 ### Remaining Work
 
-Not started.
+- Baseline landed: `mcts build cpp-imperative --dry-run` renders a typed plan and the
+  apply path smoke-builds `cpp-imperative/` through `make`.
+- Replace the smoke `make` plan with the full two-stage PGO, BOLT, and `mimalloc`
+  pipeline.
+- Add prerequisite checks for GCC, LLVM/BOLT, allocator availability, and profile
+  directories.
+- Add idempotence and failure-mode tests for the generated build plan.
 
-## Sprint 5.4: Backend (ii) Game Driver and Transcript Output 📋
+## Sprint 5.4: Backend (ii) Game Driver and Transcript Output 🔄
 
-**Status**: Planned
+**Status**: Active
 **Implementation**: `src/MCTS/Driver/CppImperative.hs`,
 `src/MCTS/CLI/Bench.hs` (extend dispatch),
 `src/MCTS/CLI/Verify.hs` (extend dispatch)
@@ -306,9 +320,24 @@ rollouts/selfplay/legacy-parity` (where cohort includes (ii)) run end-to-end.
 
 ### Remaining Work
 
-Not started.
+- Baseline landed: the logical in-process driver can run `--backend cpp-imperative`
+  through bench, verify, transcript, and report-card smoke surfaces.
+- Replace the logical stand-in with `src/MCTS/Driver/CppImperative.hs` and the real
+  backend (ii) C ABI.
+- Add transcript-output validation for the optimized engine.
+- Add two-backend wiring smoke tests against Haskell once both real drivers exist.
 
-## Sprint 5.5: Backend (ii) Engine Envelope and Foreign-Engine Recompute 📋
+## Sprint 5.5: Backend (ii) Engine Envelope and Foreign-Engine Recompute ⏸️
+
+**Status**: Blocked
+**Implementation**: `cpp-imperative/c-abi/envelope.{h,cc}`,
+`cpp-imperative/c-abi/recompute.{h,cc}`, `src/MCTS/FFI/CppImperative.hs`,
+`src/MCTS/Driver/CppImperative.hs`
+**Blocked by**: Sprint 5.2, Sprint 5.4, Sprint 2.7
+**Docs to update**: `documents/engineering/determinism_contract.md`,
+`documents/engineering/backend_ffi_contract.md`,
+`documents/engineering/transcript_format.md`,
+`DEVELOPMENT_PLAN/system-components.md`
 
 ### Objective
 
@@ -354,8 +383,9 @@ that ships at the canonical FFI load path).
 
 ### Remaining Work
 
-Not started. Blocked by Sprint 5.4 (driver and transcript writer) and
-Sprint 2.7 (sidecar codec).
+- Add backend (ii)'s live envelope capture after the real optimized driver exists.
+- Add foreign-engine recompute for backend (ii) equity sidecars.
+- Patch the final post-BOLT shared library with the shipping `engine_build_id`.
 
 ## Documentation Requirements
 

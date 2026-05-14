@@ -1,0 +1,117 @@
+cabal-version:      3.8
+name:               mcts
+version:            0.1.0.0
+license-file:       LICENCE
+author:             MCTS contributors
+maintainer:         matt
+build-type:         Simple
+tested-with:        GHC ==9.14.1
+
+common warnings
+    ghc-options: -Wall -Wcompat
+    default-language: Haskell2010
+
+library
+    import: warnings
+    hs-source-dirs: src
+    exposed-modules:
+        MCTS.App
+        MCTS.Crypto.SHA256
+        MCTS.CLI.Bench
+        MCTS.CLI.Build
+        MCTS.CLI.Command
+        MCTS.CLI.Docs
+        MCTS.CLI.Inspect
+        MCTS.CLI.Lint
+        MCTS.CLI.Output
+        MCTS.CLI.Parser
+        MCTS.CLI.Spec
+        MCTS.CLI.Test
+        MCTS.CLI.Verify
+        MCTS.Driver
+        MCTS.Engine
+        MCTS.Error
+        MCTS.Notation
+        MCTS.Plan
+        MCTS.Prerequisite
+        MCTS.ReportCard
+        MCTS.Rng.Mix
+        MCTS.Subprocess
+        MCTS.Transcript
+        MCTS.Transcript.Action
+        MCTS.Transcript.Cache
+        MCTS.Transcript.Codec
+        MCTS.Transcript.EquitySidecar
+        MCTS.Transcript.Hash
+        MCTS.Transcript.Lookup
+        MCTS.Types
+        MCTS.Verify
+        MCTS.Verify.Divergence
+        MCTS.Verify.Envelope
+    build-depends:
+        base >=4.20 && <5,
+        bytestring,
+        containers,
+        directory,
+        filepath,
+        process,
+        text,
+        time
+
+executable mcts
+    import: warnings
+    main-is: Main.hs
+    hs-source-dirs: app
+    build-depends:
+        base >=4.20 && <5,
+        mcts
+
+test-suite mcts-unit
+    import: warnings
+    type: exitcode-stdio-1.0
+    main-is: Main.hs
+    hs-source-dirs: test/unit
+    build-depends:
+        base >=4.20 && <5,
+        bytestring,
+        directory,
+        filepath,
+        mcts
+
+test-suite mcts-integration
+    import: warnings
+    type: exitcode-stdio-1.0
+    main-is: Main.hs
+    hs-source-dirs: test/integration
+    build-depends:
+        base >=4.20 && <5,
+        directory,
+        mcts
+
+test-suite mcts-cross-backend
+    import: warnings
+    type: exitcode-stdio-1.0
+    main-is: Main.hs
+    hs-source-dirs: test/cross-backend
+    build-depends:
+        base >=4.20 && <5,
+        mcts
+
+test-suite mcts-legacy-parity
+    import: warnings
+    type: exitcode-stdio-1.0
+    main-is: Main.hs
+    hs-source-dirs: test/legacy-parity
+    build-depends:
+        base >=4.20 && <5,
+        mcts
+
+test-suite mcts-haskell-style
+    import: warnings
+    type: exitcode-stdio-1.0
+    main-is: Main.hs
+    hs-source-dirs: test/haskell-style
+    build-depends:
+        base >=4.20 && <5,
+        directory,
+        filepath

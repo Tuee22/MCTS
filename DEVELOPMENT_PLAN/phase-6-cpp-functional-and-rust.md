@@ -7,6 +7,7 @@
 [system-components.md](system-components.md),
 [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md),
 [../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md)
+**Generated sections**: none
 
 > **Purpose**: Land backend (iii) — same algorithms as (ii), same optimisation stack,
 > functional style at the API and data-flow level only — and backend (iv) Rust as an
@@ -15,10 +16,11 @@
 
 ## Phase Status
 
-📋 Planned. Blocked by Phase `5` closure (backend (iii) builds on the same PGO+BOLT
-build harness and arena pattern as (ii); backend (iv) Rust is independent of (iii)
-but conventionally bundled in the same phase for scheduling, since both extend the
-FFI cohort).
+🔄 **Active**. `cpp-functional/` and `rust/` now exist with smoke-buildable C ABI /
+`cdylib` skeletons, and the Haskell CLI can exercise both as logical backends in
+benchmark and verify flows. Remaining Phase `6` closure work is the real
+functional-style C++ engine, real Rust engine, Haskell FFI bindings, PGO+BOLT
+pipelines, envelope capture, and foreign-engine recompute.
 
 ## Phase Summary
 
@@ -32,9 +34,9 @@ C ABI for the FFI bridge, but a wholly separate toolchain with its own PGO and B
 pipeline, `mimalloc` as `#[global_allocator]`, and the pinned `[profile.release]`
 settings from the project README.
 
-## Sprint 6.1: `cpp-functional/` Functional-Style C++ Engine 📋
+## Sprint 6.1: `cpp-functional/` Functional-Style C++ Engine 🔄
 
-**Status**: Planned
+**Status**: Active
 **Implementation**: `cpp-functional/src/`, `cpp-functional/include/`,
 `cpp-functional/c-abi/`, `cpp-functional/Makefile`
 **Docs to update**: `documents/engineering/compiler_runtime_tuning.md`,
@@ -108,11 +110,16 @@ underneath so the optimisation stack still applies.
 
 ### Remaining Work
 
-Not started.
+- Baseline landed: `cpp-functional/` has a smoke-buildable C ABI skeleton, Makefile,
+  README, and `build/libmcts_cpp_functional.so` output path.
+- Replace the smoke implementation with the real functional-style C++23 engine.
+- Share the final optimization stack with backend (ii) so the comparison isolates
+  style rather than flags or allocator choices.
+- Add parity/tuning documentation once the real implementation lands.
 
-## Sprint 6.2: FFI Bindings, Build Harness, Driver for Backend (iii) 📋
+## Sprint 6.2: FFI Bindings, Build Harness, Driver for Backend (iii) 🔄
 
-**Status**: Planned
+**Status**: Active
 **Implementation**: `src/MCTS/FFI/CppFunctional.hs`,
 `src/MCTS/Driver/CppFunctional.hs`, `mcts.cabal`,
 `src/MCTS/CLI/Build.hs` (extend), `src/MCTS/CLI/Bench.hs` (extend dispatch),
@@ -159,11 +166,16 @@ variant.
 
 ### Remaining Work
 
-Not started.
+- Baseline landed: `mcts build cpp-functional --dry-run` renders a typed plan, the
+  apply path smoke-builds `cpp-functional/`, and the logical driver can run
+  `--backend cpp-functional`.
+- Add `src/MCTS/FFI/CppFunctional.hs` and the real backend (iii) driver.
+- Replace the smoke build with the same PGO+BOLT+`mimalloc` pipeline as backend (ii).
+- Add transcript-output and two-backend verify smoke tests against the real engine.
 
-## Sprint 6.3: `rust/` Rust Engine and `cdylib` 📋
+## Sprint 6.3: `rust/` Rust Engine and `cdylib` 🔄
 
-**Status**: Planned
+**Status**: Active
 **Implementation**: `rust/Cargo.toml`, `rust/src/lib.rs`, `rust/src/board.rs`,
 `rust/src/tree.rs`, `rust/src/search.rs`, `rust/src/rollout.rs`,
 `rust/src/c_abi.rs`
@@ -237,11 +249,15 @@ exposed as a `cdylib` for the Haskell FFI.
 
 ### Remaining Work
 
-Not started.
+- Baseline landed: `rust/Cargo.toml`, `rust/src/lib.rs`, and README exist with a
+  `cdylib`/`staticlib` smoke target and pinned release-profile shape.
+- Replace the smoke exports with the real Rust engine and C ABI surface.
+- Pin the Rust minor version through Docker/toolchain configuration.
+- Add `mimalloc` as the global allocator and the final rustc flags/build profile.
 
-## Sprint 6.4: FFI Bindings, PGO+BOLT Build Harness, Driver for Backend (iv) 📋
+## Sprint 6.4: FFI Bindings, PGO+BOLT Build Harness, Driver for Backend (iv) 🔄
 
-**Status**: Planned
+**Status**: Active
 **Implementation**: `src/MCTS/FFI/Rust.hs`, `src/MCTS/Driver/Rust.hs`,
 `mcts.cabal`, `src/MCTS/CLI/Build.hs` (extend),
 `src/MCTS/CLI/Bench.hs` (extend dispatch),
@@ -316,9 +332,23 @@ dispatch, and the verify dispatch.
 
 ### Remaining Work
 
-Not started.
+- Baseline landed: `mcts build rust --dry-run` renders a typed plan, the apply path
+  delegates to `cargo build --release`, and the logical driver can run `--backend rust`.
+- Add `src/MCTS/FFI/Rust.hs` and the real backend (iv) driver.
+- Replace the smoke build with the rustc PGO+BOLT+`mimalloc` pipeline.
+- Add transcript-output and cross-backend smoke tests against the real Rust engine.
 
-## Sprint 6.5: Backends (iii) and (iv) Engine Envelope and Foreign-Engine Recompute 📋
+## Sprint 6.5: Backends (iii) and (iv) Engine Envelope and Foreign-Engine Recompute ⏸️
+
+**Status**: Blocked
+**Implementation**: `cpp-functional/c-abi/envelope.{h,cc}`,
+`cpp-functional/c-abi/recompute.{h,cc}`, `rust/src/envelope.rs`,
+`rust/src/recompute.rs`, `src/MCTS/FFI/CppFunctional.hs`, `src/MCTS/FFI/Rust.hs`
+**Blocked by**: Sprint 6.2, Sprint 6.4, Sprint 2.7
+**Docs to update**: `documents/engineering/determinism_contract.md`,
+`documents/engineering/backend_ffi_contract.md`,
+`documents/engineering/transcript_format.md`,
+`DEVELOPMENT_PLAN/system-components.md`
 
 ### Objective
 
@@ -380,8 +410,10 @@ fields.
 
 ### Remaining Work
 
-Not started. Blocked by Sprint 6.2 (functional driver), Sprint 6.4
-(Rust driver), and Sprint 2.7 (sidecar codec).
+- Add live envelope capture for backends (iii) and (iv) after their real drivers and
+  FFI surfaces exist.
+- Add foreign-engine recompute for both backends' equity sidecars.
+- Add envelope-mismatch and cross-backend recompute integration coverage.
 
 ## Documentation Requirements
 

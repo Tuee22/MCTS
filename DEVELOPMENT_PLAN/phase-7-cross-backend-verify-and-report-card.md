@@ -7,6 +7,7 @@
 [system-components.md](system-components.md),
 [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md),
 [../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md)
+**Generated sections**: none
 
 > **Purpose**: Land the four remaining Cabal test stanzas (`mcts-unit`,
 > `mcts-integration`, `mcts-cross-backend`, `mcts-legacy-parity`), the `mcts test all`
@@ -15,9 +16,14 @@
 
 ## Phase Status
 
-📋 Planned. Blocked by Phases `4`, `5`, `6` closure (all five backends must be live
-for the cross-backend `verify` cohort and the report card to produce meaningful
-results).
+🔄 **Active**. All five Cabal test stanzas exist and pass against the logical
+backend cohort. `mcts verify rollouts`, `mcts verify selfplay`, `mcts verify
+legacy-parity`, `mcts test all --dry-run`, report-card rendering, and non-interactive
+replay/divergence smoke surfaces are present. Remaining Phase `7` closure work is to
+run the same tests against real FFI-backed engines, strengthen golden/property
+coverage, implement the `brick` / `vty` TUIs, expand layered envelope verification to
+the real backend FFI envelope fields, connect divergence scoring to foreign recompute sidecars, and replace logical
+report-card placeholders with measured Q1-Q7 evidence.
 
 ## Phase Summary
 
@@ -35,9 +41,9 @@ stanza in order, runs the pinned report-card workload, and emits the tidy summar
 block answering Q1–Q7. The `mcts play` and `mcts inspect replay` interactive TUIs
 land here, completing the user-facing CLI surface.
 
-## Sprint 7.1: `mcts-unit` and `mcts-integration` Stanzas 📋
+## Sprint 7.1: `mcts-unit` and `mcts-integration` Stanzas 🔄
 
-**Status**: Planned
+**Status**: Active
 **Implementation**: `mcts.cabal` (`mcts-unit`, `mcts-integration` stanzas),
 `test/unit/Main.hs`, `test/unit/Parser.hs`, `test/unit/Properties.hs`,
 `test/unit/Codec.hs`, `test/unit/Notation.hs`, `test/unit/CommandSpec.hs`,
@@ -110,11 +116,17 @@ the real `mcts` binary across the FFI to every backend.
 
 ### Remaining Work
 
-Not started.
+- Baseline landed: `mcts-unit` and `mcts-integration` Cabal stanzas exist and pass
+  against the logical backend baseline.
+- Replace hand-rolled assertions with the final `tasty`, `tasty-hunit`,
+  `tasty-quickcheck`, and golden-test organization.
+- Add parser tests through `execParserPure` once the parser renderer exists.
+- Strengthen integration tests to exercise the real `mcts` binary and FFI-backed
+  backends rather than direct logical module calls.
 
-## Sprint 7.2: `mcts-cross-backend` and `mcts-legacy-parity` Stanzas 📋
+## Sprint 7.2: `mcts-cross-backend` and `mcts-legacy-parity` Stanzas 🔄
 
-**Status**: Planned
+**Status**: Active
 **Implementation**: `mcts.cabal` (`mcts-cross-backend`, `mcts-legacy-parity`
 stanzas), `test/cross-backend/Main.hs`, `test/legacy-parity/Main.hs`,
 `src/MCTS/CLI/Verify.hs` (extend with the four-backend cohort dispatch),
@@ -181,11 +193,17 @@ constraint at the type level and `LegacyParityBackend` requiring (i) at parse ti
 
 ### Remaining Work
 
-Not started.
+- Baseline landed: `mcts-cross-backend` and `mcts-legacy-parity` Cabal stanzas exist
+  and pass against the logical five-backend cohort.
+- Replace logical in-process comparisons with the real FFI-backed `(ii)..(v)` cohort
+  and real legacy-parity cohort.
+- Enforce the final `VerifyBackend` / `LegacyParityBackend` GADT shapes rather than
+  the current ADT + parser checks.
+- Add external legacy fixture coverage for Q6/Q7.
 
-## Sprint 7.3: `mcts test all` Plan/Apply and Report-Card Summary 📋
+## Sprint 7.3: `mcts test all` Plan/Apply and Report-Card Summary 🔄
 
-**Status**: Planned
+**Status**: Active
 **Implementation**: `src/MCTS/CLI/Test.hs`,
 `src/MCTS/CLI/Spec.hs` (Test subtree),
 `src/MCTS/ReportCard.hs`, `src/MCTS/ReportCard/Render.hs`
@@ -353,11 +371,19 @@ so the contract is reviewable in one place:
 
 ### Remaining Work
 
-Not started.
+- Baseline landed: `mcts test all --dry-run`, `mcts test <stanza>`, a Plan/Apply
+  runner, report-card rendering, and the pinned command sequence exist.
+- Fix the apply path's local `mcts` PATH assumption or route recursive CLI calls through
+  the built executable path.
+- Replace logical report-card placeholders with measured Q1-Q7 evidence from the real
+  backends.
+- Ensure the large pinned benchmark/verify workload remains practical for the final
+  test mode and separate smoke vs full gates if needed.
+- Add JSON/golden coverage for the final tidy report-card summary.
 
-## Sprint 7.4: `mcts play` and `mcts inspect replay` TUIs 📋
+## Sprint 7.4: `mcts play` and `mcts inspect replay` TUIs 🔄
 
-**Status**: Planned
+**Status**: Active
 **Implementation**: `src/MCTS/CLI/Play.hs`, `src/MCTS/CLI/Replay.hs`,
 `src/MCTS/CLI/Tui/Board.hs`, `src/MCTS/CLI/Tui/Prompt.hs`,
 `src/MCTS/CLI/Spec.hs` (Play and Inspect.Replay subtrees), `mcts.cabal`
@@ -455,9 +481,22 @@ a stored transcript with equity recomputed on the fly.
 
 ### Remaining Work
 
-Not started.
+- Baseline landed: `mcts play` runs a non-interactive logical game smoke path, and
+  `mcts inspect replay <prefix>` opens a non-interactive transcript replay summary.
+- Add the real `brick` / `vty` TUI modules, dependency gates, and rendering tests.
+- Implement in-app `:hint`, `:undo`, `:save`, and `:quit` for `play`.
+- Implement replay navigation, cached-state backtracking, multi-backend equity columns,
+  and recompute-triggered sidecar writes.
+- Preserve the TUI exception to global `--format` / `--color` flags in command docs.
 
-## Sprint 7.5: Layered Envelope Verify and Divergence Matrix 📋
+## Sprint 7.5: Layered Envelope Verify and Divergence Matrix 🔄
+
+**Status**: Active
+**Implementation**: `src/MCTS/Verify/Divergence.hs`, `src/MCTS/CLI/Inspect.hs`,
+`test/unit/Main.hs`
+**Docs to update**: `documents/engineering/determinism_contract.md`,
+`DEVELOPMENT_PLAN/system-components.md`,
+`DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md`
 
 ### Objective
 
@@ -469,6 +508,21 @@ Envelope](../documents/engineering/determinism_contract.md), add the
 divergence-rate matrix from
 [../documents/engineering/determinism_contract.md → Divergence
 Smell](../documents/engineering/determinism_contract.md).
+
+### Current Validation State
+
+`src/MCTS/Verify/Divergence.hs` now exposes a baseline transcript-pair metric for
+`visit_disagreement_rate`, `move_disagreement_rate`, and `equity_l2_drift`.
+`mcts inspect divergence <hash-prefix>` resolves and decodes the requested transcript,
+discovers cached sidecar columns for the transcript hash, and renders metrics through
+the shared helper instead of a fixed placeholder. `mcts-unit` covers the zero-divergence
+case and a changed-move nonzero case.
+
+`src/MCTS/Verify/Envelope.hs` also enforces the baseline layered envelope fields that
+exist today: cohort-level `host_arch` / envelope-version checks, backend-slot
+`backend` and logical `build_id` checks, and `--allow-stale` downgrading of backend-slot
+mismatches to warnings. The parser now carries `legacy-parity {rollouts|selfplay}` all
+the way to execution instead of collapsing it to self-play.
 
 ### Deliverables
 
@@ -542,9 +596,17 @@ Smell](../documents/engineering/determinism_contract.md).
 
 ### Remaining Work
 
-Not started. Blocked by Sprints 4.7, 5.5, 6.5 (per-backend envelopes
-and recompute FFI), Sprint 7.4 (REPL), and Sprint 2.7 (sidecar
-codec).
+- Extend layered envelope verification beyond the baseline fields to the full live
+  backend envelope captured through per-backend FFI (`compiler_id`, `compiler_version`,
+  `fp_flags`, `libm_id`, `cpu_features`, `fp_env`, and shared RNG build id).
+- Route `--allow-stale` warnings through richer structured JSON output once the final
+  output renderer lands.
+- Change `divergenceRate` from the baseline transcript-pair metric to the final
+  `Transcript -> EqStream -> DivergenceMetrics` foreign-recompute scoring once
+  per-backend recompute FFI lands.
+- Add calibrated threshold constants and report-card divergence matrix rendering.
+- Add stale-cache, REPL overlay, and report-card integration tests against real backend
+  envelopes and recompute sidecars.
 
 ## Documentation Requirements
 

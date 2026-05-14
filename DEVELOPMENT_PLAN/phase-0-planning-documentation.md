@@ -7,6 +7,7 @@
 [system-components.md](system-components.md),
 [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md),
 [../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md)
+**Generated sections**: none
 
 > **Purpose**: Define the plan-ownership baseline for the MCTS Haskell CLI so phase
 > status, sequencing, doctrine-alignment, and documentation-topology work has one
@@ -72,8 +73,9 @@ where the source of truth lives.
 ### Deliverables
 
 - The `DEVELOPMENT_PLAN/` directory exists with the 14 files named above. Every file
-  carries the standard `**Status**` / `**Supersedes**` / `**Referenced by**` metadata
-  block plus a `> **Purpose**:` line per the convention shared with
+  carries the standard `**Status**` / `**Supersedes**` / `**Referenced by**` /
+  `**Generated sections**` metadata block plus a `> **Purpose**:` line per the
+  convention shared with
   `~/prodbox/DEVELOPMENT_PLAN/`, `~/mattandjames/DEVELOPMENT_PLAN/`, and
   `~/infernix/DEVELOPMENT_PLAN/`.
 - The phase model is the nine-phase surface-oriented decomposition declared in
@@ -130,7 +132,8 @@ where the source of truth lives.
 1. Every `[..](path)` link inside `DEVELOPMENT_PLAN/`, `documents/`, and the four root
    files resolves to a file that exists on disk.
 2. Every file under `DEVELOPMENT_PLAN/` opens with `**Status**:` / `**Supersedes**:` /
-   `**Referenced by**:` / `> **Purpose**:` lines per the convention.
+   `**Referenced by**:` / `**Generated sections**:` / `> **Purpose**:` lines per the
+   convention.
 3. The four-row Done/Active/Planned/Blocked status-vocabulary table is identical in
    `README.md`, `development_plan_standards.md`, and `00-overview.md`.
 4. The Phase Overview table in `README.md` names exactly nine phases (0–8) with names

@@ -7,6 +7,7 @@
 [system-components.md](system-components.md),
 [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md),
 [../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md)
+**Generated sections**: none
 
 > **Purpose**: Close the project hypothesis. Tune the Haskell engine until backend
 > (v) matches backend (ii) on Q1 and Q2 within the parity tolerance defined in
@@ -17,8 +18,10 @@
 
 ## Phase Status
 
-📋 Planned. Blocked by Phase `7` closure (the report card from Phase 7 provides the
-Q1/Q2 numbers that Phase 8 has to push Haskell to match).
+📋 **Planned**. Still blocked by real Phase `7` closure. The current report-card path
+is a logical baseline and does not provide Q1/Q2 performance evidence against the
+PGO+BOLT C++ steelman. Phase `8` starts only after the real five-backend cohort and
+measured report card are in place.
 
 ## Phase Summary
 

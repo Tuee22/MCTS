@@ -7,6 +7,7 @@
 [system-components.md](system-components.md),
 [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md),
 [../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md)
+**Generated sections**: none
 
 > **Purpose**: Land backend (i) — the strictly verbatim re-port of `MCTS_legacy`
 > exposed via a stable C ABI through the Haskell FFI — plus the build harness, the
@@ -15,9 +16,12 @@
 
 ## Phase Status
 
-📋 Planned. Blocked by Phase `3` closure (the FFI bridge consumes the `Subprocess`
-boundary, the `Env` record, the transcript codec, and the per-game RNG mixer
-established in Phases 1–3).
+🔄 **Active**. `cpp-legacy/` now exists with smoke-buildable C ABI and RNG skeletons,
+and the Haskell CLI can exercise `cpp-legacy` as a logical backend in benchmark and
+legacy-parity flows. Remaining Phase `4` closure work is the actual verbatim
+`~/MCTS_legacy/backend/core` port, Haskell `foreign import ccall` bindings, shared
+`std::mt19937_64` FFI plumbing, external Q6 golden fixtures, envelope capture, and
+foreign-engine recompute.
 
 ## Phase Summary
 
@@ -32,9 +36,9 @@ other backends will draw from in Phase 5+, the Q6 golden fixture set from
 out-of-band `MCTS_legacy` runs, and the `mcts verify legacy-parity` cohort logic
 that pins `max_plies = 10000` so all five backends agree under the envelope.
 
-## Sprint 4.1: `cpp-legacy/` Verbatim Re-Port 📋
+## Sprint 4.1: `cpp-legacy/` Verbatim Re-Port 🔄
 
-**Status**: Planned
+**Status**: Active
 **Implementation**: `cpp-legacy/src/`, `cpp-legacy/include/`, `cpp-legacy/Makefile`,
 `cpp-legacy/c-abi/`
 **Docs to update**: `documents/engineering/backend_ffi_contract.md`,
@@ -97,7 +101,13 @@ add a C ABI shim layer (`cpp-legacy/c-abi/`); rename the build product to
 
 ### Remaining Work
 
-Not started.
+- Baseline landed: `cpp-legacy/` has a smoke-buildable C ABI skeleton, Makefile, and
+  generated `build/libmcts_cpp_legacy.so` output path.
+- Replace the smoke board/move functions with the strictly verbatim
+  `~/MCTS_legacy/backend/` re-port.
+- Keep all non-FFI changes out of the port and record any unavoidable compatibility
+  residue in `legacy-tracking-for-deletion.md`.
+- Validate the exact legacy build flags and warning-clean smoke build.
 
 ## Sprint 4.2: Haskell FFI Bindings 📋
 
@@ -148,9 +158,9 @@ wrappers that make every call safe (no leaked handles, no double-free).
 
 Not started.
 
-## Sprint 4.3: `--rng cpp` Shared `std::mt19937_64` Plumbing 📋
+## Sprint 4.3: `--rng cpp` Shared `std::mt19937_64` Plumbing 🔄
 
-**Status**: Planned
+**Status**: Active
 **Implementation**: `cpp-legacy/c-abi/rng.{h,cc}`, `src/MCTS/Rng/Cpp.hs`
 **Docs to update**: `documents/engineering/determinism_contract.md`,
 `documents/engineering/backend_ffi_contract.md`
@@ -203,11 +213,17 @@ is the determinism contract's shared-RNG path.
 
 ### Remaining Work
 
-Not started.
+- Baseline landed: `cpp-legacy/c-abi/rng.h` and `rng.cc` provide a C skeleton for the
+  shared C++ RNG.
+- Add the Haskell `MCTS.Rng.Cpp` FFI bindings and route `--rng cpp` through the shared
+  `std::mt19937_64` stream for real foreign backends.
+- Add cross-language splitmix/`cpp_rng_split` fixtures against the Haskell mixer.
+- Verify every backend consumes identical `u64` streams under the byte-consumption
+  contract.
 
-## Sprint 4.4: Backend (i) Game Driver and Transcript Output 📋
+## Sprint 4.4: Backend (i) Game Driver and Transcript Output 🔄
 
-**Status**: Planned
+**Status**: Active
 **Implementation**: `src/MCTS/Driver/CppLegacy.hs`, `src/MCTS/CLI/Bench.hs`
 **Docs to update**: `documents/engineering/backend_ffi_contract.md`
 
@@ -254,11 +270,17 @@ backend (i)'s no-draw-rule terminal semantics.
 
 ### Remaining Work
 
-Not started.
+- Baseline landed: the logical in-process driver can run `--backend cpp-legacy` through
+  the shared transcript/cache/verify surfaces.
+- Replace the logical stand-in with `src/MCTS/Driver/CppLegacy.hs` and real C ABI calls
+  once Sprint 4.2 closes.
+- Ensure backend (i)'s no-draw terminal semantics and legacy overflow behavior surface
+  through `AppError LegacyParityRolloutOverflow`.
+- Add transcript-output validation against the verbatim port.
 
-## Sprint 4.5: `test/golden/legacy/` Q6 Fixture Set 📋
+## Sprint 4.5: `test/golden/legacy/` Q6 Fixture Set 🔄
 
-**Status**: Planned
+**Status**: Active
 **Implementation**: `test/golden/legacy/README.md`,
 `test/golden/legacy/transcripts/<arch>/*.tr`,
 `test/integration/CppLegacyParity.hs`
@@ -313,11 +335,15 @@ this anchor (Q6).
 
 ### Remaining Work
 
-Not started.
+- Baseline landed: `test/golden/legacy/README.md` exists as the fixture-set home.
+- Generate the real out-of-band fixtures from `~/MCTS_legacy`.
+- Add fixture metadata and validation commands for Q6.
+- Wire the `mcts-legacy-parity` stanza to consume the real fixture set rather than
+  only the logical cohort.
 
-## Sprint 4.6: `mcts verify legacy-parity` Cohort Logic 📋
+## Sprint 4.6: `mcts verify legacy-parity` Cohort Logic 🔄
 
-**Status**: Planned
+**Status**: Active
 **Implementation**: `src/MCTS/CLI/Verify.hs`,
 `src/MCTS/CLI/Spec.hs` (Verify subtree)
 **Docs to update**: `documents/engineering/determinism_contract.md`,
@@ -372,9 +398,24 @@ the legacy parity envelope (`max_plies = 10000`, fixture seed pinned, `--rng cpp
 
 ### Remaining Work
 
-Not started.
+- Baseline landed: `mcts verify legacy-parity {rollouts|selfplay}` parses workload,
+  requires `cpp-legacy`, pins `CppRng`, pins single-threaded execution and
+  `max_plies = 10000`, and compares the logical five-backend cohort.
+- Replace logical backend execution with real backend (i) FFI execution.
+- Add longest-rollout/cap-overflow pre-flight checks against the verbatim port.
+- Add fixture-seed coverage once `test/golden/legacy/` contains external legacy
+  artefacts.
 
-## Sprint 4.7: Backend (i) Engine Envelope and Foreign-Engine Recompute 📋
+## Sprint 4.7: Backend (i) Engine Envelope and Foreign-Engine Recompute ⏸️
+
+**Status**: Blocked
+**Implementation**: `cpp-legacy/c-abi/`, `src/MCTS/FFI/CppLegacy.hs`,
+`src/MCTS/Driver/CppLegacy.hs`
+**Blocked by**: Sprint 4.2, Sprint 4.4, Sprint 2.7
+**Docs to update**: `documents/engineering/determinism_contract.md`,
+`documents/engineering/backend_ffi_contract.md`,
+`documents/engineering/transcript_format.md`,
+`DEVELOPMENT_PLAN/system-components.md`
 
 ### Objective
 
@@ -442,8 +483,10 @@ Envelope Surface](../documents/engineering/backend_ffi_contract.md).
 
 ### Remaining Work
 
-Not started. Blocked by Sprint 4.4 (driver and transcript writer) and
-Sprint 2.7 (sidecar codec).
+- Add backend (i)'s `get_envelope` C ABI surface after the real FFI binding and driver
+  exist.
+- Add backend (i)'s foreign-engine recompute surface for equity sidecars.
+- Wire the live envelope into layered verification and stale-sidecar pruning.
 
 ## Documentation Requirements
 

@@ -1,0 +1,6 @@
+_mcts_complete()
+{
+    local words="bench verify play inspect test lint docs commands help check-code build"
+    COMPREPLY=( $(compgen -W "$words" -- "${COMP_WORDS[COMP_CWORD]}") )
+}
+complete -F _mcts_complete mcts

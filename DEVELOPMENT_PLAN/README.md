@@ -17,6 +17,7 @@
 [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md),
 [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md),
 [../documents/documentation_standards.md](../documents/documentation_standards.md)
+**Generated sections**: none
 
 > **Purpose**: Provide the single execution-ordered development plan for the MCTS
 > Haskell CLI and its five backends, including phase status, validation gates, and cleanup
@@ -30,25 +31,23 @@ rules that govern this plan suite.
 
 ## Closure Status
 
-Phase `0` Sprint `0.1` is `Done` on plan-suite bootstrap: the
-`DEVELOPMENT_PLAN/` directory, the `documents/` governed-doc scaffolding, and the
-root-file pointer updates that name [../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md) as
-the authoritative CLI doctrine all exist. Phase `0` Sprint `0.2` is `Planned` and owns the
-doctrine-driven scheduling audit that confirms every in-scope identifier from the doctrine
-appears as an owned deliverable somewhere in Phases `1`–`8`. Phases `1` through `8` are
-`Planned`; no Haskell, C++, or Rust code has landed yet in the worktree on the supported
-path.
+Phase `0` Sprint `0.1` remains `Done` on plan-suite bootstrap. Phases `1` through
+`7` are now `Active` on an implementation baseline: the worktree contains a Cabal
+package, the `mcts` executable, the command registry and parser, generated command
+documentation/manpage/completions, a deterministic transcript/cache layer, a simplified Corridors driver,
+baseline equity-sidecar cache inspection/pruning, logical five-backend verification,
+smoke-buildable foreign-backend placeholder trees,
+and all five Cabal test-suite stanzas. The validation gate for this baseline remains
+`cabal test all` under the pinned GHC `9.14.1` toolchain.
 
-The repository is in its bootstrap phase. The only artefacts at the time of Sprint `0.1`
-closure are this plan suite, the governed `documents/` scaffolding, the doctrine document,
-the README, the LICENCE, and the agent-guardrail files. Sprints `1.1`–`8.N` describe the
-sequential buildout to the end state declared in [00-overview.md](00-overview.md):
-five backends behind one `mcts` binary, two pinned POC benchmark workloads, bit-for-bit
-cross-backend visit-count equality under `--rng cpp`, and pure Haskell within the
-parity tolerance defined in
-[../documents/engineering/compiler_runtime_tuning.md → Parity Tolerance](../documents/engineering/compiler_runtime_tuning.md)
-(`HASKELL_PARITY_TOLERANCE = 0.05`) of maximally-optimised C++ on both Q1 random
-rollouts and Q2/Q5 self-play.
+This is **not** the final parity-proven architecture. The implemented backend cohort is
+a deterministic logical baseline used to validate the CLI, transcript, cache, and test
+surfaces. The real sprint-owned remaining work is still explicit: the verbatim
+`~/MCTS_legacy` port and Haskell FFI, the C++23 imperative and functional engines, the
+Rust `cdylib`, the PGO+BOLT+`mimalloc` pipelines, the `ST` arena Haskell search engine,
+the `brick` / `vty` TUIs, external legacy golden fixtures, and the Phase `8`
+performance-parity proof remain open. Those surfaces stay `Active` / `Planned` rather
+than being marked `Done` until their validation gates pass against the real artefacts.
 
 ## Document Index
 
@@ -97,28 +96,46 @@ A sprint can move to `Done` only when all of the following are true:
 | Phase | Name | Status | Document |
 |-------|------|--------|----------|
 | 0 | Planning and Documentation Topology | 🔄 Active (Sprint 0.1 ✅; Sprint 0.2 📋) | [phase-0-planning-documentation.md](phase-0-planning-documentation.md) |
-| 1 | Haskell CLI Surface, `CommandSpec`, Lint Stack | 📋 Planned | [phase-1-haskell-cli-surface.md](phase-1-haskell-cli-surface.md) |
-| 2 | Transcript Codec, RNG, and Determinism Contract | 📋 Planned | [phase-2-transcript-codec-and-determinism.md](phase-2-transcript-codec-and-determinism.md) |
-| 3 | Backend (v) Haskell Engine | 📋 Planned | [phase-3-haskell-engine.md](phase-3-haskell-engine.md) |
-| 4 | Backend (i) C++ Legacy Port and FFI Bridge | 📋 Planned | [phase-4-cpp-legacy-port-and-ffi-bridge.md](phase-4-cpp-legacy-port-and-ffi-bridge.md) |
-| 5 | Backend (ii) C++ Imperative Steelman with PGO+BOLT | 📋 Planned | [phase-5-cpp-imperative-steelman.md](phase-5-cpp-imperative-steelman.md) |
-| 6 | Backends (iii) C++ Functional-Style and (iv) Rust | 📋 Planned | [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md) |
-| 7 | Cross-Backend Verify, Test Stanzas, POC Report Card | 📋 Planned | [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md) |
+| 1 | Haskell CLI Surface, `CommandSpec`, Lint Stack | 🔄 Active (validated baseline; doctrine-complete lint stack still open) | [phase-1-haskell-cli-surface.md](phase-1-haskell-cli-surface.md) |
+| 2 | Transcript Codec, RNG, and Determinism Contract | 🔄 Active (codec/cache/SHA-256/sidecar baseline; full envelope completion open) | [phase-2-transcript-codec-and-determinism.md](phase-2-transcript-codec-and-determinism.md) |
+| 3 | Backend (v) Haskell Engine | 🔄 Active (logical engine baseline; ST arena/search parity engine open) | [phase-3-haskell-engine.md](phase-3-haskell-engine.md) |
+| 4 | Backend (i) C++ Legacy Port and FFI Bridge | 🔄 Active (C ABI skeleton; verbatim legacy port/FFI open) | [phase-4-cpp-legacy-port-and-ffi-bridge.md](phase-4-cpp-legacy-port-and-ffi-bridge.md) |
+| 5 | Backend (ii) C++ Imperative Steelman with PGO+BOLT | 🔄 Active (smoke skeleton; steelman engine and PGO+BOLT open) | [phase-5-cpp-imperative-steelman.md](phase-5-cpp-imperative-steelman.md) |
+| 6 | Backends (iii) C++ Functional-Style and (iv) Rust | 🔄 Active (smoke skeletons; real engines and pipelines open) | [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md) |
+| 7 | Cross-Backend Verify, Test Stanzas, POC Report Card | 🔄 Active (test stanzas and logical verify pass; real cohort/TUIs/report-card evidence open) | [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md) |
 | 8 | Haskell Performance Parity Closure | 📋 Planned | [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md) |
 
 ## Current Plan Status
 
-The plan suite is authoritative as of Sprint `0.1` closure. The repository worktree has no
-Haskell, C++, or Rust source on the supported path; every implementation sprint is
-`Planned`. The intended next sprint is Sprint `0.2`, the doctrine-driven scheduling audit
-that confirms every in-scope doctrine identifier (CommandSpec, OptionSpec, execParserPure,
-renderError, forbiddenPathRegistry, GeneratedSectionRule, prerequisiteRegistry, Subprocess
-+ runStreaming + capture, the twelve `fourmolu.yaml` settings, the property invariants
-`decode . encode == id` / `render is deterministic` / `parser roundtrips`, the five cabal
-test-suite stanzas, `splitmix64`, `VerifyBackend`, `LegacyParityBackend`, the report-card
-knobs, GHC 9.14.1 / Cabal 3.16.1.0 pin) appears as an owned deliverable somewhere in
-Phases `1`–`8`. Phase `0` re-closes once Sprint `0.2` lands; Phases `1`–`8` then execute
-in sequence.
+The repository has moved past bootstrap into an active implementation baseline.
+Implemented in the worktree:
+
+- `mcts.cabal`, `cabal.project`, `app/Main.hs`, `src/MCTS/**`, `test/**`,
+  `documents/cli/commands.md`, `share/man/man1/mcts.1`,
+  `share/completion/{bash,zsh,fish}/`, `fourmolu.yaml`, `.hlint.yaml`, `.gitignore`.
+- CLI command families: `bench`, `verify`, `inspect`, `test`, `lint`, `docs`,
+  `commands`, `help`, `check-code`, `build`, and a non-interactive `play` smoke.
+- Deterministic transcript encode/decode, cache root resolution, prefix lookup,
+  action enumeration, move notation, `splitmix64` seed mixing, and baseline
+  `.eq` / `.envelope` sidecar list/prune support.
+- `inspect show --with-equity` writes a current logical equity sidecar, and
+  `inspect divergence` now resolves the target transcript and renders metrics from
+  `MCTS.Verify.Divergence` rather than a fixed placeholder.
+- `inspect show --envelope` renders the current transcript envelope, and
+  `mcts verify ... --allow-stale` is parsed and routed through the baseline layered
+  envelope verifier for the fields present in the current envelope.
+- Five Cabal test stanzas: `mcts-unit`, `mcts-integration`,
+  `mcts-cross-backend`, `mcts-legacy-parity`, `mcts-haskell-style`.
+- `mcts lint haskell` delegates to `cabal test mcts-haskell-style`, and
+  `mcts check-code` runs lint/docs plus `cabal build all`.
+- Smoke backend source homes under `cpp-legacy/`, `cpp-imperative/`,
+  `cpp-functional/`, and `rust/`.
+
+Remaining work is the difference between this baseline and the target end state:
+full engine envelopes and foreign-engine recompute sidecars, the optimized Haskell `ST` arena engine,
+real foreign C ABI bindings, the verbatim legacy port, PGO+BOLT pipelines, real
+cross-backend bit-for-bit proof, interactive TUIs, external golden fixtures, and Phase
+`8` performance parity closure.
 
 The retirement protocol (i)→(ii)→(iii)→(v) named in [00-overview.md](00-overview.md) and
 owned by Phase `8` is the long-running closure mechanism: each retiring backend's

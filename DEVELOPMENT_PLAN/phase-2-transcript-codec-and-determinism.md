@@ -7,6 +7,7 @@
 [system-components.md](system-components.md),
 [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md),
 [../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md)
+**Generated sections**: none
 
 > **Purpose**: Land the transcript wire format, the single-byte action enumeration,
 > the per-game RNG seed derivation, the cache root resolution and hash-prefix lookup,
@@ -15,8 +16,16 @@
 
 ## Phase Status
 
-📋 Planned. Blocked by Phase `1` closure (the codec lives behind the `Subprocess`
-boundary, the `Plan` ADT, the `AppError` ADT, and the `Env` record established there).
+🔄 **Active**. The worktree has a deterministic transcript encoder/decoder,
+single-byte action enumeration, SHA-256 content addressing, cache root resolution,
+`.mcts-cache/` ignore, hash-prefix lookup, `splitmix64` seed derivation, move
+notation, and non-interactive `inspect list` / `inspect show` / `inspect replay`
+smoke paths. `inspect show --envelope` renders the envelope fields currently present.
+The baseline `.eq` / `.envelope` sidecar codec, sidecar listing,
+`inspect show --with-equity` sidecar writes, and `inspect cache prune` now exist.
+Remaining Phase `2` closure work is full v1 engine-envelope parsing, atomic binary
+sidecar semantics with live-envelope stale detection, and stricter wire-format golden
+fixtures.
 
 ## Phase Summary
 
@@ -30,9 +39,9 @@ output independent of worker count and scheduling order, the `--rng native` vs
 `mcts inspect show` commands plus the git-style hash-prefix lookup. No engine and no
 backend lands yet; this phase is the format spec the engine writes into.
 
-## Sprint 2.1: Wire-Format Header and Per-Move Record Codec 📋
+## Sprint 2.1: Wire-Format Header and Per-Move Record Codec 🔄
 
-**Status**: Planned
+**Status**: Active
 **Implementation**: `src/MCTS/Transcript/Header.hs`,
 `src/MCTS/Transcript/Record.hs`, `src/MCTS/Transcript/Action.hs`,
 `src/MCTS/Transcript/Codec.hs`
@@ -122,11 +131,21 @@ records of `(action_id, visits)` sorted ascending by action ID, equity excluded.
 
 ### Remaining Work
 
-Not started.
+- Baseline landed: `MCTS.Transcript` writes and reads the v1 `MCTR` header,
+  per-game/per-move records, winner terminator, action IDs, and a minimal envelope
+  block.
+- Split the monolithic codec into the planned header/record/envelope modules or update
+  implementation ownership if the single-module layout is retained.
+- Tighten `decode . encode == id` so decoded `RunConfig` preserves all intended fields,
+  including workload and game count semantics.
+- Add sorted-record properties and byte-level golden fixtures under the final
+  `test/golden/transcript-codec/` layout.
+- Reject legacy-backend draw winners explicitly once the real backend (i) transcript
+  path lands.
 
-## Sprint 2.2: Content-Addressed Cache and Cache Root Resolution 📋
+## Sprint 2.2: Content-Addressed Cache and Cache Root Resolution 🔄
 
-**Status**: Planned
+**Status**: Active
 **Implementation**: `src/MCTS/Transcript/Hash.hs`,
 `src/MCTS/Transcript/Cache.hs`, `.gitignore`
 **Docs to update**: `documents/engineering/transcript_format.md`,
@@ -168,11 +187,18 @@ the `.gitignore` entry that keeps the cache out of version control.
 
 ### Remaining Work
 
-Not started.
+- Baseline landed: pure SHA-256 hashing, `runConfigHash`, `playTranscriptHash`,
+  cache-root resolution, arch-partitioned transcript paths, transcript writes, and the
+  `.mcts-cache/` ignore rule.
+- Add atomic transcript writes with same-directory temp files, fsync, and rename.
+- Add cache-root branch coverage for explicit `--cache-dir`, `$MCTS_CACHE_DIR`, and
+  default project-local cache behavior.
+- Verify `git status` remains clean for generated cache contents inside the project
+  tree.
 
-## Sprint 2.3: Git-Style Hash-Prefix Lookup 📋
+## Sprint 2.3: Git-Style Hash-Prefix Lookup 🔄
 
-**Status**: Planned
+**Status**: Active
 **Implementation**: `src/MCTS/Transcript/Lookup.hs`
 **Docs to update**: `documents/engineering/transcript_format.md`,
 `documents/engineering/cli_command_surface.md`
@@ -206,11 +232,18 @@ transcript with the doctrine-flavoured error rendering.
 
 ### Remaining Work
 
-Not started.
+- Baseline landed: `lookupByPrefix` enforces a four-hex-character minimum, scans the
+  current-arch transcript cache, and returns `TranscriptNotFound` /
+  `TranscriptAmbiguous` / the unique path.
+- Add explicit tests for too-short, non-hex, no-match, ambiguous, and exact-match
+  cases.
+- Add the unique-prefix property over populated synthetic caches.
+- Decide whether the resolved value should remain a file path or become the planned
+  typed `TranscriptRef` once `Env` lands.
 
-## Sprint 2.4: `mcts inspect list` and `mcts inspect show` 📋
+## Sprint 2.4: `mcts inspect list` and `mcts inspect show` 🔄
 
-**Status**: Planned
+**Status**: Active
 **Implementation**: `src/MCTS/CLI/Inspect.hs`,
 `src/MCTS/CLI/Spec.hs` (Inspect subtree),
 `src/MCTS/Notation.hs`
@@ -268,11 +301,19 @@ Sprint 7.4.
 
 ### Remaining Work
 
-Not started.
+- Baseline landed: `mcts inspect list`, `mcts inspect show <prefix>`,
+  `--top`, `--with-equity`, `--envelope`, JSON/plain output branches, and legacy move
+  notation round-trips exist.
+- Expand `inspect list` to render the full planned summary columns: threading, sims,
+  total moves, and richer mtime handling.
+- Replace the current `equity=0.0000` placeholder with the shared recompute-backed
+  renderer once Sprint 7.4 / recompute work lands.
+- Add golden coverage for `inspect show`, `inspect list --format json`, and all move
+  notation cases.
 
-## Sprint 2.5: `splitmix64` Seed Derivation and `--rng` Plumbing 📋
+## Sprint 2.5: `splitmix64` Seed Derivation and `--rng` Plumbing 🔄
 
-**Status**: Planned
+**Status**: Active
 **Implementation**: `src/MCTS/Rng/Mix.hs`, `src/MCTS/Rng/Native.hs`,
 `src/MCTS/Rng/Source.hs`, `src/MCTS/CLI/Spec.hs` (`--rng` option)
 **Docs to update**: `documents/engineering/determinism_contract.md`,
@@ -330,9 +371,23 @@ consumer is wired in Phase 4 once the FFI bridge exists.
 
 ### Remaining Work
 
-Not started.
+- Baseline landed: `splitmix64`, `mix`, `RngSource`, `--rng native|cpp` parsing, and
+  verification paths that force the logical cohort to `CppRng`.
+- Pin known-output golden vectors for `mix(42, 0)` and `mix(42, 1)`.
+- Add the bounded bijection/property coverage described by the sprint.
+- Add cross-language fixtures once the C++ `cpp_rng_split` shim is callable from
+  Haskell.
+- Reject user-supplied `--rng native` on `verify` at parse time rather than silently
+  overriding the parsed run inputs.
 
-## Sprint 2.6: Engine Envelope Codec 📋
+## Sprint 2.6: Engine Envelope Codec 🔄
+
+**Status**: Active
+**Implementation**: `src/MCTS/Transcript.hs`, `src/MCTS/Verify/Envelope.hs`,
+`src/MCTS/CLI/Inspect.hs`, `src/MCTS/CLI/Verify.hs`, `test/unit/Main.hs`
+**Docs to update**: `documents/engineering/transcript_format.md`,
+`documents/engineering/determinism_contract.md`,
+`DEVELOPMENT_PLAN/system-components.md`
 
 ### Objective
 
@@ -383,9 +438,25 @@ layered cohort-invariant vs per-backend-slot semantics.
 
 ### Remaining Work
 
-Not started. Blocked by Sprint 2.1 (the existing fixed-header codec).
+- Baseline landed: transcripts carry a minimal envelope block, `inspect show
+  --envelope` renders the fields present today, and `mcts verify ... --allow-stale`
+  routes through baseline cohort/backend-slot envelope checks.
+- Replace the minimal `{version, backend, host_arch, build_id}` envelope with the full
+  v1 cohort-invariant and per-backend-slot field set.
+- Honour `envelope_byte_length` for forward-compatible decoding and version-2 trailer
+  skipping.
+- Prove `sha256(RunConfig)` invariance under arbitrary envelope changes.
+- Replace logical build IDs with live backend envelope capture from Sprints `3.6`,
+  `4.7`, `5.5`, and `6.5`.
 
-## Sprint 2.7: Equity Sidecar Codec 📋
+## Sprint 2.7: Equity Sidecar Codec 🔄
+
+**Status**: Active
+**Implementation**: `src/MCTS/Transcript/EquitySidecar.hs`, `src/MCTS/CLI/Inspect.hs`,
+`test/unit/Main.hs`
+**Docs to update**: `documents/engineering/transcript_format.md`,
+`DEVELOPMENT_PLAN/system-components.md`,
+`DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md`
 
 ### Objective
 
@@ -394,6 +465,17 @@ overlay (REPL) and the lazy-recompute cache. See
 [../documents/engineering/transcript_format.md → Equity Sidecar
 Cache](../documents/engineering/transcript_format.md) for the wire
 format and the on-disk layout.
+
+### Current Validation State
+
+The active baseline uses `src/MCTS/Transcript/EquitySidecar.hs` to write a
+text-encoded `EqStream` beside a readable `Envelope`, stored under
+`.mcts-cache/transcripts/<host_arch>/<sha>/<backend>-<build_prefix16>.{eq,envelope}`.
+`mcts inspect show --with-equity` materializes the current logical sidecar,
+`mcts inspect cache list` enumerates cached `(backend, build)` slots, and
+`mcts inspect cache prune --keep-current` removes sidecars whose build id does not match
+the current logical `<backend>-logical` baseline. `mcts-unit` covers sidecar encode/decode,
+listing, and keep-current prune behavior.
 
 ### Deliverables
 
@@ -449,8 +531,15 @@ format and the on-disk layout.
 
 ### Remaining Work
 
-Not started. Blocked by Sprint 2.6 (envelope codec) because the `.eq`
-header embeds an envelope block.
+- Replace the baseline `Show` / `Read` `.eq` encoding with the final fixed-width binary
+  header, per-move records, terminator, and full envelope block.
+- Add same-directory temp-file, fsync, and rename semantics for atomic sidecar writes.
+- Replace logical `<backend>-logical` stale detection with live
+  `mcts_<backend>_get_envelope()` matching once Sprints `3.6`, `4.7`, `5.5`, and `6.5`
+  land the real backend envelope FFI.
+- Add originator-vs-foreign markers and integration coverage over two cohabiting backend
+  slots for one transcript.
+- Extend engineering docs with the finalized `.eq` binary wire format.
 
 ## Documentation Requirements
 

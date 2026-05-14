@@ -301,6 +301,14 @@ intact for forensic comparison. Pruning is explicit
 The `.eq` file is little-endian binary, no padding, no schema-library
 dependency — same principles as the transcript itself.
 
+Current implementation baseline: `src/MCTS/Transcript/EquitySidecar.hs`
+stores `EqStream` with a `Show` / `Read` text codec and writes a neighboring
+`Show`-encoded `Envelope` file so `inspect show --with-equity`, `inspect cache
+list`, and `inspect cache prune --keep-current` exercise the documented cache
+layout before the final binary `.eq` writer lands. `inspect show --envelope`
+renders the same baseline envelope fields from the transcript itself. The fixed-width
+binary format below remains the Sprint `2.7` closure target.
+
 ```text
 # Example: .eq sidecar wire format
 Header:

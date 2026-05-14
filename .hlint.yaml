@@ -1,0 +1,10 @@
+- warn: {lhs: "case x of { _ -> y }", rhs: "y"}
+- ignore: {name: "Use camelCase"}
+- error:
+    name: "Use typed subprocess boundary"
+    lhs: "System.Process.callProcess"
+    rhs: "MCTS.Subprocess.runStreaming"
+- error:
+    name: "Use output boundary"
+    lhs: "print"
+    rhs: "MCTS.CLI.Output.outputLine"

@@ -16,6 +16,7 @@
 [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md),
 [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md),
 [../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md)
+**Generated sections**: none
 
 > **Purpose**: Capture the target architecture, current baseline, doctrine scope,
 > hard constraints, and dependency chain that every MCTS phase depends on.
@@ -459,15 +460,15 @@ referenceability.
 
 ## Current Baseline
 
-| Surface | Current Repo State (Bootstrap) | Intended End State |
-|---------|-------------------------------|--------------------|
-| Repository layout | `AGENTS.md`, `CLAUDE.md`, `HASKELL_CLI_TOOL.md`, `LICENCE`, `README.md`, `DEVELOPMENT_PLAN/`, `documents/` | `app/`, `src/MCTS/`, `cpp-legacy/`, `cpp-imperative/`, `cpp-functional/`, `rust/`, `bench/`, `test/` (including `test/golden/legacy/`), `docker/`, `cabal.project`, `fourmolu.yaml`, `mcts.cabal`, MCTS-specific engineering elaborations under `documents/engineering/` |
-| Build artefacts | None | `cabal build all`-produced `mcts` binary, plus per-backend shared libraries (`cpp-legacy/libmcts_cpp_legacy.so`, `cpp-imperative/libmcts_cpp_imperative.so`, `cpp-functional/libmcts_cpp_functional.so`, `rust/target/release/libmcts_rust.so`) |
-| CLI surface | None | `mcts bench {rollouts,selfplay}`, `mcts verify {rollouts,selfplay,legacy-parity {rollouts,selfplay}}`, `mcts play`, `mcts inspect {list,show,replay}`, `mcts test {all,<stanza>}`, `mcts lint {files,docs,haskell,all}`, `mcts docs {check,generate}`, `mcts commands [--tree|--json]`, `mcts help <subcommand>`, `mcts check-code`, `mcts build {cpp-legacy,cpp-imperative,cpp-functional,rust}` |
-| Test stanzas | None | Five Cabal stanzas: `mcts-unit`, `mcts-integration`, `mcts-cross-backend`, `mcts-legacy-parity`, `mcts-haskell-style` |
-| Toolchain | None pinned in the worktree | GHC `9.14.1`, Cabal `3.16.1.0`, GCC latest stable on `ubuntu:24.04`, Rust latest stable with pinned minor, LLVM pinned in the Dockerfile |
-| Determinism contract | Documented in `README.md`; not yet enforced by code | Enforced by `mcts verify {rollouts,selfplay,legacy-parity}` plus same-backend determinism cases under `mcts-integration` |
-| Performance parity | Hypothesis only | Haskell (v) within tolerance of C++ (ii) on Q1 and Q2, single-threaded and on 8 workers, recorded in the `mcts test all` report card |
+| Surface | Current Repo State | Intended End State |
+|---------|--------------------|--------------------|
+| Repository layout | `app/`, `src/MCTS/`, `cpp-legacy/`, `cpp-imperative/`, `cpp-functional/`, `rust/`, `bench/`, `test/`, `docker/`, `cabal.project`, `fourmolu.yaml`, `.hlint.yaml`, `.gitignore`, `mcts.cabal`, generated `documents/cli/commands.md`, `share/man/man1/mcts.1`, and `share/completion/{bash,zsh,fish}/` | Same layout, with the placeholder backend trees replaced by the real optimized implementations and retained golden anchors |
+| Build artefacts | `mcts.cabal` declares the `mcts` binary and all Haskell test stanzas; `cabal build all` is the validation gate under the pinned toolchain. Foreign backend directories contain smoke-buildable C ABI / `cdylib` skeletons but are not linked into the Haskell binary. | `cabal build all`-produced `mcts` binary, plus per-backend shared libraries (`cpp-legacy/libmcts_cpp_legacy.so`, `cpp-imperative/libmcts_cpp_imperative.so`, `cpp-functional/libmcts_cpp_functional.so`, `rust/target/release/libmcts_rust.so`) |
+| CLI surface | The complete command family parses and runs for the validated logical baseline: `bench`, `verify`, `inspect`, `test`, `lint`, `docs`, `commands`, `help`, `check-code`, `build`, and smoke `play`. | Same surface backed by real Haskell, C++, and Rust engines plus interactive TUIs |
+| Test stanzas | Five Cabal stanzas exist: `mcts-unit`, `mcts-integration`, `mcts-cross-backend`, `mcts-legacy-parity`, `mcts-haskell-style`; `cabal test all` is the validation gate under the pinned toolchain. | Same stanzas, strengthened to run the real FFI-backed cohort and external golden fixtures |
+| Toolchain | `mcts.cabal` pins `tested-with: ghc ==9.14.1`; `cabal.project` pins `with-compiler: ghc-9.14.1` and report-card knobs. | GHC `9.14.1`, Cabal `3.16.1.0`, GCC latest stable on `ubuntu:24.04`, Rust latest stable with pinned minor, LLVM pinned in the Dockerfile |
+| Determinism contract | Enforced for the logical in-process five-backend baseline under `mcts verify` and the Cabal tests. Transcript codec, SHA-256 content addressing, cache root resolution, prefix lookup, baseline equity sidecars, and transcript-pair divergence metrics are implemented. | Enforced by real cross-backend `mcts verify {rollouts,selfplay,legacy-parity}` plus same-backend determinism cases under `mcts-integration` |
+| Performance parity | Not proven. Report-card rendering exists as a logical baseline and explicitly marks external fixture parity pending. | Haskell (v) within tolerance of C++ (ii) on Q1 and Q2, single-threaded and on 8 workers, recorded in the `mcts test all` report card |
 
 ## Related Documents
 

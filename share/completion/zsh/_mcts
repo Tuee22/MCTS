@@ -1,0 +1,2 @@
+#compdef mcts
+_arguments '1:command:(bench verify play inspect test lint docs commands help check-code build)' '*::arg:->args'
