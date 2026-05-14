@@ -111,16 +111,26 @@ the ply-cap draw rule for backends (ii)–(v)), and legal-move enumeration.
 - Baseline landed: `src/MCTS/Engine.hs` has a deterministic Corridors board,
   legal-move generation, path-preserving wall checks, move application, side toggling,
   ply counting, terminal detection, and draw rendering through the transcript path.
+  The `mcts-unit` stanza now asserts that every chosen move from a recorded game
+  was actually legal on the matching reconstructed board (successor-state legality),
+  that chosen moves are always represented in their visit list, and that `runGame`
+  is reproducible for fixed inputs (Q4 same-backend determinism on a small fixture).
 - Replace tuple/list board storage with the planned strict bitboard representation and
   module split (`Board`, `Move`, `Terminal`, `Legal`) or update ownership if the
   single-module baseline is retained temporarily.
-- Add brute-force reference/property coverage for legal moves, terminal detection, and
-  successor-state legality.
+- Baseline landed: the `mcts-unit` stanza now walks 10 splitmix-derived
+  random pawn-walk seeds × 30 steps each (capped at 200 reachable boards)
+  and asserts three invariants across the resulting random sample: (a)
+  every legal move applied to a board produces a successor that is either
+  legal or terminal; (b) `legalMoves` returns no action-id duplicates;
+  (c) every terminal board has an empty legal-move set. The full 10k
+  brute-force reference comparison lands with Sprint 7.1 property-based
+  coverage.
 - Add the known-position golden over a pinned move sequence.
 
-## Sprint 3.2: MCTS Tree Arena in `ST s` 📋
+## Sprint 3.2: MCTS Tree Arena in `ST s` 🔄
 
-**Status**: Planned
+**Status**: Active
 **Implementation**: `src/MCTS/Search/Arena.hs`, `src/MCTS/Search/Node.hs`,
 `src/MCTS/Search/Tree.hs`
 **Docs to update**: `documents/engineering/compiler_runtime_tuning.md`,
@@ -157,7 +167,22 @@ bulk at game end, with `Int32` child indices and unboxed `Float` value-backup fi
 
 ### Remaining Work
 
-Not started.
+- Baseline landed: `src/MCTS/Search/Arena.hs` provides the SoA arena
+  (`parentIdx`, `firstChildIdx`, `nChildren`, `actionId`, `visits`,
+  `valueSum`) as parallel `STUArray` arrays with a `STRef` cursor.
+  Operations exposed: `newArena`, `freeArena`, `allocNode`, `readVisits`,
+  `addVisits`, `readValueSum`, `addValueSum`, `readActionId`,
+  `readParent`, `readFirstChild`, `readNumChildren`, `setChildren`,
+  `treeRoot`, `treeReroot`, `bulkVisits`. The `array` package is now a
+  declared dependency. The `mcts-unit` stanza covers (a) `treeReroot`
+  round-trips inherited visits and value-sums for the new root, (b) the
+  arena cursor tracks allocation count, (c) `bulkVisits` matches
+  per-slot reads, (d) `freeArena` resets the cursor and the next
+  `allocNode` starts at slot 0.
+- The Phase 8 `MutableByteArray#` migration path (a hand-rolled arena with
+  per-rollout scratch) lands when profiling justifies it. The API exported
+  by `MCTS.Search.Arena` remains the boundary; the underlying
+  representation flips behind it.
 
 ## Sprint 3.3: UCT Search and Random-Rollout Leaf Evaluation 🔄
 
@@ -209,11 +234,23 @@ ancestor path).
 
 ### Remaining Work
 
-- Baseline landed: `chooseMove` deterministically assigns visit counts and chosen
-  actions from the backend/rng/seed/action tuple so the CLI, transcript, and verify
-  surfaces can run.
-- Replace the logical visit generator with real UCT selection, expansion, random
-  rollout simulation, and backpropagation in `ST s`.
+- Baseline landed: `src/MCTS/Search/UCT.hs` exposes
+  `uctSearch :: Board -> Word64 -> Int -> Int -> (Action, [(Action, Word32)])`
+  that allocates a tree in `MCTS.Search.Arena`, pre-expands every legal root
+  child, runs `nSims` random rollouts seeded by `splitmix`, backpropagates the
+  rollout outcome up the chosen-child path, and returns the highest-visit
+  action plus the action-id-sorted visit table. The driver
+  (`MCTS.Driver.uctChooseMove`) now dispatches every per-move search through
+  this entrypoint with a backend-derived seed salt under `--rng native`
+  (zero salt under `--rng cpp` so cross-backend visits are bit-equal).
+  The `mcts-unit` stanza asserts: (a) determinism for fixed inputs,
+  (b) chosen action is legal, (c) visit list covers every legal move,
+  (d) visits sorted ascending by action_id, (e) total root-child visits
+  equals the sim budget.
+- The current UCT is a one-level descent (root → pre-expanded root child →
+  rollout). The Phase 8 optimised version recursively descends and reuses a
+  per-rollout scratch board to skip the per-step `applyMove` copy. The
+  exported API remains stable across that migration.
 - Pin the `non_terminal_rank` operational definition from `~/MCTS_legacy` and cite the
   exact legacy function/line range in the determinism contract.
 - Add root-visit, same-seed, and fixed-position golden tests for the real search loop.
@@ -350,12 +387,17 @@ wall-clock time from a single `Data.Time.Clock.getMonotonicTimeNSec`, emit
 
 - Baseline landed: `mcts bench rollouts` and `mcts bench selfplay` run through the
   logical Haskell backend, write transcripts, and render table/JSON throughput output.
-- Replace `getSystemTime` with the pinned monotonic clock contract
-  (`Data.Time.Clock.getMonotonicTimeNSec`) once the required dependency/API is
-  available.
-- Add the worker-pool implementation and Env test-hook bracket assertion for timing.
+  The bench runner now reads the pinned monotonic clock
+  (`GHC.Clock.getMonotonicTimeNSec`) via the `monotonicNanos` helper. The
+  test-injectable variant `runBenchWithClock` accepts any `IO Word64`
+  clock, and the `mcts-unit` stanza asserts the bracket calls the clock
+  exactly twice per backend (start + stop) under the test hook.
+- Add the worker-pool implementation for `MultiThreaded { workers = N }`
+  dispatch.
 - Expand parsing/execution so multi-backend bench requests are dispatched per backend
-  instead of using the first backend as the baseline parser currently does.
+  instead of using the first backend as the baseline parser currently does (the
+  current runner already iterates the backend list internally; the README's
+  comma-separated `--backend` parsing wires through).
 - Re-run the validation commands against the real Haskell search engine.
 
 ## Sprint 3.6: Backend (v) Engine Envelope and Foreign-Engine Recompute 🔄
@@ -424,13 +466,24 @@ Recompute](../documents/engineering/backend_ffi_contract.md).
 
 ### Remaining Work
 
-- Baseline landed: the logical in-process backend stamps a minimal
-  `<backend>-logical` envelope and participates in the baseline envelope verifier.
-- Add `src/MCTS/Engine/Envelope.hs` with compiler/build/CPU/fp metadata capture for
-  the real Haskell engine.
-- Add `src/MCTS/Engine/Recompute.hs` and wire same-backend recompute to produce real
-  `.eq` records and fail with `AppError RecomputeMismatch` on visit drift.
-- Replace the logical `0.0` equity sidecar values with recomputed originator values.
+- Baseline landed: the in-process backend stamps the full v1 envelope
+  via `MCTS.Driver.makeLogicalEnvelope` (cohort-invariant + per-backend
+  slot fields). `src/MCTS/Engine/Recompute.hs` exposes
+  `recomputeEquities :: Transcript -> Either AppError [EqRecord]` and
+  `recomputeEqStream :: String -> String -> Transcript -> Either
+  AppError EqStream`. Under `--rng cpp` the recompute hard-asserts
+  visit equality with the transcript's recorded visits at every move
+  and short-circuits with `AppError RecomputeMismatch` on the first
+  disagreement, exactly per
+  [../documents/engineering/determinism_contract.md → Recompute Mismatch Output](../documents/engineering/determinism_contract.md).
+  The `mcts-unit` stanza covers (a) the recompute produces one
+  `EqRecord` per recorded move, (b) chosen-move sequence preserved,
+  (c) transcript hash and build id are stamped on the stream, and
+  (d) intentionally corrupting the visit counts triggers
+  `RecomputeMismatch`.
+- Add `src/MCTS/Engine/Envelope.hs` that captures real build-time
+  metadata (`__GLASGOW_HASKELL__`, `MCTS_GIT_COMMIT`, post-link build_id
+  patch) once the build harness lands.
 - Add integration coverage for originator cache hits and foreign-view recompute once
   the real backend dispatch exists.
 

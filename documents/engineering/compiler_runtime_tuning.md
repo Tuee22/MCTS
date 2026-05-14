@@ -220,6 +220,29 @@ LLVM codegen tuned via `-optlo-mcpu=native` (through to LLVM `opt`) and
 `-optlc-mcpu=native` (through to `llc`). LLVM version pinned in the
 `docker/Dockerfile` so codegen is reproducible.
 
+#### Currently landed (Phase 8 Sprint 8.1 baseline)
+
+The LLVM-free subset of the flag list above is landed in `mcts.cabal`'s
+shared `warnings` common stanza:
+
+```
+-O2
+-funbox-strict-fields
+-fspecialise-aggressively
+-fexpose-all-unfoldings
+-flate-dmd-anal
+-fmax-simplifier-iterations=20
+-fworker-wrapper
+-fstatic-argument-transformation
+```
+
+`-fllvm`, `-optlo-mcpu=native`, and `-optlc-mcpu=native` are held back
+until Sprint 1.1 pins LLVM in `docker/Dockerfile`. `INLINABLE` pragmas
+are landed on the hot path: every primitive in `MCTS.Search.Arena`,
+`MCTS.Search.UCT`, `MCTS.Rng.Mix`, and the exported engine functions
+in `MCTS.Engine` (`legalMoves`, `applyMove`, `isTerminal`,
+`terminalWinner`).
+
 ### RTS Tuning
 
 Baked into the executable's `ghc-options`:
@@ -228,6 +251,10 @@ Baked into the executable's `ghc-options`:
 -- Example: cabal ghc-options RTS-tuning stanza
 -with-rtsopts=-A64m -n4m -qg1 -qb -T
 ```
+
+This is landed in `mcts.cabal`'s `executable mcts` stanza as
+`-threaded "-with-rtsopts=-A64m -n4m -qg1 -qb -T"` so users do not need
+`+RTS … -RTS` on the command line.
 
 Large nursery to push major GC out, `-qg1` so major GC is parallel from
 generation 1, `-qb` for load balancing across capabilities, `-T` to expose GC

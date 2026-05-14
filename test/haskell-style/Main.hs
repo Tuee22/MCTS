@@ -1,6 +1,13 @@
+-- | Manual `mcts-haskell-style` stanza. Until `fourmolu` and `hlint` are
+-- installed in the developer environment, this stanza enforces the
+-- doctrine's forbidden-symbol set by walking every `.hs` file and checking
+-- (a) no tab characters; (b) no subprocess-boundary primitives outside
+-- `MCTS.Subprocess`; (c) no direct output primitives outside
+-- `MCTS.CLI.Output`. The `.hlint.yaml` file at the repo root carries the
+-- equivalent rules so once `hlint` is installed both gates agree.
 module Main where
 
-import Data.List (isPrefixOf, isSuffixOf)
+import Data.List (isInfixOf, isPrefixOf, isSuffixOf)
 import System.Directory (doesDirectoryExist, doesFileExist, listDirectory)
 import System.FilePath ((</>))
 
@@ -33,13 +40,89 @@ walk root = do
 ignored :: FilePath -> Bool
 ignored path =
     any (`isPrefixOf` path) ["./.git", "./dist-newstyle", "./.mcts-cache"]
+        || "test/haskell-style/Main.hs" `isSuffixOf` path
 
 inspect :: FilePath -> IO [String]
 inspect path = do
     content <- readFile path
     let rows = zip [(1 :: Int) ..] (lines content)
-    pure
-        [ "tab character: " <> path <> ":" <> show n
+        tabs =
+            [ "tab character: " <> path <> ":" <> show n
+            | (n, row) <- rows
+            , '\t' `elem` row
+            ]
+        subprocessHits = forbiddenSymbolHits subprocessSymbols subprocessOwner path rows
+        outputHits = forbiddenSymbolHits outputSymbols outputOwner path rows
+    pure (tabs <> subprocessHits <> outputHits)
+
+-- | Subprocess-boundary primitives are forbidden outside `MCTS.Subprocess`.
+subprocessSymbols :: [String]
+subprocessSymbols =
+    [ "callProcess"
+    , "readCreateProcess"
+    , "readCreateProcessWithExitCode"
+    , "createProcess"
+    , "System.Process.proc"
+    , "System.Process.shell"
+    ]
+
+subprocessOwner :: FilePath -> Bool
+subprocessOwner path =
+    "Subprocess.hs" `isSuffixOf` path
+
+-- | Direct output primitives are forbidden outside `MCTS.CLI.Output`. We
+-- only flag the unqualified `print`/`exitFailure` and `Data.Text.IO`
+-- variants to avoid false positives on `putStrLn`-in-tests.
+outputSymbols :: [String]
+outputSymbols =
+    [ "exitFailure"
+    , "Data.Text.IO.putStrLn"
+    , "Data.Text.IO.hPutStrLn"
+    ]
+
+outputOwner :: FilePath -> Bool
+outputOwner path =
+    "Output.hs" `isSuffixOf` path || "App.hs" `isSuffixOf` path
+
+forbiddenSymbolHits
+    :: [String]
+    -> (FilePath -> Bool)
+    -> FilePath
+    -> [(Int, String)]
+    -> [String]
+forbiddenSymbolHits symbols isOwner path rows
+    | isOwner path = []
+    | otherwise =
+        [ "forbidden symbol "
+            <> symbol
+            <> " at "
+            <> path
+            <> ":"
+            <> show n
         | (n, row) <- rows
-        , '\t' `elem` row
+        , symbol <- symbols
+        , symbol `isInfixOf` stripComment row
+        , not (isImportLine row)
         ]
+
+-- | Cheap: drop everything after a `--` comment so we don't flag
+-- doctrine-pointer references in comments. Note that Haddock pragmas
+-- starting with `{- ` survive; that's intentional — those are content,
+-- not lint-suppressible.
+stripComment :: String -> String
+stripComment row =
+    case findCommentStart row of
+        Just i -> take i row
+        Nothing -> row
+  where
+    findCommentStart input = go 0 input
+    go _ [] = Nothing
+    go i ('-' : '-' : _) = Just i
+    go i (_ : rest) = go (i + 1) rest
+
+-- | Don't flag lines that look like `import …`, since enumerating
+-- forbidden modules in an import isn't itself a use of the symbol.
+isImportLine :: String -> Bool
+isImportLine row = "import " `isPrefixOf` dropSpace row
+  where
+    dropSpace = dropWhile (\c -> c == ' ' || c == '\t')

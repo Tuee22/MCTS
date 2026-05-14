@@ -2,6 +2,7 @@ module MCTS.Transcript
     ( encodeTranscript
     , decodeTranscript
     , encodeRunConfig
+    , encodeEnvelope
     , runConfigHash
     , playTranscriptHash
     , resolveCacheRoot
@@ -14,6 +15,7 @@ module MCTS.Transcript
     ) where
 
 import qualified Data.ByteString as BS
+import Control.Exception (IOException, try)
 import Data.ByteString.Builder
     ( Builder
     , byteString
@@ -27,7 +29,7 @@ import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Bits as Bits
 import Data.Bits (shiftL)
 import Data.Char (isHexDigit)
-import Data.List (isSuffixOf, sort)
+import Data.List (isSuffixOf, sort, sortOn)
 import Data.Word (Word16, Word32, Word64, Word8)
 import MCTS.Crypto.SHA256 (sha256Hex)
 import MCTS.Error (AppError (..))
@@ -38,9 +40,14 @@ import System.Directory
     , doesFileExist
     , getCurrentDirectory
     , getDirectoryContents
+    , removeFile
+    , renameFile
     )
 import System.Environment (lookupEnv)
 import System.FilePath ((</>))
+import qualified System.Posix.IO as PosixIO
+import qualified System.Posix.Unistd as PosixUnistd
+import System.IO (Handle, hFlush, openBinaryTempFile)
 import qualified System.Info as Info
 
 encodeTranscript :: Transcript -> BS.ByteString
@@ -60,7 +67,19 @@ decodeTranscript bytes =
                 Right (envelope, body) ->
                     case parseGames body of
                         Left err -> Left (TranscriptFormatUnsupported err)
-                        Right games -> Right Transcript{transcriptConfig = config, transcriptEnvelope = envelope, transcriptGames = games}
+                        Right games ->
+                            -- Backend (i) cpp-legacy has no draw rule per
+                            -- README §"Draw rule"; reject draw winners on
+                            -- decode.
+                            if runBackend config == CppLegacy && any ((== Draw) . gameWinner) games
+                                then Left (TranscriptFormatUnsupported "cpp-legacy transcripts must not record draw winners")
+                                else
+                                    Right
+                                        Transcript
+                                            { transcriptConfig = config{runGames = fromIntegral (length games)}
+                                            , transcriptEnvelope = envelope
+                                            , transcriptGames = games
+                                            }
 
 encodeRunConfig :: RunConfig -> BS.ByteString
 encodeRunConfig config =
@@ -109,8 +128,14 @@ encodeHeader config =
         <> word32LE (runInitialSims config)
         <> word32LE (runPerMoveSims config)
         <> word16LE (runMaxPlies config)
-        <> word16LE 0
+        <> word16LE (workloadId (runWorkload config))
         <> word32LE 48
+
+workloadId :: Workload -> Word16
+workloadId workload =
+    case workload of
+        Rollouts -> 0
+        Selfplay -> 1
 
 encodeThreading :: Threading -> Builder
 encodeThreading threading =
@@ -118,14 +143,81 @@ encodeThreading threading =
         SingleThreaded -> word8 0 <> word16LE 1
         MultiThreaded n -> word8 1 <> word16LE (fromIntegral (max 1 n))
 
+-- | v1 envelope wire format. Total fixed size = 6 (prefix) + 278 (payload)
+-- = 284 bytes. Layout matches `mcts_<backend>_envelope` in
+-- `documents/engineering/backend_ffi_contract.md`.
 encodeEnvelope :: Envelope -> Builder
 encodeEnvelope envelope =
-    let payload = stringBytes (backendIdentifier (envelopeBackend envelope)) <> stringBytes (envelopeHostArch envelope) <> stringBytes (envelopeBuildId envelope)
+    let payload =
+            word8 (backendId (envelopeBackend envelope))
+                <> word8 (rngSourceId (envelopeRngSource envelope))
+                <> word8 (archId (envelopeHostArch envelope))
+                <> word8 0 -- reserved
+                <> fixedHex32Bytes (envelopeSharedRngBuildId envelope)
+                <> fixedHex32Bytes (envelopeCohortConfigHash envelope)
+                <> fixedHex32Bytes (envelopeEngineBuildId envelope)
+                <> fixedStringBytes 40 (envelopeEngineGitCommit envelope)
+                <> word8 (envelopeCompilerId envelope)
+                <> lengthPrefixed63 (envelopeCompilerVersion envelope)
+                <> word32LE (envelopeFpFlags envelope)
+                <> lengthPrefixed63 (envelopeLibmId envelope)
+                <> word32LE (envelopeCpuFeatures envelope)
+                <> word8 (envelopeFpEnv envelope)
+                -- envelopeBuildId is a project-local accessor string. The
+                -- doctrine envelope has it implicit in engine_build_id; the
+                -- Haskell ADT keeps it as a separate convenience field for
+                -- equity-sidecar stems and CLI rendering, so we encode it
+                -- as a length-prefixed trailer.
+                <> lengthPrefixed63 (envelopeBuildId envelope)
         payloadBytes = LBS.toStrict (toLazyByteString payload)
         totalLength = 2 + 4 + BS.length payloadBytes
      in word16LE (envelopeVersion envelope)
             <> word32LE (fromIntegral totalLength)
             <> byteString payloadBytes
+
+rngSourceId :: RngSource -> Word8
+rngSourceId NativeRng = 0
+rngSourceId CppRng = 1
+
+-- | Encode a 32-byte digest stored as a 64-character hex string. Pads with
+-- '0' if shorter; truncates if longer.
+fixedHex32Bytes :: ByteString32 -> Builder
+fixedHex32Bytes (ByteString32 hex) =
+    let normalized = take 64 (hex <> replicate 64 '0')
+     in byteString (BS.pack (hexPairsToBytes normalized))
+
+hexPairsToBytes :: String -> [Word8]
+hexPairsToBytes [] = []
+hexPairsToBytes [_] = []
+hexPairsToBytes (a : b : rest) = readHexPair a b : hexPairsToBytes rest
+
+readHexPair :: Char -> Char -> Word8
+readHexPair a b = fromIntegral (hexDigit a * 16 + hexDigit b)
+
+hexDigit :: Char -> Int
+hexDigit c
+    | c >= '0' && c <= '9' = fromEnum c - fromEnum '0'
+    | c >= 'a' && c <= 'f' = 10 + fromEnum c - fromEnum 'a'
+    | c >= 'A' && c <= 'F' = 10 + fromEnum c - fromEnum 'A'
+    | otherwise = 0
+
+-- | Encode a fixed-size ASCII field NUL-padded to `n` bytes.
+fixedStringBytes :: Int -> String -> Builder
+fixedStringBytes n value =
+    let bytes = map (fromIntegral . fromEnum) value :: [Word8]
+        padded = take n (bytes <> repeat 0)
+     in byteString (BS.pack padded)
+
+-- | Encode a length-prefixed ASCII field with a u8 length byte followed by
+-- exactly 63 bytes of payload (NUL-padded). The valid prefix range is the
+-- first `length_byte` bytes.
+lengthPrefixed63 :: String -> Builder
+lengthPrefixed63 value =
+    let bytes = map (fromIntegral . fromEnum) value :: [Word8]
+        truncated = take 63 bytes
+        len = length truncated
+        padded = truncated <> replicate (63 - len) 0
+     in word8 (fromIntegral len) <> byteString (BS.pack padded)
 
 encodeGame :: GameTranscript -> Builder
 encodeGame game =
@@ -142,7 +234,7 @@ encodeGame game =
 
 encodeRecord :: MoveRecord -> Builder
 encodeRecord record =
-    let visits = take 254 (moveVisits record)
+    let visits = take 254 (sortOn (actionId . fst) (moveVisits record))
      in word16LE (moveIndex record)
             <> word8 (actionId (moveChosen record))
             <> word8 (fromIntegral (length visits))
@@ -177,12 +269,17 @@ parseHeader = do
     initial <- getWord32
     perMove <- getWord32
     maxPlies <- getWord16
-    _reserved <- getWord16
+    workloadTag <- getWord16
+    workload <-
+        case workloadTag of
+            0 -> pure Rollouts
+            1 -> pure Selfplay
+            _ -> failGet "bad workload"
     _offset <- getWord32
     pure
         RunConfig
             { runBackend = backend
-            , runWorkload = Selfplay
+            , runWorkload = workload
             , runThreading = threading
             , runRngSource = rng
             , runMasterSeed = seed
@@ -208,14 +305,83 @@ parseEnvelope = do
     version <- getWord16
     byteLength <- getWord32
     if byteLength < 6 then failGet "bad envelope length" else pure ()
-    backendName <- getString
-    archName <- getString
-    buildId <- getString
-    backend <-
-        case parseBackend backendName of
-            Just value -> pure value
-            Nothing -> failGet "bad envelope backend"
-    pure Envelope{envelopeVersion = version, envelopeBackend = backend, envelopeHostArch = archName, envelopeBuildId = buildId}
+    payloadBytes <- takeBytes (fromIntegral byteLength - 6)
+    case runGet (parseEnvelopePayload version) payloadBytes of
+        Left err -> failGet err
+        Right (envelope, _) -> pure envelope
+
+parseEnvelopePayload :: Word16 -> Get Envelope
+parseEnvelopePayload version = do
+    backendByte <- getWord8
+    backend <- parseBackendId backendByte
+    rngTag <- getWord8
+    rng <- case rngTag of
+        0 -> pure NativeRng
+        1 -> pure CppRng
+        _ -> failGet "bad envelope rng_source"
+    archByte <- getWord8
+    let archName = case archByte of
+            0 -> "amd64"
+            1 -> "arm64"
+            _ -> "unknown"
+    _reserved <- getWord8
+    sharedRngBuildId <- ByteString32 <$> getHex32
+    cohortConfigHash <- ByteString32 <$> getHex32
+    engineBuildId <- ByteString32 <$> getHex32
+    engineGitCommit <- getFixedString 40
+    compilerId <- getWord8
+    compilerVersion <- getLengthPrefixed63
+    fpFlags <- getWord32
+    libmId <- getLengthPrefixed63
+    cpuFeatures <- getWord32
+    fpEnv <- getWord8
+    buildId <- getLengthPrefixed63
+    pure
+        Envelope
+            { envelopeVersion = version
+            , envelopeBackend = backend
+            , envelopeRngSource = rng
+            , envelopeHostArch = archName
+            , envelopeSharedRngBuildId = sharedRngBuildId
+            , envelopeCohortConfigHash = cohortConfigHash
+            , envelopeEngineBuildId = engineBuildId
+            , envelopeEngineGitCommit = engineGitCommit
+            , envelopeCompilerId = compilerId
+            , envelopeCompilerVersion = compilerVersion
+            , envelopeFpFlags = fpFlags
+            , envelopeLibmId = libmId
+            , envelopeCpuFeatures = cpuFeatures
+            , envelopeFpEnv = fpEnv
+            , envelopeBuildId = buildId
+            }
+
+getHex32 :: Get String
+getHex32 = do
+    bytes <- takeBytes 32
+    pure (concatMap byteToHex bytes)
+
+byteToHex :: Word8 -> String
+byteToHex byte =
+    [hexChar (fromIntegral byte `div` 16), hexChar (fromIntegral byte `mod` 16)]
+  where
+    hexChar n
+        | n < 10 = toEnum (fromEnum '0' + n)
+        | otherwise = toEnum (fromEnum 'a' + n - 10)
+
+-- | Read a fixed-size NUL-padded ASCII field, stopping at the first NUL.
+getFixedString :: Int -> Get String
+getFixedString n = do
+    bytes <- takeBytes n
+    pure (map (toEnum . fromIntegral) (takeWhile (/= 0) bytes))
+
+-- | Read a length-prefixed ASCII field stored as `len :: u8` plus 63
+-- bytes of payload; the valid range is the first `len` bytes.
+getLengthPrefixed63 :: Get String
+getLengthPrefixed63 = do
+    len <- getWord8
+    bytes <- takeBytes 63
+    let valid = take (fromIntegral len) bytes
+    pure (map (toEnum . fromIntegral) valid)
 
 parseGames :: [Word8] -> Either String [GameTranscript]
 parseGames [] = Right []
@@ -336,17 +502,6 @@ foldLE :: (Integral a, Bits.Bits a) => [Word8] -> a
 foldLE bytes =
     sum [fromIntegral byte `shiftL` (8 * idx) | (idx, byte) <- zip [0 :: Int ..] bytes]
 
-stringBytes :: String -> Builder
-stringBytes value =
-    let bytes = map (fromIntegral . fromEnum) value
-     in word8 (fromIntegral (length bytes)) <> byteString (BS.pack bytes)
-
-getString :: Get String
-getString = do
-    len <- getWord8
-    bytes <- takeBytes (fromIntegral len)
-    pure (map (toEnum . fromIntegral) bytes)
-
 resolveCacheRoot :: Maybe FilePath -> IO FilePath
 resolveCacheRoot explicit =
     case explicit of
@@ -384,9 +539,51 @@ writeTranscript explicit transcript = do
     let config = (transcriptConfig transcript){runGames = fromIntegral (length (transcriptGames transcript))}
         hashValue = runConfigHash config
         path = transcriptPath root hashValue
-    createDirectoryIfMissing True (root </> "transcripts" </> hostArch)
-    BS.writeFile path (encodeTranscript transcript{transcriptConfig = config})
+        dir = root </> "transcripts" </> hostArch
+    createDirectoryIfMissing True dir
+    writeFileAtomically dir path (encodeTranscript transcript{transcriptConfig = config})
     pure (Right (hashValue, path))
+
+-- | Atomic write: temp file in the same directory, fsync the temp file,
+-- rename to the final path, fsync the parent directory. Per Phase 2.2 /
+-- [00-overview.md → Hard Constraints item 13](../../DEVELOPMENT_PLAN/00-overview.md).
+writeFileAtomically :: FilePath -> FilePath -> BS.ByteString -> IO ()
+writeFileAtomically dir path bytes = do
+    (tmpPath, handle) <- openBinaryTempFile dir ".tmp-transcript"
+    writeAndFsync tmpPath handle bytes
+    renameFile tmpPath path
+    fsyncDirectory dir
+
+writeAndFsync :: FilePath -> Handle -> BS.ByteString -> IO ()
+writeAndFsync tmpPath handle bytes = do
+    result <- try $ do
+        BS.hPut handle bytes
+        hFlush handle
+        -- `handleToFd` closes the handle but returns the underlying Fd
+        -- so we can fsync it before releasing.
+        fd <- PosixIO.handleToFd handle
+        PosixUnistd.fileSynchronise fd
+        PosixIO.closeFd fd
+    case result of
+        Right () -> pure ()
+        Left err -> do
+            exists <- doesFileExist tmpPath
+            if exists then removeFile tmpPath else pure ()
+            ioError err
+
+-- | fsync the directory entry so the rename is durable across crashes.
+-- Best-effort: macOS in particular allows O_RDONLY fsync but does not
+-- guarantee directory durability; the call is harmless and matches the
+-- doctrine's atomic-write contract.
+fsyncDirectory :: FilePath -> IO ()
+fsyncDirectory dir = do
+    result <- try $ do
+        fd <- PosixIO.openFd dir PosixIO.ReadOnly PosixIO.defaultFileFlags
+        PosixUnistd.fileSynchronise fd
+        PosixIO.closeFd fd
+    case result :: Either IOException () of
+        Right () -> pure ()
+        Left _ -> pure ()
 
 readTranscriptFile :: FilePath -> IO (Either AppError Transcript)
 readTranscriptFile path = do

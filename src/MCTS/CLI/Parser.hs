@@ -21,8 +21,8 @@ parseCommand args =
             Right (Commands (CommandsOptions ("--tree" `elem` rest) ("--json" `elem` rest)))
         "help" : rest -> Right (Help (HelpOptions rest))
         ["check-code"] -> Right CheckCode
-        "bench" : "rollouts" : rest -> Bench . BenchRollouts <$> parseRunInputs Rollouts rest
-        "bench" : "selfplay" : rest -> Bench . BenchSelfplay <$> parseRunInputs Selfplay rest
+        "bench" : "rollouts" : rest -> parseBench Rollouts rest
+        "bench" : "selfplay" : rest -> parseBench Selfplay rest
         "verify" : "rollouts" : rest -> parseVerify Rollouts rest
         "verify" : "selfplay" : rest -> parseVerify Selfplay rest
         "verify" : "legacy-parity" : workload : rest ->
@@ -83,8 +83,18 @@ parseBuild backend rest =
             "rust" -> Right (Build (BuildRust opts))
             _ -> Left (ParseError ("unknown build backend: " <> backend))
 
+parseBench :: Workload -> [String] -> Either AppError Command
+parseBench workload rest = do
+    inputs <- parseRunInputs workload rest
+    backends <-
+        case flagValue "--backend" rest of
+            Nothing -> Right [inputBackend inputs]
+            Just raw -> parseBackends raw
+    Right (Bench (if workload == Rollouts then BenchRollouts backends inputs else BenchSelfplay backends inputs))
+
 parseVerify :: Workload -> [String] -> Either AppError Command
 parseVerify workload rest = do
+    rejectNativeVerifyRng rest
     inputs <- parseRunInputs workload rest
     backends <- parseBackends =<< requiredFlag "--backend" rest
     if any (== CppLegacy) backends
@@ -95,9 +105,16 @@ parseVerify workload rest = do
 
 parseLegacy :: Workload -> [String] -> Either AppError Command
 parseLegacy workload rest = do
+    rejectNativeVerifyRng rest
     inputs <- parseRunInputs workload rest
     backends <- parseBackends =<< requiredFlag "--backend" rest
     Right (Verify (VerifyLegacyParity workload ("--allow-stale" `elem` rest) backends inputs))
+
+rejectNativeVerifyRng :: [String] -> Either AppError ()
+rejectNativeVerifyRng rest =
+    case flagValue "--rng" rest of
+        Just "native" -> Left (ParseError "verify requires --rng cpp; omit --rng or pass --rng cpp")
+        _ -> Right ()
 
 parseRunInputs :: Workload -> [String] -> Either AppError RunInputs
 parseRunInputs workload rest = do

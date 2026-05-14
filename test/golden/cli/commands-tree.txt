@@ -1,0 +1,36 @@
+mcts - Monte Carlo Tree Search runtime
+  bench - Benchmark backends
+    rollouts - Random-rollout benchmark
+    selfplay - Self-play benchmark
+  verify - Verify deterministic cohorts
+    rollouts - Verify rollout visit counts
+    selfplay - Verify self-play visit counts
+    legacy-parity - Verify legacy parity envelope
+  play - Play or spectate a game
+  inspect - Inspect transcript cache
+    list - List cached transcripts
+    show - Show one transcript
+    replay - Replay one transcript
+    cache - Inspect sidecar cache
+      list - List sidecars
+      prune - Prune stale sidecars
+    divergence - Show divergence matrix
+  test - Run tests
+    all - Run full suite and report card
+    <stanza> - Run one cabal stanza
+  lint - Run lint gates
+    files - Lint files
+    docs - Lint docs
+    haskell - Lint Haskell
+    all - Run all linters
+  docs - Generated docs
+    check - Check generated docs
+    generate - Generate docs
+  commands - Show command registry
+  help - Focused help
+  check-code - Run code-quality gate
+  build - Build backend artefacts
+    cpp-legacy - Build legacy C++ backend
+    cpp-imperative - Build imperative C++ backend
+    cpp-functional - Build functional C++ backend
+    rust - Build Rust backend

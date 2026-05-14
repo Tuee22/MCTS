@@ -115,7 +115,27 @@ the real `mcts` binary across the FFI to every backend.
 ### Remaining Work
 
 - Baseline landed: `mcts-unit` and `mcts-integration` Cabal stanzas exist and pass
-  against the logical backend baseline.
+  against the logical backend baseline. The `mcts-unit` stanza now covers the
+  doctrine's required property-test categories at fixture scale: transcript
+  `decode . encode == id`, sorted-record contract, cpp-legacy draw rejection,
+  splitmix bounded bijection (`mix 42 i` unique for `i ∈ [0, 1023]`), every
+  `AppError` variant renders to non-empty text, the prerequisite registry is
+  acyclic and its transitive closure pulls dependency edges (`cargo → rustup`,
+  `bolt → llvm`), `buildPlan` / `applyPlan` / `applySubprocessPlan` shapes,
+  same-seed `runGame` reproducibility, and every chosen move appears in its
+  visit list and was legal on the matching reconstructed board. The full v1
+  engine envelope round-trips through the unit stanza (cohort-invariant
+  fields plus per-backend-slot fields). Golden fixtures under
+  `test/golden/cli/` pin `commands --tree`, `commands --json`,
+  `commands --list`, and the report-card summary block (table + JSON) as
+  byte-stable strings. A byte-level transcript golden under
+  `test/golden/transcript-codec/` pins the v1 wire output for a known
+  2-game Haskell transcript. The binary equity sidecar codec (`MEQ1`
+  magic + 15-byte fixed-width records + `0xFFFFFFFF` terminator) round-
+  trips arbitrary equity values through `castWord64ToDouble`. The `Env`
+  scaffold (`MCTS.Env`) and `App` monad (`ReaderT Env IO`) exist and the
+  `withTestClock` test-hook installs custom clocks for the Sprint 3.5
+  monotonic-clock bracket assertion.
 - Replace hand-rolled assertions with the final `tasty`, `tasty-hunit`,
   `tasty-quickcheck`, and golden-test organization.
 - Add parser tests through `execParserPure` once the parser renderer exists.
@@ -192,7 +212,13 @@ constraint at the type level and `LegacyParityBackend` requiring (i) at parse ti
 ### Remaining Work
 
 - Baseline landed: `mcts-cross-backend` and `mcts-legacy-parity` Cabal stanzas exist
-  and are wired against the logical five-backend cohort.
+  and are wired against the logical five-backend cohort. The `mcts-cross-backend`
+  stanza now exercises the four-backend `(ii)..(v)` round-robin under
+  `--rng cpp` (single-threaded), and additionally asserts the cohort-constraint
+  surface rejects (a) a cohort containing `cpp-legacy` and (b) a single-backend
+  cohort, both with `AppError VerifyCohortTooSmall`. The `mcts-legacy-parity`
+  stanza exercises the full-five-backend cohort under the legacy envelope and
+  asserts a cohort missing `cpp-legacy` is rejected.
 - Replace logical in-process comparisons with the real FFI-backed `(ii)..(v)` cohort
   and real legacy-parity cohort.
 - Enforce the final `VerifyBackend` / `LegacyParityBackend` GADT shapes rather than
@@ -370,9 +396,9 @@ so the contract is reviewable in one place:
 ### Remaining Work
 
 - Baseline landed: `mcts test all --dry-run`, `mcts test <stanza>`, a Plan/Apply
-  runner, report-card rendering, and the pinned command sequence exist.
-- Fix the apply path's local `mcts` PATH assumption or route recursive CLI calls through
-  the built executable path.
+  runner, report-card rendering, and the pinned command sequence exist. Recursive
+  CLI steps now route through `cabal exec mcts -- ...`, and the benchmark commands
+  accept the comma-separated backend cohorts used by the report-card workload.
 - Replace logical report-card placeholders with measured Q1-Q7 evidence from the real
   backends.
 - Ensure the large pinned benchmark/verify workload remains practical for the final

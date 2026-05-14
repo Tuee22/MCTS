@@ -54,7 +54,7 @@ specification. Little-endian everywhere, no padding.
 | 32 | 4 | initial_sims | `u32`; together with `per_move_sims` encodes `SimBudget` (see below) |
 | 36 | 4 | per_move_sims | `u32`; together with `initial_sims` encodes `SimBudget` |
 | 40 | 2 | max_plies | `u16`; default `200`, pinned to `10000` under the legacy-parity envelope |
-| 42 | 2 | _reserved | Must be zero on write, ignored on read |
+| 42 | 2 | workload | `0 = rollouts`, `1 = selfplay`; other values are rejected in v1 |
 | 44 | 4 | envelope_offset | `u32`; byte offset from file start where the [Envelope Block](#envelope-block) begins. Always `48` in version-1 transcripts (the envelope immediately follows the fixed header), but explicit so future header changes can grow the fixed header without breaking envelope readers. |
 | 48 | — | — | Header end; envelope block begins at `envelope_offset`, per-game body begins immediately after the envelope block |
 

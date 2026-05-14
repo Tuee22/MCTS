@@ -99,13 +99,35 @@ renderCommandJson =
 renderCommandMarkdown :: String
 renderCommandMarkdown =
     unlines $
-        "# mcts command reference"
-            : ""
-            : [ "- `" <> path <> "` - " <> summary spec
-              | (path, spec) <- flatten [] commandSpec
-              , null (children spec)
-              , path /= "mcts"
-              ]
+        [ "# mcts command reference"
+        , ""
+        , "**Status**: Reference only"
+        , "**Supersedes**: N/A"
+        , "**Referenced by**: ../engineering/cli_command_surface.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md"
+        , "**Generated sections**: none"
+        , ""
+        , "> **Purpose**: Generated reference list for the current `mcts` command registry."
+        , ""
+        ]
+            <> concatMap markdownRow commandRows
+  where
+    commandRows =
+        [ (path, spec)
+        | (path, spec) <- flatten [] commandSpec
+        , null (children spec)
+        , path /= "mcts"
+        ]
+    markdownRow (path, spec)
+        | path == "mcts verify legacy-parity" =
+            ["- `" <> path <> " {rollouts|selfplay}` - " <> summary spec]
+        | path == "mcts inspect show" =
+            [ "- `" <> path <> "` - " <> summary spec
+            , "- `" <> path <> " --envelope` - Show one transcript envelope"
+            ]
+        | path == "mcts help" =
+            ["- `" <> path <> " <subcommand>` - " <> summary spec]
+        | otherwise =
+            ["- `" <> path <> "` - " <> summary spec]
 
 flatten :: [String] -> CommandSpec -> [(String, CommandSpec)]
 flatten prefix spec =

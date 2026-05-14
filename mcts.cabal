@@ -8,7 +8,23 @@ build-type:         Simple
 tested-with:        GHC ==9.14.1
 
 common warnings
-    ghc-options: -Wall -Wcompat
+    -- Phase 8 Sprint 8.1 doctrine-named GHC tuning options. `-fllvm`
+    -- and `-optlo-mcpu=native` / `-optlc-mcpu=native` require LLVM
+    -- pinned in the Docker image (Sprint 1.1); they're held back from
+    -- this common stanza until that pin lands. Everything else here is
+    -- safe to enable now and helps the search-loop inliner without an
+    -- LLVM dependency.
+    ghc-options:
+        -Wall
+        -Wcompat
+        -O2
+        -funbox-strict-fields
+        -fspecialise-aggressively
+        -fexpose-all-unfoldings
+        -flate-dmd-anal
+        -fmax-simplifier-iterations=20
+        -fworker-wrapper
+        -fstatic-argument-transformation
     default-language: Haskell2010
 
 library
@@ -30,12 +46,21 @@ library
         MCTS.CLI.Verify
         MCTS.Driver
         MCTS.Engine
+        MCTS.Engine.Recompute
+        MCTS.Env
         MCTS.Error
+        MCTS.FFI.Common
+        MCTS.FFI.CppFunctional
+        MCTS.FFI.CppImperative
+        MCTS.FFI.CppLegacy
+        MCTS.FFI.Rust
         MCTS.Notation
         MCTS.Plan
         MCTS.Prerequisite
         MCTS.ReportCard
         MCTS.Rng.Mix
+        MCTS.Search.Arena
+        MCTS.Search.UCT
         MCTS.Subprocess
         MCTS.Transcript
         MCTS.Transcript.Action
@@ -49,19 +74,27 @@ library
         MCTS.Verify.Divergence
         MCTS.Verify.Envelope
     build-depends:
+        array,
         base >=4.20 && <5,
         bytestring,
         containers,
         directory,
         filepath,
+        mtl,
         process,
         text,
-        time
+        time,
+        transformers,
+        unix
 
 executable mcts
     import: warnings
     main-is: Main.hs
     hs-source-dirs: app
+    -- Phase 8 Sprint 8.1 RTS pin. `-A64m -n4m -qg1 -qb -T` is the
+    -- doctrine-named tuning set baked into the binary so users do not
+    -- need to remember to pass `+RTS ... -RTS`.
+    ghc-options: -threaded "-with-rtsopts=-A64m -n4m -qg1 -qb -T"
     build-depends:
         base >=4.20 && <5,
         mcts
@@ -72,11 +105,14 @@ test-suite mcts-unit
     main-is: Main.hs
     hs-source-dirs: test/unit
     build-depends:
+        array,
         base >=4.20 && <5,
         bytestring,
         directory,
         filepath,
-        mcts
+        mcts,
+        mtl,
+        transformers
 
 test-suite mcts-integration
     import: warnings

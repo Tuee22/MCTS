@@ -250,6 +250,25 @@ Haskell bindings live under `src/MCTS/FFI/`:
 - `src/MCTS/FFI/CppFunctional.hs` — backend (iii) bindings.
 - `src/MCTS/FFI/Rust.hs` — backend (iv) bindings.
 
+The baseline modules (Phase 4 Sprint 4.2 / Phase 5 Sprint 5.2 / Phase 6
+Sprints 6.2 and 6.4) expose `with<Backend>Board :: (Handle -> IO a) -> IO
+(Either AppError a)` routed through `MCTS.FFI.Common.liftFFI`. Until the
+shared libraries are actually loaded at runtime, the handle types are
+opaque stand-ins; the typed boundary is what the doctrine pins. The
+`foreign import ccall` declarations land alongside the cdylib build-step
+wiring.
+
+The Haskell-side foreign-engine recompute path lives at
+`src/MCTS/Engine/Recompute.hs`. It reuses `MCTS.Search.UCT.uctSearchWithEquity`
+to replay every move of a transcript and emits a per-move `(move_index,
+action, visits, equity)` record stream. Under `--rng cpp` the recompute
+hard-asserts visit equality with the transcript's recorded visits at every
+move; the first disagreement aborts with `AppError RecomputeMismatch
+(Backend, GameId, MoveIndex, recomputed_record, recorded_record)`. The
+sidecar writer `MCTS.Transcript.EquitySidecar.writeEquitySidecarStream`
+accepts an explicit `EqStream` so the recompute-driven stream can be
+persisted; `mcts inspect show --with-equity` wires this through.
+
 ### `unsafe`/`safe` Policy
 
 Per-symbol:

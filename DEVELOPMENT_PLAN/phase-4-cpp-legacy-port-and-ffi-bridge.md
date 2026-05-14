@@ -108,9 +108,9 @@ add a C ABI shim layer (`cpp-legacy/c-abi/`); rename the build product to
   residue in `legacy-tracking-for-deletion.md`.
 - Validate the exact legacy build flags and warning-clean smoke build.
 
-## Sprint 4.2: Haskell FFI Bindings 📋
+## Sprint 4.2: Haskell FFI Bindings 🔄
 
-**Status**: Planned
+**Status**: Active
 **Implementation**: `src/MCTS/FFI/CppLegacy.hs`, `src/MCTS/FFI/Common.hs`,
 `mcts.cabal`
 **Docs to update**: `documents/engineering/backend_ffi_contract.md`,
@@ -155,7 +155,24 @@ wrappers that make every call safe (no leaked handles, no double-free).
 
 ### Remaining Work
 
-Not started.
+- Baseline landed: `src/MCTS/FFI/Common.hs` declares
+  `withBoard` / `withTree` / `withRng` bracket helpers, the
+  `EngineEnvelope` record that mirrors the C ABI
+  `mcts_<backend>_envelope` struct, and `liftFFI` that lifts every IO
+  action into `Either AppError a` (converting any `SomeException` to
+  `AppError FFIFailure backend symbol message`).
+  `src/MCTS/FFI/CppLegacy.hs`, `src/MCTS/FFI/CppImperative.hs`,
+  `src/MCTS/FFI/CppFunctional.hs`, and `src/MCTS/FFI/Rust.hs` declare
+  per-backend stand-in board handle types plus `with*Board` wrappers
+  routed through `liftFFI` with the doctrine-required symbol names
+  (`mcts_legacy_new_board`, etc.).
+- Replace stand-in handle types with `foreign import ccall` pointers
+  and add the `mcts.cabal` `extra-libraries: mcts_cpp_legacy` and
+  `extra-lib-dirs: cpp-legacy/build` directives once the cdylib build
+  step is wired into the prerequisite registry. The
+  `libmcts-cpp-legacy-built` prereq node still needs to be added.
+- Add the 1M-handle round-trip leak test under `valgrind --leak-check=full`
+  inside the Docker container.
 
 ## Sprint 4.3: `--rng cpp` Shared `std::mt19937_64` Plumbing 🔄
 
@@ -483,10 +500,23 @@ Envelope Surface](../documents/engineering/backend_ffi_contract.md).
 
 ### Remaining Work
 
-- Add backend (i)'s `get_envelope` C ABI surface after the real FFI binding and driver
-  exist.
+- Baseline landed: `cpp-legacy/c-abi/mcts_cpp_legacy.h` and the matching `.cc`
+  now declare the `mcts_legacy_envelope` struct and the
+  `mcts_legacy_get_envelope(void)` accessor with the layout specified in
+  [../documents/engineering/backend_ffi_contract.md → Engine Envelope](../documents/engineering/backend_ffi_contract.md).
+  The accessor returns a process-static envelope value whose `envelope_version`,
+  `rng_source_envelope`, `host_arch_envelope`, `engine_git_commit`, and
+  `compiler_id` slots are filled at first call; `engine_build_id`,
+  `cohort_config_hash`, `shared_rng_build_id`, `compiler_version`, `libm_id`,
+  `fp_flags`, `fp_env`, and `cpu_features` are zero-initialized pending the
+  post-link patch step and runtime probe work scheduled by Sprint `4.7`.
+- Add the post-link `objcopy --update-section` step that fills
+  `engine_build_id = sha256(libmcts_cpp_legacy.so)` and the runtime CPU/FP
+  probe that fills `cpu_features` / `fp_env` per the doctrine's Field Capture
+  Protocol.
 - Add backend (i)'s foreign-engine recompute surface for equity sidecars.
-- Wire the live envelope into layered verification and stale-sidecar pruning.
+- Wire the live envelope into layered verification and stale-sidecar pruning
+  via the Haskell-side FFI binding (under `src/MCTS/FFI/CppLegacy.hs`).
 
 ## Documentation Requirements
 

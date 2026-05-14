@@ -19,7 +19,7 @@ runTestCommand output command =
             if planDryRun opts
                 then outputLine rendered >> pure 0
                 else do
-                    code <- applyPlan plan
+                    code <- runStanzaPlan plan
                     if code == 0
                         then
                             outputLine
@@ -29,33 +29,36 @@ runTestCommand output command =
                                 )
                                 >> pure 0
                         else pure code
-        TestStanza stanza -> applyPlan (Plan ("test " <> stanza) [Subprocess "cabal" ["test", stanza] Nothing Nothing])
+        TestStanza stanza -> runStanzaPlan (Plan ("test " <> stanza) [Subprocess "cabal" ["test", stanza] Nothing Nothing])
 
 testAllPlan :: Plan Subprocess
 testAllPlan =
     Plan
         { planName = "test all"
         , planSteps =
-            [ Subprocess "mcts" ["lint", "files"] Nothing Nothing
-            , Subprocess "mcts" ["lint", "docs"] Nothing Nothing
+            [ mctsStep ["lint", "files"]
+            , mctsStep ["lint", "docs"]
             , Subprocess "cabal" ["build", "all"] Nothing Nothing
             , Subprocess "cabal" ["test", "mcts-haskell-style"] Nothing Nothing
             , Subprocess "cabal" ["test", "mcts-unit"] Nothing Nothing
             , Subprocess "cabal" ["test", "mcts-integration"] Nothing Nothing
             , Subprocess "cabal" ["test", "mcts-cross-backend"] Nothing Nothing
             , Subprocess "cabal" ["test", "mcts-legacy-parity"] Nothing Nothing
-            , Subprocess "mcts" ["bench", "rollouts", "--backend", "cpp-legacy,cpp-imperative,cpp-functional,rust,haskell", "--threading", "single", "--rng", "native", "--games", "100000", "--seed", "42"] Nothing Nothing
-            , Subprocess "mcts" ["bench", "rollouts", "--backend", "cpp-legacy,cpp-imperative,cpp-functional,rust,haskell", "--threading", "multi", "--workers", "8", "--rng", "native", "--games", "100000", "--seed", "42"] Nothing Nothing
-            , Subprocess "mcts" ["bench", "selfplay", "--backend", "cpp-legacy,cpp-imperative,cpp-functional,rust,haskell", "--threading", "single", "--rng", "native", "--games", "1000", "--seed", "42", "--sims", "10000"] Nothing Nothing
-            , Subprocess "mcts" ["bench", "selfplay", "--backend", "cpp-legacy,cpp-imperative,cpp-functional,rust,haskell", "--threading", "multi", "--workers", "8", "--rng", "native", "--games", "1000", "--seed", "42", "--sims", "10000"] Nothing Nothing
-            , Subprocess "mcts" ["verify", "rollouts", "--backend", "cpp-imperative,cpp-functional,rust,haskell", "--threading", "single", "--games", "50", "--seed", "42", "--max-plies", "200"] Nothing Nothing
-            , Subprocess "mcts" ["verify", "selfplay", "--backend", "cpp-imperative,cpp-functional,rust,haskell", "--threading", "single", "--games", "50", "--seed", "42", "--max-plies", "200", "--sims", "10000"] Nothing Nothing
-            , Subprocess "mcts" ["verify", "legacy-parity", "selfplay", "--backend", "cpp-legacy,cpp-imperative,cpp-functional,rust,haskell", "--games", "10", "--seed", "42", "--sims", "10000"] Nothing Nothing
+            , mctsStep ["bench", "rollouts", "--backend", "cpp-legacy,cpp-imperative,cpp-functional,rust,haskell", "--threading", "single", "--rng", "native", "--games", "100000", "--seed", "42"]
+            , mctsStep ["bench", "rollouts", "--backend", "cpp-legacy,cpp-imperative,cpp-functional,rust,haskell", "--threading", "multi", "--workers", "8", "--rng", "native", "--games", "100000", "--seed", "42"]
+            , mctsStep ["bench", "selfplay", "--backend", "cpp-legacy,cpp-imperative,cpp-functional,rust,haskell", "--threading", "single", "--rng", "native", "--games", "1000", "--seed", "42", "--sims", "10000"]
+            , mctsStep ["bench", "selfplay", "--backend", "cpp-legacy,cpp-imperative,cpp-functional,rust,haskell", "--threading", "multi", "--workers", "8", "--rng", "native", "--games", "1000", "--seed", "42", "--sims", "10000"]
+            , mctsStep ["verify", "rollouts", "--backend", "cpp-imperative,cpp-functional,rust,haskell", "--threading", "single", "--games", "50", "--seed", "42", "--max-plies", "200"]
+            , mctsStep ["verify", "selfplay", "--backend", "cpp-imperative,cpp-functional,rust,haskell", "--threading", "single", "--games", "50", "--seed", "42", "--max-plies", "200", "--sims", "10000"]
+            , mctsStep ["verify", "legacy-parity", "selfplay", "--backend", "cpp-legacy,cpp-imperative,cpp-functional,rust,haskell", "--games", "10", "--seed", "42", "--sims", "10000"]
             ]
         }
 
-applyPlan :: Plan Subprocess -> IO Int
-applyPlan plan = go (planSteps plan)
+mctsStep :: [String] -> Subprocess
+mctsStep args = Subprocess "cabal" (["exec", "mcts", "--"] <> args) Nothing Nothing
+
+runStanzaPlan :: Plan Subprocess -> IO Int
+runStanzaPlan plan = go (planSteps plan)
   where
     go [] = pure 0
     go (step : rest) = do

@@ -1,0 +1,27 @@
+mcts bench rollouts
+mcts bench selfplay
+mcts verify rollouts
+mcts verify selfplay
+mcts verify legacy-parity
+mcts play
+mcts inspect list
+mcts inspect show
+mcts inspect replay
+mcts inspect cache list
+mcts inspect cache prune
+mcts inspect divergence
+mcts test all
+mcts test <stanza>
+mcts lint files
+mcts lint docs
+mcts lint haskell
+mcts lint all
+mcts docs check
+mcts docs generate
+mcts commands
+mcts help
+mcts check-code
+mcts build cpp-legacy
+mcts build cpp-imperative
+mcts build cpp-functional
+mcts build rust

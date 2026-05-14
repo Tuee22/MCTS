@@ -165,9 +165,13 @@ variant.
 ### Remaining Work
 
 - Baseline landed: `mcts build cpp-functional --dry-run` renders a typed plan, the
-  apply path smoke-builds `cpp-functional/`, and the logical driver can run
-  `--backend cpp-functional`.
-- Add `src/MCTS/FFI/CppFunctional.hs` and the real backend (iii) driver.
+  apply path smoke-builds `cpp-functional/`, the logical driver can run
+  `--backend cpp-functional`, and `src/MCTS/FFI/CppFunctional.hs` declares
+  `withCppFunctionalBoard` routed through `MCTS.FFI.Common.liftFFI` with
+  the doctrine-required `mcts_functional_new_board` symbol name.
+- Replace the stand-in handle type with `foreign import ccall` pointers
+  and add the cabal `extra-libraries` directives once the cdylib build
+  step is wired in.
 - Replace the smoke build with the same PGO+BOLT+`mimalloc` pipeline as backend (ii).
 - Add transcript-output and two-backend verify smoke tests against the real engine.
 
@@ -328,8 +332,12 @@ dispatch, and the verify dispatch.
 ### Remaining Work
 
 - Baseline landed: `mcts build rust --dry-run` renders a typed plan, the apply path
-  delegates to `cargo build --release`, and the logical driver can run `--backend rust`.
-- Add `src/MCTS/FFI/Rust.hs` and the real backend (iv) driver.
+  delegates to `cargo build --release`, the logical driver can run `--backend rust`,
+  and `src/MCTS/FFI/Rust.hs` declares `withRustBoard` routed through
+  `MCTS.FFI.Common.liftFFI` with the doctrine-required `mcts_rust_new_board`
+  symbol name.
+- Replace the stand-in handle type with `foreign import ccall` pointers and add
+  the cabal `extra-libraries` directives once the cdylib build step is wired in.
 - Replace the smoke build with the rustc PGO+BOLT+`mimalloc` pipeline.
 - Add transcript-output and cross-backend smoke tests against the real Rust engine.
 
@@ -405,8 +413,17 @@ fields.
 
 ### Remaining Work
 
+- Baseline landed: backend (iii)'s `cpp-functional/c-abi/mcts_cpp_functional.h` and
+  backend (iv)'s `rust/src/lib.rs` declare the `mcts_functional_envelope` /
+  `MctsRustEnvelope` structs and their `mcts_functional_get_envelope()` /
+  `mcts_rust_get_envelope()` accessors. The Rust accessor returns a `const`
+  static envelope filled at compile time from
+  `option_env!("MCTS_GIT_COMMIT")`, the target arch, and the compiler tag
+  (`compiler_id = 2 = rustc`); the C++ accessor mirrors the (i)/(ii) shape with
+  optimization-dependent slots zero-initialized pending the PGO+BOLT pipeline.
 - Add live envelope capture for backends (iii) and (iv) after their real drivers and
-  FFI surfaces exist.
+  FFI surfaces exist (in particular the `engine_build_id` post-link patch and the
+  `cpu_features` / `fp_env` runtime probes).
 - Add foreign-engine recompute for both backends' equity sidecars.
 - Add envelope-mismatch and cross-backend recompute integration coverage.
 

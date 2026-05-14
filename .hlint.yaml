@@ -1,10 +1,73 @@
+# MCTS lint configuration.
+#
+# These rules mirror the doctrine's `Lint, Format, and Code-Quality Stack`
+# and `Forbidden Surfaces` sections. The rules are enforced two ways:
+#   1) `hlint` reads this file directly (when the binary is installed)
+#   2) The `mcts-haskell-style` stanza (test/haskell-style/Main.hs) walks
+#      every `.hs` file under `src/`, `app/`, and `test/` and rejects the
+#      forbidden symbols outside their named module.
+#
+# Until `hlint` is installed in the developer environment, the stanza's
+# fallback enforcement is the canonical gate. The rules below remain
+# authoritative so that `hlint` agrees byte-for-byte once available.
+
 - warn: {lhs: "case x of { _ -> y }", rhs: "y"}
 - ignore: {name: "Use camelCase"}
+
+# --------------------------------------------------------------------------
+# Subprocess boundary (outside src/MCTS/Subprocess.hs)
+# --------------------------------------------------------------------------
+
 - error:
     name: "Use typed subprocess boundary"
     lhs: "System.Process.callProcess"
     rhs: "MCTS.Subprocess.runStreaming"
+
+- error:
+    name: "Use typed subprocess boundary"
+    lhs: "System.Process.readCreateProcess"
+    rhs: "MCTS.Subprocess.capture"
+
+- error:
+    name: "Use typed subprocess boundary"
+    lhs: "System.Process.readCreateProcessWithExitCode"
+    rhs: "MCTS.Subprocess.capture"
+
+- error:
+    name: "Use typed subprocess boundary"
+    lhs: "System.Process.createProcess"
+    rhs: "MCTS.Subprocess.runStreaming"
+
+- error:
+    name: "Use typed subprocess boundary"
+    lhs: "System.Process.proc"
+    rhs: "MCTS.Subprocess.Subprocess"
+
+- error:
+    name: "Use typed subprocess boundary"
+    lhs: "System.Process.shell"
+    rhs: "MCTS.Subprocess.Subprocess"
+
+# --------------------------------------------------------------------------
+# Output boundary (outside src/MCTS/CLI/Output.hs)
+# --------------------------------------------------------------------------
+
 - error:
     name: "Use output boundary"
     lhs: "print"
     rhs: "MCTS.CLI.Output.outputLine"
+
+- error:
+    name: "Use output boundary"
+    lhs: "System.Exit.exitFailure"
+    rhs: "MCTS.CLI.Output.errLine"
+
+- error:
+    name: "Use output boundary"
+    lhs: "Data.Text.IO.putStrLn"
+    rhs: "MCTS.CLI.Output.outputLine"
+
+- error:
+    name: "Use output boundary"
+    lhs: "Data.Text.IO.hPutStrLn"
+    rhs: "MCTS.CLI.Output.outputLine / errLine"

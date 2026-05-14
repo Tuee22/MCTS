@@ -31,16 +31,33 @@ rules that govern this plan suite.
 
 ## Closure Status
 
-Phase `0` Sprint `0.1` remains `Done` on plan-suite bootstrap; Sprint `0.2`
-keeps Phase `0` `Active` until the doctrine-driven scheduling audit closes.
-Phases `1` through `7` are now `Active` on an implementation baseline: the
-worktree contains a Cabal package with an `mcts` executable stanza and thin
-entrypoint, the command registry and manual parser, generated-artefact targets,
-a deterministic transcript/cache layer, a simplified Corridors driver, baseline
-equity-sidecar cache inspection/pruning, logical five-backend verification,
-smoke-buildable foreign-backend placeholder trees, and all five Cabal test-suite
-stanzas. The validation gate for this baseline remains `cabal test all` under
-the pinned GHC `9.14.1` toolchain.
+Phase `0` is `Done`: Sprint `0.1` (plan-suite bootstrap) closed on initial
+commit and Sprint `0.2` (doctrine-driven scheduling audit) closed on
+2026-05-14 with the audit replay recorded in
+[phase-0-planning-documentation.md](phase-0-planning-documentation.md).
+Phases `1` through `7` are now `Active` on an implementation baseline that
+includes: a Cabal package with the pinned GHC 9.14.1 / Cabal 3.16.1.0
+toolchain plus `array`/`mtl`/`transformers` deps; the thin `app/Main.hs`;
+the `CommandSpec` registry; the manual parser (renderer migration to
+optparse-applicative still open); the full v1 transcript codec with the
+14-field engine envelope; the `MEQ1` binary equity sidecar with atomic
+temp-file + rename writes; the `Env` record and `ReaderT App` monad;
+`MCTS.Plan` doctrine-shaped `buildPlan`, `applyPlan`,
+`applySubprocessPlan`, `applyWithEnv`, `applySubprocessWithEnv` helpers;
+the dependency-edge-aware `prerequisiteRegistry` with `transitiveClosure`
+and `registryHasCycle`; a real ST-arena MCTS engine
+(`MCTS.Search.Arena` + `MCTS.Search.UCT`) wired through every backend's
+driver; the pinned monotonic clock (`getMonotonicTimeNSec`) for bench
+timing with an injectable test hook; baseline equity-sidecar cache
+inspection/pruning; layered envelope verify (cohort-invariant +
+per-backend-slot fields); smoke-buildable foreign-backend placeholder
+trees with the doctrine-shaped `mcts_<backend>_get_envelope` C ABI
+surface for all four foreign backends; marker-delimited
+`GeneratedSectionRule` regions; the full forbidden-symbol set in
+`.hlint.yaml` enforced by the `mcts-haskell-style` stanza; byte-level
+goldens for the transcript wire format and the CLI surfaces; and all
+five Cabal test-suite stanzas. The validation gate for this baseline
+remains `cabal test all` under the pinned GHC `9.14.1` toolchain.
 
 This is **not** the final parity-proven architecture. The implemented backend cohort is
 a deterministic logical baseline used to validate the CLI, transcript, cache, and test
@@ -97,7 +114,7 @@ A sprint can move to `Done` only when all of the following are true:
 
 | Phase | Name | Status | Document |
 |-------|------|--------|----------|
-| 0 | Planning and Documentation Topology | 🔄 Active (Sprint 0.1 ✅; Sprint 0.2 📋) | [phase-0-planning-documentation.md](phase-0-planning-documentation.md) |
+| 0 | Planning and Documentation Topology | ✅ Done | [phase-0-planning-documentation.md](phase-0-planning-documentation.md) |
 | 1 | Haskell CLI Surface, `CommandSpec`, Lint Stack | 🔄 Active (wired baseline; doctrine-complete lint/docs stack still open) | [phase-1-haskell-cli-surface.md](phase-1-haskell-cli-surface.md) |
 | 2 | Transcript Codec, RNG, and Determinism Contract | 🔄 Active (codec/cache/SHA-256/sidecar baseline; full envelope completion open) | [phase-2-transcript-codec-and-determinism.md](phase-2-transcript-codec-and-determinism.md) |
 | 3 | Backend (v) Haskell Engine | 🔄 Active (logical engine baseline; ST arena/search parity engine open) | [phase-3-haskell-engine.md](phase-3-haskell-engine.md) |
@@ -105,7 +122,7 @@ A sprint can move to `Done` only when all of the following are true:
 | 5 | Backend (ii) C++ Imperative Steelman with PGO+BOLT | 🔄 Active (smoke skeleton; steelman engine and PGO+BOLT open) | [phase-5-cpp-imperative-steelman.md](phase-5-cpp-imperative-steelman.md) |
 | 6 | Backends (iii) C++ Functional-Style and (iv) Rust | 🔄 Active (smoke skeletons; real engines and pipelines open) | [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md) |
 | 7 | Cross-Backend Verify, Test Stanzas, POC Report Card | 🔄 Active (test stanzas and logical verify wiring present; real cohort/TUIs/report-card evidence open) | [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md) |
-| 8 | Haskell Performance Parity Closure | 📋 Planned | [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md) |
+| 8 | Haskell Performance Parity Closure | 🔄 Active (Sprint 8.1 partial: GHC tuning flags landed; LLVM/PGO open) | [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md) |
 
 ## Current Plan Status
 
@@ -117,33 +134,91 @@ Implemented in the worktree:
   `share/completion/{bash,zsh,fish}/`, `fourmolu.yaml`, `.hlint.yaml`, `.gitignore`.
 - CLI command families: `bench`, `verify`, `inspect`, `test`, `lint`, `docs`,
   `commands`, `help`, `check-code`, `build`, and a non-interactive `play` smoke.
-- Deterministic transcript encode/decode, cache root resolution, prefix lookup,
-  action enumeration, move notation, `splitmix64` seed mixing, and baseline
-  `.eq` / `.envelope` sidecar list/prune support.
+- Deterministic transcript encode/decode with the full v1 wire format
+  including the 14-field engine envelope (cohort-invariant + per-backend
+  slot fields); cache root resolution; git-style prefix lookup with the
+  unique-prefix property exercised in `mcts-unit`; action enumeration;
+  move notation; `splitmix64` seed mixing; the binary `MEQ1` equity
+  sidecar codec with atomic temp-file + rename writes and `castWord64ToDouble`
+  round-trips. Byte-level transcript and CLI goldens live under
+  `test/golden/`.
+- A real ST-arena MCTS engine: `MCTS.Search.Arena` (SoA `STUArray` arena
+  with `parentIdx`, `firstChildIdx`, `nChildren`, `actionId`, `visits`,
+  `valueSum`) and `MCTS.Search.UCT.uctSearch` (UCT selection +
+  random-rollout + backpropagation). The driver dispatches every per-move
+  search through it. Cross-backend visit-count equality holds under
+  `--rng cpp`; per-backend salt under `--rng native` keeps bench
+  transcripts distinct.
 - `inspect show --with-equity` writes a current logical equity sidecar, and
   `inspect divergence` now resolves the target transcript and renders metrics from
   `MCTS.Verify.Divergence` rather than a fixed placeholder.
 - `inspect show --envelope` renders the current transcript envelope, and
-  `mcts verify ... --allow-stale` is parsed and routed through the baseline layered
-  envelope verifier for the fields present in the current envelope.
+  `mcts verify ... --allow-stale` is parsed and routed through the layered
+  envelope verifier covering `rng_source`, `shared_rng_build_id`,
+  `cohort_config_hash`, `engine_build_id`, `compiler_id`, `fp_flags`,
+  `cpu_features`, `fp_env`.
+- The `Env` record and `App` monad (`ReaderT Env IO`) scaffold with the
+  monotonic-clock test hook. `MCTS.Plan` exposes the doctrine-shaped
+  `buildPlan` / `applyPlan` / `applySubprocessPlan` / `applyWithEnv` /
+  `applySubprocessWithEnv` helpers; `MCTS.CLI.Bench` uses `monotonicNanos`
+  (`getMonotonicTimeNSec`).
+- The prerequisite registry carries dependency edges and resolves transitively;
+  the unit suite asserts the registry is acyclic.
+- Phase 8 GHC tuning flags landed in `mcts.cabal`: `-O2
+  -funbox-strict-fields -fspecialise-aggressively
+  -fexpose-all-unfoldings -flate-dmd-anal
+  -fmax-simplifier-iterations=20 -fworker-wrapper
+  -fstatic-argument-transformation`. The executable adds `-threaded`
+  and the doctrine RTS pin `-A64m -n4m -qg1 -qb -T`. `INLINABLE`
+  pragmas mark every hot-path entry in `MCTS.Search.Arena` and
+  `MCTS.Search.UCT`. (`-fllvm` and `-optl[oc]-mcpu=native` are held
+  back until Sprint 1.1 pins LLVM in the Docker image.)
+- Transcript writes are durable: `MCTS.Transcript.writeFileAtomically`
+  uses `openBinaryTempFile`, `hFlush`, `System.Posix.Unistd.fileSynchronise`
+  on the temp file's Fd, atomic rename, and best-effort fsync of the
+  parent directory.
+- The recompute path lives in `MCTS.Engine.Recompute`:
+  `recomputeEquities` / `recomputeEqStream` replay a transcript through
+  the in-process UCT and emit per-move equity records; under `--rng cpp`
+  it hard-asserts visit equality and short-circuits with `AppError
+  RecomputeMismatch` on the first disagreement.
+  `mcts inspect show --with-equity` writes the recomputed sidecar.
+- Haskell-side FFI scaffolding lives under `src/MCTS/FFI/`:
+  `MCTS.FFI.Common` (bracket helpers, `EngineEnvelope` record,
+  `liftFFI` that converts foreign exceptions to `AppError FFIFailure`),
+  plus per-backend `with<Backend>Board` wrappers in `MCTS.FFI.CppLegacy`,
+  `CppImperative`, `CppFunctional`, `Rust`.
+- The forbidden-path set is a typed `forbiddenPathRegistry :: [ForbiddenPath]`
+  value carrying a rationale per entry; `mcts lint files` consumes it.
 - Five Cabal test stanzas: `mcts-unit`, `mcts-integration`,
-  `mcts-cross-backend`, `mcts-legacy-parity`, `mcts-haskell-style`.
-- `mcts lint haskell` delegates to `cabal test mcts-haskell-style`, and
-  `mcts check-code` runs lint/docs plus `cabal build all`.
+  `mcts-cross-backend`, `mcts-legacy-parity`, `mcts-haskell-style`. The
+  style stanza walks every `.hs` file and rejects the doctrine-forbidden
+  symbols outside their owning modules (the rules also live in
+  `.hlint.yaml` for when the `hlint` binary lands).
+- `mcts lint files` fails on tracked generated-file drift, `mcts lint haskell`
+  delegates to `cabal test mcts-haskell-style`, and `mcts check-code` runs lint/docs
+  plus `cabal build all`.
+- `mcts test all` routes recursive CLI invocations through `cabal exec mcts -- ...`,
+  and `mcts bench rollouts|selfplay` accepts backend cohorts in the report-card
+  command form.
 - Smoke backend source homes under `cpp-legacy/`, `cpp-imperative/`,
-  `cpp-functional/`, and `rust/`.
-- Current baseline gaps inside these wired surfaces are tracked explicitly:
-  `documents/cli/commands.md` is richer than the current `src/MCTS/CLI/Docs.hs`
-  renderer and must be reconciled before `mcts docs check` can be a clean gate,
-  `mcts test all` still assumes a locally runnable `mcts` on `PATH`, and its
-  benchmark report-card steps pass comma-separated backend lists to a single-backend
-  `bench` parser.
+  `cpp-functional/`, and `rust/` each declare the doctrine-shaped
+  `mcts_<backend>_envelope` struct and the
+  `mcts_<backend>_get_envelope()` accessor returning process-static
+  memory.
+- `MCTS.CLI.Docs` exposes `GeneratedSectionRule`,
+  `applyGeneratedSection`, and `checkGeneratedSection` for
+  marker-delimited generated regions (`<!-- mcts:<key>:start --> ...
+  <!-- mcts:<key>:end -->`).
 
 Remaining work is the difference between this baseline and the target end state:
-full engine envelopes and foreign-engine recompute sidecars, the optimized Haskell `ST` arena engine,
-real foreign C ABI bindings, the verbatim legacy port, PGO+BOLT pipelines, real
-cross-backend bit-for-bit proof, interactive TUIs, external golden fixtures, and Phase
-`8` performance parity closure.
+foreign-engine recompute sidecars, the optimized Haskell engine with `INLINABLE`
++ `SPECIALIZE` + `-fllvm` + `MutableByteArray#` arena per Phase 8, real foreign C
+ABI bindings (Haskell FFI calls into the four `.so` / `cdylib`s), the verbatim
+legacy port, PGO+BOLT pipelines, real cross-backend bit-for-bit proof against
+non-logical backends, interactive `brick`/`vty` TUIs for `play` and `inspect
+replay`, external golden fixtures under `test/golden/legacy/`, and Phase `8`
+performance parity closure.
 
 The retirement protocol (i)→(ii)→(iii)→(v) named in [00-overview.md](00-overview.md) and
 owned by Phase `8` is the long-running closure mechanism: each retiring backend's

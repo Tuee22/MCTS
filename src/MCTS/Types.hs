@@ -31,6 +31,8 @@ module MCTS.Types
     , MoveRecord (..)
     , GameTranscript (..)
     , Envelope (..)
+    , ByteString32 (..)
+    , zeroDigest
     , Transcript (..)
     , shortHash
     ) where
@@ -250,13 +252,49 @@ data GameTranscript = GameTranscript
     }
     deriving (Eq, Show, Read)
 
+-- | Full v1 engine envelope per
+-- [documents/engineering/backend_ffi_contract.md → Engine Envelope](../documents/engineering/backend_ffi_contract.md)
+-- and
+-- [documents/engineering/transcript_format.md → Envelope Block](../documents/engineering/transcript_format.md).
+-- The cohort-invariant slots (`envelopeRngSource`, `envelopeHostArch`,
+-- `envelopeSharedRngBuildId`, `envelopeCohortConfigHash`) must agree across
+-- every transcript in a verify cohort; the per-backend-slot slots
+-- (`envelopeEngineBuildId`, `envelopeCompilerId`, `envelopeCompilerVersion`,
+-- `envelopeFpFlags`, `envelopeLibmId`, `envelopeCpuFeatures`,
+-- `envelopeFpEnv`) must agree between a cached transcript and the live
+-- binary for the same backend slot (unless `--allow-stale` downgrades the
+-- check to a warning).
 data Envelope = Envelope
     { envelopeVersion :: !Word16
     , envelopeBackend :: !Backend
+    , envelopeRngSource :: !RngSource
     , envelopeHostArch :: !String
+    , envelopeSharedRngBuildId :: !ByteString32
+    , envelopeCohortConfigHash :: !ByteString32
+    , envelopeEngineBuildId :: !ByteString32
+    , envelopeEngineGitCommit :: !String
+    , envelopeCompilerId :: !Word8
+    , envelopeCompilerVersion :: !String
+    , envelopeFpFlags :: !Word32
+    , envelopeLibmId :: !String
+    , envelopeCpuFeatures :: !Word32
+    , envelopeFpEnv :: !Word8
+    -- | Convenience: short identifier matching the engine_build_id.
     , envelopeBuildId :: !String
     }
     deriving (Eq, Show, Read)
+
+-- | 32-byte digest stored as a hex-encoded string for ergonomic display
+-- and stable Show/Read instances. The wire codec writes 32 raw bytes.
+newtype ByteString32 = ByteString32 {unByteString32 :: String}
+    deriving (Eq, Show, Read)
+
+-- | An all-zero 32-byte digest sentinel. Used for fields that are
+-- patched-in by the build harness post-link (engine_build_id),
+-- backend-independent cohort hashing fills (cohort_config_hash), or
+-- non-applicable cases (shared_rng_build_id under `--rng native`).
+zeroDigest :: ByteString32
+zeroDigest = ByteString32 (replicate 64 '0')
 
 data Transcript = Transcript
     { transcriptConfig :: !RunConfig

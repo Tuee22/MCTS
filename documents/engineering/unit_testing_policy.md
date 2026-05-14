@@ -72,10 +72,12 @@ identifiers, GHC build IDs) renders as sentinel placeholders in the golden file.
 The doctrine-mandatory canonical test command. Phase 7 Sprint 7.3 owns the
 implementation. The plan is a typed `[Subprocess]` sequence run via `Plan / Apply`:
 
-1. `mcts lint files` (whitespace, final newline, `forbiddenPathRegistry`,
+1. `mcts lint files` (rendered as `cabal exec mcts -- lint files` in the current
+   apply plan; whitespace, final newline, `forbiddenPathRegistry`,
    `trackingGeneratedPaths` no-hand-edit) — first per the doctrine's
    [Aggregate dispatch](../../HASKELL_CLI_TOOL.md) lint-first ordering.
-2. `mcts lint docs` (generated-section drift on the `GeneratedSectionRule` registry).
+2. `mcts lint docs` (rendered as `cabal exec mcts -- lint docs`; generated-section
+   drift on the `GeneratedSectionRule` registry).
 3. `cabal build all` warning-clean under the pinned toolchain.
 4. `cabal test mcts-haskell-style` (`fourmolu --mode check` + `hlint` + `cabal
    format` round-trip).
@@ -84,7 +86,8 @@ implementation. The plan is a typed `[Subprocess]` sequence run via `Plan / Appl
 7. `cabal test mcts-cross-backend`.
 8. `cabal test mcts-legacy-parity`.
 9. Pinned report-card workload — the seven `mcts bench` / `mcts verify`
-   invocations from the project
+   invocations from the project, rendered through `cabal exec mcts -- ...` in the
+   apply plan so the command does not depend on a separate `mcts` executable on `PATH`,
    [../../README.md → Report-card workload](../../README.md) lines 223–246,
    enumerated verbatim by
    [../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md →

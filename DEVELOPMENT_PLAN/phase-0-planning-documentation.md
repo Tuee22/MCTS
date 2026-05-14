@@ -15,10 +15,10 @@
 
 ## Phase Status
 
-🔄 **Active** — Sprint `0.1` (canonical plan suite bootstrap) is `Done`; Sprint `0.2`
-(doctrine-driven scheduling audit) is `Planned`. The phase closes when Sprint `0.2`
-lands and every in-scope doctrine identifier is bound to an owned deliverable in Phases
-`1`–`8`.
+✅ **Done** — Sprint `0.1` (canonical plan suite bootstrap) and Sprint `0.2`
+(doctrine-driven scheduling audit) both `Done`. Every in-scope doctrine identifier
+from [../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md) is bound to an owned
+deliverable in Phases `1`–`8`; the audit replay is recorded in Sprint `0.2`'s body.
 
 ## Phase Summary
 
@@ -159,9 +159,9 @@ where the source of truth lives.
 
 None.
 
-## Sprint 0.2: Doctrine-Driven Scheduling Audit 📋
+## Sprint 0.2: Doctrine-Driven Scheduling Audit ✅
 
-**Status**: Planned
+**Status**: Done
 **Implementation**: `DEVELOPMENT_PLAN/phase-0-planning-documentation.md`,
 `DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md`,
 `DEVELOPMENT_PLAN/phase-2-transcript-codec-and-determinism.md`,
@@ -312,10 +312,71 @@ rule L.
    cross-reference resolution, metadata-block consistency, and identifier-audit
    checks named above.
 
+### Audit Replay (2026-05-14)
+
+The audit ran against `DEVELOPMENT_PLAN/*.md` and `documents/engineering/*.md`. The
+identifier coverage is summarised below; full file:line evidence is preserved in
+the surrounding phase documents and engineering docs cited above.
+
+**Doctrine identifier coverage** — every class is owned by at least one Phase
+`1`–`8` sprint:
+
+| Doctrine class | Owning sprint(s) |
+|----------------|------------------|
+| Toolchain pinning (`GHC 9.14.1`, `Cabal 3.16.1.0`, `tested-with`, `with-compiler`) | Phase 1 Sprint 1.1 |
+| Project Structure (`app/Main.hs` thin, `src/MCTS/` library-first) | Phase 1 Sprint 1.1 |
+| Command Topology / `CommandSpec` / `OptionSpec` / `Example` | Phase 1 Sprint 1.2 |
+| Progressive Introspection (`mcts commands`, `--tree`, `--json`, `mcts help`) | Phase 1 Sprint 1.2 |
+| Generated Artifacts (`GeneratedSectionRule`, `trackingGeneratedPaths`, paired check/generate) | Phase 1 Sprint 1.3 |
+| Subprocesses as Typed Values (`Subprocess`, `renderSubprocess`, `runStreaming`, `capture`) | Phase 1 Sprint 1.6 |
+| Plan / Apply (`Plan`, `build`, `apply`, `--dry-run`, `--plan-file`) | Phase 1 Sprint 1.5 |
+| Prerequisites as Typed Effects (`prerequisiteRegistry`, `PrerequisiteUnmet`) | Phase 1 Sprint 1.7 |
+| Application Environment (`ReaderT Env IO`) | Phase 1 Sprint 1.8 |
+| Lint/Format/Code-Quality Stack (`fourmolu.yaml` twelve settings, `.hlint.yaml`, `forbiddenPathRegistry`) | Phase 1 Sprint 1.4 |
+| Testing Doctrine (`tasty`, `execParserPure`, property invariants, golden tests) | Phase 1 Sprints 1.4/1.9 + Phase 7 Sprint 7.1 |
+| Output Rules (`--format`, `--color`, `--no-color`) | Phase 1 Sprint 1.9 |
+| Error Handling (15-variant `AppError`, `renderError`, forbidden `print`/`exitFailure`) | Phase 1 Sprint 1.9 |
+| GADT-Indexed State Machines (phantom indices, singleton witnesses) | `documents/engineering/haskell_code_guide.md`; Phase 7 Sprint 7.2 binding |
+| Project-level documentation standards (six elements) | Phase 0 Sprint 0.1 + Phase 1 Sprint 1.3 |
+
+**Transcript wire-format identifiers** present at least once across the plan and
+engineering docs: `MCTR`, `c_param`, `flags u32`, `initial_sims`,
+`TranscriptFormatUnsupported`, `0xFF` (and the `0xFFFF u16` terminator),
+`game_id`, `winner ∈ {0,1,2}`. Counter-grep for the prior-incorrect set
+(`MCTS magic`, `sim_budget_kind`, `ramped_per_move_sims`, `action_enum_version`)
+returns zero hits outside this audit's own enumeration of the forbidden list.
+
+**RNG FFI contract** (`cpp_rng_new`, `cpp_rng_next_u64`, `cpp_rng_split`,
+`cpp_rng_free`) is fully covered in
+[phase-4-cpp-legacy-port-and-ffi-bridge.md](phase-4-cpp-legacy-port-and-ffi-bridge.md)
+Sprint `4.2` and
+[../documents/engineering/backend_ffi_contract.md](../documents/engineering/backend_ffi_contract.md).
+
+**Report-card knobs** (`G_R`, `G_S`, `G_V`, `G_LP`, `S_BENCH`, `S_VERIFY`,
+`S_LP_SIMS`, `S_LP`) are pinned in `cabal.project` and listed by name in
+[system-components.md](system-components.md). `Q1`–`Q7` are each named in
+[phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md)
+Sprint `7.3`.
+
+**Out-of-scope counter-grep**: `Long-Running Daemons`, `BootConfig`, `LiveConfig`,
+`Capability Class`, `ServiceError`, `RetryPolicy`, `Reconciler`, `Pulumi`,
+`Smart Constructors for Paired Resources`, and `dhall` appear only inside
+explicit out-of-scope sentences or enumerations of the forbidden list. No sprint
+schedules adoption of any out-of-scope section.
+
+**Stack deviations**: `brick` + `vty` appear only in
+[phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md)
+Sprint `7.4` and the dependency audit in
+[phase-1-haskell-cli-surface.md](phase-1-haskell-cli-surface.md) Sprint `1.1`.
+`dhall` is unused everywhere except in explicit out-of-scope sentences.
+
+**Findings**: no unowned doctrine identifier, no out-of-scope adoption, no
+plan-text contradiction. The audit produced no `Pending Removal` row.
+
 ### Remaining Work
 
-Not started. Sprint `0.2` runs once Sprint `0.1` (the plan suite bootstrap, this
-document and its siblings) lands and the project moves into normal phase execution.
+None. The doctrine-driven scheduling audit is closed; subsequent doctrine
+adoption work happens at the sprint level in Phases `1`–`8` per standards rule L.
 
 ## Doctrine Sections Cited
 

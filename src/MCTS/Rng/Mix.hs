@@ -6,10 +6,12 @@ module MCTS.Rng.Mix
 import Data.Bits (shiftR, xor)
 import Data.Word (Word64)
 
+{-# INLINABLE mix #-}
 mix :: Word64 -> Word64 -> Word64
 mix masterSeed gameIndex =
     splitmix64 (masterSeed + 0x9e3779b97f4a7c15 * (gameIndex + 1))
 
+{-# INLINABLE splitmix64 #-}
 splitmix64 :: Word64 -> Word64
 splitmix64 input =
     let z1 = input + 0x9e3779b97f4a7c15

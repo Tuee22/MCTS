@@ -5,6 +5,7 @@ module MCTS.CLI.Inspect
 import Data.List (intercalate, sortOn)
 import MCTS.CLI.Command
 import MCTS.CLI.Output (OutputFormat (..), OutputOptions (..), outputLine, renderError)
+import qualified MCTS.Engine.Recompute as Recompute
 import MCTS.Notation (renderMove, renderWinner)
 import MCTS.Transcript
 import MCTS.Transcript.EquitySidecar
@@ -80,8 +81,14 @@ inspectShow output options = do
                 Right transcript -> do
                     if showWithEquity options
                         then do
-                            _ <- writeEquitySidecar (showCacheDir options) (takeBaseName path) transcript
-                            pure ()
+                            let envelope = transcriptEnvelope transcript
+                                buildId = envelopeBuildId envelope
+                                transcriptHash = takeBaseName path
+                            case Recompute.recomputeEqStream transcriptHash buildId transcript of
+                                Right stream -> do
+                                    _ <- writeEquitySidecarStream (showCacheDir options) transcript stream
+                                    pure ()
+                                Left err -> outputLine (renderError err)
                         else pure ()
                     outputLine (renderTranscript output options path transcript)
                     pure 0

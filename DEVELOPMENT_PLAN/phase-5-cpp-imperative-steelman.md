@@ -146,9 +146,9 @@ backend-agnostic from the Haskell side.
   described by the sprint.
 - Validate warning-clean builds and update tuning docs with any final flag decisions.
 
-## Sprint 5.2: FFI Bindings for Backend (ii) 📋
+## Sprint 5.2: FFI Bindings for Backend (ii) 🔄
 
-**Status**: Planned
+**Status**: Active
 **Implementation**: `src/MCTS/FFI/CppImperative.hs`, `mcts.cabal`
 **Docs to update**: `documents/engineering/backend_ffi_contract.md`
 
@@ -183,7 +183,14 @@ pattern as backend (i), reusing the `MCTS.FFI.Common` RAII wrappers from Phase 4
 
 ### Remaining Work
 
-Not started.
+- Baseline landed: `src/MCTS/FFI/CppImperative.hs` declares
+  `withCppImperativeBoard` routed through `MCTS.FFI.Common.liftFFI`
+  with the doctrine-required `mcts_imperative_new_board` symbol name.
+- Replace the stand-in handle type with `foreign import ccall` pointers
+  and add the `mcts.cabal` `extra-libraries: mcts_cpp_imperative` and
+  `extra-lib-dirs: cpp-imperative/build` directives once the cdylib
+  build step is wired in. Add the `libmcts-cpp-imperative-built`
+  prerequisite node.
 
 ## Sprint 5.3: PGO+BOLT+`mimalloc` Build Harness 🔄
 
@@ -380,7 +387,16 @@ that ships at the canonical FFI load path).
 
 ### Remaining Work
 
-- Add backend (ii)'s live envelope capture after the real optimized driver exists.
+- Baseline landed: `cpp-imperative/c-abi/mcts_cpp_imperative.h` and the matching
+  `.cc` declare the `mcts_imperative_envelope` struct and the
+  `mcts_imperative_get_envelope(void)` accessor returning a process-static
+  envelope with the build-time slots filled (`envelope_version`,
+  `rng_source_envelope`, `host_arch_envelope`, `engine_git_commit`,
+  `compiler_id`) and the optimization-dependent slots (`engine_build_id`,
+  `cpu_features`, `fp_flags`, `fp_env`) zero-initialized pending the
+  PGO+BOLT pipeline and post-link patch.
+- Add backend (ii)'s live envelope capture after the real optimized driver exists
+  (the optimization-dependent slots flip on once the build harness lands).
 - Add foreign-engine recompute for backend (ii) equity sidecars.
 - Patch the final post-BOLT shared library with the shipping `engine_build_id`.
 

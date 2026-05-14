@@ -36,11 +36,11 @@ and retirement history separately.
 |-----------|---------------------------|-------------|
 | Cabal package and CLI | `mcts.cabal`, `cabal.project`, `app/Main.hs`, `src/MCTS/App.hs`; build gate is `cabal build all` under the pinned toolchain | Parser is still a manual renderer over the registry; richer generated-artifact validation remains open |
 | Command registry | `src/MCTS/CLI/Spec.hs`, `src/MCTS/CLI/Parser.hs`; `mcts commands --tree` and `mcts commands --json` work | Complete doctrine-level parser generation and golden schema coverage remain open |
-| Transcript/cache baseline | `src/MCTS/Transcript.hs`, `src/MCTS/Crypto/SHA256.hs`, `src/MCTS/Transcript/EquitySidecar.hs`, plus wrapper modules; `.mcts-cache/` ignored; `inspect list` / `inspect show --envelope` / `inspect cache list` / `inspect cache prune` work | Complete engine-envelope capture and foreign-engine recompute sidecars |
-| Logical backend cohort | `src/MCTS/Engine.hs`, `src/MCTS/Driver.hs`, `src/MCTS/Verify.hs`; validation command is `mcts verify rollouts --backend cpp-imperative,cpp-functional,rust,haskell` | Replace logical in-process backends with real Haskell `ST` engine and FFI-backed C++/Rust engines |
+| Transcript/cache baseline | `src/MCTS/Transcript.hs`, `src/MCTS/Crypto/SHA256.hs`, `src/MCTS/Transcript/EquitySidecar.hs`, plus wrapper modules; `.mcts-cache/` ignored; `inspect list` / `inspect show --envelope` / `inspect cache list` / `inspect cache prune` work; transcript writes use same-directory temp files plus rename | Complete engine-envelope capture, fixed-width sidecar encoding, and foreign-engine recompute sidecars |
+| In-process MCTS engine | `src/MCTS/Engine.hs`, `src/MCTS/Driver.hs`, `src/MCTS/Search/Arena.hs`, `src/MCTS/Search/UCT.hs`, `src/MCTS/Verify.hs`; the Haskell engine is a real recursive UCT in the `ST` monad over a structure-of-arrays `STUArray` arena; the driver dispatches every per-move search through it. Validation: `mcts verify rollouts --backend cpp-imperative,cpp-functional,rust,haskell` | Replace in-process dispatch of foreign-named backends with real FFI-backed C++/Rust engines |
 | Foreign backend homes | `cpp-legacy/`, `cpp-imperative/`, `cpp-functional/`, `rust/` contain smoke-buildable skeletons | Real legacy port, C++23 engines, Rust engine, FFI bindings, PGO+BOLT+`mimalloc` pipelines |
 | Test stanzas | `test/unit`, `test/integration`, `test/cross-backend`, `test/legacy-parity`, `test/haskell-style`; validation gate is `cabal test all` under the pinned toolchain | Current stanzas use simple executable `Main.hs` checks; strengthen to doctrine-required `tasty`, external golden fixtures, real FFI cohort, renderer goldens, and full property coverage |
-| Generated docs gate | `src/MCTS/CLI/Docs.hs`, `documents/cli/commands.md`, `share/man/man1/mcts.1`, `share/completion/{bash,zsh,fish}/` | Current `documents/cli/commands.md` contains governed-doc metadata and extra command rows not emitted by `renderCommandMarkdown`; reconcile generator/output before treating `mcts docs check` as clean |
+| Generated docs gate | `src/MCTS/CLI/Docs.hs`, `documents/cli/commands.md`, `share/man/man1/mcts.1`, `share/completion/{bash,zsh,fish}/`; `mcts docs check` is clean and `mcts lint files` checks tracked generated-file drift | Marker-delimited generated-section support and final renderer/idempotence goldens remain open |
 
 ## Backends
 
@@ -68,9 +68,9 @@ and retirement history separately.
 | Sidecar cache list | `mcts inspect cache list` | Enumerate equity-sidecar `(backend, build)` slots cohabiting each cached transcript | 🔄 Active (baseline `.eq` / `.envelope` listing; live-envelope origin markers open) | Sprint 2.7 |
 | Sidecar cache prune | `mcts inspect cache prune [--keep-current]` | Delete equity sidecars; `--keep-current` retains current logical build slots in the baseline | 🔄 Active (live-envelope stale detection open) | Sprint 2.7 |
 | Divergence matrix | `mcts inspect divergence <hash-prefix>` | Emit divergence-rate metrics (`visit-Δ`, `move-Δ`, `equity-L2`) for a single transcript and cached backend columns | 🔄 Active (metric helper wired; foreign recompute matrix open) | Sprint 7.5 |
-| Test runner | `mcts test all` / `mcts test <stanza>` | Plan/Apply over Cabal test stanzas plus the pinned report-card workload | 🔄 Active (`--dry-run`; apply path still uses local `mcts` PATH assumption and comma-list benchmark placeholders) | Sprint 7.3 |
+| Test runner | `mcts test all` / `mcts test <stanza>` | Plan/Apply over Cabal test stanzas plus the pinned report-card workload | 🔄 Active (`--dry-run`; recursive CLI steps route through `cabal exec mcts -- ...`; logical report-card evidence open) | Sprint 7.3 |
 | Lint stack | `mcts lint files\|docs\|haskell\|all` | Whitespace, final newline, forbidden paths, generated sections, formatter + hlint + `cabal format` | 🔄 Active (external formatter/hlint open) | Sprint 1.4 |
-| Docs generation | `mcts docs check` / `mcts docs generate` | Paired generated-section check and write per the `GeneratedSectionRule` registry | 🔄 Active (commands doc, manpage, completions wired; current command markdown drift plus richer registry metadata open) | Sprint 1.3 |
+| Docs generation | `mcts docs check` / `mcts docs generate` | Paired generated-section check and write per the `GeneratedSectionRule` registry | 🔄 Active (commands doc, manpage, completions, and tracked-path drift checks wired; marker-delimited registry open) | Sprint 1.3 |
 | Command introspection | `mcts commands [--tree\|--json]` | Flat list, tree rendering, or JSON command schema from the `CommandSpec` registry | 🔄 Active | Sprint 1.2 |
 | Focused help | `mcts help <subcommand>` | Equivalent to `<subcommand> --help`; same renderer as the `--help` path | 🔄 Active (smoke help text) | Sprint 1.2 |
 | Code quality gate | `mcts check-code` | Doctrine-alignment enforcement, formatter, hlint, warning-clean build, forbidden-path scan | 🔄 Active (lint/docs/style/build gate wired; external formatter fidelity open) | Sprint 1.4 |
@@ -80,7 +80,7 @@ and retirement history separately.
 
 | Component | Implementation | Status | Owning Sprint |
 |-----------|----------------|--------|---------------|
-| Wire-format header | `src/MCTS/Transcript.hs`, `src/MCTS/Transcript/Codec.hs` | 🔄 Active (baseline v1) | Sprint 2.1 |
+| Wire-format header | `src/MCTS/Transcript.hs`, `src/MCTS/Transcript/Codec.hs` | 🔄 Active (baseline v1; workload/game-count roundtrip covered) | Sprint 2.1 |
 | Per-move record codec | `src/MCTS/Transcript.hs`, `src/MCTS/Transcript/Codec.hs` | 🔄 Active (baseline v1) | Sprint 2.1 |
 | Single-byte action enumeration | `src/MCTS/Transcript/Action.hs`, `src/MCTS/Types.hs` | 🔄 Active | Sprint 2.1 |
 | Content-addressed hash (`sha256(run_config)`) | `src/MCTS/Transcript/Hash.hs`, `src/MCTS/Crypto/SHA256.hs` | ✅ Done for baseline | Sprint 2.2 |
@@ -89,10 +89,10 @@ and retirement history separately.
 | `splitmix64(master_seed, game_index)` per-game seed derivation | `src/MCTS/Rng/Mix.hs` | 🔄 Active | Sprint 2.5 |
 | `--rng cpp` shared `std::mt19937_64` FFI bridge | `cpp-legacy/c-abi/rng.h`, `cpp-legacy/c-abi/rng.cc` | 🔄 Active (C skeleton; Haskell FFI open) | Sprint 4.3 |
 | `--rng native` per-backend selection (`splitmix` for Haskell, `rand_xoshiro::Xoshiro256PlusPlus` for Rust, `xoshiro256++` by default with `wyrand` as the C++ alternative) | `src/MCTS/Engine.hs` | 🔄 Active (logical selection; real per-backend RNG open) | Sprint 2.5 |
-| Engine envelope codec (envelope block in transcript header; cohort-invariant vs per-backend-slot fields; excluded from the backend-specific `sha256(RunConfig)` cache key) | `src/MCTS/Transcript.hs` | 🔄 Active (minimal envelope; full contract open) | Sprint 2.6 |
+| Engine envelope codec (envelope block in transcript header; cohort-invariant vs per-backend-slot fields; excluded from the backend-specific `sha256(RunConfig)` cache key) | `src/MCTS/Transcript.hs` | 🔄 Active (full v1 envelope with all 14 fields; round-trip exercised in `mcts-unit`; live backend-side capture open) | Sprint 2.6 |
 | Per-backend envelope capture (build-id, compiler ID/version, fp_flags, libm_id, cpu_features, fp_env) | `<backend>/c-abi/envelope.{h,cc}` (Phase 4/5/6 for cpp/rust); `src/MCTS/Engine/Envelope.hs` (Phase 3 for haskell) | 📋 Planned | Sprint 3.6, 4.7, 5.5, 6.5 |
-| Equity sidecar codec (`.eq` + `.envelope` neighbour, atomic-write, multi-build cohabitation) | `src/MCTS/Transcript/EquitySidecar.hs` | 🔄 Active (baseline text codec and multi-build cache layout; atomic write/full binary format open) | Sprint 2.7 |
-| Foreign-engine recompute (`mcts_<backend>_recompute_equities` FFI; in-process `Recompute.hs` for haskell) | per-backend C ABI + `src/MCTS/Engine/Recompute.hs` | 📋 Planned | Sprint 3.6, 4.7, 5.5, 6.5 |
+| Equity sidecar codec (`.eq` + `.envelope` neighbour, atomic-write, multi-build cohabitation) | `src/MCTS/Transcript/EquitySidecar.hs` | 🔄 Active (binary `MEQ1` codec with fixed-width 15-byte records, atomic temp-file + rename writes, `castWord64ToDouble` IEEE round-trip; multi-build cache layout; live FFI envelope stale detection open) | Sprint 2.7 |
+| Foreign-engine recompute (`mcts_<backend>_recompute_equities` FFI; in-process `Recompute.hs` for haskell) | per-backend C ABI + `src/MCTS/Engine/Recompute.hs` | 🔄 Active (in-process `Recompute.hs` lands with `recomputeEquities` / `recomputeEqStream` and hard-asserts visit equality under `--rng cpp`; foreign C ABI bindings open) | Sprint 3.6, 4.7, 5.5, 6.5 |
 | Layered envelope verify (`CohortLevel` + `BackendSlot` rule with `--allow-stale`) | `src/MCTS/Verify/Envelope.hs` | 🔄 Active (minimal envelope fields and logical build-id baseline; live FFI envelope fields open) | Sprint 7.5 |
 | Divergence-rate metric (`visit_disagreement_rate`, `move_disagreement_rate`, `equity_l2_drift`) | `src/MCTS/Verify/Divergence.hs` | 🔄 Active (transcript-pair metric; foreign EqStream scoring open) | Sprint 7.5 |
 
@@ -116,30 +116,30 @@ consume them. Citations name the doctrine sections they implement per standards 
 | `OptionSpec` record fields (`longName`, `shortName`, `metavar`, `description`, `required`) | Automatically Generated Documentation | 🔄 Active (baseline fields; exact naming polish open) | Sprint 1.2 |
 | Per-leaf `Example` entries on every `CommandSpec` | Automatically Generated Documentation | 🔄 Active (baseline examples) | Sprint 1.2 |
 | Parser generated from the registry (parser is a renderer, not the source of truth) | Command Topology | 🔄 Active (manual parser; generated renderer open) | Sprint 1.2 |
-| Parser-test category via `execParserPure` | Testing Doctrine → Parser Tests | 📋 Planned | Sprint 1.2 |
+| Parser-test category via `execParserPure` | Testing Doctrine → Parser Tests | 📋 Planned (current parser is hand-rolled; `execParserPure` lands when the optparse-applicative renderer migration closes) | Sprint 1.2 |
 | `mcts commands --tree` and `mcts commands --json` introspection | Progressive Introspection | 🔄 Active | Sprint 1.2 |
 | `Subprocess` ADT plus `runStreaming` / `capture` interpreter; pure `renderSubprocess` | Architecture → Subprocesses as Typed Values | 🔄 Active (baseline interpreter) | Sprint 1.6 |
 | Forbidden subprocess primitives (`callProcess`, `readCreateProcess`, `System.Process` constructors, `typed-process` smart constructors) | Architecture → Subprocesses as Typed Values | 🔄 Active (minimal HLint rules; full forbidden set open) | Sprint 1.6 |
 | `Plan` / `apply` boundary with `--dry-run` and `--plan-file <path>` | Plan / Apply | 🔄 Active | Sprint 1.5 |
-| `prerequisiteRegistry` with `nodeId`, `nodeDescription`, remedy hint, transitive closure | Prerequisites as Typed Effects | 🔄 Active (skeleton; DAG/real probes open) | Sprint 1.7 |
-| Single `Env` record threaded via `ReaderT Env IO` | Application Environment | 📋 Planned | Sprint 1.8 |
+| `prerequisiteRegistry` with `nodeId`, `nodeDescription`, remedy hint, transitive closure | Prerequisites as Typed Effects | 🔄 Active (real executable probes for build commands; dependency DAG/exact-version probes open) | Sprint 1.7 |
+| Single `Env` record threaded via `ReaderT Env IO` | Application Environment | 🔄 Active (`MCTS.Env` declares `Env`, `App`, `runAppIO`, `askEnv`, `withTestClock`; per-runner migration to `... -> App ExitCode` open) | Sprint 1.8 |
 | Single `AppError` ADT (`TranscriptNotFound`, `TranscriptAmbiguous`, `TranscriptFormatUnsupported`, `VerifyMismatch`, `VerifyCohortTooSmall`, `RecomputeMismatch`, `LegacyParityRolloutOverflow`, `ArchEnvelopeMismatch`, `EngineEnvelopeMismatch`, `PrerequisiteUnmet`, `SubprocessFailed`, `FFIFailure`, `DocsCheckDrift`, `UnknownCommand`, `InvalidMove`) | Error Handling | 🔄 Active (baseline plus local catchalls) | Sprint 1.9 |
 | `renderError :: AppError -> Text` boundary | Error Handling | 🔄 Active (`String` baseline; `Text` boundary open) | Sprint 1.9 |
 | HLint rules refusing `print`, `exitFailure`, direct terminal formatting outside the output module | Error Handling | 🔄 Active (minimal HLint rules; complete set open) | Sprint 1.4 |
 | `--format json\|table\|plain` (default `table` on TTY else `plain`) | Output Rules | 🔄 Active (format parser/render branches; TTY default open) | Sprint 1.9 |
 | `--color auto\|always\|never` plus `--no-color` | Output Rules | 🔄 Active (parser baseline; color rendering open) | Sprint 1.9 |
 | `fourmolu.yaml` 12-setting list at repo root | Lint, Format, and Code-Quality Stack → Pinned fourmolu.yaml | 🔄 Active | Sprint 1.4 |
-| `cabal format` temp-file round-trip byte-equality check | Lint, Format, and Code-Quality Stack | 📋 Planned | Sprint 1.4 |
-| `forbiddenPathRegistry` (`.github/workflows/`, `.husky/`, `.githooks/`, `.pre-commit-config.yaml`, `pre-commit-*.yaml`, root `Makefile`/`justfile`/`Taskfile.yml`) | Lint, Format, and Code-Quality Stack → Forbidden Surfaces | 🔄 Active (baseline registry; full set open) | Sprint 1.4 |
-| `GeneratedSectionRule` registry for marker-delimited generated regions | Generated Artifacts → The generated-section registry | 🔄 Active (fully-generated path baseline; marker registry open) | Sprint 1.3 |
-| `trackingGeneratedPaths` registry for fully-generated files (manpages, shell completions) | Generated Artifacts → Two categories of generation | 🔄 Active (local generated-files list; formal registry open) | Sprint 1.3 |
+| `cabal format` temp-file round-trip byte-equality check | Lint, Format, and Code-Quality Stack | 📋 Planned (the style stanza walks source files for forbidden symbols today; the `cabal format` and `fourmolu`/`hlint` invocation lands when the binaries are pinned in the Docker image) | Sprint 1.4 |
+| `forbiddenPathRegistry` (`.github/workflows/`, `.husky/`, `.githooks/`, `.pre-commit-config.yaml`, `pre-commit-*.yaml`, root `Makefile`/`justfile`/`Taskfile.yml`) | Lint, Format, and Code-Quality Stack → Forbidden Surfaces | 🔄 Active (typed `forbiddenPathRegistry :: [ForbiddenPath]` value in `MCTS.CLI.Lint`; each entry carries a rationale string; pinned in `mcts-unit`) | Sprint 1.4 |
+| `GeneratedSectionRule` registry for marker-delimited generated regions | Generated Artifacts → The generated-section registry | 🔄 Active (`MCTS.CLI.Docs` exports `GeneratedSectionRule`, `generatedSectionRules`, `spliceMarkerRegion`, `applyGeneratedSection`, `checkGeneratedSection`; wiring through `runDocs` open) | Sprint 1.3 |
+| `trackingGeneratedPaths` registry for fully-generated files (manpages, shell completions) | Generated Artifacts → Two categories of generation | 🔄 Active (local registry wired through `mcts lint files`; formal module split open) | Sprint 1.3 |
 | Canonical property-test invariants (`decode . encode == id`, `render is deterministic`, `parser roundtrips`) | Test Categories → Property Tests | 🔄 Active (hand-rolled baseline tests; final property stack open) | Sprint 7.1 |
 | GADT-indexed `VerifyBackend` type excluding `cpp-legacy` at the type level | GADT-Indexed State Machines | 🔄 Active (ADT/parser baseline; GADT form open) | Sprint 7.2 |
 | GADT-indexed `LegacyParityBackend` type requiring `cpp-legacy` at parse time | GADT-Indexed State Machines | 🔄 Active (ADT/parser baseline; GADT form open) | Sprint 7.2 |
 | Cabal-manifest toolchain pin (`tested-with: ghc ==9.14.1` in `mcts.cabal`, `with-compiler: ghc-9.14.1` in `cabal.project`) | Toolchain pinning | 🔄 Active | Sprint 1.1 |
 | Library-first layout audit (thin `app/Main.hs`, logic in `src/MCTS/`) | Project Structure | 🔄 Active | Sprint 1.1 |
 | Durable CLI documentation artefacts (`documents/cli/commands.md`, `share/man/man1/mcts*.1`, `share/completion/{bash,zsh,fish}/`) | Automatically Generated Documentation | 🔄 Active | Sprint 1.3 |
-| Standardized library set audit in `mcts.cabal` (`optparse-applicative`, `text`, `bytestring`, `aeson`, `prettyprinter*`, `ansi-terminal`, `path`, `path-io`, `typed-process`, `safe-exceptions`, `tasty*`, `temporary`, plus deviations `brick` + `vty`) | Overview → standardized stack | 🔄 Active (minimal dependency baseline; full stack open) | Sprint 1.1 |
+| Standardized library set audit in `mcts.cabal` (`optparse-applicative`, `text`, `bytestring`, `aeson`, `prettyprinter*`, `ansi-terminal`, `path`, `path-io`, `typed-process`, `safe-exceptions`, `tasty*`, `temporary`, plus deviations `brick` + `vty`) | Overview → standardized stack | 🔄 Active (current deps: `array`, `base`, `bytestring`, `containers`, `directory`, `filepath`, `mtl`, `process`, `text`, `time`, `transformers`, `unix`; the doctrine-required `optparse-applicative`, `aeson`, `prettyprinter*`, `ansi-terminal`, `path`/`path-io`, `typed-process`, `safe-exceptions`, `tasty*`, `temporary` open) | Sprint 1.1 |
 
 ## Test Stanzas
 

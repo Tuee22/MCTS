@@ -37,8 +37,8 @@ runWithArgs rawArgs = do
 runCommand :: OutputOptions -> Command -> IO Int
 runCommand output command =
     case command of
-        Bench (BenchRollouts inputs) -> runBench output inputs
-        Bench (BenchSelfplay inputs) -> runBench output inputs
+        Bench (BenchRollouts backends inputs) -> runBench output backends inputs
+        Bench (BenchSelfplay backends inputs) -> runBench output backends inputs
         Verify verifyCommand -> runVerifyCommand output verifyCommand
         Inspect inspectCommand -> runInspect output inspectCommand
         Test testCommand -> runTestCommand output testCommand

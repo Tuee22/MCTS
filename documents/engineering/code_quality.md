@@ -71,8 +71,9 @@ one canonical `mcts` operator surface:
 
 `mcts docs check` and `mcts docs generate` are paired commands per
 [../../HASKELL_CLI_TOOL.md → Generated Artifacts](../../HASKELL_CLI_TOOL.md). The
-`GeneratedSectionRule` registry lives in `src/MCTS/Generated/Sections.hs`; the
-`trackingGeneratedPaths` registry lives in `src/MCTS/Generated/Paths.hs`. Markers
+current baseline keeps fully-generated path renderers and `trackingGeneratedPaths` in
+`src/MCTS/CLI/Docs.hs`; the planned `src/MCTS/Generated/Sections.hs` marker registry
+and `src/MCTS/Generated/Paths.hs` module split remain Phase 1 Sprint 1.3 work. Markers
 follow the conventions in
 [../documentation_standards.md → Generated Sections](../documentation_standards.md#11-generated-sections).
 

@@ -35,8 +35,8 @@ data Command
     deriving (Eq, Show)
 
 data BenchCommand
-    = BenchRollouts RunInputs
-    | BenchSelfplay RunInputs
+    = BenchRollouts [Backend] RunInputs
+    | BenchSelfplay [Backend] RunInputs
     deriving (Eq, Show)
 
 data VerifyCommand

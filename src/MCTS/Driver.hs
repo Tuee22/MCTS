@@ -3,13 +3,16 @@ module MCTS.Driver
     , BatchResult (..)
     , defaultRunInputs
     , makeRunConfig
+    , makeLogicalEnvelope
     , runGame
     , runBatch
     ) where
 
+import Data.Bits (xor)
 import Data.Word (Word16, Word32, Word64)
-import MCTS.Engine (Board, applyMove, chooseMove, initialBoard, terminalWinner)
+import MCTS.Engine (Board, applyMove, initialBoard, terminalWinner)
 import MCTS.Rng.Mix (mix)
+import qualified MCTS.Search.UCT as UCT
 import MCTS.Transcript (hostArch, writeTranscript)
 import MCTS.Types
 
@@ -65,13 +68,7 @@ makeRunConfig inputs =
 runBatch :: RunInputs -> IO (Either String BatchResult)
 runBatch inputs = do
     let config = makeRunConfig inputs
-        envelope =
-            Envelope
-                { envelopeVersion = 1
-                , envelopeBackend = inputBackend inputs
-                , envelopeHostArch = hostArch
-                , envelopeBuildId = backendIdentifier (inputBackend inputs) <> "-logical"
-                }
+        envelope = makeLogicalEnvelope (inputBackend inputs) (inputRng inputs)
         games =
             [ runGame inputs (fromIntegral gameIndex)
             | gameIndex <- [0 .. max 0 (inputGames inputs - 1)]
@@ -105,13 +102,14 @@ runGame inputs gid =
                                 Rollouts -> FixedSims 1
                                 Selfplay -> inputSims inputs
                         (chosen, visits) =
-                            chooseMove
+                            uctChooseMove
                                 (inputBackend inputs)
                                 (inputRng inputs)
                                 seed
                                 moveNo
                                 board
                                 budget
+                                (effectiveMaxPlies inputs)
                         record =
                             MoveRecord
                                 { moveIndex = fromIntegral moveNo
@@ -121,8 +119,59 @@ runGame inputs gid =
                         nextBoard = applyMove chosen board
                      in go seed nextBoard (moveNo + 1) (record : acc)
 
+-- | Dispatch the per-move search through `MCTS.Search.UCT.uctSearch`.
+-- Under `--rng cpp` every backend uses an identical effective seed
+-- (no backend salt) so cross-backend verify produces bit-equal visit
+-- counts. Under `--rng native` each backend gets a backend-derived salt
+-- so per-backend transcripts hash differently in bench output.
+uctChooseMove
+    :: Backend
+    -> RngSource
+    -> Word64
+    -> Int
+    -> Board
+    -> SimBudget
+    -> Word16
+    -> (Action, [(Action, Word32)])
+uctChooseMove backend rng seed moveNo board budget maxPlies =
+    let backendSalt = case rng of
+            CppRng -> 0
+            NativeRng -> fromIntegral (fromEnum backend + 1) * 0x100000001b3
+        effectiveSeed = seed `xor` backendSalt `xor` fromIntegral (moveNo * 257 + 1)
+        sims = max 1 (simPerMove budget)
+        -- Rollout cap per simulation. The full game ply cap may be
+        -- 10_000 under the legacy parity envelope; that's intractable
+        -- as a rollout depth, so the rollout-only cap is 60.
+        rolloutCap = min 60 (fromIntegral maxPlies)
+     in UCT.uctSearch board effectiveSeed sims rolloutCap
+
 effectiveMaxPlies :: RunInputs -> Word16
 effectiveMaxPlies inputs =
     case inputBackend inputs of
         CppLegacy -> max 1 (inputMaxPlies inputs)
         _ -> max 1 (inputMaxPlies inputs)
+
+-- | Build the engine envelope for the in-process logical baseline. The
+-- per-backend-slot fields are zero-initialized stand-ins until real
+-- backend drivers exist (see Phase 3.6 / 4.7 / 5.5 / 6.5). The
+-- cohort-invariant fields (`envelopeRngSource`, `envelopeHostArch`) are
+-- captured from the active run.
+makeLogicalEnvelope :: Backend -> RngSource -> Envelope
+makeLogicalEnvelope backend rng =
+    Envelope
+        { envelopeVersion = 1
+        , envelopeBackend = backend
+        , envelopeRngSource = rng
+        , envelopeHostArch = hostArch
+        , envelopeSharedRngBuildId = zeroDigest
+        , envelopeCohortConfigHash = zeroDigest
+        , envelopeEngineBuildId = zeroDigest
+        , envelopeEngineGitCommit = ""
+        , envelopeCompilerId = 3 -- ghc
+        , envelopeCompilerVersion = "9.14.1"
+        , envelopeFpFlags = 0
+        , envelopeLibmId = ""
+        , envelopeCpuFeatures = 0
+        , envelopeFpEnv = 0
+        , envelopeBuildId = backendIdentifier backend <> "-logical"
+        }

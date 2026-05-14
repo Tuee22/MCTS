@@ -67,17 +67,33 @@ external state (only the transcript cache, which they own), so the
 ### `prerequisiteRegistry`
 
 The `prerequisiteRegistry` (Phase 1 Sprint 1.7) covers every toolchain dependency
-across the five backends. The remedy hints point at concrete operator actions —
-`docker compose up -d` for missing container tooling, `make -C cpp-imperative
-smoke` for a missing `libmcts_cpp_imperative.so`, `mcts build rust` for a missing
-`libmcts_rust.so`, and so on.
+across the five backends. The current baseline uses executable/file probes for the
+build-command prerequisites (`ghc-9.14.1`, `cabal`, `c++`, `cargo`, `rustc`, profile
+directories, and legacy fixtures) and emits `AppError PrerequisiteUnmet` with a remedy
+hint before applying a backend build plan. The final dependency-DAG and exact-version
+probes remain owned by Phase 1 Sprint 1.7.
 
 ### `Env`
 
-The `Env` record (Phase 1 Sprint 1.8) carries the log handle, the cache root, the
-parsed CLI options, the `CommandSpec` registry, the generated-section registries,
-the `prerequisiteRegistry`, and test-hook fields. The `newtype App = App
-{ runApp :: ReaderT Env IO a }` is the only application monad.
+The `Env` record (Phase 1 Sprint 1.8) carries the active output options
+(`envOutputOptions`), the `CommandSpec` registry (`envCommandSpec`), the
+prerequisite registry (`envPrerequisites`), the explicit cache-dir override
+(`envCacheDir`), and a monotonic-clock test-hook (`envClockMonotonic`).
+`newtype App = App (ReaderT Env IO a)` (with `MonadIO` derived via
+`DerivingStrategies + GeneralizedNewtypeDeriving`) is the application monad;
+`runAppIO :: Env -> App a -> IO a` runs it. `askEnv` retrieves the env and
+`withTestClock :: IO Word64 -> App a -> App a` overrides the clock locally
+— the bench runner's monotonic-bracket assertion uses this to capture the
+exact start/stop call sites.
+
+Sprint 1.5's apply boundary lives in `MCTS.Plan`:
+
+- `applyWithEnv :: (Env -> step -> IO (Either AppError ExitCode)) -> Plan step -> App ExitCode`
+- `applySubprocessWithEnv :: Plan Subprocess -> App ExitCode`
+
+Existing per-command runners (`MCTS.CLI.Build`, `MCTS.CLI.Test`) call the
+older `applyPlan` / `applySubprocessPlan` helpers; new runners adopt
+`applyWithEnv` and read shared state via `askEnv`.
 
 ### `AppError` and `renderError`
 

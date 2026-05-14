@@ -45,9 +45,9 @@ closure, backend (ii) retires after backend (iii) reaches parity, backend (iii)
 retires after backend (v) reaches parity. Backend (iv) Rust stays live as the
 cross-language second opinion.
 
-## Sprint 8.1: Haskell Compiler and RTS Tuning 📋
+## Sprint 8.1: Haskell Compiler and RTS Tuning 🔄
 
-**Status**: Planned
+**Status**: Active
 **Implementation**: `mcts.cabal` (ghc-options),
 `src/MCTS/Engine/Board.hs`, `src/MCTS/Search/Arena.hs`,
 `src/MCTS/Search/Search.hs`, `src/MCTS/Search/Rollout.hs`
@@ -110,7 +110,25 @@ report-card numbers move toward parity with backend (ii).
 
 ### Remaining Work
 
-Not started.
+- Baseline landed: `mcts.cabal`'s shared `warnings` common stanza now
+  emits the LLVM-free subset of the doctrine GHC tuning flags:
+  `-O2 -funbox-strict-fields -fspecialise-aggressively
+  -fexpose-all-unfoldings -flate-dmd-anal
+  -fmax-simplifier-iterations=20 -fworker-wrapper
+  -fstatic-argument-transformation`. The executable stanza adds
+  `-threaded "-with-rtsopts=-A64m -n4m -qg1 -qb -T"` so the doctrine
+  RTS knobs are baked into the binary. `cabal test all` passes with the
+  new flag set.
+- Add `-fllvm`, `-optlo-mcpu=native`, and `-optlc-mcpu=native` once the
+  Docker image pins the matching LLVM (Sprint 1.1).
+- Add `INLINABLE` / `SPECIALIZE` pragmas to the hot path
+  (`MCTS.Search.UCT.uctSearch`, `MCTS.Search.Arena.*`, the rollout loop
+  in `MCTS.Search.UCT.rollout`).
+- Replace `Maybe`/`Either` in the rollout inner loop with sentinels /
+  unboxed sums.
+- Run profiling and decide whether the `MutableByteArray#` migration is
+  warranted; record the outcome in
+  `documents/engineering/compiler_runtime_tuning.md`.
 
 ## Sprint 8.2: Profile-Driven Hot-Path Tuning 📋
 

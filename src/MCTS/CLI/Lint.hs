@@ -1,11 +1,14 @@
 module MCTS.CLI.Lint
     ( runLint
     , lintFiles
+    , ForbiddenPath (..)
+    , forbiddenPathRegistry
+    , forbiddenPathPaths
     ) where
 
 import Data.List (isPrefixOf, isSuffixOf)
 import MCTS.CLI.Command (DocsCommand (..), LintCommand (..))
-import MCTS.CLI.Docs (runDocs)
+import MCTS.CLI.Docs (generatedFiles, runDocs)
 import MCTS.CLI.Output (outputLine, renderError)
 import MCTS.Subprocess (Subprocess (..), runStreaming)
 import System.Directory (doesDirectoryExist, doesFileExist, listDirectory)
@@ -37,21 +40,36 @@ runStyleStanza = do
 
 lintFiles :: IO [String]
 lintFiles = do
-    forbidden <- filterMPath exists forbiddenPaths
+    forbidden <- filterMPath exists forbiddenPathPaths
     files <- walk "."
     trailing <- fmap concat (mapM trailingProblems files)
-    pure (map ("forbidden path exists: " <>) forbidden <> trailing)
+    generated <- generatedDriftProblems
+    pure (map ("forbidden path exists: " <>) forbidden <> trailing <> generated)
 
-forbiddenPaths :: [FilePath]
-forbiddenPaths =
-    [ ".github/workflows"
-    , ".husky"
-    , ".githooks"
-    , ".pre-commit-config.yaml"
-    , "Makefile"
-    , "justfile"
-    , "Taskfile.yml"
+-- | A doctrine-forbidden path. Each entry records why it's forbidden so
+-- a future operator-facing error message can cite the rationale rather
+-- than just the offending path.
+data ForbiddenPath = ForbiddenPath
+    { forbiddenPath :: !FilePath
+    , forbiddenReason :: !String
+    }
+    deriving (Eq, Show)
+
+-- | The doctrine-pinned forbidden-path registry per
+-- [../../HASKELL_CLI_TOOL.md → Forbidden Surfaces](../../HASKELL_CLI_TOOL.md).
+forbiddenPathRegistry :: [ForbiddenPath]
+forbiddenPathRegistry =
+    [ ForbiddenPath ".github/workflows" "CI workflow definitions live outside this repo; the doctrine binds the local lint stack to mcts check-code"
+    , ForbiddenPath ".husky" "Husky-style hooks duplicate the local mcts check-code surface and tend to drift"
+    , ForbiddenPath ".githooks" "Git hooks duplicate the local mcts check-code surface and tend to drift"
+    , ForbiddenPath ".pre-commit-config.yaml" "pre-commit duplicates the local mcts check-code surface"
+    , ForbiddenPath "Makefile" "Top-level Makefile competes with mcts build/test; backends keep their own per-backend Makefile under cpp-*/"
+    , ForbiddenPath "justfile" "Justfile duplicates mcts test/lint commands"
+    , ForbiddenPath "Taskfile.yml" "Taskfile duplicates mcts test/lint commands"
     ]
+
+forbiddenPathPaths :: [FilePath]
+forbiddenPathPaths = map forbiddenPath forbiddenPathRegistry
 
 exists :: FilePath -> IO Bool
 exists path = (||) <$> doesFileExist path <*> doesDirectoryExist path
@@ -105,3 +123,17 @@ trailingProblems path = do
 hasTrailing :: String -> Bool
 hasTrailing [] = False
 hasTrailing value = last value == ' ' || last value == '\t'
+
+generatedDriftProblems :: IO [String]
+generatedDriftProblems =
+    fmap concat $
+        mapM
+            ( \(path, expected) -> do
+                fileExists <- doesFileExist path
+                if not fileExists
+                    then pure ["generated file missing: " <> path]
+                    else do
+                        actual <- readFile path
+                        pure ["generated file drift: " <> path | actual /= expected]
+            )
+            generatedFiles

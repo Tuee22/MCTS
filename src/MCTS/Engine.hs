@@ -5,23 +5,16 @@ module MCTS.Engine
     , applyMove
     , isTerminal
     , terminalWinner
-    , chooseMove
     ) where
 
-import Data.Bits (xor)
 import Data.List (nub, sortOn)
-import Data.Word (Word16, Word32, Word64, Word8)
-import MCTS.Rng.Mix (mix)
+import Data.Word (Word16, Word8)
 import MCTS.Types
     ( Action (..)
-    , Backend
-    , RngSource (..)
     , Side (..)
-    , SimBudget
     , Winner (..)
     , actionId
     , otherSide
-    , simPerMove
     )
 
 data Board = Board
@@ -49,6 +42,7 @@ initialBoard =
         , boardPly = 0
         }
 
+{-# INLINABLE legalMoves #-}
 legalMoves :: Board -> [Action]
 legalMoves board
     | isTerminal maxBound board = []
@@ -150,6 +144,7 @@ pawnForSide side board =
         Hero -> boardHero board
         Villain -> boardVillain board
 
+{-# INLINABLE applyMove #-}
 applyMove :: Action -> Board -> Board
 applyMove action board =
     advancePly . toggleSide $
@@ -186,10 +181,12 @@ toggleSide board = board{boardSideToMove = otherSide (boardSideToMove board)}
 advancePly :: Board -> Board
 advancePly board = board{boardPly = boardPly board + 1}
 
+{-# INLINABLE isTerminal #-}
 isTerminal :: Word16 -> Board -> Bool
 isTerminal maxPlies board =
     terminalWinner maxPlies board /= Nothing
 
+{-# INLINABLE terminalWinner #-}
 terminalWinner :: Word16 -> Board -> Maybe Winner
 terminalWinner maxPlies board
     | snd (boardHero board) == 8 = Just HeroWin
@@ -197,29 +194,3 @@ terminalWinner maxPlies board
     | boardPly board >= maxPlies = Just Draw
     | otherwise = Nothing
 
-chooseMove :: Backend -> RngSource -> Word64 -> Int -> Board -> SimBudget -> (Action, [(Action, Word32)])
-chooseMove backend rng seed moveNo board budget =
-    let moves = legalMoves board
-        sims = max 1 (simPerMove budget)
-        totalWeight = max 1 (sum [fromIntegral (rawWeight backend rng seed moveNo action) | action <- moves])
-        visits =
-            [ ( action
-              , fromIntegral (1 + (fromIntegral (rawWeight backend rng seed moveNo action) * sims) `div` totalWeight)
-              )
-            | action <- moves
-            ]
-        sorted = sortOn (actionId . fst) visits
-        best =
-            case reverse (sortOn (\(action, count) -> (count, negate (fromIntegral (actionId action) :: Int))) sorted) of
-                (action, _) : _ -> action
-                [] -> Pawn 4 4
-     in (best, sorted)
-
-rawWeight :: Backend -> RngSource -> Word64 -> Int -> Action -> Word64
-rawWeight backend rng seed moveNo action =
-    let backendSalt =
-            case rng of
-                CppRng -> 0
-                NativeRng -> fromIntegral (fromEnum backend + 1) * 0x100000001b3
-        actionSalt = fromIntegral (actionId action) + 1
-     in 1 + (mix (seed `xor` backendSalt) (fromIntegral moveNo * 257 + actionSalt) `mod` 997)

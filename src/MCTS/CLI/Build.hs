@@ -1,12 +1,15 @@
 module MCTS.CLI.Build
     ( runBuild
-    , buildPlan
+    , buildBackendPlan
     ) where
 
+import qualified MCTS.Env as Env
 import MCTS.CLI.Command (BuildCommand (..))
 import MCTS.CLI.Output (outputLine, renderError)
 import MCTS.Plan
+import MCTS.Prerequisite (checkPrerequisites, prerequisitesForBuild)
 import MCTS.Subprocess
+import System.Exit (ExitCode (..))
 
 runBuild :: BuildCommand -> IO Int
 runBuild command = do
@@ -16,15 +19,19 @@ runBuild command = do
                 BuildCppImperative planOptions -> ("cpp-imperative", planOptions)
                 BuildCppFunctional planOptions -> ("cpp-functional", planOptions)
                 BuildRust planOptions -> ("rust", planOptions)
-        plan = buildPlan name
+        plan = buildBackendPlan name
         rendered = renderPlan plan
     writePlanFile (planFile opts) rendered
     if planDryRun opts
         then outputLine rendered >> pure 0
-        else applyPlan plan
+        else do
+            prerequisites <- checkPrerequisites (prerequisitesForBuild name)
+            case prerequisites of
+                Left err -> outputLine (renderError err) >> pure 1
+                Right () -> runBackendPlan plan
 
-buildPlan :: String -> Plan Subprocess
-buildPlan backend =
+buildBackendPlan :: String -> Plan Subprocess
+buildBackendPlan backend =
     Plan
         { planName = "build " <> backend
         , planSteps =
@@ -37,12 +44,12 @@ buildPlan backend =
                     ]
         }
 
-applyPlan :: Plan Subprocess -> IO Int
-applyPlan plan = go (planSteps plan)
-  where
-    go [] = pure 0
-    go (step : rest) = do
-        result <- runStreaming step
-        case result of
-            Left err -> outputLine (renderError err) >> pure 1
-            Right _ -> go rest
+-- | Run a backend build plan through the doctrine `apply :: Env -> Plan
+-- a -> IO ExitCode` shape. `Env.defaultEnv` is the production-default
+-- environment; future runners can pass a custom env via `Env.runAppIO`.
+runBackendPlan :: Plan Subprocess -> IO Int
+runBackendPlan plan = do
+    code <- Env.runAppIO Env.defaultEnv (applySubprocessWithEnv plan)
+    case code of
+        ExitSuccess -> pure 0
+        ExitFailure n -> pure n
