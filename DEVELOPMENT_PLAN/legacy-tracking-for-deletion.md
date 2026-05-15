@@ -53,9 +53,8 @@ backend until Phase `8` retirement closes Q6.
 | Item | Location | Reason | Owning Sprint |
 |------|----------|--------|---------------|
 | In-process backend dispatch stand-in | `src/MCTS/Driver.hs`, `src/MCTS/Verify.hs` | The CLI, transcript, cache, and verify surfaces dispatch every backend through the in-process Haskell engine (`MCTS.Search.UCT.uctSearch`) plus a per-backend RNG salt. Must be replaced by real foreign-backend FFI dispatch so each backend actually runs the C++ / Rust / verbatim-legacy code its identifier names | Sprint 4.4, Sprint 5.4, Sprint 6.2, Sprint 6.4 |
-| Foreign backend smoke skeletons | `cpp-legacy/`, `cpp-imperative/`, `cpp-functional/`, `rust/` | Provides concrete source homes and smoke build targets; final contract requires verbatim legacy port, optimized C++ engines, Rust engine, and Haskell FFI bindings | Sprint 4.1, Sprint 5.1, Sprint 6.1, Sprint 6.3 |
-| Generated command-doc drift | `src/MCTS/CLI/Docs.hs`, `documents/cli/commands.md` | The on-disk command markdown currently contains governed-doc metadata and an extra command row not emitted by `renderCommandMarkdown`; final docs generation must be byte-stable before `mcts docs check` can close | Sprint 1.3 |
-| Comma-list report-card benchmark placeholder | `src/MCTS/CLI/Test.hs`, `src/MCTS/CLI/Parser.hs` | `mcts test all` passes comma-separated backend lists to `bench`, while the current bench parser selects a single backend; final report-card execution must iterate the typed backend matrix | Sprint 7.3 |
+| Foreign backend smoke skeletons | `cpp-imperative/`, `cpp-functional/`, `rust/` | Provides concrete source homes and smoke build targets; final contract requires optimized C++ engines, Rust engine, and Haskell FFI-backed game drivers | Sprint 5.1, Sprint 6.1, Sprint 6.3 |
+| Legacy warning suppression | `cpp-legacy/Makefile` | The verbatim imported legacy `board.cpp` triggers the container compiler's `-Wpessimizing-move` warning on a return statement. The Makefile carries `-Wno-pessimizing-move` so the port can stay line-level faithful and still build warning-clean. Remove only if the retirement protocol deletes backend (i) or an upstream-verbatim source change makes the suppression unnecessary | Sprint 8.4 |
 | Logical report-card placeholders | `src/MCTS/ReportCard.hs` | Allows `mcts test all --dry-run` and renderer smoke tests; final report card must use measured Q1-Q7 evidence | Sprint 7.3, Sprint 8.3 |
 
 ## Pending Removal Notes
@@ -93,6 +92,8 @@ The expected populating events are:
 | `Show`/`Read` equity sidecar codec | Sprint 2.7 closure | Replaced the `Show`/`Read` round-trip with the fixed-width binary `MEQ1` codec (4-byte magic + u16 version + length-prefixed strings + 15-byte fixed records + `0xFFFFFFFF` terminator), atomic temp-file + rename writes, and `castWord64ToDouble` for IEEE-754 round-trips. |
 | Synthetic `chooseMove` weight generator | Sprint 3.3 closure | Removed `MCTS.Engine.chooseMove` and `rawWeight`. The driver now dispatches every per-move search through `MCTS.Search.UCT.uctSearch` running over `MCTS.Search.Arena`. Cross-backend visit-count equality holds under `--rng cpp`; per-backend salt under `--rng native` preserves bench distinguishability. |
 | `getSystemTime`-based bench timing | Sprint 3.5 closure | Replaced with the pinned monotonic clock `GHC.Clock.getMonotonicTimeNSec` exposed via `MCTS.CLI.Bench.monotonicNanos`. The test-injectable variant `runBenchWithClock` allows the `mcts-unit` stanza to assert the bench bracket reads the clock exactly twice per backend. |
+| Generated command-doc drift | Sprint 1.3 baseline closure | `renderCommandMarkdown` now emits the governed-doc metadata and the documented `inspect show --envelope` row; `MCTS.CLI.Docs` compares tracked generated files and marker-delimited regions through `mcts docs check`. |
+| Comma-list report-card benchmark placeholder | Sprint 7.3 baseline closure | `parseBench` now parses comma-separated `--backend` lists and `runBench` iterates every requested backend, so the report-card workload no longer collapses to the first backend. |
 
 ## Retirement Protocol Reference
 

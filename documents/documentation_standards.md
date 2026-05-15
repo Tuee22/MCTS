@@ -182,6 +182,10 @@ Code examples must not use:
   surviving cohort).
 - unsupported toolchains or bridge layers.
 - stale commands that bypass the public `mcts` surface.
+- host-level validation fallbacks. Supported project work, including
+  Fourmolu/HLint execution, happens inside the root-level `compose.yaml`
+  container; examples must not tell contributors to use ambient host
+  toolchains as a fallback.
 
 ---
 

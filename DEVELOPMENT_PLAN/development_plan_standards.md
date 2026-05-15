@@ -220,9 +220,10 @@ If a change adds or edits a Mermaid block in this directory, closure requires:
 1. Rendering every Mermaid block in `DEVELOPMENT_PLAN/` through a standalone renderer.
 2. Failing the change on any render error.
 3. Verifying the edited diagram in the repository's target Markdown viewer.
-4. Running `mcts check-code` after the documentation change (once Phase 1 lands the
-   command; until then, the lint stack is run manually through `fourmolu --mode check`,
-   `hlint`, and `cabal format`).
+4. Running `docker compose up -d` followed by
+   `docker compose exec mcts cabal run exe:mcts -- check-code` after the documentation
+   change. The lint stack must run inside the container through the pinned Fourmolu /
+   HLint binaries and `cabal format`.
 
 This standards document describes Mermaid rules with prose, inline code, or `markdown`
 examples only. Do not add live Mermaid blocks here.
@@ -279,7 +280,9 @@ registry`, `Test Organization`, `Output Rules`, `Error Handling`, `Toolchain pin
 3. Update the governed engineering docs listed in `Docs to update`.
 4. Update [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md) whenever
    cleanup scope changes.
-5. Run `mcts check-code` before closing the work (once Phase 1 lands the command; until
-   then, run `fourmolu --mode check`, `hlint`, and `cabal format` manually).
+5. Run `docker compose up -d` and then
+   `docker compose exec mcts cabal run exe:mcts -- check-code` before closing the work.
+   The pinned Fourmolu / HLint binaries and `cabal format` must run inside the container.
+   Host-level validation fallback is never a closure gate.
 6. If the change touched Mermaid, render every Mermaid block in `DEVELOPMENT_PLAN/` and
    verify the edited diagram in the target viewer before closing the work.

@@ -8,7 +8,10 @@ module MCTS.Driver
     , runBatch
     ) where
 
+import Control.Concurrent (MVar, forkIO, newEmptyMVar, newMVar, putMVar, takeMVar)
+import Control.Exception (evaluate)
 import Data.Bits (xor)
+import Data.List (sortOn)
 import Data.Word (Word16, Word32, Word64)
 import MCTS.Engine (Board, applyMove, initialBoard, terminalWinner)
 import MCTS.Rng.Mix (mix)
@@ -69,16 +72,52 @@ runBatch :: RunInputs -> IO (Either String BatchResult)
 runBatch inputs = do
     let config = makeRunConfig inputs
         envelope = makeLogicalEnvelope (inputBackend inputs) (inputRng inputs)
-        games =
-            [ runGame inputs (fromIntegral gameIndex)
-            | gameIndex <- [0 .. max 0 (inputGames inputs - 1)]
-            ]
-        transcript = Transcript config envelope games
+    games <- runGameBatch inputs
+    let transcript = Transcript config envelope games
     written <- writeTranscript (inputCacheDir inputs) transcript
     pure $
         case written of
             Right (hashValue, path) -> Right BatchResult{batchTranscript = transcript, batchHash = hashValue, batchPath = path}
             Left err -> Left (show err)
+
+runGameBatch :: RunInputs -> IO [GameTranscript]
+runGameBatch inputs =
+    case inputThreading inputs of
+        SingleThreaded -> pure (map runOne gameIds)
+        MultiThreaded workers -> runGamePool (max 1 workers) runOne gameIds
+  where
+    gameIds = [0 .. max 0 (inputGames inputs - 1)]
+    runOne gameIndex = forceGame (runGame inputs (fromIntegral gameIndex))
+
+runGamePool :: Int -> (Int -> GameTranscript) -> [Int] -> IO [GameTranscript]
+runGamePool workers runOne gameIds = do
+    jobs <- newMVar (zip [0 :: Int ..] gameIds)
+    results <- newMVar []
+    done <- newEmptyMVar
+    let worker = do
+            next <- takeJob jobs
+            case next of
+                Nothing -> putMVar done ()
+                Just (idx, gid) -> do
+                    game <- evaluate (runOne gid)
+                    current <- takeMVar results
+                    putMVar results ((idx, game) : current)
+                    worker
+    mapM_ (\_ -> forkIO worker) [1 .. min workers (max 1 (length gameIds))]
+    mapM_ (\_ -> takeMVar done) [1 .. min workers (max 1 (length gameIds))]
+    ordered <- sortOn fst <$> takeMVar results
+    pure (map snd ordered)
+
+takeJob :: MVar [(Int, Int)] -> IO (Maybe (Int, Int))
+takeJob jobs = do
+    current <- takeMVar jobs
+    case current of
+        [] -> putMVar jobs [] >> pure Nothing
+        job : rest -> putMVar jobs rest >> pure (Just job)
+
+forceGame :: GameTranscript -> GameTranscript
+forceGame game =
+    sum (map (length . moveVisits) (gameMoves game)) `seq` game
 
 runGame :: RunInputs -> Word32 -> GameTranscript
 runGame inputs gid =

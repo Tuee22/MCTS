@@ -1,27 +1,55 @@
 module Main where
 
-import qualified Data.ByteString as BS
-import MCTS.Crypto.SHA256 (sha256Hex)
-import MCTS.CLI.Command (BenchCommand (..), Command (..), VerifyCommand (..))
-import MCTS.CLI.Parser (parseBackends, parseCommand)
-import MCTS.CLI.Bench (monotonicNanos, runBenchWithClock)
-import MCTS.CLI.Docs (GeneratedSectionRule (..), applyGeneratedSection, checkGeneratedSection, spliceMarkerRegion)
-import MCTS.CLI.Lint (ForbiddenPath (..), forbiddenPathPaths, forbiddenPathRegistry)
-import MCTS.CLI.Output (defaultOutputOptions)
-import qualified MCTS.Search.Arena as Arena
-import qualified MCTS.Search.UCT as UCT
-import qualified MCTS.Engine.Recompute as Recompute
-import Control.Monad.ST (runST)
-import MCTS.CLI.Spec (CommandSpec (..), commandSpec, leafSpecs, renderCommandJson, renderCommandList, renderCommandTree)
-import MCTS.ReportCard (defaultReportCard, renderReportCard, renderReportCardJson)
-import MCTS.Driver
 import Control.Monad.IO.Class (liftIO)
+import Control.Monad.ST (runST)
+import qualified Data.ByteString as BS
 import Data.IORef (modifyIORef', newIORef, readIORef)
-import MCTS.Engine (Board, applyMove, initialBoard, isTerminal, legalMoves)
+import Data.List (sort)
+import qualified Data.Text as T
+import Data.Word (Word16, Word8)
+import MCTS.CLI.Bench (monotonicNanos, runBenchWithClock)
+import MCTS.CLI.Command
+    ( BenchCommand (..)
+    , Command (..)
+    , InspectCommand (..)
+    , ShowOptions (..)
+    , VerifyCommand (..)
+    )
+import MCTS.CLI.Docs
+    ( GeneratedSectionRule (..)
+    , applyGeneratedSection
+    , checkGeneratedSection
+    , spliceMarkerRegion
+    )
+import MCTS.CLI.Inspect (InspectRow (..), renderInspectRows, renderTranscript)
+import MCTS.CLI.Lint (ForbiddenPath (..), forbiddenPathPaths, forbiddenPathRegistry)
+import MCTS.CLI.Output (OutputFormat (..), OutputOptions (..), defaultOutputOptions)
+import MCTS.CLI.Parser (commandParserInfo, parseBackends, parseCommand)
+import MCTS.CLI.Spec
+    ( CommandSpec (..)
+    , commandSpec
+    , leafSpecs
+    , renderCommandJson
+    , renderCommandList
+    , renderCommandTree
+    )
+import MCTS.Crypto.SHA256 (sha256Hex)
+import MCTS.Driver
+import MCTS.Engine (Board (..), applyMove, initialBoard, isTerminal, legalMoves)
+import qualified MCTS.Engine.Recompute as Recompute
 import MCTS.Env (Env (..), askEnv, defaultEnv, envClock, runAppIO, withTestClock)
 import MCTS.Error (AppError (..), EnvelopeMismatchScope (..), renderError)
+import MCTS.FFI.CppLegacy (withCppLegacyBoard)
 import MCTS.Notation (parseMove, renderMove)
-import MCTS.Plan (Plan (..), applyPlan, applySubprocessPlan, applyWithEnv, buildPlan, renderPlan, renderPlanWith)
+import MCTS.Plan
+    ( Plan (..)
+    , applyPlan
+    , applySubprocessPlan
+    , applyWithEnv
+    , buildPlan
+    , renderPlan
+    , renderPlanWith
+    )
 import MCTS.Prerequisite
     ( PrerequisiteNode (..)
     , checkPrerequisites
@@ -29,49 +57,115 @@ import MCTS.Prerequisite
     , registryHasCycle
     , transitiveClosure
     )
-import MCTS.Subprocess (Subprocess (..), renderSubprocess)
-import System.Exit (ExitCode (..))
+import MCTS.ReportCard (defaultReportCard, renderReportCard, renderReportCardJson)
+import MCTS.Rng.Cpp (cppSplitSeed)
 import MCTS.Rng.Mix (mix)
-import MCTS.Transcript (decodeTranscript, encodeTranscript, hostArch, lookupByPrefix, runConfigHash)
+import qualified MCTS.Search.Arena as Arena
+import qualified MCTS.Search.UCT as UCT
+import MCTS.Subprocess (Subprocess (..), renderSubprocess)
+import MCTS.Transcript
+    ( decodeTranscript
+    , encodeTranscript
+    , hostArch
+    , lookupByPrefix
+    , playTranscriptHash
+    , runConfigHash
+    )
+import qualified MCTS.Transcript as Transcript
 import MCTS.Transcript.EquitySidecar
+import MCTS.Types
 import MCTS.Verify.Divergence
 import MCTS.Verify.Envelope
-import MCTS.Types
-import Data.List (sort)
-import Data.Word (Word8, Word16)
-import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, removePathForcibly)
+import qualified Options.Applicative as OA
+import System.Directory
+    ( createDirectoryIfMissing
+    , doesDirectoryExist
+    , doesFileExist
+    , removePathForcibly
+    )
+import System.Environment (lookupEnv, setEnv, unsetEnv)
+import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
+import Test.Tasty (defaultMain, testGroup)
+import Test.Tasty.HUnit (testCase)
 
 main :: IO ()
-main = do
+main =
+    defaultMain (testGroup "mcts-unit" [testCase "baseline" runUnit])
+
+runUnit :: IO ()
+runUnit = do
     assert "command tree mentions verify" ("verify" `contains` renderCommandTree)
     assert "command json is object" (take 1 renderCommandJson == "{")
     assert "all leaves have examples" (all (not . null . examples) (leafSpecs commandSpec))
-    assert "backend parser" (parseBackends "cpp-imperative,rust,haskell" == Right [CppImperative, Rust, Haskell])
-    assert "command parser" (parsesBenchCohort (parseCommand ["bench", "selfplay", "--backend", "cpp-legacy,haskell", "--games", "1", "--seed", "42"]))
-    assert "legacy parity workload parser" (parsesLegacyRollouts (parseCommand ["verify", "legacy-parity", "rollouts", "--backend", "cpp-legacy,haskell"]))
-    assert "allow stale parser" (parsesAllowStale (parseCommand ["verify", "selfplay", "--backend", "cpp-imperative,haskell", "--allow-stale"]))
-    assert "verify rejects native rng" (isLeft (parseCommand ["verify", "selfplay", "--backend", "cpp-imperative,haskell", "--rng", "native"]))
+    assert
+        "backend parser"
+        (parseBackends "cpp-imperative,rust,haskell" == Right [CppImperative, Rust, Haskell])
+    assert
+        "command parser"
+        ( parsesBenchCohort
+            ( parseCommand
+                ["bench", "selfplay", "--backend", "cpp-legacy,haskell", "--games", "1", "--seed", "42"]
+            )
+        )
+    assert
+        "legacy parity workload parser"
+        ( parsesLegacyRollouts
+            (parseCommand ["verify", "legacy-parity", "rollouts", "--backend", "cpp-legacy,haskell"])
+        )
+    assert
+        "allow stale parser"
+        ( parsesAllowStale
+            (parseCommand ["verify", "selfplay", "--backend", "cpp-imperative,haskell", "--allow-stale"])
+        )
+    assert
+        "verify rejects native rng"
+        ( isLeft
+            (parseCommand ["verify", "selfplay", "--backend", "cpp-imperative,haskell", "--rng", "native"])
+        )
     assert "splitmix is deterministic" (mix 42 0 == mix 42 0 && mix 42 0 /= mix 42 1)
     assert "splitmix known vector 0" (mix 42 0 == 2949826092126892291)
     assert "splitmix known vector 1" (mix 42 1 == 5139283748462763858)
-    assert "sha256 known vector" (sha256Hex (BS.pack []) == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
+    assert
+        "sha256 known vector"
+        (sha256Hex (BS.pack []) == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
     assert "action enumeration roundtrip" (all (\a -> actionFromId (actionId a) == Just a) allActions)
-    assert "notation roundtrip" (all (\a -> parseMove (renderMove a) == Just a) [Pawn 4 4, WallH 1 2, WallV 3 4])
+    assert "notation roundtrip" (all (\a -> parseMove (renderMove a) == Just a) allActions)
     assert "initial board has legal moves" (not (null (legalMoves initialBoard)))
     let inputs = defaultRunInputs{inputGames = 2, inputSeed = 42, inputSims = FixedSims 12}
-        transcript = Transcript (makeRunConfig inputs) (makeLogicalEnvelope Haskell NativeRng) [runGame inputs 0, runGame inputs 1]
+        transcript =
+            Transcript
+                (makeRunConfig inputs)
+                (makeLogicalEnvelope Haskell NativeRng)
+                [runGame inputs 0, runGame inputs 1]
         encoded = encodeTranscript transcript
     assert "transcript encoding non-empty" (BS.length encoded > 48)
     assert "transcript roundtrip" (decodeTranscript encoded == Right transcript)
-    assert "transcript envelope skips trailers" (decodeTranscript (withEnvelopeTrailer encoded) == Right transcript)
+    assert
+        "transcript envelope skips trailers"
+        (decodeTranscript (withEnvelopeTrailer encoded) == Right transcript)
     let rolloutInputs = inputs{inputWorkload = Rollouts}
-        rolloutTranscript = transcript{transcriptConfig = makeRunConfig rolloutInputs, transcriptGames = [runGame rolloutInputs 0]}
-    assert "transcript preserves workload" (fmap (runWorkload . transcriptConfig) (decodeTranscript (encodeTranscript rolloutTranscript)) == Right Rollouts)
-    assert "hash deterministic" (runConfigHash (makeRunConfig inputs) == runConfigHash (makeRunConfig inputs))
-    assert "divergence same transcript is zero" (divergenceRate transcript transcript == DivergenceMetrics 0.0 0.0 0.0)
+        rolloutTranscript =
+            transcript
+                { transcriptConfig = makeRunConfig rolloutInputs
+                , transcriptGames = [runGame rolloutInputs 0]
+                }
+    assert
+        "transcript preserves workload"
+        ( fmap (runWorkload . transcriptConfig) (decodeTranscript (encodeTranscript rolloutTranscript))
+            == Right Rollouts
+        )
+    assert
+        "hash deterministic"
+        (runConfigHash (makeRunConfig inputs) == runConfigHash (makeRunConfig inputs))
+    exerciseRunConfigHashEnvelopeInvariant
+    assert
+        "divergence same transcript is zero"
+        (divergenceRate transcript transcript == DivergenceMetrics 0.0 0.0 0.0)
     let changed = transcript{transcriptGames = mapFirstGame changeFirstMove (transcriptGames transcript)}
-    assert "divergence catches changed move" (moveDisagreementRate (divergenceRate transcript changed) > 0.0)
+    assert
+        "divergence catches changed move"
+        (moveDisagreementRate (divergenceRate transcript changed) > 0.0)
     exerciseEnvelopeChecks transcript
     exerciseLookup
     exercisePrerequisites
@@ -79,15 +173,24 @@ main = do
     exercisePrerequisiteClosure
     exercisePlanShape
     exerciseErrorRenderings
+    exerciseErrorGolden
+    exerciseSubprocessGolden
     exerciseSortedRecords
     exerciseLegacyDrawRejection
     exerciseSplitmixBijection
+    exerciseCppRngFixture
+    exerciseCppLegacyBoardFixture
     exerciseEngineProperties
+    exerciseKnownPositionGolden
     exerciseEngineBruteForce
     exerciseEnv
     exerciseTranscriptGolden
+    exerciseInspectShowGolden
+    exerciseInspectListGolden
     exerciseEquitySidecarBinary
     exerciseCommandGoldens
+    exerciseOptparseParser
+    exerciseCacheRootBranches
     exerciseReportCardGolden
     exerciseMarkerSplice
     exerciseMonotonicBracket
@@ -142,6 +245,49 @@ parsesBenchCohort parsed =
         Right (Bench (BenchSelfplay [CppLegacy, Haskell] inputs)) -> inputBackend inputs == CppLegacy
         _ -> False
 
+parsesInspectEquityShow :: Either AppError Command -> Bool
+parsesInspectEquityShow parsed =
+    case parsed of
+        Right (Inspect (InspectShow showOptions)) ->
+            showRef showOptions == "abc123" && showWithEquity showOptions && showTopN showOptions == 3
+        _ -> False
+
+exerciseRunConfigHashEnvelopeInvariant :: IO ()
+exerciseRunConfigHashEnvelopeInvariant =
+    mapM_ assertBackend [CppLegacy, CppImperative, CppFunctional, Rust, Haskell]
+  where
+    assertBackend backend = do
+        let inputs =
+                defaultRunInputs
+                    { inputBackend = backend
+                    , inputRng = CppRng
+                    , inputGames = 1
+                    , inputSeed = 99
+                    , inputSims = FixedSims 4
+                    }
+            config = makeRunConfig inputs
+            envelopeA = makeLogicalEnvelope backend CppRng
+            envelopeB =
+                envelopeA
+                    { envelopeBuildId = backendIdentifier backend <> "-changed"
+                    , envelopeCompilerVersion = "changed-compiler"
+                    , envelopeFpFlags = 0x10
+                    , envelopeCpuFeatures = 0x20
+                    , envelopeFpEnv = 0x30
+                    }
+            record = MoveRecord 0 (Pawn 4 4) [(Pawn 4 4, 1)]
+            game = GameTranscript 0 [record] HeroWin
+            transcriptA = Transcript config envelopeA [game]
+            transcriptB = Transcript config envelopeB [game]
+        assert
+            ("runConfigHash ignores " <> backendIdentifier backend <> " envelope changes")
+            (runConfigHash (transcriptConfig transcriptA) == runConfigHash (transcriptConfig transcriptB))
+        assert
+            ("playTranscriptHash ignores " <> backendIdentifier backend <> " envelope changes")
+            ( playTranscriptHash (transcriptConfig transcriptA) (gameMoves game)
+                == playTranscriptHash (transcriptConfig transcriptB) (gameMoves game)
+            )
+
 exerciseEnvelopeChecks :: Transcript -> IO ()
 exerciseEnvelopeChecks transcript = do
     assert "cohort envelope check" (checkCohortInvariant [transcript, transcript] == Right ())
@@ -160,7 +306,9 @@ exerciseEnvelopeChecks transcript = do
                         }
                 }
         expectedStale = EngineEnvelopeMismatch (BackendSlot Haskell) "build_id" "haskell-logical" "haskell-old"
-    assert "cohort arch mismatch" (checkCohortInvariant [transcript, archMismatch] == Left (ArchEnvelopeMismatch hostArch "other-arch"))
+    assert
+        "cohort arch mismatch"
+        (checkCohortInvariant [transcript, archMismatch] == Left (ArchEnvelopeMismatch hostArch "other-arch"))
     assert "backend slot stale hard fail" (checkBackendSlot False stale == Left expectedStale)
     assert "backend slot stale warning" (checkBackendSlot True stale == Right [expectedStale])
     -- Additional cohort-invariant fields: rng_source, shared_rng_build_id, cohort_config_hash.
@@ -246,7 +394,9 @@ exerciseSidecars transcript = do
     currentEntry <- writeEquitySidecar (Just cacheRoot) hashValue transcript
     _ <- writeEquitySidecar (Just cacheRoot) hashValue stale
     decoded <- decodeEqStream <$> BS.readFile (sidecarEqPath currentEntry)
-    assert "equity sidecar roundtrip" (decoded == Right (equityStreamForTranscript hashValue transcript))
+    assert
+        "equity sidecar roundtrip"
+        (decoded == Right (equityStreamForTranscript hashValue transcript))
     listed <- listEquitySidecars (Just cacheRoot)
     assert "equity sidecar list" (length listed == 2)
     pruned <- pruneEquitySidecars (Just cacheRoot) True
@@ -295,9 +445,13 @@ exercisePrerequisiteClosure = do
     assert "prerequisite registry has no cycle" (not (registryHasCycle prerequisiteRegistry))
     let closure = map nodeId (transitiveClosure prerequisiteRegistry ["cargo"])
     assert "transitive closure pulls cargo dep rustup" ("rustup" `elem` closure)
-    assert "transitive closure is idempotent" (closure == map nodeId (transitiveClosure prerequisiteRegistry closure))
+    assert
+        "transitive closure is idempotent"
+        (closure == map nodeId (transitiveClosure prerequisiteRegistry closure))
     let boltClosure = map nodeId (transitiveClosure prerequisiteRegistry ["bolt"])
     assert "bolt closure includes llvm" ("llvm" `elem` boltClosure)
+    let legacyLibClosure = map nodeId (transitiveClosure prerequisiteRegistry ["libmcts-cpp-legacy-built"])
+    assert "legacy shared library prerequisite includes cxx" ("cxx" `elem` legacyLibClosure)
 
 exercisePlanShape :: IO ()
 exercisePlanShape = do
@@ -305,15 +459,23 @@ exercisePlanShape = do
         stepBuilder n = Right [Subprocess "echo" [show idx] Nothing Nothing | idx <- [1 .. n]]
         ok = buildPlan "echo plan" stepBuilder 3
         rendered = either (const "") renderPlan ok
-    assert "buildPlan succeeds for valid input" (case ok of Right (Plan pname steps) -> pname == "echo plan" && length steps == 3; _ -> False)
-    assert "renderPlanWith is deterministic" (renderPlanWith renderSubprocess (Plan "p" [Subprocess "x" ["1"] Nothing Nothing]) == renderPlanWith renderSubprocess (Plan "p" [Subprocess "x" ["1"] Nothing Nothing]))
+    assert
+        "buildPlan succeeds for valid input"
+        (case ok of Right (Plan pname steps) -> pname == "echo plan" && length steps == 3; _ -> False)
+    assert
+        "renderPlanWith is deterministic"
+        ( renderPlanWith renderSubprocess (Plan "p" [Subprocess "x" ["1"] Nothing Nothing])
+            == renderPlanWith renderSubprocess (Plan "p" [Subprocess "x" ["1"] Nothing Nothing])
+        )
     assert "renderPlan emits plan header" (take 5 rendered == "plan:")
     code <- applyPlan (\_ -> pure (Right ExitSuccess)) (Plan "noop" [(), ()])
     assert "applyPlan succeeds on all-success plan" (code == ExitSuccess)
     let badBuilder :: () -> Either AppError [Subprocess]
         badBuilder _ = Left (ParseError "rejected")
         bad = buildPlan "fail" badBuilder ()
-    assert "buildPlan surfaces error from builder" (case bad of Left (ParseError "rejected") -> True; _ -> False)
+    assert
+        "buildPlan surfaces error from builder"
+        (case bad of Left (ParseError "rejected") -> True; _ -> False)
     -- applySubprocessPlan is callable as a smoke check on an empty plan
     emptyCode <- applySubprocessPlan (Plan "empty" [])
     assert "applySubprocessPlan succeeds on empty plan" (emptyCode == ExitSuccess)
@@ -348,7 +510,8 @@ exerciseSortedRecords = do
 
 exerciseLegacyDrawRejection :: IO ()
 exerciseLegacyDrawRejection = do
-    let inputs = defaultRunInputs{inputBackend = CppLegacy, inputGames = 1, inputSeed = 7, inputSims = FixedSims 1}
+    let inputs =
+            defaultRunInputs{inputBackend = CppLegacy, inputGames = 1, inputSeed = 7, inputSims = FixedSims 1}
         config = makeRunConfig inputs
         envelope = makeLogicalEnvelope CppLegacy CppRng
         record = MoveRecord 0 (Pawn 4 4) [(Pawn 4 4, 1)]
@@ -366,41 +529,107 @@ exerciseLegacyDrawRejection = do
 -- first run (so the developer can commit the bytes); subsequent runs
 -- assert byte-equality.
 exerciseTranscriptGolden :: IO ()
-exerciseTranscriptGolden = do
+exerciseTranscriptGolden =
+    mapM_
+        exerciseCase
+        [ (Haskell, "test/golden/transcript-codec/v1-haskell-2games.bin")
+        , (CppImperative, "test/golden/transcript-codec/v1-cpp-imperative-2games.bin")
+        , (CppFunctional, "test/golden/transcript-codec/v1-cpp-functional-2games.bin")
+        , (Rust, "test/golden/transcript-codec/v1-rust-2games.bin")
+        ]
+  where
+    exerciseCase (backend, goldenPath) = do
+        let inputs =
+                defaultRunInputs
+                    { inputBackend = backend
+                    , inputRng = CppRng
+                    , inputGames = 2
+                    , inputSeed = 42
+                    , inputSims = FixedSims 8
+                    , inputMaxPlies = 24
+                    , inputThreading = SingleThreaded
+                    }
+            config = makeRunConfig inputs
+            envelope = makeLogicalEnvelope backend CppRng
+            transcript =
+                Transcript
+                    config
+                    envelope
+                    [runGame inputs 0, runGame inputs 1]
+            encoded = encodeTranscript transcript
+        existing <- doesFileExist' goldenPath
+        if existing
+            then do
+                stored <- BS.readFile goldenPath
+                assert ("transcript byte-level golden matches: " <> backendIdentifier backend) (stored == encoded)
+            else do
+                createDirectoryIfMissing True "test/golden/transcript-codec"
+                BS.writeFile goldenPath encoded
+                putStrLn ("wrote golden: " <> goldenPath <> " (" <> show (BS.length encoded) <> " bytes)")
+        -- Also pin the SHA-256 of the encoded bytes so a drift in encoder output
+        -- causes a clear, single-line failure independent of the golden file.
+        let expectedHash = sha256Hex encoded
+        assert
+            ("transcript hash is deterministic: " <> backendIdentifier backend)
+            (sha256Hex (encodeTranscript transcript) == expectedHash)
+        -- And the decode roundtrip still holds.
+        assert
+            ("transcript golden roundtrips: " <> backendIdentifier backend)
+            (decodeTranscript encoded == Right transcript)
+
+exerciseInspectShowGolden :: IO ()
+exerciseInspectShowGolden = do
     let inputs =
             defaultRunInputs
                 { inputBackend = Haskell
                 , inputRng = CppRng
-                , inputGames = 2
-                , inputSeed = 42
-                , inputSims = FixedSims 8
-                , inputMaxPlies = 24
+                , inputGames = 1
+                , inputSeed = 13
+                , inputSims = FixedSims 6
+                , inputMaxPlies = 8
                 , inputThreading = SingleThreaded
                 }
         config = makeRunConfig inputs
         envelope = makeLogicalEnvelope Haskell CppRng
-        transcript =
-            Transcript
-                config
-                envelope
-                [runGame inputs 0, runGame inputs 1]
-        encoded = encodeTranscript transcript
-        goldenPath = "test/golden/transcript-codec/v1-haskell-2games.bin"
-    existing <- doesFileExist' goldenPath
-    if existing
-        then do
-            stored <- BS.readFile goldenPath
-            assert "transcript byte-level golden matches" (stored == encoded)
-        else do
-            createDirectoryIfMissing True "test/golden/transcript-codec"
-            BS.writeFile goldenPath encoded
-            putStrLn ("wrote golden: " <> goldenPath <> " (" <> show (BS.length encoded) <> " bytes)")
-    -- Also pin the SHA-256 of the encoded bytes so a drift in encoder output
-    -- causes a clear, single-line failure independent of the golden file.
-    let expectedHash = sha256Hex encoded
-    assert "transcript hash is deterministic" (sha256Hex (encodeTranscript transcript) == expectedHash)
-    -- And the decode roundtrip still holds.
-    assert "transcript golden roundtrips" (decodeTranscript encoded == Right transcript)
+        game = runGame inputs 0
+        transcript = Transcript config envelope [game]
+        showOptions = ShowOptions "abc123" 2 True False Nothing
+        stream =
+            EqStream
+                { eqTranscriptHash = "abc123"
+                , eqBackend = Haskell
+                , eqBuildId = envelopeBuildId envelope
+                , eqRecords =
+                    [ EqRecord (gameId game) (moveIndex record) (moveChosen record) (fromIntegral (moveIndex record) / 10)
+                    | record <- gameMoves game
+                    ]
+                }
+        rendered =
+            renderTranscript
+                defaultOutputOptions
+                showOptions
+                ".mcts-cache/transcripts/arm64/abc123.tr"
+                (Just stream)
+                transcript
+    goldenCompare "test/golden/cli/inspect-show.txt" rendered
+
+exerciseInspectListGolden :: IO ()
+exerciseInspectListGolden = do
+    let rows =
+            [ InspectRow
+                { rowHash = "abc12345"
+                , rowBackend = "haskell"
+                , rowSeed = "13"
+                , rowGames = "1"
+                , rowThreading = "ST"
+                , rowSims = "6:6"
+                , rowTotalMoves = "8"
+                , rowPath = ".mcts-cache/transcripts/arm64/abc12345.tr"
+                , rowMtime = "2026-05-14 12:00:00 UTC"
+                }
+            ]
+        rendered = renderInspectRows defaultOutputOptions{outputFormat = JsonFormat} rows
+    goldenCompare "test/golden/cli/inspect-list.json" rendered
 
 doesFileExist' :: FilePath -> IO Bool
 doesFileExist' = doesFileExist
@@ -440,7 +669,13 @@ exerciseEquitySidecarBinary = do
 -- against accidental field reorderings.
 exerciseEnvelopeRoundTrip :: IO ()
 exerciseEnvelopeRoundTrip = do
-    let inputs = defaultRunInputs{inputBackend = CppImperative, inputSeed = 7, inputSims = FixedSims 4, inputMaxPlies = 8}
+    let inputs =
+            defaultRunInputs
+                { inputBackend = CppImperative
+                , inputSeed = 7
+                , inputSims = FixedSims 4
+                , inputMaxPlies = 8
+                }
         config = makeRunConfig inputs
         digest = ByteString32 "deadbeefcafe00112233445566778899aabbccddeeff00112233445566778899"
         envelope =
@@ -470,21 +705,25 @@ exerciseEnvelopeRoundTrip = do
             assert "envelope round-trips rng source" (envelopeRngSource actual == envelopeRngSource envelope)
             assert "envelope round-trips shared_rng_build_id" (envelopeSharedRngBuildId actual == digest)
             assert "envelope round-trips engine_build_id" (envelopeEngineBuildId actual == digest)
-            assert "envelope round-trips engine_git_commit" (envelopeEngineGitCommit actual == "0123456789abcdef")
+            assert
+                "envelope round-trips engine_git_commit"
+                (envelopeEngineGitCommit actual == "0123456789abcdef")
             assert "envelope round-trips compiler_id" (envelopeCompilerId actual == 1)
             assert "envelope round-trips compiler_version" (envelopeCompilerVersion actual == "clang-17.0.6")
             assert "envelope round-trips fp_flags" (envelopeFpFlags actual == 0x01020304)
             assert "envelope round-trips libm_id" (envelopeLibmId actual == "musl-libm-1.2")
             assert "envelope round-trips cpu_features" (envelopeCpuFeatures actual == 0x00800001)
             assert "envelope round-trips fp_env" (envelopeFpEnv actual == 0x42)
-            assert "envelope round-trips build_id accessor" (envelopeBuildId actual == "cpp-imperative-12345678")
+            assert
+                "envelope round-trips build_id accessor"
+                (envelopeBuildId actual == "cpp-imperative-12345678")
         Left err -> error ("envelope round-trip decode failed: " <> show err)
 
 -- | Sprint 1.4: the forbidden-path registry is a typed value carrying
 -- a rationale per entry. The pinned set matches
 -- [../HASKELL_CLI_TOOL.md → Forbidden Surfaces](../HASKELL_CLI_TOOL.md):
 -- `.github/workflows/`, `.husky/`, `.githooks/`, `.pre-commit-config.yaml`,
--- root `Makefile`, root `justfile`, root `Taskfile.yml`.
+-- `pre-commit-*.yaml`, root `Makefile`, root `justfile`, root `Taskfile.yml`.
 exerciseForbiddenPathRegistry :: IO ()
 exerciseForbiddenPathRegistry = do
     let paths = map forbiddenPath forbiddenPathRegistry
@@ -493,13 +732,16 @@ exerciseForbiddenPathRegistry = do
             , ".husky"
             , ".githooks"
             , ".pre-commit-config.yaml"
+            , "pre-commit-*.yaml"
             , "Makefile"
             , "justfile"
             , "Taskfile.yml"
             ]
     assert "forbidden path registry matches doctrine" (paths == expected)
     assert "forbiddenPathPaths matches the registry" (forbiddenPathPaths == expected)
-    assert "every forbidden path carries a non-empty rationale" (all (not . null . forbiddenReason) forbiddenPathRegistry)
+    assert
+        "every forbidden path carries a non-empty rationale"
+        (all (not . null . forbiddenReason) forbiddenPathRegistry)
 
 -- | Sprint 3.6: the equity recompute path produces an EqStream whose
 -- per-move records correspond 1:1 with the transcript's moves. Under
@@ -525,8 +767,11 @@ exerciseRecompute = do
     case Recompute.recomputeEqStream "deadbeef" "haskell-logical" transcript of
         Left err -> error ("equity recompute failed: " <> show err)
         Right stream -> do
-            assert "recompute produces one EqRecord per recorded move" (length (eqRecords stream) == length (gameMoves game))
-            assert "recompute preserves the chosen-move sequence"
+            assert
+                "recompute produces one EqRecord per recorded move"
+                (length (eqRecords stream) == length (gameMoves game))
+            assert
+                "recompute preserves the chosen-move sequence"
                 (map eqChosen (eqRecords stream) == map moveChosen (gameMoves game))
             assert "recompute stamps the transcript hash" (eqTranscriptHash stream == "deadbeef")
             assert "recompute stamps the build id" (eqBuildId stream == "haskell-logical")
@@ -542,7 +787,9 @@ exerciseRecompute = do
                         }
              in case Recompute.recomputeEquities corrupted of
                     Left (RecomputeMismatch _ _ _ _ _) -> pure ()
-                    other -> error ("expected RecomputeMismatch on corrupted visits, got " <> show (either Just (const Nothing) other))
+                    other ->
+                        error
+                            ("expected RecomputeMismatch on corrupted visits, got " <> show (either Just (const Nothing) other))
         [] -> pure ()
 
 -- | Sprint 3.3: real UCT search produces an action that's in the legal
@@ -696,7 +943,7 @@ exerciseMonotonicBracket = do
     -- Test-injected clock counts calls. For N backends, we expect 2*N reads
     -- (start + stop per backend). With 3 backends we expect 6 reads,
     -- giving final = 6.
-    counter <- newIORef 0
+    counter <- newIORef (0 :: Int)
     let injected = do
             modifyIORef' counter (+ 1)
             v <- readIORef counter
@@ -775,6 +1022,50 @@ exerciseCommandGoldens = do
     assert "commands --tree is deterministic" (renderCommandTree == renderCommandTree)
     assert "commands --json is deterministic" (renderCommandJson == renderCommandJson)
 
+exerciseOptparseParser :: IO ()
+exerciseOptparseParser = do
+    case OA.execParserPure
+        OA.defaultPrefs
+        commandParserInfo
+        ["bench", "selfplay", "--backend", "cpp-legacy,haskell", "--games", "1", "--seed", "42"] of
+        OA.Success command -> assert "execParserPure parses bench cohort" (parsesBenchCohort (Right command))
+        _ -> error "execParserPure failed to parse bench cohort"
+    case OA.execParserPure
+        OA.defaultPrefs
+        commandParserInfo
+        ["verify", "legacy-parity", "rollouts", "--backend", "cpp-legacy,haskell"] of
+        OA.Success command -> assert "execParserPure parses legacy parity" (parsesLegacyRollouts (Right command))
+        _ -> error "execParserPure failed to parse legacy parity"
+    case OA.execParserPure
+        OA.defaultPrefs
+        commandParserInfo
+        ["inspect", "show", "abc123", "--with-equity", "--top", "3"] of
+        OA.Success command -> assert "execParserPure parses inspect equity show" (parsesInspectEquityShow (Right command))
+        _ -> error "execParserPure failed to parse inspect show --with-equity"
+    case OA.execParserPure
+        OA.defaultPrefs
+        commandParserInfo
+        ["verify", "selfplay", "--backend", "cpp-imperative,haskell", "--rng", "native"] of
+        OA.Failure _ -> pure ()
+        _ -> error "execParserPure accepted native RNG for verify selfplay"
+
+exerciseCacheRootBranches :: IO ()
+exerciseCacheRootBranches = do
+    original <- lookupEnv "MCTS_CACHE_DIR"
+    explicit <- Transcript.resolveCacheRoot (Just ".mcts-cache-explicit")
+    assert "cache root explicit branch" (explicit == ".mcts-cache-explicit")
+    setEnv "MCTS_CACHE_DIR" ".mcts-cache-env"
+    fromEnv <- Transcript.resolveCacheRoot Nothing
+    assert "cache root env branch" (fromEnv == ".mcts-cache-env")
+    unsetEnv "MCTS_CACHE_DIR"
+    fallback <- Transcript.resolveCacheRoot Nothing
+    assert "cache root default branch" (".mcts-cache" `isSuffixOfLocal` fallback)
+    restoreEnv original
+  where
+    restoreEnv (Just value) = setEnv "MCTS_CACHE_DIR" value
+    restoreEnv Nothing = unsetEnv "MCTS_CACHE_DIR"
+    isSuffixOfLocal suffix value = suffix == drop (length value - length suffix) value
+
 exerciseReportCardGolden :: IO ()
 exerciseReportCardGolden = do
     goldenCompare "test/golden/cli/report-card.txt" (renderReportCard defaultReportCard)
@@ -806,7 +1097,9 @@ exerciseEnv = do
     -- prerequisite registry without panicking on access.
     let env = defaultEnv
         leaves = leafSpecs (envCommandSpec env)
-    assert "default env carries the command spec" (case leaves of leaf : _ -> not (null (examples leaf)); _ -> False)
+    assert
+        "default env carries the command spec"
+        (case leaves of leaf : _ -> not (null (examples leaf)); _ -> False)
     -- runAppIO threads the env through and `askEnv` returns the same value.
     same <- runAppIO env $ do
         e <- askEnv
@@ -825,7 +1118,14 @@ exerciseEnv = do
 
 exerciseEngineProperties :: IO ()
 exerciseEngineProperties = do
-    let inputs = defaultRunInputs{inputBackend = Haskell, inputGames = 1, inputSeed = 17, inputSims = FixedSims 8, inputMaxPlies = 40}
+    let inputs =
+            defaultRunInputs
+                { inputBackend = Haskell
+                , inputGames = 1
+                , inputSeed = 17
+                , inputSims = FixedSims 8
+                , inputMaxPlies = 40
+                }
         game1 = runGame inputs 0
         game2 = runGame inputs 0
     assert "runGame is reproducible for fixed inputs" (game1 == game2)
@@ -839,6 +1139,29 @@ exerciseEngineProperties = do
     -- moveVisits always include at least the chosen move
     let chosenInVisits record = moveChosen record `elem` map fst (moveVisits record)
     assert "every chosen move appears in its visit list" (all chosenInVisits allRecords)
+
+exerciseKnownPositionGolden :: IO ()
+exerciseKnownPositionGolden = do
+    let moves = [Pawn 4 1, Pawn 4 7, WallH 0 0, WallH 1 0, Pawn 4 2]
+        board = foldl applyLegal initialBoard moves
+        rendered =
+            unlines
+                [ "hero=" <> show (boardHero board)
+                , "villain=" <> show (boardVillain board)
+                , "wallsH=" <> show (boardWallsH board)
+                , "wallsV=" <> show (boardWallsV board)
+                , "heroWalls=" <> show (boardHeroWalls board)
+                , "villainWalls=" <> show (boardVillainWalls board)
+                , "sideToMove=" <> show (boardSideToMove board)
+                , "ply=" <> show (boardPly board)
+                , "legal=" <> unwords (map renderMove (take 12 (legalMoves board)))
+                ]
+    goldenCompare "test/golden/engine/known-position.txt" rendered
+  where
+    applyLegal board action =
+        if action `elem` legalMoves board
+            then applyMove action board
+            else error ("known-position move is illegal: " <> show action)
 
 applyChain :: [Action] -> Board
 applyChain = foldl (flip applyMove) initialBoard
@@ -922,30 +1245,76 @@ exerciseSplitmixBijection = do
     unique' [] = []
     unique' (x : xs) = x : unique' (filter (/= x) xs)
 
+exerciseCppRngFixture :: IO ()
+exerciseCppRngFixture = do
+    present <- doesFileExist "cpp-legacy/build/libmcts_cpp_legacy.so"
+    if not present
+        then putStrLn "mcts-unit SKIP cpp_rng_split_seed fixture (cpp-legacy shared library not built)"
+        else do
+            seed0 <- cppSplitSeed 42 0
+            seed1 <- cppSplitSeed 42 1
+            assert "cpp_rng_split_seed fixture 0" (seed0 == Right (mix 42 0))
+            assert "cpp_rng_split_seed fixture 1" (seed1 == Right (mix 42 1))
+
+exerciseCppLegacyBoardFixture :: IO ()
+exerciseCppLegacyBoardFixture = do
+    present <- doesFileExist "cpp-legacy/build/libmcts_cpp_legacy.so"
+    if not present
+        then putStrLn "mcts-unit SKIP cpp-legacy board fixture (cpp-legacy shared library not built)"
+        else mapM_ exerciseOne [1 :: Int .. 100]
+  where
+    exerciseOne _ = do
+        result <- withCppLegacyBoard (\_ -> pure ())
+        assert "cpp-legacy dynamic board acquire/free" (result == Right ())
+
 exerciseErrorRenderings :: IO ()
 exerciseErrorRenderings = do
     -- Smoke test: every variant has a non-empty renderError output.
-    let samples =
-            [ TranscriptNotFound "abc"
-            , TranscriptAmbiguous "ab" ["abcd", "abce"]
-            , TranscriptFormatUnsupported "future"
-            , VerifyCohortTooSmall "need two"
-            , LegacyParityRolloutOverflow 42 0 1
-            , ArchEnvelopeMismatch "x86" "arm"
-            , EngineEnvelopeMismatch CohortLevel "host_arch" "x86" "arm"
-            , PrerequisiteUnmet "ghc" "GHC" "install ghcup"
-            , SubprocessFailed "cmd" 1
-            , FFIFailure Haskell "fn" "boom"
-            , DocsCheckDrift "documents/cli/commands.md" "fully-generated"
-            , UnknownCommand "wat"
-            , InvalidMove "?"
-            , ParseError "bad"
-            , IOErrorText "io"
-            ]
-    assert "every error variant renders to non-empty text" (all (not . null . renderError) samples)
+    let samples = map snd sampleErrorRenderings
+    assert "every error variant renders to non-empty text" (all (not . T.null . renderError) samples)
     assert "TranscriptNotFound mentions the ref" ("abc" `inText` renderError (TranscriptNotFound "abc"))
-    assert "DocsCheckDrift mentions the remedy" ("mcts docs generate" `inText` renderError (DocsCheckDrift "x" "y"))
-    assert "PrerequisiteUnmet mentions the remedy" ("install ghcup" `inText` renderError (PrerequisiteUnmet "ghc" "GHC" "install ghcup"))
+    assert
+        "DocsCheckDrift mentions the remedy"
+        ("mcts docs generate" `inText` renderError (DocsCheckDrift "x" "y"))
+    assert
+        "PrerequisiteUnmet mentions the remedy"
+        ("install ghcup" `inText` renderError (PrerequisiteUnmet "ghc" "GHC" "install ghcup"))
   where
-    inText :: String -> String -> Bool
-    inText needle haystack = any (needle `prefixOf`) (tails haystack)
+    inText :: String -> T.Text -> Bool
+    inText needle haystack = T.pack needle `T.isInfixOf` haystack
+
+sampleErrorRenderings :: [(String, AppError)]
+sampleErrorRenderings =
+    [ ("TranscriptNotFound", TranscriptNotFound "abc")
+    , ("TranscriptAmbiguous", TranscriptAmbiguous "ab" ["abcd", "abce"])
+    , ("TranscriptFormatUnsupported", TranscriptFormatUnsupported "future")
+    , ("VerifyCohortTooSmall", VerifyCohortTooSmall "need two")
+    , ("LegacyParityRolloutOverflow", LegacyParityRolloutOverflow 42 0 1)
+    , ("ArchEnvelopeMismatch", ArchEnvelopeMismatch "x86" "arm")
+    , ("EngineEnvelopeMismatch", EngineEnvelopeMismatch CohortLevel "host_arch" "x86" "arm")
+    , ("PrerequisiteUnmet", PrerequisiteUnmet "ghc" "GHC" "install ghcup")
+    , ("SubprocessFailed", SubprocessFailed "cmd" 1)
+    , ("FFIFailure", FFIFailure Haskell "fn" "boom")
+    , ("DocsCheckDrift", DocsCheckDrift "documents/cli/commands.md" "fully-generated")
+    , ("UnknownCommand", UnknownCommand "wat")
+    , ("InvalidMove", InvalidMove "?")
+    , ("ParseError", ParseError "bad")
+    , ("IOErrorText", IOErrorText "io")
+    ]
+
+exerciseErrorGolden :: IO ()
+exerciseErrorGolden =
+    goldenCompare "test/golden/cli/errors.txt" $
+        unlines [label <> ": " <> T.unpack (renderError err) | (label, err) <- sampleErrorRenderings]
+
+exerciseSubprocessGolden :: IO ()
+exerciseSubprocessGolden = do
+    let subprocess = Subprocess "cabal" ["exec", "mcts", "--", "inspect", "show", "a b"] Nothing Nothing
+        rendered = renderSubprocess subprocess
+        failure = renderError (SubprocessFailed rendered 2)
+    goldenCompare "test/golden/cli/subprocess.txt" (rendered <> "\n")
+    assert
+        "subprocess render quotes spaced arguments"
+        (rendered == "cabal exec mcts -- inspect show 'a b'")
+    assert "subprocess failure includes rendered command" (T.pack rendered `T.isInfixOf` failure)
+    assert "subprocess failure includes exit code" (T.pack "exit=2" `T.isInfixOf` failure)

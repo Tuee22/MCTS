@@ -3,14 +3,18 @@ module MCTS.CLI.Output
     , ColorMode (..)
     , OutputOptions (..)
     , defaultOutputOptions
+    , defaultOutputOptionsFor
     , parseGlobalOutputOptions
+    , parseGlobalOutputOptionsIO
     , outputLine
     , errLine
     , renderError
     ) where
 
-import MCTS.Error (renderError)
-import System.IO (hPutStrLn, stderr, stdout)
+import qualified Data.Text as Text
+import MCTS.Error (AppError)
+import qualified MCTS.Error as Error
+import System.IO (hIsTerminalDevice, hPutStrLn, stderr, stdout)
 
 data OutputFormat = JsonFormat | TableFormat | PlainFormat
     deriving (Eq, Show)
@@ -25,10 +29,25 @@ data OutputOptions = OutputOptions
     deriving (Eq, Show)
 
 defaultOutputOptions :: OutputOptions
-defaultOutputOptions = OutputOptions PlainFormat ColorAuto
+defaultOutputOptions = defaultOutputOptionsFor False
+
+defaultOutputOptionsFor :: Bool -> OutputOptions
+defaultOutputOptionsFor isTty =
+    OutputOptions
+        { outputFormat = if isTty then TableFormat else PlainFormat
+        , outputColor = ColorAuto
+        }
 
 parseGlobalOutputOptions :: [String] -> (OutputOptions, [String])
-parseGlobalOutputOptions = go defaultOutputOptions []
+parseGlobalOutputOptions = parseGlobalOutputOptionsWith defaultOutputOptions
+
+parseGlobalOutputOptionsIO :: [String] -> IO (OutputOptions, [String])
+parseGlobalOutputOptionsIO args = do
+    isTty <- hIsTerminalDevice stdout
+    pure (parseGlobalOutputOptionsWith (defaultOutputOptionsFor isTty) args)
+
+parseGlobalOutputOptionsWith :: OutputOptions -> [String] -> (OutputOptions, [String])
+parseGlobalOutputOptionsWith initial = go initial []
   where
     go opts kept args =
         case args of
@@ -65,3 +84,6 @@ outputLine = hPutStrLn stdout
 
 errLine :: String -> IO ()
 errLine = hPutStrLn stderr
+
+renderError :: AppError -> String
+renderError = Text.unpack . Error.renderError

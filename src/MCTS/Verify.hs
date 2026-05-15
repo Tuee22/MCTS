@@ -60,7 +60,8 @@ legacyParityRun :: Workload -> [Backend] -> RunInputs -> IO (Either AppError [Ba
 legacyParityRun workload backends inputs =
     fmap verifyBatches <$> legacyParityRunDetailed False workload backends inputs
 
-legacyParityRunDetailed :: Bool -> Workload -> [Backend] -> RunInputs -> IO (Either AppError VerifyResult)
+legacyParityRunDetailed
+    :: Bool -> Workload -> [Backend] -> RunInputs -> IO (Either AppError VerifyResult)
 legacyParityRunDetailed allowStale workload backends inputs
     | length backends < 2 =
         pure (Left (VerifyCohortTooSmall "legacy parity needs at least two backends"))

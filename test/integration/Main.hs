@@ -34,4 +34,6 @@ sameBackendSeed baseInputs backend seedValue = do
         second = runGame inputs 0
     if first == second
         then pure ()
-        else error ("same-backend determinism failed for " <> backendIdentifier backend <> " seed=" <> show seedValue)
+        else
+            error
+                ("same-backend determinism failed for " <> backendIdentifier backend <> " seed=" <> show seedValue)

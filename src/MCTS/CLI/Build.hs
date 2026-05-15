@@ -3,9 +3,9 @@ module MCTS.CLI.Build
     , buildBackendPlan
     ) where
 
-import qualified MCTS.Env as Env
 import MCTS.CLI.Command (BuildCommand (..))
 import MCTS.CLI.Output (outputLine, renderError)
+import qualified MCTS.Env as Env
 import MCTS.Plan
 import MCTS.Prerequisite (checkPrerequisites, prerequisitesForBuild)
 import MCTS.Subprocess

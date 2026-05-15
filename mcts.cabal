@@ -1,35 +1,13 @@
-cabal-version:      3.8
-name:               mcts
-version:            0.1.0.0
-license-file:       LICENCE
-author:             MCTS contributors
-maintainer:         matt
-build-type:         Simple
-tested-with:        GHC ==9.14.1
-
-common warnings
-    -- Phase 8 Sprint 8.1 doctrine-named GHC tuning options. `-fllvm`
-    -- and `-optlo-mcpu=native` / `-optlc-mcpu=native` require LLVM
-    -- pinned in the Docker image (Sprint 1.1); they're held back from
-    -- this common stanza until that pin lands. Everything else here is
-    -- safe to enable now and helps the search-loop inliner without an
-    -- LLVM dependency.
-    ghc-options:
-        -Wall
-        -Wcompat
-        -O2
-        -funbox-strict-fields
-        -fspecialise-aggressively
-        -fexpose-all-unfoldings
-        -flate-dmd-anal
-        -fmax-simplifier-iterations=20
-        -fworker-wrapper
-        -fstatic-argument-transformation
-    default-language: Haskell2010
+cabal-version: 3.8
+name:          mcts
+version:       0.1.0.0
+license-file:  LICENCE
+maintainer:    matt
+author:        MCTS contributors
+tested-with:   ghc ==9.14.1
+build-type:    Simple
 
 library
-    import: warnings
-    hs-source-dirs: src
     exposed-modules:
         MCTS.App
         MCTS.Crypto.SHA256
@@ -38,12 +16,15 @@ library
         MCTS.CLI.Command
         MCTS.CLI.Docs
         MCTS.CLI.Inspect
+        MCTS.CLI.Json
         MCTS.CLI.Lint
         MCTS.CLI.Output
         MCTS.CLI.Parser
         MCTS.CLI.Spec
         MCTS.CLI.Test
+        MCTS.CLI.Tree
         MCTS.CLI.Verify
+        MCTS.CheckCode
         MCTS.Driver
         MCTS.Engine
         MCTS.Engine.Recompute
@@ -54,10 +35,13 @@ library
         MCTS.FFI.CppImperative
         MCTS.FFI.CppLegacy
         MCTS.FFI.Rust
+        MCTS.Generated.Paths
+        MCTS.Generated.Sections
         MCTS.Notation
         MCTS.Plan
         MCTS.Prerequisite
         MCTS.ReportCard
+        MCTS.Rng.Cpp
         MCTS.Rng.Mix
         MCTS.Search.Arena
         MCTS.Search.UCT
@@ -73,7 +57,18 @@ library
         MCTS.Verify
         MCTS.Verify.Divergence
         MCTS.Verify.Envelope
+
+    hs-source-dirs:   src
+    default-language: Haskell2010
+    ghc-options:
+        -Wall -Wcompat -O2 -funbox-strict-fields -fspecialise-aggressively
+        -fexpose-all-unfoldings -flate-dmd-anal
+        -fmax-simplifier-iterations=20 -fworker-wrapper
+        -fstatic-argument-transformation
+
     build-depends:
+        aeson,
+        ansi-terminal,
         array,
         base >=4.20 && <5,
         bytestring,
@@ -81,73 +76,133 @@ library
         directory,
         filepath,
         mtl,
+        optparse-applicative,
+        path,
+        path-io,
+        prettyprinter,
+        prettyprinter-ansi-terminal,
         process,
+        safe-exceptions,
+        temporary,
         text,
         time,
         transformers,
+        typed-process,
         unix
 
 executable mcts
-    import: warnings
-    main-is: Main.hs
-    hs-source-dirs: app
-    -- Phase 8 Sprint 8.1 RTS pin. `-A64m -n4m -qg1 -qb -T` is the
-    -- doctrine-named tuning set baked into the binary so users do not
-    -- need to remember to pass `+RTS ... -RTS`.
-    ghc-options: -threaded "-with-rtsopts=-A64m -n4m -qg1 -qb -T"
+    main-is:          Main.hs
+    hs-source-dirs:   app
+    default-language: Haskell2010
+    ghc-options:
+        -Wall -Wcompat -O2 -funbox-strict-fields -fspecialise-aggressively
+        -fexpose-all-unfoldings -flate-dmd-anal
+        -fmax-simplifier-iterations=20 -fworker-wrapper
+        -fstatic-argument-transformation -threaded
+        "-with-rtsopts=-A64m -n4m -qg1 -qb -T"
+
     build-depends:
         base >=4.20 && <5,
         mcts
 
 test-suite mcts-unit
-    import: warnings
-    type: exitcode-stdio-1.0
-    main-is: Main.hs
-    hs-source-dirs: test/unit
+    type:             exitcode-stdio-1.0
+    main-is:          Main.hs
+    hs-source-dirs:   test/unit
+    default-language: Haskell2010
+    ghc-options:
+        -Wall -Wcompat -O2 -funbox-strict-fields -fspecialise-aggressively
+        -fexpose-all-unfoldings -flate-dmd-anal
+        -fmax-simplifier-iterations=20 -fworker-wrapper
+        -fstatic-argument-transformation
+
     build-depends:
         array,
+        aeson,
         base >=4.20 && <5,
         bytestring,
         directory,
         filepath,
         mcts,
         mtl,
+        optparse-applicative,
+        tasty,
+        tasty-golden,
+        tasty-hunit,
+        tasty-quickcheck,
+        temporary,
+        text,
         transformers
 
 test-suite mcts-integration
-    import: warnings
-    type: exitcode-stdio-1.0
-    main-is: Main.hs
-    hs-source-dirs: test/integration
+    type:             exitcode-stdio-1.0
+    main-is:          Main.hs
+    hs-source-dirs:   test/integration
+    default-language: Haskell2010
+    ghc-options:
+        -Wall -Wcompat -O2 -funbox-strict-fields -fspecialise-aggressively
+        -fexpose-all-unfoldings -flate-dmd-anal
+        -fmax-simplifier-iterations=20 -fworker-wrapper
+        -fstatic-argument-transformation
+
     build-depends:
         base >=4.20 && <5,
         directory,
-        mcts
+        mcts,
+        tasty,
+        tasty-hunit,
+        temporary
 
 test-suite mcts-cross-backend
-    import: warnings
-    type: exitcode-stdio-1.0
-    main-is: Main.hs
-    hs-source-dirs: test/cross-backend
+    type:             exitcode-stdio-1.0
+    main-is:          Main.hs
+    hs-source-dirs:   test/cross-backend
+    default-language: Haskell2010
+    ghc-options:
+        -Wall -Wcompat -O2 -funbox-strict-fields -fspecialise-aggressively
+        -fexpose-all-unfoldings -flate-dmd-anal
+        -fmax-simplifier-iterations=20 -fworker-wrapper
+        -fstatic-argument-transformation
+
     build-depends:
         base >=4.20 && <5,
-        mcts
+        mcts,
+        tasty,
+        tasty-hunit
 
 test-suite mcts-legacy-parity
-    import: warnings
-    type: exitcode-stdio-1.0
-    main-is: Main.hs
-    hs-source-dirs: test/legacy-parity
+    type:             exitcode-stdio-1.0
+    main-is:          Main.hs
+    hs-source-dirs:   test/legacy-parity
+    default-language: Haskell2010
+    ghc-options:
+        -Wall -Wcompat -O2 -funbox-strict-fields -fspecialise-aggressively
+        -fexpose-all-unfoldings -flate-dmd-anal
+        -fmax-simplifier-iterations=20 -fworker-wrapper
+        -fstatic-argument-transformation
+
     build-depends:
         base >=4.20 && <5,
-        mcts
+        mcts,
+        tasty,
+        tasty-hunit
 
 test-suite mcts-haskell-style
-    import: warnings
-    type: exitcode-stdio-1.0
-    main-is: Main.hs
-    hs-source-dirs: test/haskell-style
+    type:             exitcode-stdio-1.0
+    main-is:          Main.hs
+    hs-source-dirs:   test/haskell-style
+    default-language: Haskell2010
+    ghc-options:
+        -Wall -Wcompat -O2 -funbox-strict-fields -fspecialise-aggressively
+        -fexpose-all-unfoldings -flate-dmd-anal
+        -fmax-simplifier-iterations=20 -fworker-wrapper
+        -fstatic-argument-transformation
+
     build-depends:
         base >=4.20 && <5,
         directory,
-        filepath
+        filepath,
+        process,
+        tasty,
+        tasty-hunit,
+        temporary

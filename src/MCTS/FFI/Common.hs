@@ -20,18 +20,21 @@ module MCTS.FFI.Common
     , withBoard
     , withTree
     , withRng
+    , withDynamicBoard
     , liftFFI
     ) where
 
-import Control.Exception (bracket, try, SomeException)
-import Data.Word (Word8, Word32)
-import Foreign.Ptr (Ptr)
+import Control.Exception (SomeException, bracket, try)
+import Data.Word (Word32, Word8)
+import Foreign.Ptr (FunPtr, Ptr)
 import MCTS.Error (AppError (..))
 import MCTS.Types (Backend)
+import qualified System.Posix.DynamicLinker as DL
 
 -- | Opaque foreign pointers. Each `MCTS.FFI.*` module re-exports these
 -- newtype-tagged to its backend.
 type ForeignBoard backend = Ptr backend
+
 type ForeignTree backend = Ptr backend
 type ForeignRng backend = Ptr backend
 
@@ -94,6 +97,33 @@ withRng
 withRng backend acquire release body =
     liftFFI backend "withRng" $
         bracket acquire release body
+
+foreign import ccall "dynamic" mkBoardNew :: FunPtr (IO (Ptr ())) -> IO (Ptr ())
+foreign import ccall "dynamic" mkBoardFree :: FunPtr (Ptr () -> IO ()) -> Ptr () -> IO ()
+
+-- | Dynamically load a backend shared library, call its
+-- `mcts_<backend>_new_board` / `mcts_<backend>_free_board` pair, and run
+-- the body under `bracket`. This is still real Haskell FFI: the
+-- resolved C symbols are converted to typed function pointers via
+-- `foreign import ccall "dynamic"`, but the library is discovered at
+-- runtime so Cabal does not need platform-specific `extra-libraries`
+-- entries for every developer shell.
+withDynamicBoard
+    :: Backend
+    -> FilePath
+    -> String
+    -> (Ptr () -> IO a)
+    -> IO (Either AppError a)
+withDynamicBoard backend libraryPath symbolPrefix body =
+    liftFFI backend (symbolPrefix <> "_new_board") $
+        bracket
+            (DL.dlopen libraryPath [DL.RTLD_NOW])
+            DL.dlclose
+            ( \library -> do
+                newFun <- DL.dlsym library (symbolPrefix <> "_new_board")
+                freeFun <- DL.dlsym library (symbolPrefix <> "_free_board")
+                bracket (mkBoardNew newFun) (mkBoardFree freeFun) body
+            )
 
 -- | Lift any IO action into `Either AppError a`. Foreign exceptions
 -- surface as `FFIFailure backend symbol message`.

@@ -44,13 +44,113 @@ testAllPlan =
             , Subprocess "cabal" ["test", "mcts-integration"] Nothing Nothing
             , Subprocess "cabal" ["test", "mcts-cross-backend"] Nothing Nothing
             , Subprocess "cabal" ["test", "mcts-legacy-parity"] Nothing Nothing
-            , mctsStep ["bench", "rollouts", "--backend", "cpp-legacy,cpp-imperative,cpp-functional,rust,haskell", "--threading", "single", "--rng", "native", "--games", "100000", "--seed", "42"]
-            , mctsStep ["bench", "rollouts", "--backend", "cpp-legacy,cpp-imperative,cpp-functional,rust,haskell", "--threading", "multi", "--workers", "8", "--rng", "native", "--games", "100000", "--seed", "42"]
-            , mctsStep ["bench", "selfplay", "--backend", "cpp-legacy,cpp-imperative,cpp-functional,rust,haskell", "--threading", "single", "--rng", "native", "--games", "1000", "--seed", "42", "--sims", "10000"]
-            , mctsStep ["bench", "selfplay", "--backend", "cpp-legacy,cpp-imperative,cpp-functional,rust,haskell", "--threading", "multi", "--workers", "8", "--rng", "native", "--games", "1000", "--seed", "42", "--sims", "10000"]
-            , mctsStep ["verify", "rollouts", "--backend", "cpp-imperative,cpp-functional,rust,haskell", "--threading", "single", "--games", "50", "--seed", "42", "--max-plies", "200"]
-            , mctsStep ["verify", "selfplay", "--backend", "cpp-imperative,cpp-functional,rust,haskell", "--threading", "single", "--games", "50", "--seed", "42", "--max-plies", "200", "--sims", "10000"]
-            , mctsStep ["verify", "legacy-parity", "selfplay", "--backend", "cpp-legacy,cpp-imperative,cpp-functional,rust,haskell", "--games", "10", "--seed", "42", "--sims", "10000"]
+            , mctsStep
+                [ "bench"
+                , "rollouts"
+                , "--backend"
+                , "cpp-legacy,cpp-imperative,cpp-functional,rust,haskell"
+                , "--threading"
+                , "single"
+                , "--rng"
+                , "native"
+                , "--games"
+                , "100000"
+                , "--seed"
+                , "42"
+                ]
+            , mctsStep
+                [ "bench"
+                , "rollouts"
+                , "--backend"
+                , "cpp-legacy,cpp-imperative,cpp-functional,rust,haskell"
+                , "--threading"
+                , "multi"
+                , "--workers"
+                , "8"
+                , "--rng"
+                , "native"
+                , "--games"
+                , "100000"
+                , "--seed"
+                , "42"
+                ]
+            , mctsStep
+                [ "bench"
+                , "selfplay"
+                , "--backend"
+                , "cpp-legacy,cpp-imperative,cpp-functional,rust,haskell"
+                , "--threading"
+                , "single"
+                , "--rng"
+                , "native"
+                , "--games"
+                , "1000"
+                , "--seed"
+                , "42"
+                , "--sims"
+                , "10000"
+                ]
+            , mctsStep
+                [ "bench"
+                , "selfplay"
+                , "--backend"
+                , "cpp-legacy,cpp-imperative,cpp-functional,rust,haskell"
+                , "--threading"
+                , "multi"
+                , "--workers"
+                , "8"
+                , "--rng"
+                , "native"
+                , "--games"
+                , "1000"
+                , "--seed"
+                , "42"
+                , "--sims"
+                , "10000"
+                ]
+            , mctsStep
+                [ "verify"
+                , "rollouts"
+                , "--backend"
+                , "cpp-imperative,cpp-functional,rust,haskell"
+                , "--threading"
+                , "single"
+                , "--games"
+                , "50"
+                , "--seed"
+                , "42"
+                , "--max-plies"
+                , "200"
+                ]
+            , mctsStep
+                [ "verify"
+                , "selfplay"
+                , "--backend"
+                , "cpp-imperative,cpp-functional,rust,haskell"
+                , "--threading"
+                , "single"
+                , "--games"
+                , "50"
+                , "--seed"
+                , "42"
+                , "--max-plies"
+                , "200"
+                , "--sims"
+                , "10000"
+                ]
+            , mctsStep
+                [ "verify"
+                , "legacy-parity"
+                , "selfplay"
+                , "--backend"
+                , "cpp-legacy,cpp-imperative,cpp-functional,rust,haskell"
+                , "--games"
+                , "10"
+                , "--seed"
+                , "42"
+                , "--sims"
+                , "10000"
+                ]
             ]
         }
 

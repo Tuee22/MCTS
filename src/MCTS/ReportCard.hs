@@ -33,7 +33,14 @@ defaultReportCard =
 renderReportCard :: ReportCard -> String
 renderReportCard card =
     unlines
-        [ "MCTS POC report card - seed=" <> show (reportSeed card) <> ", max-plies=" <> show (reportMaxPlies card) <> ", host=" <> reportHost card <> ", ghc=" <> reportGhc card
+        [ "MCTS POC report card - seed="
+            <> show (reportSeed card)
+            <> ", max-plies="
+            <> show (reportMaxPlies card)
+            <> ", host="
+            <> reportHost card
+            <> ", ghc="
+            <> reportGhc card
         , "------------------------------------------------------------------------"
         , "Q1  Haskell vs C++ (ii)  rollouts  ST          1.00x   (logical baseline)"
         , "Q1  Haskell vs C++ (ii)  rollouts  MT8         1.00x   (logical baseline)"

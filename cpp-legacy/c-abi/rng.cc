@@ -21,8 +21,12 @@ extern "C" uint64_t cpp_rng_next_u64(cpp_rng* rng) {
     return rng ? rng->gen() : 0;
 }
 
+extern "C" uint64_t cpp_rng_split_seed(uint64_t master_seed, uint64_t game_index) {
+    return splitmix64(master_seed + 0x9e3779b97f4a7c15ULL * (game_index + 1));
+}
+
 extern "C" cpp_rng* cpp_rng_split(uint64_t master_seed, uint64_t game_index) {
-    return cpp_rng_new(splitmix64(master_seed + 0x9e3779b97f4a7c15ULL * (game_index + 1)));
+    return cpp_rng_new(cpp_rng_split_seed(master_seed, game_index));
 }
 
 extern "C" void cpp_rng_free(cpp_rng* rng) {

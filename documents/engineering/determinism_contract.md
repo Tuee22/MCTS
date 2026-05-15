@@ -104,6 +104,12 @@ width is fixed by the README's `game_id u32` (see
 or verify cohort exceeds 2^32 games, so the truncation never matters in
 practice.
 
+The shared C++ RNG ABI also exposes
+`cpp_rng_split_seed(master_seed, game_index)` so the seed derivation can be
+tested directly without consuming a `std::mt19937_64` stream. `MCTS.Rng.Cpp`
+loads that symbol dynamically, and `mcts-unit` checks it against the Haskell
+`mix` vectors when the legacy shared library is built.
+
 This makes per-game output independent of:
 
 - The number of workers.

@@ -67,11 +67,13 @@ external state (only the transcript cache, which they own), so the
 ### `prerequisiteRegistry`
 
 The `prerequisiteRegistry` (Phase 1 Sprint 1.7) covers every toolchain dependency
-across the five backends. The current baseline uses executable/file probes for the
-build-command prerequisites (`ghc-9.14.1`, `cabal`, `c++`, `cargo`, `rustc`, profile
-directories, and legacy fixtures) and emits `AppError PrerequisiteUnmet` with a remedy
-hint before applying a backend build plan. The final dependency-DAG and exact-version
-probes remain owned by Phase 1 Sprint 1.7.
+across the five backends. The current baseline uses exact version probes for
+`ghc-9.14.1 --numeric-version == 9.14.1` and
+`cabal --numeric-version == 3.16.1.0`, executable/file probes for the other
+build-command prerequisites (`c++`, `cargo`, `rustc`, profile directories, and legacy
+fixtures), and emits `AppError PrerequisiteUnmet` with a remedy hint before applying a
+backend build plan. Exact minor-version probes for LLVM/BOLT, Rust, GCC, and `mimalloc`
+remain owned by Phase 1 Sprint 1.7 and the Docker pin.
 
 ### `Env`
 
@@ -148,9 +150,10 @@ alongside the user-facing variants:
 - `DocsCheckDrift` — `mcts docs check` detects a marker drift.
 - `UnknownCommand`, `InvalidMove` — `mcts play` in-app input errors.
 
-`renderError :: AppError -> Text` lives in `src/MCTS/CLI/Output.hs`. It is the
-only Text-rendering path at the CLI boundary; the `.hlint.yaml` rules enforce
-this.
+`renderError :: AppError -> Text` lives in `src/MCTS/Error.hs` as the canonical
+boundary. `src/MCTS/CLI/Output.hs` exposes a String adapter for the existing command
+runners while the wider output renderer migrates. The `.hlint.yaml` rules enforce this
+boundary by keeping direct terminal output out of command modules.
 
 ### GADT-Indexed State Machines
 

@@ -31,12 +31,13 @@ parseCoords raw maxCoord =
                     ',' : ys ->
                         let (right, afterRight) = span isDigit ys
                          in case afterRight of
-                                ")" | not (null left) && not (null right) ->
-                                    let x = read left
-                                        y = read right
-                                     in if x >= 0 && x <= maxCoord && y >= 0 && y <= maxCoord
-                                            then Just (x, y)
-                                            else Nothing
+                                ")"
+                                    | not (null left) && not (null right) ->
+                                        let x = read left
+                                            y = read right
+                                         in if x >= 0 && x <= maxCoord && y >= 0 && y <= maxCoord
+                                                then Just (x, y)
+                                                else Nothing
                                 _ -> Nothing
                     _ -> Nothing
         _ -> Nothing

@@ -30,7 +30,20 @@
 
 ## `mcts check-code`
 
-The doctrine-alignment gate. Phase 1 Sprint 1.4 owns the implementation.
+The doctrine-alignment gate. Phase 1 Sprint 1.4 owns the implementation in
+`src/MCTS/CheckCode.hs`.
+
+`mcts check-code` is a container-only gate. Run it through the root-level
+`compose.yaml` environment, for example:
+
+```bash
+# Example: canonical code-quality gate
+docker compose up -d
+docker compose exec mcts cabal run exe:mcts -- check-code
+```
+
+Ambient host-level tool fallback is unsupported. Fourmolu and HLint must come from
+the container's pinned style-tool install, not from the host `PATH`.
 
 Running `mcts check-code` dispatches, in order:
 
@@ -47,7 +60,7 @@ through the single `renderError :: AppError -> Text` boundary.
 ## Lint Stack
 
 `mcts lint files`, `mcts lint docs`, `mcts lint haskell`, and the aggregate
-`mcts lint all` are implemented under `src/MCTS/Lint.hs`. Each subcommand accepts
+`mcts lint all` are implemented under `src/MCTS/CLI/Lint.hs`. Each subcommand accepts
 `--write` to apply auto-fixes where applicable per the doctrine's paired check/write
 discipline.
 
@@ -72,9 +85,10 @@ one canonical `mcts` operator surface:
 `mcts docs check` and `mcts docs generate` are paired commands per
 [../../HASKELL_CLI_TOOL.md → Generated Artifacts](../../HASKELL_CLI_TOOL.md). The
 current baseline keeps fully-generated path renderers and `trackingGeneratedPaths` in
-`src/MCTS/CLI/Docs.hs`; the planned `src/MCTS/Generated/Sections.hs` marker registry
-and `src/MCTS/Generated/Paths.hs` module split remain Phase 1 Sprint 1.3 work. Markers
-follow the conventions in
+`src/MCTS/Generated/Paths.hs`; marker-delimited section rules and splice/check helpers
+live in `src/MCTS/Generated/Sections.hs`. `src/MCTS/CLI/Docs.hs` consumes both
+registries and re-exports them for tests and compatibility. Markers follow the
+conventions in
 [../documentation_standards.md → Generated Sections](../documentation_standards.md#11-generated-sections).
 
 ### HLint Rules
@@ -113,7 +127,7 @@ stanzas](../../README.md):
 
 ```bash
 # Example: hlint invocation pinned by mcts-haskell-style
-hlint --with-group=default --with-group=extra
+/opt/mcts-style-tools/bin/hlint --with-group=default --with-group=extra
 ```
 
 `.hlint.yaml` is picked up automatically from the repo root. The `default` and
@@ -149,7 +163,14 @@ defeats the readability proxy). The value `100` is the project's chosen ceiling
 within the doctrine's permitted range.
 
 The `mcts-haskell-style` Cabal stanza in `test/haskell-style/Main.hs` enforces the
-formatter, the linter, and the `cabal format` round-trip in one suite.
+`cabal format` round-trip through a temp file on every run. The project policy is to
+install `fourmolu-0.19.0.1` and `hlint-3.10` into
+`/opt/mcts-style-tools/bin/` inside the container with a separate pinned
+formatter-tools GHC `9.12.4`; the main project compiler stays on GHC `9.14.1`.
+The style stanza invokes only those pinned container paths. If they are absent,
+the check fails with a remedy pointing at the container workflow; it must not
+skip the tools or fall back to host `PATH`. The existing source walker remains an
+additional guard for tab characters and the conservative forbidden-symbol subset.
 
 ## Cross-References
 

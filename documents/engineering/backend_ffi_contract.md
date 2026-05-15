@@ -24,9 +24,12 @@ Five backends, four of which expose a C ABI to Haskell:
 | (iv) `rust` | C ABI via Haskell FFI, `cdylib` | `rust/target/release/libmcts_rust.so` | `rust/target/release-pgo/libmcts_rust.so` | `mcts_rust_*` |
 | (v) `haskell` | Native (in-process) | (compiled into `mcts`) | n/a | (no FFI surface) |
 
-Backends (i)–(iv) are loaded as shared libraries linked into the `mcts` binary at
-build time. There is no `dlopen` and no runtime backend discovery; the set of live
-backends is fixed at Cabal build time.
+Backends (i)–(iv) expose shared-library C ABIs to Haskell. The current baseline
+loads board lifecycle symbols with `dlopen` / `dlsym` and converts them to typed
+function pointers via `foreign import ccall "dynamic"`; this keeps Cabal builds
+independent of platform-specific `extra-libraries` paths while the backend build
+harness is still active. The target fully-optimized install may still link the
+canonical FFI load names at build time once the PGO/BOLT artefact paths settle.
 
 The **FFI load name** is the canonical install path matching
 [../../README.md → Repository layout (target)](../../README.md); the Haskell FFI
@@ -252,11 +255,12 @@ Haskell bindings live under `src/MCTS/FFI/`:
 
 The baseline modules (Phase 4 Sprint 4.2 / Phase 5 Sprint 5.2 / Phase 6
 Sprints 6.2 and 6.4) expose `with<Backend>Board :: (Handle -> IO a) -> IO
-(Either AppError a)` routed through `MCTS.FFI.Common.liftFFI`. Until the
-shared libraries are actually loaded at runtime, the handle types are
-opaque stand-ins; the typed boundary is what the doctrine pins. The
-`foreign import ccall` declarations land alongside the cdylib build-step
-wiring.
+(Either AppError a)` routed through `MCTS.FFI.Common.liftFFI`. The handle types
+are opaque `Ptr ()` newtypes. `MCTS.FFI.Common.withDynamicBoard` opens the
+backend library, resolves `mcts_<backend>_new_board` /
+`mcts_<backend>_free_board`, and brackets the resulting handle. Hot-path move
+selection, tree, RNG, envelope, and recompute symbols still land with the real
+foreign drivers.
 
 The Haskell-side foreign-engine recompute path lives at
 `src/MCTS/Engine/Recompute.hs`. It reuses `MCTS.Search.UCT.uctSearchWithEquity`
@@ -287,18 +291,19 @@ Per-symbol:
 The `--rng cpp` flag draws every backend's random bytes from the **same** C++
 `std::mt19937_64` generator. The shared generator lives in
 `cpp-legacy/c-abi/rng.{h,cc}` (because the legacy itself uses it) and exposes
-the four exact symbols required by
+the canonical symbols required by
 [../../README.md → Cross-backend verification → RNG FFI contract](../../README.md):
 
 ```c
 // Example: shared cpp_rng C ABI (unprefixed canonical symbols)
 cpp_rng* cpp_rng_new(uint64_t seed);
 uint64_t cpp_rng_next_u64(cpp_rng*);
+uint64_t cpp_rng_split_seed(uint64_t master_seed, uint64_t game_index);
 cpp_rng* cpp_rng_split(uint64_t master_seed, uint64_t game_index);
 void     cpp_rng_free(cpp_rng*);
 ```
 
-These four are the unprefixed canonical symbol set. They are linked into every
+These are the unprefixed canonical symbol set. They are linked into every
 participating backend rather than re-implemented:
 
 - Backends (ii) and (iii) link against `libmcts_cpp_legacy.so`'s exported
@@ -311,18 +316,18 @@ participating backend rather than re-implemented:
 
 **Per-game seeding.** Under `--rng cpp`, per-game sub-seeds are derived by
 calling `cpp_rng_split(master_seed, game_index)`, which uses
-`splitmix64(master_seed, game_index)` internally and returns a fresh `cpp_rng*`
-seeded with that value. Each game's RNG stream is independent and reproducible
-from `(master_seed, game_index)` alone; workers do not carry RNG identities, so
-worker-to-game assignment never affects a game's output.
+`cpp_rng_split_seed(master_seed, game_index)` internally and returns a fresh
+`cpp_rng*` seeded with that value. Each game's RNG stream is independent and
+reproducible from `(master_seed, game_index)` alone; workers do not carry RNG
+identities, so worker-to-game assignment never affects a game's output.
 
 **`game_index` width at the FFI boundary.** The C ABI takes `uint64_t
 game_index`. The Haskell wire-format discriminator `runConfigGameIndex` is
 `Word32` (matching the README's `game_id u32` wire-format pin); the Haskell
 caller widens it to `Word64` with `fromIntegral` at the FFI call site. The
 Haskell `mix :: Word64 -> Word64 -> Word64` mixer must agree byte-for-byte
-with `cpp_rng_split`'s initial state for any widened pair; the Phase 2 Sprint
-2.5 fixture asserts this once Phase 4's shim is callable.
+with `cpp_rng_split_seed` for any widened pair; `mcts-unit` asserts this when
+`cpp-legacy/build/libmcts_cpp_legacy.so` is present.
 
 The per-backend lifecycle symbols (`mcts_<backend>_new_rng` / `_free_rng`) from
 the per-backend ABI are convenience wrappers around the `cpp_rng_*` core when

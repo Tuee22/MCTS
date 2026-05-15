@@ -1,5 +1,8 @@
 module MCTS.CLI.Inspect
     ( runInspect
+    , InspectRow (..)
+    , renderInspectRows
+    , renderTranscript
     ) where
 
 import Data.List (intercalate, sortOn)
@@ -29,45 +32,103 @@ inspectList output cacheDir = do
     files <- listTranscriptFiles cacheDir
     rows <- mapM rowFor files
     let sortedRows = reverse (sortOn rowMtime rows)
-    outputLine $
-        case outputFormat output of
-            JsonFormat ->
-                "[" <> intercalate "," [ "{\"hash\":\"" <> rowHash row <> "\",\"path\":\"" <> rowPath row <> "\"}" | row <- sortedRows] <> "]"
-            _ ->
-                unlines ("hash      backend          seed  games  path" : map renderRow sortedRows)
+    outputLine (renderInspectRows output sortedRows)
     pure 0
   where
     rowFor path = do
         mtime <- getModificationTime path
         decoded <- readTranscriptFile path
-        let (backend, seed, games) =
+        let (backend, seed, games, threading, sims, totalMoves) =
                 case decoded of
                     Right transcript ->
                         ( backendIdentifier (runBackend (transcriptConfig transcript))
                         , show (runMasterSeed (transcriptConfig transcript))
                         , show (length (transcriptGames transcript))
+                        , threadingName (runThreading (transcriptConfig transcript))
+                        , show (runInitialSims (transcriptConfig transcript))
+                            <> ":"
+                            <> show (runPerMoveSims (transcriptConfig transcript))
+                        , show (sum (map (length . gameMoves) (transcriptGames transcript)))
                         )
-                    Left _ -> ("<bad>", "?", "?")
-        pure (InspectRow (take 8 (takeBaseName path)) backend seed games path (show mtime))
-    renderRow row =
-        rowHash row
-            <> "  "
-            <> pad 15 (rowBackend row)
-            <> "  "
-            <> pad 5 (rowSeed row)
-            <> "  "
-            <> pad 5 (rowGames row)
-            <> "  "
-            <> rowPath row
-
+                    Left _ -> ("<bad>", "?", "?", "?", "?", "?")
+        pure
+            ( InspectRow
+                (take 8 (takeBaseName path))
+                backend
+                seed
+                games
+                threading
+                sims
+                totalMoves
+                path
+                (show mtime)
+            )
 data InspectRow = InspectRow
     { rowHash :: !String
     , rowBackend :: !String
     , rowSeed :: !String
     , rowGames :: !String
+    , rowThreading :: !String
+    , rowSims :: !String
+    , rowTotalMoves :: !String
     , rowPath :: !FilePath
     , rowMtime :: !String
     }
+
+renderInspectRows :: OutputOptions -> [InspectRow] -> String
+renderInspectRows output rows =
+    case outputFormat output of
+        JsonFormat ->
+            "["
+                <> intercalate
+                    ","
+                    [ "{\"hash\":\""
+                        <> rowHash row
+                        <> "\",\"backend\":\""
+                        <> rowBackend row
+                        <> "\",\"seed\":"
+                        <> rowSeed row
+                        <> ",\"games\":"
+                        <> rowGames row
+                        <> ",\"threading\":\""
+                        <> rowThreading row
+                        <> "\",\"sims\":\""
+                        <> rowSims row
+                        <> "\",\"total_moves\":"
+                        <> rowTotalMoves row
+                        <> ",\"mtime\":\""
+                        <> rowMtime row
+                        <> "\",\"path\":\""
+                        <> rowPath row
+                        <> "\"}"
+                    | row <- rows
+                    ]
+                <> "]"
+        _ ->
+            unlines
+                ( "hash      backend          seed  games  thr  sims      moves  mtime                         path"
+                    : map renderInspectRow rows
+                )
+
+renderInspectRow :: InspectRow -> String
+renderInspectRow row =
+    rowHash row
+        <> "  "
+        <> pad 15 (rowBackend row)
+        <> "  "
+        <> pad 5 (rowSeed row)
+        <> "  "
+        <> pad 5 (rowGames row)
+        <> "  "
+        <> pad 4 (rowThreading row)
+        <> "  "
+        <> pad 8 (rowSims row)
+        <> "  "
+        <> pad 5 (rowTotalMoves row)
+        <> "  "
+        <> pad 28 (rowMtime row)
+        <> "  "
+        <> rowPath row
 
 inspectShow :: OutputOptions -> ShowOptions -> IO Int
 inspectShow output options = do
@@ -79,22 +140,24 @@ inspectShow output options = do
             case decoded of
                 Left err -> outputLine (renderError err) >> pure 1
                 Right transcript -> do
-                    if showWithEquity options
-                        then do
-                            let envelope = transcriptEnvelope transcript
-                                buildId = envelopeBuildId envelope
-                                transcriptHash = takeBaseName path
-                            case Recompute.recomputeEqStream transcriptHash buildId transcript of
-                                Right stream -> do
-                                    _ <- writeEquitySidecarStream (showCacheDir options) transcript stream
-                                    pure ()
-                                Left err -> outputLine (renderError err)
-                        else pure ()
-                    outputLine (renderTranscript output options path transcript)
+                    stream <-
+                        if showWithEquity options
+                            then do
+                                let envelope = transcriptEnvelope transcript
+                                    buildId = envelopeBuildId envelope
+                                    transcriptHash = takeBaseName path
+                                case Recompute.recomputeEqStream transcriptHash buildId transcript of
+                                    Right stream -> do
+                                        _ <- writeEquitySidecarStream (showCacheDir options) transcript stream
+                                        pure (Just stream)
+                                    Left err -> outputLine (renderError err) >> pure Nothing
+                            else pure Nothing
+                    outputLine (renderTranscript output options path stream transcript)
                     pure 0
 
-renderTranscript :: OutputOptions -> ShowOptions -> FilePath -> Transcript -> String
-renderTranscript output options path transcript =
+renderTranscript
+    :: OutputOptions -> ShowOptions -> FilePath -> Maybe EqStream -> Transcript -> String
+renderTranscript output options path stream transcript =
     case outputFormat output of
         JsonFormat ->
             "{\"path\":\""
@@ -148,11 +211,30 @@ renderTranscript output options path transcript =
             suffix =
                 intercalate
                     " "
-                    [ renderMove action <> "=" <> show count <> equity
+                    [ renderMove action <> "=" <> show count
                     | (action, count) <- visits
-                    , let equity = if showWithEquity options then ":equity=0.0000" else ""
                     ]
-         in show (moveIndex record) <> " " <> renderMove (moveChosen record) <> " " <> suffix
+            equitySuffix =
+                case (showWithEquity options, stream >>= equityFor record) of
+                    (True, Just equity) -> " equity=" <> showEquity equity
+                    (True, Nothing) -> " equity=NA"
+                    _ -> ""
+         in show (moveIndex record) <> " " <> renderMove (moveChosen record) <> " " <> suffix <> equitySuffix
+
+equityFor :: MoveRecord -> EqStream -> Maybe Double
+equityFor record stream =
+    case [ eqEquity eq
+         | eq <- eqRecords stream
+         , eqMoveIndex eq == moveIndex record
+         , eqChosen eq == moveChosen record
+         ] of
+        equity : _ -> Just equity
+        [] -> Nothing
+
+showEquity :: Double -> String
+showEquity value =
+    let scaled = fromInteger (round (value * 10000)) / 10000 :: Double
+     in show scaled
 
 inspectReplay :: ReplayOptions -> IO Int
 inspectReplay options = do
@@ -167,7 +249,8 @@ inspectReplay options = do
                     let totalMoves = sum (map (length . gameMoves) (transcriptGames transcript))
                         hashValue = take 8 (takeBaseName path)
                     outputLine (hashValue <> " | move 0 / " <> show totalMoves <> " | press ? for help")
-                    outputLine ("top=" <> show (replayTopN options) <> " cache-states=" <> show (replayCacheStates options))
+                    outputLine
+                        ("top=" <> show (replayTopN options) <> " cache-states=" <> show (replayCacheStates options))
                     pure 0
 
 inspectCacheList :: OutputOptions -> Maybe FilePath -> IO Int
@@ -225,7 +308,9 @@ inspectDivergence output options = do
             case decoded of
                 Left err -> outputLine (renderError err) >> pure 1
                 Right transcript -> do
-                    sidecars <- filter ((== takeBaseName path) . sidecarTranscriptHash) <$> listEquitySidecars (divergenceCacheDir options)
+                    sidecars <-
+                        filter ((== takeBaseName path) . sidecarTranscriptHash)
+                            <$> listEquitySidecars (divergenceCacheDir options)
                     let origin = backendIdentifier (envelopeBackend (transcriptEnvelope transcript))
                         labels =
                             case sidecars of

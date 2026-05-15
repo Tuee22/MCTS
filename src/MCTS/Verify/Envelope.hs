@@ -45,13 +45,21 @@ checkBackendSlot allowStale transcript =
     backend = runBackend (transcriptConfig transcript)
     expectedBuildId = backendIdentifier backend <> "-logical"
     mismatches =
-        [ EngineEnvelopeMismatch (BackendSlot backend) "backend" (backendIdentifier backend) (backendIdentifier (envelopeBackend envelope))
+        [ EngineEnvelopeMismatch
+            (BackendSlot backend)
+            "backend"
+            (backendIdentifier backend)
+            (backendIdentifier (envelopeBackend envelope))
         | envelopeBackend envelope /= backend
         ]
             <> [ EngineEnvelopeMismatch (BackendSlot backend) "build_id" expectedBuildId (envelopeBuildId envelope)
                | envelopeBuildId envelope /= expectedBuildId
                ]
-            <> [ EngineEnvelopeMismatch (BackendSlot backend) "engine_build_id" (unByteString32 zeroDigest) (unByteString32 (envelopeEngineBuildId envelope))
+            <> [ EngineEnvelopeMismatch
+                    (BackendSlot backend)
+                    "engine_build_id"
+                    (unByteString32 zeroDigest)
+                    (unByteString32 (envelopeEngineBuildId envelope))
                | envelopeEngineBuildId envelope /= zeroDigest
                ]
             <> [ EngineEnvelopeMismatch (BackendSlot backend) "compiler_id" "3" (show (envelopeCompilerId envelope))
@@ -60,7 +68,11 @@ checkBackendSlot allowStale transcript =
             <> [ EngineEnvelopeMismatch (BackendSlot backend) "fp_flags" "0" (show (envelopeFpFlags envelope))
                | envelopeFpFlags envelope /= 0
                ]
-            <> [ EngineEnvelopeMismatch (BackendSlot backend) "cpu_features" "0" (show (envelopeCpuFeatures envelope))
+            <> [ EngineEnvelopeMismatch
+                    (BackendSlot backend)
+                    "cpu_features"
+                    "0"
+                    (show (envelopeCpuFeatures envelope))
                | envelopeCpuFeatures envelope /= 0
                ]
             <> [ EngineEnvelopeMismatch (BackendSlot backend) "fp_env" "0" (show (envelopeFpEnv envelope))
@@ -82,4 +94,3 @@ compareField field getValue expected actual =
                 if field == "host_arch"
                     then Left (ArchEnvelopeMismatch expectedValue actualValue)
                     else Left (EngineEnvelopeMismatch CohortLevel field expectedValue actualValue)
-

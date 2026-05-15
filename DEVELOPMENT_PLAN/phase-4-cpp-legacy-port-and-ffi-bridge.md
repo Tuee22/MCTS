@@ -100,13 +100,17 @@ add a C ABI shim layer (`cpp-legacy/c-abi/`); rename the build product to
 
 ### Remaining Work
 
-- Baseline landed: `cpp-legacy/` has a smoke-buildable C ABI skeleton, Makefile, and
-  generated `build/libmcts_cpp_legacy.so` output path.
-- Replace the smoke board/move functions with the strictly verbatim
-  `~/MCTS_legacy/backend/` re-port.
-- Keep all non-FFI changes out of the port and record any unavoidable compatibility
-  residue in `legacy-tracking-for-deletion.md`.
-- Validate the exact legacy build flags and warning-clean smoke build.
+- Baseline landed: `cpp-legacy/legacy-core/` carries the mechanically imported
+  `~/MCTS_legacy/backend/core/{board.cpp,board.h,flags.hpp,mc_tools.hpp,mcts.hpp}`
+  sources, and `cpp-legacy/c-abi/mcts_cpp_legacy.cc` delegates board allocation,
+  terminal checks, and UCT move selection to the legacy `corridors::board` /
+  `mcts::uct_node` types.
+- The Makefile builds `cpp-legacy/build/libmcts_cpp_legacy.so` with the legacy
+  `-std=c++17 -O3 -fPIC -Wall` shape plus a narrow `-Wno-pessimizing-move`
+  compatibility suppression for the verbatim legacy return statement; `make -C
+  cpp-legacy clean smoke` is warning-clean on the container compiler.
+- Keep all future non-FFI changes out of the port and record any unavoidable
+  compatibility residue in `legacy-tracking-for-deletion.md`.
 
 ## Sprint 4.2: Haskell FFI Bindings 🔄
 
@@ -163,14 +167,16 @@ wrappers that make every call safe (no leaked handles, no double-free).
   `AppError FFIFailure backend symbol message`).
   `src/MCTS/FFI/CppLegacy.hs`, `src/MCTS/FFI/CppImperative.hs`,
   `src/MCTS/FFI/CppFunctional.hs`, and `src/MCTS/FFI/Rust.hs` declare
-  per-backend stand-in board handle types plus `with*Board` wrappers
-  routed through `liftFFI` with the doctrine-required symbol names
-  (`mcts_legacy_new_board`, etc.).
-- Replace stand-in handle types with `foreign import ccall` pointers
-  and add the `mcts.cabal` `extra-libraries: mcts_cpp_legacy` and
-  `extra-lib-dirs: cpp-legacy/build` directives once the cdylib build
-  step is wired into the prerequisite registry. The
-  `libmcts-cpp-legacy-built` prereq node still needs to be added.
+  per-backend board handle wrappers. The stand-in unit handles have been
+  replaced by opaque `Ptr ()` newtypes allocated and freed through
+  `withDynamicBoard`, which uses `dlopen` / `dlsym` plus
+  `foreign import ccall "dynamic"` function pointers for the backend
+  `mcts_<backend>_new_board` / `mcts_<backend>_free_board` symbols. This keeps
+  Cabal builds independent of platform-specific shared-library paths while still
+  exercising the real C ABI. The prerequisite registry now includes
+  `libmcts-cpp-legacy-built` with a `cxx` dependency, and `mcts-unit` runs a
+  bounded dynamic board acquire/free smoke when
+  `cpp-legacy/build/libmcts_cpp_legacy.so` is present.
 - Add the 1M-handle round-trip leak test under `valgrind --leak-check=full`
   inside the Docker container.
 
@@ -230,11 +236,14 @@ is the determinism contract's shared-RNG path.
 
 ### Remaining Work
 
-- Baseline landed: `cpp-legacy/c-abi/rng.h` and `rng.cc` provide a C skeleton for the
-  shared C++ RNG.
-- Add the Haskell `MCTS.Rng.Cpp` FFI bindings and route `--rng cpp` through the shared
-  `std::mt19937_64` stream for real foreign backends.
-- Add cross-language splitmix/`cpp_rng_split` fixtures against the Haskell mixer.
+- Baseline landed: `cpp-legacy/c-abi/rng.h` and `rng.cc` provide the shared C++
+  RNG ABI, including `cpp_rng_split_seed(master_seed, game_index)` for direct
+  cross-language splitmix fixtures. `src/MCTS/Rng/Cpp.hs` dynamically calls that
+  symbol through `foreign import ccall "dynamic"`, and `mcts-unit` checks the
+  C++ split seed against the Haskell `MCTS.Rng.Mix.mix` vectors when the legacy
+  shared library is built.
+- Route `--rng cpp` through the shared `std::mt19937_64` stream for real foreign
+  backends once the real backend drivers replace the logical cohort.
 - Verify every backend consumes identical `u64` streams under the byte-consumption
   contract.
 

@@ -1,0 +1,12 @@
+.git
+dist-newstyle
+.mcts-cache
+.build
+cpp-legacy/build
+cpp-imperative/build
+cpp-functional/build
+rust/target
+*.hi
+*.o
+*.dyn_hi
+*.dyn_o

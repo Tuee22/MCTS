@@ -18,6 +18,7 @@ module MCTS.Transcript.EquitySidecar
     , isCurrentSidecar
     ) where
 
+import Control.Exception (IOException, try)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Builder as Builder
 import qualified Data.ByteString.Lazy as LBS
@@ -35,7 +36,9 @@ import System.Directory
     , renameFile
     )
 import System.FilePath (replaceExtension, takeExtension, takeFileName, (</>))
-import System.IO (Handle, hClose, hFlush, openBinaryTempFile)
+import System.IO (Handle, hFlush, openBinaryTempFile)
+import qualified System.Posix.IO as PosixIO
+import qualified System.Posix.Unistd as PosixUnistd
 
 data EqRecord = EqRecord
     { eqGameId :: !Word32
@@ -122,7 +125,9 @@ eqStreamGet = do
     version <- getWord16
     if version /= 1 then failGet "unsupported equity sidecar version" else pure ()
     backendByte <- getWord8
-    backend <- case lookup backendByte [(backendId b, b) | b <- [CppLegacy, CppImperative, CppFunctional, Rust, Haskell]] of
+    backend <- case lookup
+        backendByte
+        [(backendId b, b) | b <- [CppLegacy, CppImperative, CppFunctional, Rust, Haskell]] of
         Just value -> pure value
         Nothing -> failGet "bad sidecar backend"
     transcriptHash <- getLengthPrefixed 64
@@ -223,14 +228,34 @@ writeEquitySidecarStream explicit transcript stream = do
 writeFileAtomically :: FilePath -> FilePath -> BS.ByteString -> IO ()
 writeFileAtomically dir path bytes = do
     (tmpPath, handle) <- openBinaryTempFile dir ".tmp-sidecar"
-    writeAndClose tmpPath handle bytes
+    writeAndFsync tmpPath handle bytes
     renameFile tmpPath path
+    fsyncDirectory dir
 
-writeAndClose :: FilePath -> Handle -> BS.ByteString -> IO ()
-writeAndClose _tmpPath handle bytes = do
-    BS.hPut handle bytes
-    hFlush handle
-    hClose handle
+writeAndFsync :: FilePath -> Handle -> BS.ByteString -> IO ()
+writeAndFsync tmpPath handle bytes = do
+    result <- try $ do
+        BS.hPut handle bytes
+        hFlush handle
+        fd <- PosixIO.handleToFd handle
+        PosixUnistd.fileSynchronise fd
+        PosixIO.closeFd fd
+    case result of
+        Right () -> pure ()
+        Left err -> do
+            exists <- doesFileExist tmpPath
+            if exists then removeFile tmpPath else pure ()
+            ioError err
+
+fsyncDirectory :: FilePath -> IO ()
+fsyncDirectory dir = do
+    result <- try $ do
+        fd <- PosixIO.openFd dir PosixIO.ReadOnly PosixIO.defaultFileFlags
+        PosixUnistd.fileSynchronise fd
+        PosixIO.closeFd fd
+    case result :: Either IOException () of
+        Right () -> pure ()
+        Left _ -> pure ()
 
 listEquitySidecars :: Maybe FilePath -> IO [SidecarEntry]
 listEquitySidecars explicit = do
@@ -392,4 +417,3 @@ getLengthPrefixed n = do
 
 foldLE :: (Integral a, Num a) => [Word8] -> a
 foldLE bytes = sum [fromIntegral byte * (256 ^ idx) | (idx, byte) <- zip [0 :: Int ..] bytes]
-

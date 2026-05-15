@@ -11,6 +11,7 @@ typedef struct cpp_rng cpp_rng;
 
 cpp_rng* cpp_rng_new(uint64_t seed);
 uint64_t cpp_rng_next_u64(cpp_rng*);
+uint64_t cpp_rng_split_seed(uint64_t master_seed, uint64_t game_index);
 cpp_rng* cpp_rng_split(uint64_t master_seed, uint64_t game_index);
 void cpp_rng_free(cpp_rng*);
 

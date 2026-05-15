@@ -8,13 +8,14 @@ module MCTS.FFI.CppFunctional
     ( withCppFunctionalBoard
     ) where
 
+import Foreign.Ptr (Ptr)
 import MCTS.Error (AppError)
-import MCTS.FFI.Common (liftFFI)
+import MCTS.FFI.Common (withDynamicBoard)
 import MCTS.Types (Backend (CppFunctional))
 
-data CppFunctionalBoard = CppFunctionalBoard ()
+newtype CppFunctionalBoard = CppFunctionalBoard (Ptr ())
 
 withCppFunctionalBoard :: (CppFunctionalBoard -> IO a) -> IO (Either AppError a)
 withCppFunctionalBoard body =
-    liftFFI CppFunctional "mcts_functional_new_board" $
-        body (CppFunctionalBoard ())
+    withDynamicBoard CppFunctional "cpp-functional/build/libmcts_cpp_functional.so" "mcts_functional" $
+        body . CppFunctionalBoard

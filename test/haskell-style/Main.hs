@@ -1,23 +1,73 @@
--- | Manual `mcts-haskell-style` stanza. Until `fourmolu` and `hlint` are
--- installed in the developer environment, this stanza enforces the
--- doctrine's forbidden-symbol set by walking every `.hs` file and checking
--- (a) no tab characters; (b) no subprocess-boundary primitives outside
--- `MCTS.Subprocess`; (c) no direct output primitives outside
--- `MCTS.CLI.Output`. The `.hlint.yaml` file at the repo root carries the
--- equivalent rules so once `hlint` is installed both gates agree.
+-- | Manual `mcts-haskell-style` stanza. The supported path runs inside the
+-- project container and requires pinned Fourmolu / HLint binaries from
+-- `MCTS_STYLE_TOOLS_DIR`. Host-level fallback is deliberately unsupported.
 module Main where
 
 import Data.List (isInfixOf, isPrefixOf, isSuffixOf)
-import System.Directory (doesDirectoryExist, doesFileExist, listDirectory)
+import System.Directory
+    ( createDirectoryIfMissing
+    , doesDirectoryExist
+    , doesFileExist
+    , listDirectory
+    )
+import System.Environment (lookupEnv)
+import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
+import qualified System.Process as Process
 
 main :: IO ()
 main = do
+    runStyleTool "fourmolu" ["--mode", "check", "app", "src", "test"]
+    runStyleTool "hlint" ["--with-group=default", "--with-group=extra", "app", "src", "test"]
+    runCabalFormatRoundTrip
     files <- walk "."
     problems <- fmap concat (mapM inspect files)
     if null problems
         then putStrLn "mcts-haskell-style PASS"
         else error (unlines problems)
+
+runStyleTool :: String -> [String] -> IO ()
+runStyleTool tool args = do
+    path <- styleToolPath tool
+    code <- runProcess path args
+    case code of
+        ExitSuccess -> pure ()
+        ExitFailure n -> error (tool <> " failed with exit " <> show n)
+
+styleToolPath :: String -> IO FilePath
+styleToolPath tool = do
+    toolsDir <- maybe "/opt/mcts-style-tools/bin" id <$> lookupEnv "MCTS_STYLE_TOOLS_DIR"
+    let pinned = toolsDir </> tool
+    pinnedExists <- doesFileExist pinned
+    if pinnedExists
+        then pure pinned
+        else
+            error
+                ( "required pinned style tool is missing: "
+                    <> pinned
+                    <> "\nRun validation inside the project container via root compose.yaml; host PATH fallback is not supported."
+                )
+
+runCabalFormatRoundTrip :: IO ()
+runCabalFormatRoundTrip = do
+    createDirectoryIfMissing True ".build/mcts-style"
+    original <- readFile "mcts.cabal"
+    writeFile ".build/mcts-style/mcts.cabal" original
+    code <- runProcess "cabal" ["format", ".build/mcts-style/mcts.cabal"]
+    case code of
+        ExitSuccess -> do
+            formatted <- readFile ".build/mcts-style/mcts.cabal"
+            if formatted == original
+                then pure ()
+                else error "cabal format drift: mcts.cabal does not round-trip byte-equally"
+        ExitFailure n -> error ("cabal format failed with exit " <> show n)
+
+runProcess :: FilePath -> [String] -> IO ExitCode
+runProcess command args = do
+    (code, out, err) <- Process.readProcessWithExitCode command args ""
+    if null out then pure () else putStr out
+    if null err then pure () else putStr err
+    pure code
 
 walk :: FilePath -> IO [FilePath]
 walk root = do
@@ -39,7 +89,7 @@ walk root = do
 
 ignored :: FilePath -> Bool
 ignored path =
-    any (`isPrefixOf` path) ["./.git", "./dist-newstyle", "./.mcts-cache"]
+    any (`isPrefixOf` path) ["./.git", "./dist-newstyle", "./.mcts-cache", "./.build"]
         || "test/haskell-style/Main.hs" `isSuffixOf` path
 
 inspect :: FilePath -> IO [String]

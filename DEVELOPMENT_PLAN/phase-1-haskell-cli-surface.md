@@ -23,10 +23,10 @@ wrapper, Plan/Apply helpers, prerequisite skeleton, lint/docs commands, and
 `mcts-haskell-style` stanza exist; `cabal test all` is the baseline validation gate
 under the pinned toolchain. Remaining
 Phase `1` closure work is doctrine-complete implementation: generated parser from
-the registry rather than the current manual renderer, marker-delimited
-`GeneratedSectionRule` support beyond the current fully-generated path registry,
-external `fourmolu`/`hlint`/`cabal format` execution inside the style stanza, and
-warning-clean doctrine gates.
+the registry rather than the current manual parser, non-empty marker-delimited
+`GeneratedSectionRule` adoption in governed hand-authored docs, mandatory
+external `fourmolu`/`hlint` execution inside the style stanza once those binaries
+are pinned in the developer image, and warning-clean doctrine gates.
 
 ## Phase Summary
 
@@ -46,7 +46,7 @@ lands in this phase; those phases plug into the scaffold built here.
 
 **Status**: Active
 **Implementation**: `mcts.cabal`, `cabal.project`, `app/Main.hs`, `src/MCTS/App.hs`,
-`docker/Dockerfile`, `docker/compose.yaml`
+`docker/Dockerfile`, `compose.yaml`
 **Docs to update**: `documents/engineering/code_quality.md`,
 `documents/engineering/cli_command_surface.md`, `DEVELOPMENT_PLAN/system-components.md`
 
@@ -88,8 +88,13 @@ the reproducible Docker development environment that every later sprint builds o
 - `docker/Dockerfile` is single-stage `ubuntu:24.04`, installs `ghcup` in-image, pins
   GHC `9.14.1` and Cabal `3.16.1.0`, pins one LLVM version shared by GHC's `-fllvm`
   backend and BOLT post-link, pins GCC (latest stable on 24.04), installs `rustup`
-  with a pinned Rust minor version, installs `mimalloc`, and avoids symlinked
-  Haskell tool shims. `docker/compose.yaml` exposes the canonical
+  with a pinned Rust minor version, installs `mimalloc`, and installs a separate
+  formatter-tools GHC `9.12.4` for `fourmolu-0.19.0.1` and `hlint-3.10` under
+  `/opt/mcts-style-tools/bin/` inside the container. The style compiler is
+  isolated from the main project compiler and does not change
+  `with-compiler: ghc-9.14.1`. Host-level fallback to ambient Fourmolu, HLint,
+  Cabal, GHC, or backend toolchains is unsupported. Root-level `compose.yaml`
+  exposes the canonical
   `docker compose up -d` + `docker compose exec mcts bash` entrypoint declared in
   the project [README](../README.md).
 - `cabal build all` succeeds inside the container with no warnings under the pinned
@@ -110,10 +115,22 @@ the reproducible Docker development environment that every later sprint builds o
 
 - Baseline landed: `mcts.cabal`, `cabal.project`, thin `app/Main.hs`,
   `src/MCTS/App.hs`, root formatter/lint files, and Docker scaffolding exist.
-- Add the full doctrine-standardized dependency set and the recorded `brick` / `vty`
-  TUI exceptions once the TUI modules land.
-- Finish Docker toolchain pinning for GHC `9.14.1`, Cabal `3.16.1.0`, one shared LLVM,
-  GCC, Rust, and `mimalloc`, then validate `cabal build all` inside that container.
+- The full doctrine-standardized dependency set now appears in `mcts.cabal`
+  (`optparse-applicative`, `text`, `bytestring`, `aeson`, `prettyprinter`,
+  `prettyprinter-ansi-terminal`, `ansi-terminal`, `path`, `path-io`,
+  `typed-process`, `safe-exceptions`, `tasty`, `tasty-hunit`,
+  `tasty-quickcheck`, `tasty-golden`, `temporary`). The recorded `brick` /
+  `vty` TUI exceptions remain open until the TUI modules land.
+- Docker toolchain pinning is now encoded in `docker/Dockerfile` for GHC `9.14.1`,
+  Cabal `3.16.1.0`, LLVM/BOLT `19`, GCC/G++, Rust `1.95.0`, and `mimalloc`;
+  the image also installs the isolated style-tool compiler GHC `9.12.4` and uses
+  it to install `fourmolu-0.19.0.1` plus `hlint-3.10` into
+  `/opt/mcts-style-tools/bin/`; root-level `compose.yaml` is the only supported
+  Compose entrypoint;
+  `docker build -f docker/Dockerfile -t mcts-dev-validate .` and
+  `docker run --rm -v "$PWD":/workspace/MCTS:ro -w /tmp
+  mcts-dev-validate sh -lc 'cp -a /workspace/MCTS /tmp/MCTS && cd /tmp/MCTS
+  && cabal update && cabal build all'` passed on 2026-05-14.
 - Keep `cabal build all` warning-clean under the pinned toolchain.
 
 ## Sprint 1.2: `CommandSpec` Registry and Parser Generation 🔄
@@ -375,15 +392,18 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
 
 ### Remaining Work
 
-- Baseline landed: `CommandSpec`, `OptionSpec`, `Example`, `Command` ADTs, manual
-  parser, `mcts commands`, `mcts commands --tree`, `mcts commands --json`, and
-  smoke `mcts help` exist.
-- Replace the manual parser with a real parser renderer from the `CommandSpec`
-  registry.
+- Baseline landed: `CommandSpec`, `OptionSpec`, `Example`, `Command` ADTs,
+  `mcts commands`, `mcts commands --tree`, `mcts commands --json`, and smoke
+  `mcts help` exist. `src/MCTS/CLI/Parser.hs` now exposes an
+  `optparse-applicative` `commandParserInfo`; `parseCommand` is implemented by
+  `execParserPure`, and the parser topology is rendered from the `CommandSpec`
+  tree with per-leaf semantic parsers.
 - Add the missing renderer modules or update the implementation ownership if the
   renderers intentionally stay in `src/MCTS/CLI/Spec.hs`.
-- Add parser tests via the doctrine-required `execParserPure` path and golden/schema
-  coverage for `mcts commands --json`.
+- Parser tests via the doctrine-required `execParserPure` path now cover the
+  bench cohort, legacy-parity, `inspect show --with-equity`, and the unhappy
+  `verify --rng native` path; byte-stable golden coverage for `mcts commands --json`
+  remains in `mcts-unit`.
 - Bind the README's full concrete invocation set into leaf `Example` entries.
 
 ## Sprint 1.3: Generated Artefacts Registry and Docs Pipeline 🔄
@@ -468,9 +488,11 @@ text-artefact derived from the `CommandSpec` registry.
   command-spec-derived doc is fully-generated); a non-empty rule
   set lands when a governed doc carries a marker region inside an
   otherwise-hand-authored file.
-- Split the current fully-generated `generatedFiles` / `trackingGeneratedPaths`
-  ownership out of `src/MCTS/CLI/Docs.hs` only if the final `src/MCTS/Generated/*`
-  module layout remains required.
+- The fully-generated path registry now lives in
+  `src/MCTS/Generated/Paths.hs`, and the marker-delimited section registry and
+  splice/check helpers live in `src/MCTS/Generated/Sections.hs`. `MCTS.CLI.Docs`
+  re-exports those values for compatibility while the command runner consumes the
+  split registries directly.
 
 ## Sprint 1.4: Lint Stack, `fourmolu.yaml`, `mcts-haskell-style` Stanza 🔄
 
@@ -496,10 +518,12 @@ forbidden-symbol HLint rules behind the `mcts-haskell-style` test stanza plus th
   `record-brace-space`, `newlines-between-decls`, `haddock-style`, `let-style`,
   `in-style`, `unicode`. `respectful: true` follows.
 - `.hlint.yaml` at repo root carries the doctrine's nested-case warnings plus
-  negative-space rules: `print`, `exitFailure`, `Text.IO.putStrLn`, direct terminal
-  formatting forbidden outside `src/MCTS/CLI/Output.hs`; `callProcess`,
+  direct-symbol negative-space rules for `print`, `exitFailure`,
+  `Text.IO.putStrLn`, direct terminal formatting, `callProcess`,
   `readCreateProcess`, `System.Process.createProcess`, `System.Process.proc`,
-  `System.Process.shell` forbidden outside `src/MCTS/Subprocess.hs`.
+  and `System.Process.shell`; source-walker owner exceptions are the current
+  bootstrap gate until the external `hlint` path gains equivalent module-scoped
+  enforcement.
 - `src/MCTS/CLI/Lint.hs` owns the current `mcts lint files|docs|haskell|all` runners.
   `mcts lint files` enforces the `forbiddenPathRegistry` (`.github/workflows/`,
   `.husky/`, `.githooks/`, `.pre-commit-config.yaml`, `pre-commit-*.yaml`, root
@@ -537,26 +561,29 @@ forbidden-symbol HLint rules behind the `mcts-haskell-style` test stanza plus th
 
 - Baseline landed: `fourmolu.yaml`, `.hlint.yaml`, `mcts lint files|docs|haskell|all`,
   `mcts check-code`, and the `mcts-haskell-style` Cabal stanza exist.
-  `.hlint.yaml` now carries the full doctrine-mandated forbidden-symbol set:
-  every `System.Process.*` constructor (`callProcess`, `readCreateProcess`,
-  `readCreateProcessWithExitCode`, `createProcess`, `proc`, `shell`) outside
-  `MCTS.Subprocess`, and every direct output primitive (`print`,
-  `exitFailure`, `Data.Text.IO.putStrLn`, `Data.Text.IO.hPutStrLn`) outside
-  `MCTS.CLI.Output`. The `mcts-haskell-style` stanza now also enforces
-  those rules at the source-file level by walking every `.hs` file
-  (excluding the lint stanza itself) and rejecting offending lines; this
-  is the canonical gate until the `hlint` binary lands in the Docker
-  image, at which point the rules will be enforced byte-equally through
-  both paths. The forbidden-path set is now a typed
+  `.hlint.yaml` now carries the full doctrine-mandated forbidden-symbol names:
+  the `System.Process.*` constructors (`callProcess`, `readCreateProcess`,
+  `readCreateProcessWithExitCode`, `createProcess`, `proc`, `shell`) and the
+  direct output primitives (`print`, `exitFailure`, `Data.Text.IO.putStrLn`,
+  `Data.Text.IO.hPutStrLn`). The `mcts-haskell-style` stanza currently enforces a
+  conservative source-walker subset by walking every `.hs` file
+  (excluding the lint stanza itself), rejecting tab characters, the direct
+  subprocess primitives it can identify textually, and direct
+  `exitFailure` / `Data.Text.IO.*PutStrLn` output calls outside their owner
+  modules. Unqualified `print` and the module-scoped HLint rules remain owned by
+  the external `hlint` path. The forbidden-path set is now a typed
   `forbiddenPathRegistry :: [ForbiddenPath]` value in `MCTS.CLI.Lint`,
   where each entry pairs a path with a rationale string; the `mcts-unit`
   stanza pins the registry against the doctrine's expected set and
   asserts every entry carries a non-empty reason.
-- Replace the manual stanza walker with real `fourmolu --mode check`,
-  `hlint --with-group=default --with-group=extra`, and `cabal format`
-  temp-file round-trip checks once the binaries are installed.
-- Move the `check-code` dispatcher out of the current `App` branch if the dedicated
-  `src/MCTS/CheckCode.hs` module remains the intended ownership.
+- The `mcts-haskell-style` stanza now runs `cabal format` through a temp-file
+  round-trip unconditionally and requires
+  `/opt/mcts-style-tools/bin/fourmolu` and `/opt/mcts-style-tools/bin/hlint`
+  from the container image. Host `PATH` fallback and skipped external style
+  tools are not supported closure paths. This keeps the project compiler pinned
+  to GHC `9.14.1` while matching the isolated formatter-tools GHC model.
+- The `check-code` dispatcher now lives in dedicated `src/MCTS/CheckCode.hs`;
+  `src/MCTS/App.hs` only routes the top-level constructor to that owner.
 
 ## Sprint 1.5: `Plan / Apply` Boundary 🔄
 
@@ -650,11 +677,12 @@ shared-library builds, and every subprocess call site go through one IO boundary
 - Interpreter API: `runStreaming :: Subprocess -> IO (Either AppError ExitCode)` and
   `capture :: Subprocess -> IO (Either AppError ProcessOutput)`. These are the **only**
   IO boundary for subprocess execution.
-- `.hlint.yaml` rules refuse `callProcess`, `readCreateProcess`,
+- `.hlint.yaml` rules name `callProcess`, `readCreateProcess`,
   `System.Process.createProcess`, `System.Process.proc`, `System.Process.shell`, and
-  `typed-process` smart constructors outside `src/MCTS/Subprocess.hs` per
+  future `typed-process` smart constructors per
   [../HASKELL_CLI_TOOL.md → Architecture → Subprocesses as Typed Values
-  → Forbidden patterns](../HASKELL_CLI_TOOL.md).
+  → Forbidden patterns](../HASKELL_CLI_TOOL.md). The current source-walker bootstrap
+  enforces owner-module exceptions for the direct textual subset it can check safely.
 
 ### Validation
 
@@ -667,12 +695,15 @@ shared-library builds, and every subprocess call site go through one IO boundary
 
 - Baseline landed: `Subprocess`, `renderSubprocess`, `runStreaming`, and `capture`
   exist and are used by the lint, docs/build gate, build harness, and test runner.
-- Complete the doctrine-forbidden subprocess HLint rules beyond the current minimal
-  `System.Process.callProcess` rule.
+- Keep the fallback source walker's conservative textual checks aligned with the
+  fuller `.hlint.yaml` rule set as the external `hlint` binary lands; once that
+  binary is pinned, `hlint` becomes the complete forbidden-symbol gate and the
+  source walker can stay a bootstrap guard or be removed.
 - Decide whether the final interpreter uses the doctrine's `typed-process` dependency
   or formally records the current `process`-package interpreter as a scoped deviation.
-- Add golden coverage for `renderSubprocess` and failure rendering through
-  `AppError SubprocessFailed`.
+- `test/golden/cli/subprocess.txt` now pins `renderSubprocess` shell quoting and
+  the unit suite asserts `AppError SubprocessFailed` includes the rendered command
+  and exit code.
 
 ## Sprint 1.7: `prerequisiteRegistry` 🔄
 
@@ -709,10 +740,11 @@ typed boundary and emits structured remedy hints on failure.
 
 - Baseline landed: `PrerequisiteNode`, `prerequisiteRegistry`,
   `checkPrerequisites`, `transitiveClosure`, and `registryHasCycle` exist.
-  The registry now carries real executable probes for `ghcup`, `ghc-9.14.1`,
-  `cabal`, `c++`, `llvm-config`, `llvm-bolt`, `rustup`, `cargo`, `rustc`,
-  and `mimalloc-redirect`, plus the `pgo-profiles` directory probe and the
-  `logical-backends` / `legacy-fixtures` stubs. `nodeDependsOn` carries the
+  The registry now carries real version-aware probes for `ghcup`, `ghc-9.14.1`,
+  `cabal`, `c++`, `llvm-config` (LLVM `19.x`), `llvm-bolt` (LLVM `19.x`),
+  `rustup`, `cargo` / `rustc` (`1.95.0`), and `mimalloc` via `pkg-config`,
+  plus the `pgo-profiles` directory probe and the `logical-backends` /
+  `legacy-fixtures` stubs. `nodeDependsOn` carries the
   dependency edges (`cargo`/`rustc` depend on `rustup`; `bolt` depends on
   `llvm`; `ghc-9.14.1`/`cabal-3.16.1.0` depend on `ghcup`).
   `prerequisitesForBuild` now resolves through `transitiveClosure`, so
@@ -720,10 +752,10 @@ typed boundary and emits structured remedy hints on failure.
   `pgo-profiles`, and `mimalloc` in dependency order. The `mcts-unit` stanza
   exercises the closure idempotence, the `bolt → llvm` edge, and asserts the
   registry is acyclic.
-- Add exact version checks (currently the executable probe only confirms
-  presence on `PATH`, not minor-version match). The matching pin happens in
-  Sprint `1.1` Docker image; the prerequisite probe checks should learn to
-  `--version`-parse and reject mismatches.
+- Exact GHC/Cabal checks landed for `ghc-9.14.1 --numeric-version == 9.14.1`
+  and `cabal --numeric-version == 3.16.1.0` through the typed `Subprocess`
+  capture boundary. The LLVM/BOLT `19.x`, Rust `1.95.0`, and `mimalloc`
+  probes now use the same typed `Subprocess` capture boundary.
 - Run prerequisite closure before every non-build Plan/Apply command that
   needs external tools.
 
@@ -850,9 +882,11 @@ Implement the single `AppError` ADT, the `renderError` boundary, and the `--form
   [../HASKELL_CLI_TOOL.md → Output Rules](../HASKELL_CLI_TOOL.md). Default format is
   `table` on a TTY, `plain` otherwise. The TUI commands (`mcts play`,
   `mcts inspect replay`) own their own rendering and ignore both flag families.
-- `.hlint.yaml` rules refuse `print`, `exitFailure`, `Text.IO.putStrLn`,
-  `Text.IO.hPutStrLn` (other than to `stderr` inside `Output.hs`), and direct
-  terminal-formatting calls outside `src/MCTS/CLI/Output.hs`.
+- `.hlint.yaml` rules name `print`, `exitFailure`, `Text.IO.putStrLn`,
+  `Text.IO.hPutStrLn`, and direct terminal-formatting calls. The source-walker
+  bootstrap currently enforces owner-module exceptions for
+  `exitFailure` / `Data.Text.IO.*PutStrLn`; complete module-scoped external HLint
+  parity remains open.
 
 ### Validation
 
@@ -868,15 +902,16 @@ Implement the single `AppError` ADT, the `renderError` boundary, and the `--form
 - Baseline landed: `AppError`, `EnvelopeMismatchScope`, `renderError`,
   `OutputOptions`, `--format`, `--color`, `--no-color`, stdout/stderr helpers, and
   command-level JSON/table/plain rendering paths exist. The `mcts-unit` stanza
-  now smoke-renders every `AppError` variant and asserts the `TranscriptNotFound`,
+  now smoke-renders every `AppError` variant, pins
+  `test/golden/cli/errors.txt`, and asserts the `TranscriptNotFound`,
   `DocsCheckDrift`, and `PrerequisiteUnmet` renderings carry the user-visible
   references (ref, remedy command, remedy hint).
-- Change the boundary to the doctrine-pinned `renderError :: AppError -> Text` shape
-  or update the plan if `String` remains a deliberate project-local simplification.
-  The wider `text`-package adoption is deferred until Sprint `1.1` adds the
-  doctrine-standardized stack.
-- Finish TTY-aware default format selection (`table` on TTY, `plain` otherwise) and
-  actual color handling.
+- The canonical `MCTS.Error.renderError` boundary now has the doctrine-pinned
+  `AppError -> Text` shape. `MCTS.CLI.Output.renderError` remains a
+  `String`-returning adapter for existing command runners while the wider output
+  renderer migrates.
+- TTY-aware default format selection landed (`table` on TTY, `plain` otherwise)
+  through `parseGlobalOutputOptionsIO`; actual color rendering remains open.
 - Add synthetic lint tests for direct terminal/output violations once Sprint `1.4`
   upgrades the style stanza to invoke real `fourmolu` / `hlint`.
 

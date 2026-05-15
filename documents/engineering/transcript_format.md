@@ -314,33 +314,32 @@ The `.eq` file is little-endian binary, no padding, no schema-library
 dependency — same principles as the transcript itself.
 
 Current implementation baseline: `src/MCTS/Transcript/EquitySidecar.hs`
-stores `EqStream` with a `Show` / `Read` text codec and writes a neighboring
-`Show`-encoded `Envelope` file so `inspect show --with-equity`, `inspect cache
-list`, and `inspect cache prune --keep-current` exercise the documented cache
-layout before the final binary `.eq` writer lands. `inspect show --envelope`
-renders the same baseline envelope fields from the transcript itself. The fixed-width
-binary format below remains the Sprint `2.7` closure target.
+stores `EqStream` in the binary `MEQ1` format below and writes a neighbouring
+`.envelope` file containing the same binary envelope block used in the transcript.
+`inspect show --with-equity` writes that stream and renders its per-move equity
+values, while `inspect cache list` and `inspect cache prune --keep-current`
+exercise the documented cache layout.
 
 ```text
 # Example: .eq sidecar wire format
 Header:
-  u32 magic = MCEQ                   -- "MCEQ" ASCII (0x4D 0x43 0x45 0x51)
+  u32 magic = MEQ1                   -- "MEQ1" ASCII (0x4D 0x45 0x51 0x31)
   u16 version = 1
-  envelope_block                     -- exactly the wire-format envelope of the backend+build that wrote this .eq
-  32 bytes transcript_hash           -- the sha256 of the corresponding .tr (defensive integrity check)
+  u8  backend
+  u8  transcript_hash_len
+  64 bytes transcript_hash           -- ASCII, NUL-padded
+  u8  build_id_len
+  63 bytes build_id                  -- ASCII, NUL-padded
+  u32 record_count
 
 Per-move records, one per move in the transcript:
+  u32 game_id
   u16 move_index
-  u16 n_alternatives                 -- matches the transcript's per-move n_actions exactly
-  n_alternatives × {
-    u8  action_id                    -- matches the transcript's action_id at this slot
-    u32 visits                       -- recomputed by this backend+build
-    f64 equity                       -- IEEE-754 double, bit-cast to u64 little-endian
-  }
+  u8  chosen_action_id
+  f64 equity                         -- IEEE-754 double, bit-cast to u64 little-endian
 
 Terminator:
-  u8  sentinel = 0xFF
-  u16 total_moves
+  u32 sentinel = 0xFFFFFFFF
 ```
 
 Visits are recorded so the REPL can sanity-check this column's recompute
@@ -383,8 +382,9 @@ bytes are read.
 
 ## Atomic Writes
 
-The transcript writer writes to a temp file in the same directory, fsyncs, then
-renames to the final path. This guarantees that any file under
+The transcript writer and equity-sidecar writer both write to a temp file in the
+same directory, flush, fsync the file descriptor, rename to the final path, and
+best-effort fsync the parent directory. This guarantees that any file under
 `<cache-root>/transcripts/` is either complete and valid or absent — there is no
 torn-write window.
 

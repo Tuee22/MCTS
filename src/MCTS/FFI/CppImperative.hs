@@ -10,13 +10,14 @@ module MCTS.FFI.CppImperative
     ( withCppImperativeBoard
     ) where
 
+import Foreign.Ptr (Ptr)
 import MCTS.Error (AppError)
-import MCTS.FFI.Common (liftFFI)
+import MCTS.FFI.Common (withDynamicBoard)
 import MCTS.Types (Backend (CppImperative))
 
-data CppImperativeBoard = CppImperativeBoard ()
+newtype CppImperativeBoard = CppImperativeBoard (Ptr ())
 
 withCppImperativeBoard :: (CppImperativeBoard -> IO a) -> IO (Either AppError a)
 withCppImperativeBoard body =
-    liftFFI CppImperative "mcts_imperative_new_board" $
-        body (CppImperativeBoard ())
+    withDynamicBoard CppImperative "cpp-imperative/build/libmcts_cpp_imperative.so" "mcts_imperative" $
+        body . CppImperativeBoard

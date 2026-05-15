@@ -28,7 +28,8 @@ see:
   `--format json|table|plain`, `--color auto|always|never`, `--no-color`,
   stdout-vs-stderr split.
 - [../../HASKELL_CLI_TOOL.md → Error Handling](../../HASKELL_CLI_TOOL.md) — single
-  `AppError` ADT, `renderError :: AppError -> Text` boundary.
+  `AppError` ADT, canonical `renderError :: AppError -> Text` boundary
+  (`MCTS.CLI.Output` currently exposes a String adapter for command runners).
 
 ## Command Matrix
 
@@ -64,13 +65,18 @@ registry that drives this table. Phase-owned per
 | `mcts check-code` | Doctrine alignment, formatter, hlint, warning-clean build, docs check |
 | `mcts build {cpp-legacy\|cpp-imperative\|cpp-functional\|rust} [--dry-run] [--plan-file <path>]` | Plan/Apply: per-backend build harness (PGO+BOLT pipeline) |
 
-Current implementation baseline: `inspect show --with-equity` writes a logical
-originator sidecar, `inspect cache list` enumerates `.eq` / `.envelope` slots,
-`inspect cache prune --keep-current` retains the logical `<backend>-logical`
-build id, `inspect show --envelope` renders the current envelope fields, and
-`inspect divergence` renders transcript-pair metrics from `MCTS.Verify.Divergence`.
-`mcts verify ... --allow-stale` is routed through the baseline envelope verifier.
-Live backend-envelope stale detection, foreign recompute, and the full cross-backend
+Current implementation baseline: `src/MCTS/CLI/Parser.hs` exposes
+`commandParserInfo`, an `optparse-applicative` parser rendered from the
+`CommandSpec` tree; verify parsers reject `--rng native` at the option-reader
+boundary. `inspect list` renders backend, seed, games, threading, sims,
+total moves, mtime, and path; `inspect show --with-equity` writes a logical
+originator sidecar and renders its stream-backed per-move equity column;
+`inspect cache list` enumerates `.eq` / `.envelope` slots; `inspect cache prune
+--keep-current` retains the logical `<backend>-logical` build id; `inspect show
+--envelope` renders the current envelope fields; and `inspect divergence` renders
+transcript-pair metrics from `MCTS.Verify.Divergence`. `mcts verify ...
+--allow-stale` is routed through the baseline envelope verifier. Live
+backend-envelope stale detection, foreign recompute, and the full cross-backend
 matrix remain active plan work.
 
 ## ADT Source of Truth

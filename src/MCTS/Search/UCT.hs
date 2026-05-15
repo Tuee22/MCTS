@@ -15,9 +15,9 @@ module MCTS.Search.UCT
 
 import Control.Monad.ST (ST, runST)
 import Data.Bits (xor)
-import Data.STRef (newSTRef, readSTRef, writeSTRef)
 import Data.Int (Int32)
 import Data.List (sortOn)
+import Data.STRef (newSTRef, readSTRef, writeSTRef)
 import Data.Word (Word32, Word64)
 import MCTS.Engine
     ( Board
@@ -25,8 +25,8 @@ import MCTS.Engine
     , legalMoves
     , terminalWinner
     )
-import qualified MCTS.Search.Arena as Arena
 import MCTS.Rng.Mix (mix)
+import qualified MCTS.Search.Arena as Arena
 import MCTS.Types
     ( Action
     , Winner (..)
@@ -44,7 +44,7 @@ import MCTS.Types
 -- Returns the highest-visit child action plus the visit list at the
 -- root sorted ascending by `action_id` so callers can pass the list
 -- straight to the transcript codec.
-{-# INLINABLE uctSearch #-}
+{-# INLINEABLE uctSearch #-}
 uctSearch :: Board -> Word64 -> Int -> Int -> (Action, [(Action, Word32)])
 uctSearch board seed nSims maxPlies =
     let (act, visits, _) = uctSearchWithEquity board seed nSims maxPlies
@@ -57,7 +57,7 @@ uctSearch board seed nSims maxPlies =
 --
 -- This is the kernel that the foreign-engine equity-recompute path in
 -- `MCTS.Engine.Recompute` reuses to populate `.eq` sidecar streams.
-{-# INLINABLE uctSearchWithEquity #-}
+{-# INLINEABLE uctSearchWithEquity #-}
 uctSearchWithEquity
     :: Board
     -> Word64
@@ -115,7 +115,7 @@ uctSearchWithEquity board seed nSims maxPlies = runST $ do
 -- perspective. Side-effects: increments `nid`'s visit count and value
 -- sum; expands `nid`'s children on second visit; lazily creates
 -- grandchildren on third visit; etc.
-{-# INLINABLE descend #-}
+{-# INLINEABLE descend #-}
 descend
     :: Arena.Arena s
     -> Arena.NodeId
@@ -229,7 +229,7 @@ pickByUctIndex arena firstChild numKids np = do
         pure (i, score)
 
 -- | Random rollout from `board` to a terminal state or the ply cap.
-{-# INLINABLE rollout #-}
+{-# INLINEABLE rollout #-}
 rollout :: Board -> Word64 -> Int -> Float
 rollout = go 0
   where

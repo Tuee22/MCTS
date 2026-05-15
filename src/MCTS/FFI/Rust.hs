@@ -9,13 +9,21 @@ module MCTS.FFI.Rust
     ( withRustBoard
     ) where
 
+import Foreign.Ptr (Ptr)
 import MCTS.Error (AppError)
-import MCTS.FFI.Common (liftFFI)
+import MCTS.FFI.Common (withDynamicBoard)
 import MCTS.Types (Backend (Rust))
+import qualified System.Info as Info
 
-data RustBoard = RustBoard ()
+newtype RustBoard = RustBoard (Ptr ())
 
 withRustBoard :: (RustBoard -> IO a) -> IO (Either AppError a)
 withRustBoard body =
-    liftFFI Rust "mcts_rust_new_board" $
-        body (RustBoard ())
+    withDynamicBoard Rust rustLibraryPath "mcts_rust" $
+        body . RustBoard
+
+rustLibraryPath :: FilePath
+rustLibraryPath =
+    case Info.os of
+        "darwin" -> "rust/target/release/libmcts_rust.dylib"
+        _ -> "rust/target/release/libmcts_rust.so"

@@ -2,14 +2,13 @@
 #
 # These rules mirror the doctrine's `Lint, Format, and Code-Quality Stack`
 # and `Forbidden Surfaces` sections. The rules are enforced two ways:
-#   1) `hlint` reads this file directly (when the binary is installed)
+#   1) The container-pinned `hlint` binary reads this file directly.
 #   2) The `mcts-haskell-style` stanza (test/haskell-style/Main.hs) walks
 #      every `.hs` file under `src/`, `app/`, and `test/` and rejects the
 #      forbidden symbols outside their named module.
 #
-# Until `hlint` is installed in the developer environment, the stanza's
-# fallback enforcement is the canonical gate. The rules below remain
-# authoritative so that `hlint` agrees byte-for-byte once available.
+# Host-level fallback is not supported; the stanza fails if the pinned
+# container binary is absent.
 
 - warn: {lhs: "case x of { _ -> y }", rhs: "y"}
 - ignore: {name: "Use camelCase"}

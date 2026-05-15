@@ -8,15 +8,16 @@ import MCTS.CLI.Build (runBuild)
 import MCTS.CLI.Command
 import MCTS.CLI.Docs (runDocs)
 import MCTS.CLI.Inspect (runInspect)
+import MCTS.CLI.Json (renderCommandJson)
 import MCTS.CLI.Lint (runLint)
 import MCTS.CLI.Output
 import MCTS.CLI.Parser (parseCommand)
-import MCTS.CLI.Spec (renderCommandJson, renderCommandList, renderCommandTree)
 import MCTS.CLI.Test (runTestCommand)
+import MCTS.CLI.Tree (renderCommandList, renderCommandTree)
 import MCTS.CLI.Verify (runVerifyCommand)
-import qualified MCTS.Driver as Driver
+import MCTS.CheckCode (runCheckCode)
 import MCTS.Driver (defaultRunInputs, runBatch)
-import MCTS.Subprocess (Subprocess (..), runStreaming)
+import qualified MCTS.Driver as Driver
 import MCTS.Types (Backend, RngSource (NativeRng), Workload (Selfplay), backendIdentifier)
 import System.Environment (getArgs)
 import System.Exit (ExitCode (..), exitWith)
@@ -29,7 +30,7 @@ main = do
 
 runWithArgs :: [String] -> IO Int
 runWithArgs rawArgs = do
-    let (output, args) = parseGlobalOutputOptions rawArgs
+    (output, args) <- parseGlobalOutputOptionsIO rawArgs
     case parseCommand args of
         Left err -> errLine (renderError err) >> pure 2
         Right command -> runCommand output command
@@ -58,11 +59,7 @@ runCommand output command =
         Help (HelpOptions target) ->
             outputLine ("help: mcts " <> unwords target <> "\nRun `mcts commands --tree` for the command tree.")
                 >> pure 0
-        CheckCode -> do
-            a <- runLint LintAll
-            b <- runDocs DocsCheck
-            c <- runBuildGate
-            pure (maximum [a, b, c])
+        CheckCode -> runCheckCode
         Play options -> runPlay options
 
 runPlay :: PlayOptions -> IO Int
@@ -91,10 +88,3 @@ runPlay options = do
 
 _keepBackend :: Backend -> Backend
 _keepBackend = id
-
-runBuildGate :: IO Int
-runBuildGate = do
-    result <- runStreaming (Subprocess "cabal" ["build", "all"] Nothing Nothing)
-    case result of
-        Right _ -> outputLine "build all PASS" >> pure 0
-        Left err -> outputLine (renderError err) >> pure 1

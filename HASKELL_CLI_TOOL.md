@@ -1805,12 +1805,12 @@ formatting, linting, and per-artifact code-quality enforcement are structured.
 
 ### Tool bootstrap
 
-`fourmolu` and `hlint` are installed by the lint pass itself to a pinned-GHC build
-directory under `.build/<project>-style-tools/bin/`, via `ghcup run` + `cabal install`.
-The pinned GHC version is declared in source (single constant) and isolated from the
-project's main compiler so formatting is reproducible across contributors and CI. The
-`.cabal` file is round-tripped through `cabal format` via a temp file and compared for
-byte-equality (no in-place rewrite during check).
+`fourmolu` and `hlint` are installed inside the project container with a pinned
+formatter-tools GHC, isolated from the project's main compiler so formatting is
+reproducible across contributors and CI. The lint pass invokes only those pinned
+container binaries; ambient host `PATH` fallback is not supported. The `.cabal` file is
+round-tripped through `cabal format` via a temp file and compared for byte-equality (no
+in-place rewrite during check).
 
 ### Pinned `fourmolu.yaml`
 

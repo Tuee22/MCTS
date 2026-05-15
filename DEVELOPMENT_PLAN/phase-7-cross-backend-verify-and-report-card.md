@@ -114,8 +114,8 @@ the real `mcts` binary across the FFI to every backend.
 
 ### Remaining Work
 
-- Baseline landed: `mcts-unit` and `mcts-integration` Cabal stanzas exist and pass
-  against the logical backend baseline. The `mcts-unit` stanza now covers the
+- Baseline landed: `mcts-unit` and `mcts-integration` Cabal stanzas exist and are
+  wired against the logical backend baseline. The `mcts-unit` stanza now covers the
   doctrine's required property-test categories at fixture scale: transcript
   `decode . encode == id`, sorted-record contract, cpp-legacy draw rejection,
   splitmix bounded bijection (`mix 42 i` unique for `i ∈ [0, 1023]`), every
@@ -127,18 +127,26 @@ the real `mcts` binary across the FFI to every backend.
   engine envelope round-trips through the unit stanza (cohort-invariant
   fields plus per-backend-slot fields). Golden fixtures under
   `test/golden/cli/` pin `commands --tree`, `commands --json`,
-  `commands --list`, and the report-card summary block (table + JSON) as
-  byte-stable strings. A byte-level transcript golden under
-  `test/golden/transcript-codec/` pins the v1 wire output for a known
-  2-game Haskell transcript. The binary equity sidecar codec (`MEQ1`
+  `commands --list`, `inspect show`, `inspect list --format json`, and the
+  report-card summary block (table + JSON), and `renderError` output for every
+  current `AppError` variant as byte-stable strings;
+  `test/golden/cli/subprocess.txt` pins `renderSubprocess` shell quoting.
+  Parser coverage now exercises `commandParserInfo` directly through
+  `execParserPure` for happy leaves and the `verify --rng native` failure path.
+  A byte-level transcript golden under
+  `test/golden/transcript-codec/` pins the v1 wire output for known
+  2-game Haskell, C++ imperative, C++ functional, and Rust-tagged transcripts.
+  `test/golden/engine/known-position.txt` pins a legal-move board snapshot.
+  The binary equity sidecar codec (`MEQ1`
   magic + 15-byte fixed-width records + `0xFFFFFFFF` terminator) round-
   trips arbitrary equity values through `castWord64ToDouble`. The `Env`
   scaffold (`MCTS.Env`) and `App` monad (`ReaderT Env IO`) exist and the
   `withTestClock` test-hook installs custom clocks for the Sprint 3.5
   monotonic-clock bracket assertion.
-- Replace hand-rolled assertions with the final `tasty`, `tasty-hunit`,
-  `tasty-quickcheck`, and golden-test organization.
-- Add parser tests through `execParserPure` once the parser renderer exists.
+- The `mcts-unit` runner now uses a `tasty` / `tasty-hunit` tree with the
+  existing baseline assertions grouped under one test case. Split the baseline
+  into the final fine-grained `tasty`, `tasty-quickcheck`, and golden-test
+  organization.
 - Strengthen integration tests to exercise the real `mcts` binary and FFI-backed
   backends rather than direct logical module calls.
 
@@ -260,8 +268,9 @@ and emits the tidy summary block answering Q1–Q7 in one screenful.
   3. Run `cabal build all` warning-clean under the pinned toolchain. (`mcts lint
      haskell` is exercised inside the `mcts-haskell-style` Cabal stanza in step 4;
      it does not need its own plan step here.)
-  4. Run `cabal test mcts-haskell-style` (`fourmolu --mode check` + `hlint
-     --with-group=default --with-group=extra` + `cabal format` round-trip).
+  4. Run `cabal test mcts-haskell-style` (pinned style-tool `fourmolu --mode check`
+     + `hlint --with-group=default --with-group=extra` + `cabal format`
+     round-trip).
   5. Run `cabal test mcts-unit`.
   6. Run `cabal test mcts-integration`.
   7. Run `cabal test mcts-cross-backend`.
@@ -515,8 +524,8 @@ a stored transcript with equity recomputed on the fly.
 ## Sprint 7.5: Layered Envelope Verify and Divergence Matrix 🔄
 
 **Status**: Active
-**Implementation**: `src/MCTS/Verify/Divergence.hs`, `src/MCTS/CLI/Inspect.hs`,
-`test/unit/Main.hs`
+**Implementation**: `src/MCTS/Verify/Divergence.hs`, `src/MCTS/Verify/Envelope.hs`,
+`src/MCTS/CLI/Inspect.hs`, `test/unit/Main.hs`
 **Docs to update**: `documents/engineering/determinism_contract.md`,
 `DEVELOPMENT_PLAN/system-components.md`,
 `DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md`
@@ -541,11 +550,13 @@ discovers cached sidecar columns for the transcript hash, and renders metrics th
 the shared helper instead of a fixed placeholder. `mcts-unit` covers the zero-divergence
 case and a changed-move nonzero case.
 
-`src/MCTS/Verify/Envelope.hs` also enforces the baseline layered envelope fields that
-exist today: cohort-level `host_arch` / envelope-version checks, backend-slot
-`backend` and logical `build_id` checks, and `--allow-stale` downgrading of backend-slot
-mismatches to warnings. The parser now carries `legacy-parity {rollouts|selfplay}` all
-the way to execution instead of collapsing it to self-play.
+`src/MCTS/Verify/Envelope.hs` also enforces the full logical v1 layered envelope fields
+that exist today: cohort-level `host_arch`, envelope-version, `rng_source`,
+`shared_rng_build_id`, and `cohort_config_hash` checks; backend-slot `backend`,
+logical `build_id`, `engine_build_id`, `compiler_id`, `fp_flags`, `cpu_features`, and
+`fp_env` checks; and `--allow-stale` downgrading of backend-slot mismatches to warnings.
+The parser now carries `legacy-parity {rollouts|selfplay}` all the way to execution
+instead of collapsing it to self-play.
 
 ### Deliverables
 
@@ -627,7 +638,8 @@ the way to execution instead of collapsing it to self-play.
 - Change `divergenceRate` from the baseline transcript-pair metric to the final
   `Transcript -> EqStream -> DivergenceMetrics` foreign-recompute scoring once
   per-backend recompute FFI lands.
-- Add calibrated threshold constants and report-card divergence matrix rendering.
+- Calibrated threshold constants are present in `cabal.project`; add report-card
+  divergence matrix rendering and keep the engineering-doc threshold table aligned.
 - Add stale-cache, REPL overlay, and report-card integration tests against real backend
   envelopes and recompute sidecars.
 

@@ -2,159 +2,263 @@ module MCTS.CLI.Parser
     ( parseCommand
     , parseBackends
     , parsePlanOptions
+    , commandParserInfo
     ) where
 
-import Data.Char (isDigit)
-import Data.List (isPrefixOf)
+import Control.Applicative ((<**>), (<|>))
+import Data.Foldable (fold)
 import Data.Word (Word16, Word64)
 import MCTS.CLI.Command
+import qualified MCTS.CLI.Spec as Spec
 import MCTS.Driver
 import MCTS.Error (AppError (..))
 import MCTS.Plan (PlanOptions (..))
 import MCTS.Types
+import qualified Options.Applicative as OA
 
 parseCommand :: [String] -> Either AppError Command
+parseCommand [] = Right (Commands (CommandsOptions True False))
 parseCommand args =
-    case args of
-        [] -> Right (Commands (CommandsOptions True False))
-        "commands" : rest ->
-            Right (Commands (CommandsOptions ("--tree" `elem` rest) ("--json" `elem` rest)))
-        "help" : rest -> Right (Help (HelpOptions rest))
-        ["check-code"] -> Right CheckCode
-        "bench" : "rollouts" : rest -> parseBench Rollouts rest
-        "bench" : "selfplay" : rest -> parseBench Selfplay rest
-        "verify" : "rollouts" : rest -> parseVerify Rollouts rest
-        "verify" : "selfplay" : rest -> parseVerify Selfplay rest
-        "verify" : "legacy-parity" : workload : rest ->
-            case parseWorkload workload of
-                Just wl -> parseLegacy wl rest
-                Nothing -> Left (ParseError "legacy-parity workload must be rollouts or selfplay")
-        "inspect" : "list" : rest -> Right (Inspect (InspectList (flagValue "--cache-dir" rest)))
-        "inspect" : "show" : ref : rest ->
-            Right
-                ( Inspect
-                    ( InspectShow
-                        ShowOptions
-                            { showRef = ref
-                            , showTopN = intFlag "--top" 10 rest
-                            , showWithEquity = "--with-equity" `elem` rest
-                            , showEnvelope = "--envelope" `elem` rest
-                            , showCacheDir = flagValue "--cache-dir" rest
-                            }
-                    )
+    case OA.execParserPure OA.defaultPrefs commandParserInfo args of
+        OA.Success command -> validateCommand command
+        OA.Failure failure ->
+            let (message, _) = OA.renderFailure failure "mcts"
+             in Left (ParseError (trimTrailingNewlines message))
+        OA.CompletionInvoked _ -> Right (Commands (CommandsOptions True False))
+
+commandParserInfo :: OA.ParserInfo Command
+commandParserInfo =
+    OA.info
+        (commandTreeParser <**> OA.helper)
+        (OA.fullDesc <> OA.progDesc (Spec.summary Spec.commandSpec))
+
+commandTreeParser :: OA.Parser Command
+commandTreeParser = childrenParser [] Spec.commandSpec
+
+childrenParser :: [String] -> Spec.CommandSpec -> OA.Parser Command
+childrenParser prefix spec =
+    OA.hsubparser . fold $
+        [ OA.command
+            (Spec.name child)
+            ( OA.info
+                (nodeParser (prefix <> [Spec.name child]) child <**> OA.helper)
+                (OA.progDesc (Spec.summary child))
+            )
+        | child <- Spec.children spec
+        , Spec.name child /= "<stanza>"
+        ]
+
+nodeParser :: [String] -> Spec.CommandSpec -> OA.Parser Command
+nodeParser path spec
+    | path == ["test"] = testParser
+    | null (Spec.children spec) =
+        case leafParser path of
+            Just parser -> parser
+            Nothing -> pure (Help (HelpOptions path))
+    | otherwise = childrenParser path spec
+
+leafParser :: [String] -> Maybe (OA.Parser Command)
+leafParser path =
+    case path of
+        ["bench", "rollouts"] -> Just (benchParser Rollouts)
+        ["bench", "selfplay"] -> Just (benchParser Selfplay)
+        ["verify", "rollouts"] -> Just (verifyParser Rollouts)
+        ["verify", "selfplay"] -> Just (verifyParser Selfplay)
+        ["verify", "legacy-parity"] -> Just legacyParityParser
+        ["play"] -> Just (Play <$> playParser)
+        ["inspect", "list"] -> Just (Inspect . InspectList <$> optionalStringOption "cache-dir" "DIR" "Transcript cache root")
+        ["inspect", "show"] -> Just (Inspect . InspectShow <$> showParser)
+        ["inspect", "replay"] -> Just (Inspect . InspectReplay <$> replayParser)
+        ["inspect", "cache", "list"] ->
+            Just
+                ( Inspect . InspectCache . CacheList
+                    <$> optionalStringOption "cache-dir" "DIR" "Transcript cache root"
                 )
-        "inspect" : "replay" : ref : rest ->
-            Right
-                ( Inspect
-                    ( InspectReplay
-                        ReplayOptions
-                            { replayRef = ref
-                            , replayTopN = intFlag "--top" 10 rest
-                            , replayCacheStates = intFlag "--cache-states" 20 rest
-                            , replayCacheDir = flagValue "--cache-dir" rest
-                            }
-                    )
-                )
-        "inspect" : "cache" : "list" : rest ->
-            Right (Inspect (InspectCache (CacheList (flagValue "--cache-dir" rest))))
-        "inspect" : "cache" : "prune" : rest ->
-            Right (Inspect (InspectCache (CachePrune ("--keep-current" `elem` rest) (flagValue "--cache-dir" rest))))
-        "inspect" : "divergence" : ref : rest ->
-            Right (Inspect (InspectDivergence (DivergenceOptions ref (flagValue "--cache-dir" rest))))
-        "test" : "all" : rest -> Right (Test (TestAll (parsePlanOptions rest)))
-        "test" : stanza : _ -> Right (Test (TestStanza stanza))
-        "lint" : "files" : rest -> Right (Lint (LintFiles ("--write" `elem` rest)))
-        "lint" : "docs" : rest -> Right (Lint (LintDocs ("--write" `elem` rest)))
-        "lint" : "haskell" : rest -> Right (Lint (LintHaskell ("--write" `elem` rest)))
-        ["lint", "all"] -> Right (Lint LintAll)
-        "docs" : "check" : _ -> Right (Docs DocsCheck)
-        "docs" : "generate" : rest -> Right (Docs (DocsGenerate ("--dry-run" `elem` rest) (flagValue "--plan-file" rest)))
-        "build" : backend : rest -> parseBuild backend rest
-        "play" : rest -> Play <$> parsePlay rest
-        command : _ -> Left (UnknownCommand command)
+        ["inspect", "cache", "prune"] -> Just (Inspect . InspectCache <$> cachePruneParser)
+        ["inspect", "divergence"] -> Just (Inspect . InspectDivergence <$> divergenceParser)
+        ["lint", "files"] -> Just (Lint . LintFiles <$> writeSwitch)
+        ["lint", "docs"] -> Just (Lint . LintDocs <$> writeSwitch)
+        ["lint", "haskell"] -> Just (Lint . LintHaskell <$> writeSwitch)
+        ["lint", "all"] -> Just (pure (Lint LintAll))
+        ["docs", "check"] -> Just (pure (Docs DocsCheck))
+        ["docs", "generate"] -> Just (Docs <$> docsGenerateParser)
+        ["commands"] -> Just (Commands <$> commandsParser)
+        ["help"] -> Just (Help . HelpOptions <$> manyStringArguments "COMMAND")
+        ["check-code"] -> Just (pure CheckCode)
+        ["build", "cpp-legacy"] -> Just (Build . BuildCppLegacy <$> planOptionsParser)
+        ["build", "cpp-imperative"] -> Just (Build . BuildCppImperative <$> planOptionsParser)
+        ["build", "cpp-functional"] -> Just (Build . BuildCppFunctional <$> planOptionsParser)
+        ["build", "rust"] -> Just (Build . BuildRust <$> planOptionsParser)
+        _ -> Nothing
 
-parseBuild :: String -> [String] -> Either AppError Command
-parseBuild backend rest =
-    let opts = parsePlanOptions rest
-     in case backend of
-            "cpp-legacy" -> Right (Build (BuildCppLegacy opts))
-            "cpp-imperative" -> Right (Build (BuildCppImperative opts))
-            "cpp-functional" -> Right (Build (BuildCppFunctional opts))
-            "rust" -> Right (Build (BuildRust opts))
-            _ -> Left (ParseError ("unknown build backend: " <> backend))
-
-parseBench :: Workload -> [String] -> Either AppError Command
-parseBench workload rest = do
-    inputs <- parseRunInputs workload rest
-    backends <-
-        case flagValue "--backend" rest of
-            Nothing -> Right [inputBackend inputs]
-            Just raw -> parseBackends raw
-    Right (Bench (if workload == Rollouts then BenchRollouts backends inputs else BenchSelfplay backends inputs))
-
-parseVerify :: Workload -> [String] -> Either AppError Command
-parseVerify workload rest = do
-    rejectNativeVerifyRng rest
-    inputs <- parseRunInputs workload rest
-    backends <- parseBackends =<< requiredFlag "--backend" rest
-    if any (== CppLegacy) backends
-        then Left (VerifyCohortTooSmall "cpp-legacy is excluded from verify")
-        else Right (Verify (if workload == Rollouts then VerifyRollouts allowStale backends inputs else VerifySelfplay allowStale backends inputs))
+benchParser :: Workload -> OA.Parser Command
+benchParser workload =
+    mk <$> runOptionsParser workload NativeRng True False
   where
-    allowStale = "--allow-stale" `elem` rest
+    mk opts =
+        let inputs = runOptionsToInputs workload opts
+            backends = maybe [inputBackend inputs] id (runBackends opts)
+         in Bench
+                (if workload == Rollouts then BenchRollouts backends inputs else BenchSelfplay backends inputs)
 
-parseLegacy :: Workload -> [String] -> Either AppError Command
-parseLegacy workload rest = do
-    rejectNativeVerifyRng rest
-    inputs <- parseRunInputs workload rest
-    backends <- parseBackends =<< requiredFlag "--backend" rest
-    Right (Verify (VerifyLegacyParity workload ("--allow-stale" `elem` rest) backends inputs))
+verifyParser :: Workload -> OA.Parser Command
+verifyParser workload =
+    mk
+        <$> allowStaleSwitch
+        <*> runOptionsParser workload CppRng False True
+  where
+    mk allowStale opts =
+        let inputs = runOptionsToInputs workload opts
+            backends = maybe [] id (runBackends opts)
+         in Verify
+                ( if workload == Rollouts
+                    then VerifyRollouts allowStale backends inputs
+                    else VerifySelfplay allowStale backends inputs
+                )
 
-rejectNativeVerifyRng :: [String] -> Either AppError ()
-rejectNativeVerifyRng rest =
-    case flagValue "--rng" rest of
-        Just "native" -> Left (ParseError "verify requires --rng cpp; omit --rng or pass --rng cpp")
-        _ -> Right ()
+legacyParityParser :: OA.Parser Command
+legacyParityParser =
+    mk
+        <$> workloadArgument
+        <*> allowStaleSwitch
+        <*> runOptionsParser Selfplay CppRng False True
+  where
+    mk workload allowStale opts =
+        let inputs = runOptionsToInputs workload opts
+            backends = maybe [] id (runBackends opts)
+         in Verify (VerifyLegacyParity workload allowStale backends inputs)
 
-parseRunInputs :: Workload -> [String] -> Either AppError RunInputs
-parseRunInputs workload rest = do
-    let backend = maybe Haskell id (flagValue "--backend" rest >>= parseBackend . takeWhile (/= ','))
-        rng = maybe NativeRng id (flagValue "--rng" rest >>= parseRngSource)
-        threading =
-            case flagValue "--threading" rest of
-                Just "single" -> SingleThreaded
-                Just "multi" -> MultiThreaded (intFlag "--workers" 8 rest)
-                _ -> if "--workers" `elem` map (takeWhile (/= '=')) rest then MultiThreaded (intFlag "--workers" 8 rest) else MultiThreaded 8
-        games = intFlag "--games" 1 rest
-        seed = integerFlag "--seed" 42 rest
-        maxPlies = fromIntegral (intFlag "--max-plies" 200 rest) :: Word16
-        sims = maybe (FixedSims 10000) id (flagValue "--sims" rest >>= parseSimBudget)
-    Right
-        defaultRunInputs
-            { inputBackend = backend
-            , inputWorkload = workload
-            , inputRng = rng
-            , inputThreading = threading
-            , inputGames = games
-            , inputSeed = fromIntegral (seed :: Integer) :: Word64
-            , inputMaxPlies = maxPlies
-            , inputSims = sims
-            , inputCacheDir = flagValue "--cache-dir" rest
-            }
+data RunOptions = RunOptions
+    { runBackends :: !(Maybe [Backend])
+    , runRng :: !RngSource
+    , runThreadingOption :: !Threading
+    , runGamesOption :: !Int
+    , runSeed :: !Word64
+    , runMaxPliesOption :: !Word16
+    , runSims :: !SimBudget
+    , runCacheDir :: !(Maybe FilePath)
+    }
 
-parsePlay :: [String] -> Either AppError PlayOptions
-parsePlay rest = do
-    backend <- maybe (Right Haskell) (maybe (Left (ParseError "bad --backend")) Right . parseBackend) (flagValue "--backend" rest)
-    side <-
-        case flagValue "--side" rest of
-            Just "hero" -> Right Hero
-            Just "villain" -> Right Villain
-            Nothing -> Right Hero
-            Just value -> Left (ParseError ("bad --side: " <> value))
-    let vs = flagValue "--vs" rest >>= parseBackend
-        sims = maybe (FixedSims 1000) id (flagValue "--sims" rest >>= parseSimBudget)
-        seed = integerFlagMaybe "--seed" rest
-    Right PlayOptions{playBackend = backend, playSide = side, playVs = vs, playSims = sims, playSeed = seed}
+runOptionsParser :: Workload -> RngSource -> Bool -> Bool -> OA.Parser RunOptions
+runOptionsParser workload defaultRng allowNativeRng backendRequired =
+    RunOptions
+        <$> backendParser
+        <*> rngOption defaultRng allowNativeRng
+        <*> threadingOption
+        <*> OA.option
+            OA.auto
+            (OA.long "games" <> OA.metavar "N" <> OA.value 1 <> OA.showDefault <> OA.help "Number of games")
+        <*> OA.option
+            OA.auto
+            (OA.long "seed" <> OA.metavar "U64" <> OA.value 42 <> OA.showDefault <> OA.help "Master seed")
+        <*> ( fromIntegral
+                <$> OA.option
+                    OA.auto
+                    ( OA.long "max-plies"
+                        <> OA.metavar "N"
+                        <> OA.value (200 :: Int)
+                        <> OA.showDefault
+                        <> OA.help "Maximum plies per game"
+                    )
+            )
+        <*> OA.option
+            simBudgetReader
+            ( OA.long "sims"
+                <> OA.metavar "N|A:B"
+                <> OA.value (defaultSims workload)
+                <> OA.showDefaultWith renderSimBudget
+                <> OA.help "Simulation budget"
+            )
+        <*> optionalStringOption "cache-dir" "DIR" "Transcript cache root"
+  where
+    backendParser =
+        if backendRequired
+            then Just <$> backendListOption
+            else OA.optional backendListOption
+
+runOptionsToInputs :: Workload -> RunOptions -> RunInputs
+runOptionsToInputs workload options =
+    defaultRunInputs
+        { inputBackend = maybe Haskell headBackend (runBackends options)
+        , inputWorkload = workload
+        , inputRng = runRng options
+        , inputThreading = runThreadingOption options
+        , inputGames = runGamesOption options
+        , inputSeed = runSeed options
+        , inputMaxPlies = runMaxPliesOption options
+        , inputSims = runSims options
+        , inputCacheDir = runCacheDir options
+        }
+  where
+    headBackend [] = Haskell
+    headBackend (backend : _) = backend
+
+defaultSims :: Workload -> SimBudget
+defaultSims workload =
+    case workload of
+        Rollouts -> FixedSims 10000
+        Selfplay -> FixedSims 10000
+
+renderSimBudget :: SimBudget -> String
+renderSimBudget budget =
+    case budget of
+        FixedSims n -> show n
+        RampedSims first perMove -> show first <> ":" <> show perMove
+
+threadingOption :: OA.Parser Threading
+threadingOption =
+    mk
+        <$> OA.option
+            threadingReader
+            ( OA.long "threading"
+                <> OA.metavar "single|multi"
+                <> OA.value (MultiThreaded 8)
+                <> OA.help "Threading mode"
+            )
+        <*> OA.option
+            OA.auto
+            ( OA.long "workers"
+                <> OA.metavar "N"
+                <> OA.value (8 :: Int)
+                <> OA.showDefault
+                <> OA.help "Worker count for --threading multi"
+            )
+  where
+    mk mode workers =
+        case mode of
+            SingleThreaded -> SingleThreaded
+            MultiThreaded _ -> MultiThreaded (max 1 workers)
+
+playParser :: OA.Parser PlayOptions
+playParser =
+    PlayOptions
+        <$> OA.option
+            backendReader
+            ( OA.long "backend"
+                <> OA.metavar "BACKEND"
+                <> OA.value Haskell
+                <> OA.showDefaultWith backendIdentifier
+                <> OA.help "Backend"
+            )
+        <*> OA.option
+            sideReader
+            ( OA.long "side"
+                <> OA.metavar "hero|villain"
+                <> OA.value Hero
+                <> OA.showDefaultWith renderSide
+                <> OA.help "Human side"
+            )
+        <*> OA.optional
+            (OA.option backendReader (OA.long "vs" <> OA.metavar "BACKEND" <> OA.help "Opponent backend"))
+        <*> OA.option
+            simBudgetReader
+            ( OA.long "sims"
+                <> OA.metavar "N|A:B"
+                <> OA.value (FixedSims 1000)
+                <> OA.showDefaultWith renderSimBudget
+                <> OA.help "Simulation budget"
+            )
+        <*> OA.optional (OA.option OA.auto (OA.long "seed" <> OA.metavar "U64" <> OA.help "Master seed"))
 
 parseBackends :: String -> Either AppError [Backend]
 parseBackends raw =
@@ -165,61 +269,205 @@ parseBackends raw =
             Just values -> Right values
             Nothing -> Left (ParseError ("bad backend list: " <> raw))
 
-parseWorkload :: String -> Maybe Workload
-parseWorkload value =
-    case value of
-        "rollouts" -> Just Rollouts
-        "selfplay" -> Just Selfplay
-        _ -> Nothing
+showParser :: OA.Parser ShowOptions
+showParser =
+    ShowOptions
+        <$> OA.strArgument (OA.metavar "HASH-PREFIX")
+        <*> OA.option
+            OA.auto
+            (OA.long "top" <> OA.metavar "N" <> OA.value 10 <> OA.showDefault <> OA.help "Rows per move to show")
+        <*> OA.switch (OA.long "with-equity" <> OA.help "Recompute and render equity sidecar values")
+        <*> OA.switch (OA.long "envelope" <> OA.help "Render transcript envelope")
+        <*> optionalStringOption "cache-dir" "DIR" "Transcript cache root"
+
+replayParser :: OA.Parser ReplayOptions
+replayParser =
+    ReplayOptions
+        <$> OA.strArgument (OA.metavar "HASH-PREFIX")
+        <*> OA.option
+            OA.auto
+            (OA.long "top" <> OA.metavar "N" <> OA.value 10 <> OA.showDefault <> OA.help "Rows per move to show")
+        <*> OA.option
+            OA.auto
+            ( OA.long "cache-states"
+                <> OA.metavar "N"
+                <> OA.value 20
+                <> OA.showDefault
+                <> OA.help "Replay state cache size"
+            )
+        <*> optionalStringOption "cache-dir" "DIR" "Transcript cache root"
+
+cachePruneParser :: OA.Parser CacheCommand
+cachePruneParser =
+    CachePrune
+        <$> OA.switch (OA.long "keep-current" <> OA.help "Keep current backend/build sidecars")
+        <*> optionalStringOption "cache-dir" "DIR" "Transcript cache root"
+
+divergenceParser :: OA.Parser DivergenceOptions
+divergenceParser =
+    DivergenceOptions
+        <$> OA.strArgument (OA.metavar "HASH-PREFIX")
+        <*> optionalStringOption "cache-dir" "DIR" "Transcript cache root"
+
+testParser :: OA.Parser Command
+testParser =
+    (Test . TestAll <$> allParser)
+        <|> (Test . TestStanza <$> OA.strArgument (OA.metavar "STANZA"))
+  where
+    allParser =
+        OA.hsubparser
+            ( OA.command
+                "all"
+                (OA.info (planOptionsParser <**> OA.helper) (OA.progDesc "Run full suite and report card"))
+            )
+
+docsGenerateParser :: OA.Parser DocsCommand
+docsGenerateParser =
+    DocsGenerate
+        <$> OA.switch (OA.long "dry-run" <> OA.help "Render the plan without writing")
+        <*> optionalStringOption "plan-file" "PATH" "Write the generated plan to a file"
+
+commandsParser :: OA.Parser CommandsOptions
+commandsParser =
+    CommandsOptions
+        <$> OA.switch (OA.long "tree" <> OA.help "Render command tree")
+        <*> OA.switch (OA.long "json" <> OA.help "Render command schema as JSON")
+
+planOptionsParser :: OA.Parser PlanOptions
+planOptionsParser =
+    PlanOptions
+        <$> OA.switch (OA.long "dry-run" <> OA.help "Render the plan without applying it")
+        <*> optionalStringOption "plan-file" "PATH" "Write the generated plan to a file"
 
 parsePlanOptions :: [String] -> PlanOptions
-parsePlanOptions rest =
-    PlanOptions
-        { planDryRun = "--dry-run" `elem` rest
-        , planFile = flagValue "--plan-file" rest
-        }
+parsePlanOptions args =
+    case OA.execParserPure OA.defaultPrefs (OA.info planOptionsParser OA.fullDesc) args of
+        OA.Success options -> options
+        _ -> PlanOptions False Nothing
 
-requiredFlag :: String -> [String] -> Either AppError String
-requiredFlag key args =
-    case flagValue key args of
-        Just value -> Right value
-        Nothing -> Left (ParseError ("missing " <> key))
+backendListOption :: OA.Parser [Backend]
+backendListOption =
+    OA.option
+        backendListReader
+        (OA.long "backend" <> OA.metavar "BACKENDS" <> OA.help "Comma-separated backend list")
 
-flagValue :: String -> [String] -> Maybe String
-flagValue key args =
-    case args of
-        [] -> Nothing
-        x : y : rest
-            | x == key -> Just y
-            | (key <> "=") `isPrefixOf` x -> Just (drop (length key + 1) x)
-            | otherwise -> flagValue key (y : rest)
-        [x]
-            | (key <> "=") `isPrefixOf` x -> Just (drop (length key + 1) x)
-            | otherwise -> Nothing
+backendReader :: OA.ReadM Backend
+backendReader =
+    OA.eitherReader $ \raw ->
+        case parseBackend raw of
+            Just backend -> Right backend
+            Nothing -> Left ("unknown backend: " <> raw)
 
-intFlag :: String -> Int -> [String] -> Int
-intFlag key fallback args =
-    maybe fallback (readDigits fallback) (flagValue key args)
+backendListReader :: OA.ReadM [Backend]
+backendListReader =
+    OA.eitherReader $ \raw ->
+        case parseBackends raw of
+            Right backends -> Right backends
+            Left err -> Left (show err)
 
-integerFlag :: String -> Integer -> [String] -> Integer
-integerFlag key fallback args =
-    maybe fallback (readInteger fallback) (flagValue key args)
+rngOption :: RngSource -> Bool -> OA.Parser RngSource
+rngOption defaultRng allowNativeRng =
+    OA.option
+        (rngReader allowNativeRng)
+        ( OA.long "rng"
+            <> OA.metavar "native|cpp"
+            <> OA.value defaultRng
+            <> OA.showDefaultWith renderRng
+            <> OA.help "RNG source"
+        )
 
-integerFlagMaybe :: String -> [String] -> Maybe Integer
-integerFlagMaybe key args = readInteger 0 <$> flagValue key args
+rngReader :: Bool -> OA.ReadM RngSource
+rngReader allowNativeRng =
+    OA.eitherReader $ \raw ->
+        case parseRngSource raw of
+            Just NativeRng
+                | not allowNativeRng -> Left "verify requires --rng cpp; omit --rng or pass --rng cpp"
+            Just rng -> Right rng
+            Nothing -> Left ("bad --rng: " <> raw)
 
-readDigits :: Int -> String -> Int
-readDigits fallback value
-    | not (null value) && all isDigit value = read value
-    | otherwise = fallback
+threadingReader :: OA.ReadM Threading
+threadingReader =
+    OA.eitherReader $ \raw ->
+        case raw of
+            "single" -> Right SingleThreaded
+            "multi" -> Right (MultiThreaded 8)
+            _ -> Left ("bad --threading: " <> raw)
 
-readInteger :: Integer -> String -> Integer
-readInteger fallback value
-    | not (null value) && all isDigit value = read value
-    | otherwise = fallback
+simBudgetReader :: OA.ReadM SimBudget
+simBudgetReader =
+    OA.eitherReader $ \raw ->
+        case parseSimBudget raw of
+            Just budget -> Right budget
+            Nothing -> Left ("bad --sims: " <> raw)
+
+sideReader :: OA.ReadM Side
+sideReader =
+    OA.eitherReader $ \raw ->
+        case raw of
+            "hero" -> Right Hero
+            "villain" -> Right Villain
+            _ -> Left ("bad --side: " <> raw)
+
+workloadArgument :: OA.Parser Workload
+workloadArgument =
+    OA.argument
+        ( OA.eitherReader $ \raw ->
+            case raw of
+                "rollouts" -> Right Rollouts
+                "selfplay" -> Right Selfplay
+                _ -> Left "legacy-parity workload must be rollouts or selfplay"
+        )
+        (OA.metavar "rollouts|selfplay")
+
+allowStaleSwitch :: OA.Parser Bool
+allowStaleSwitch =
+    OA.switch
+        (OA.long "allow-stale" <> OA.help "Downgrade backend-slot envelope mismatches to warnings")
+
+writeSwitch :: OA.Parser Bool
+writeSwitch = OA.switch (OA.long "write" <> OA.help "Apply fixes where supported")
+
+optionalStringOption :: String -> String -> String -> OA.Parser (Maybe String)
+optionalStringOption longName metavar helpText =
+    OA.optional (OA.strOption (OA.long longName <> OA.metavar metavar <> OA.help helpText))
+
+manyStringArguments :: String -> OA.Parser [String]
+manyStringArguments metavar =
+    OA.many (OA.strArgument (OA.metavar metavar))
+
+validateCommand :: Command -> Either AppError Command
+validateCommand command =
+    case command of
+        Verify (VerifyRollouts _ backends inputs) -> validateVerify backends inputs command
+        Verify (VerifySelfplay _ backends inputs) -> validateVerify backends inputs command
+        Verify (VerifyLegacyParity _ _ _ inputs)
+            | inputRng inputs == NativeRng ->
+                Left (ParseError "verify requires --rng cpp; omit --rng or pass --rng cpp")
+        _ -> Right command
+  where
+    validateVerify backends inputs original
+        | inputRng inputs == NativeRng =
+            Left (ParseError "verify requires --rng cpp; omit --rng or pass --rng cpp")
+        | any (== CppLegacy) backends = Left (VerifyCohortTooSmall "cpp-legacy is excluded from verify")
+        | otherwise = Right original
+
+renderRng :: RngSource -> String
+renderRng rng =
+    case rng of
+        NativeRng -> "native"
+        CppRng -> "cpp"
+
+renderSide :: Side -> String
+renderSide side =
+    case side of
+        Hero -> "hero"
+        Villain -> "villain"
 
 splitCommas :: String -> [String]
 splitCommas raw =
     case break (== ',') raw of
         (one, "") -> [one | not (null one)]
         (one, _ : rest) -> [one | not (null one)] <> splitCommas rest
+
+trimTrailingNewlines :: String -> String
+trimTrailingNewlines = reverse . dropWhile (== '\n') . reverse

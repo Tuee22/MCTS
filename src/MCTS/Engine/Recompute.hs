@@ -29,7 +29,6 @@ import MCTS.Types
     , RunConfig (..)
     , SimBudget (..)
     , Transcript (..)
-    , actionId
     , simPerMove
     )
 
@@ -43,8 +42,16 @@ recomputeEquities transcript =
     let config = transcriptConfig transcript
         masterSeed = runMasterSeed config
         rng = runRngSource config
-        sims = max 1 (case (runInitialSims config, runPerMoveSims config) of
-            (i, p) -> fromIntegral (simPerMove (if i == p then FixedSims (fromIntegral p) else RampedSims (fromIntegral i) (fromIntegral p))))
+        sims =
+            max
+                1
+                ( case (runInitialSims config, runPerMoveSims config) of
+                    (i, p) ->
+                        fromIntegral
+                            ( simPerMove
+                                (if i == p then FixedSims (fromIntegral p) else RampedSims (fromIntegral i) (fromIntegral p))
+                            )
+                )
         maxPlies = min 60 (fromIntegral (runMaxPlies config))
      in concatMapEither
             (recomputeGame masterSeed rng sims maxPlies)
@@ -85,6 +92,7 @@ recomputeGame masterSeed rng sims maxPlies game =
     let perGameSeed = mix masterSeed (fromIntegral (gameId game))
      in stepRecords perGameSeed initialBoard 0 (gameMoves game) []
   where
+    stepRecords :: Word64 -> Board -> Int -> [MoveRecord] -> [EqRecord] -> Either AppError [EqRecord]
     stepRecords _ _ _ [] acc = Right (reverse acc)
     stepRecords seed board moveNo (recorded : rest) acc =
         let salt = case rng of

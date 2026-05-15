@@ -8,8 +8,9 @@ module MCTS.CLI.Lint
 
 import Data.List (isPrefixOf, isSuffixOf)
 import MCTS.CLI.Command (DocsCommand (..), LintCommand (..))
-import MCTS.CLI.Docs (generatedFiles, runDocs)
+import MCTS.CLI.Docs (runDocs)
 import MCTS.CLI.Output (outputLine, renderError)
+import MCTS.Generated.Paths (generatedFiles)
 import MCTS.Subprocess (Subprocess (..), runStreaming)
 import System.Directory (doesDirectoryExist, doesFileExist, listDirectory)
 import System.FilePath ((</>))
@@ -40,7 +41,7 @@ runStyleStanza = do
 
 lintFiles :: IO [String]
 lintFiles = do
-    forbidden <- filterMPath exists forbiddenPathPaths
+    forbidden <- forbiddenPathHits forbiddenPathRegistry
     files <- walk "."
     trailing <- fmap concat (mapM trailingProblems files)
     generated <- generatedDriftProblems
@@ -59,11 +60,20 @@ data ForbiddenPath = ForbiddenPath
 -- [../../HASKELL_CLI_TOOL.md → Forbidden Surfaces](../../HASKELL_CLI_TOOL.md).
 forbiddenPathRegistry :: [ForbiddenPath]
 forbiddenPathRegistry =
-    [ ForbiddenPath ".github/workflows" "CI workflow definitions live outside this repo; the doctrine binds the local lint stack to mcts check-code"
-    , ForbiddenPath ".husky" "Husky-style hooks duplicate the local mcts check-code surface and tend to drift"
+    [ ForbiddenPath
+        ".github/workflows"
+        "CI workflow definitions live outside this repo; the doctrine binds the local lint stack to mcts check-code"
+    , ForbiddenPath
+        ".husky"
+        "Husky-style hooks duplicate the local mcts check-code surface and tend to drift"
     , ForbiddenPath ".githooks" "Git hooks duplicate the local mcts check-code surface and tend to drift"
     , ForbiddenPath ".pre-commit-config.yaml" "pre-commit duplicates the local mcts check-code surface"
-    , ForbiddenPath "Makefile" "Top-level Makefile competes with mcts build/test; backends keep their own per-backend Makefile under cpp-*/"
+    , ForbiddenPath
+        "pre-commit-*.yaml"
+        "pre-commit YAML shims duplicate the local mcts check-code surface"
+    , ForbiddenPath
+        "Makefile"
+        "Top-level Makefile competes with mcts build/test; backends keep their own per-backend Makefile under cpp-*/"
     , ForbiddenPath "justfile" "Justfile duplicates mcts test/lint commands"
     , ForbiddenPath "Taskfile.yml" "Taskfile duplicates mcts test/lint commands"
     ]
@@ -74,14 +84,27 @@ forbiddenPathPaths = map forbiddenPath forbiddenPathRegistry
 exists :: FilePath -> IO Bool
 exists path = (||) <$> doesFileExist path <*> doesDirectoryExist path
 
-filterMPath :: (a -> IO Bool) -> [a] -> IO [a]
-filterMPath predicate = go
+forbiddenPathHits :: [ForbiddenPath] -> IO [FilePath]
+forbiddenPathHits = fmap concat . mapM hits
   where
-    go [] = pure []
-    go (x : xs) = do
-        ok <- predicate x
-        rest <- go xs
-        pure (if ok then x : rest else rest)
+    hits entry
+        | '*' `elem` forbiddenPath entry = globMatches (forbiddenPath entry)
+        | otherwise = do
+            present <- exists (forbiddenPath entry)
+            pure [forbiddenPath entry | present]
+
+globMatches :: FilePath -> IO [FilePath]
+globMatches patternText =
+    case break (== '*') patternText of
+        (_, "") -> pure []
+        (prefix, _ : suffix) -> do
+            names <- listDirectory "."
+            pure
+                [ name
+                | name <- names
+                , prefix `isPrefixOf` name
+                , suffix `isSuffixOf` name
+                ]
 
 walk :: FilePath -> IO [FilePath]
 walk root = do
@@ -103,11 +126,15 @@ walk root = do
 
 ignored :: FilePath -> Bool
 ignored path =
-    any (`isPrefixOf` path) ["./.git", "./dist-newstyle", "./.mcts-cache", "./cpp-legacy/build", "./rust/target"]
+    any
+        (`isPrefixOf` path)
+        ["./.git", "./dist-newstyle", "./.mcts-cache", "./.build", "./cpp-legacy/build", "./rust/target"]
 
 sourceLike :: FilePath -> Bool
 sourceLike path =
-    any (`isSuffixOf` path) [".hs", ".md", ".cabal", ".yaml", ".yml", ".toml", ".rs", ".cc", ".h", ".hpp", ".cpp"]
+    any
+        (`isSuffixOf` path)
+        [".hs", ".md", ".cabal", ".yaml", ".yml", ".toml", ".rs", ".cc", ".h", ".hpp", ".cpp"]
 
 trailingProblems :: FilePath -> IO [String]
 trailingProblems path = do

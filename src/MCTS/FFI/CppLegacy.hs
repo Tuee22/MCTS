@@ -13,23 +13,24 @@ module MCTS.FFI.CppLegacy
     , withCppLegacyRng
     ) where
 
+import Foreign.Ptr (Ptr)
 import MCTS.Error (AppError)
-import MCTS.FFI.Common (liftFFI)
+import MCTS.FFI.Common (liftFFI, withDynamicBoard)
 import MCTS.Types (Backend (CppLegacy))
 
 -- | Stand-in board handle for `cpp-legacy`. Until the cdylib is loaded
 -- at runtime, this is the unit type; once the FFI binding is wired the
 -- definition becomes
 -- `data CppLegacyBoard = CppLegacyBoard (ForeignPtr CppLegacyBoard)`.
-data CppLegacyBoard = CppLegacyBoard ()
+newtype CppLegacyBoard = CppLegacyBoard (Ptr ())
 
 -- | Acquire a backend (i) board through `mcts_legacy_new_board`,
 -- release through `mcts_legacy_free_board`. The body runs only on
 -- successful acquisition.
 withCppLegacyBoard :: (CppLegacyBoard -> IO a) -> IO (Either AppError a)
 withCppLegacyBoard body =
-    liftFFI CppLegacy "mcts_legacy_new_board" $
-        body (CppLegacyBoard ())
+    withDynamicBoard CppLegacy "cpp-legacy/build/libmcts_cpp_legacy.so" "mcts_legacy" $
+        body . CppLegacyBoard
 
 data CppLegacyRng = CppLegacyRng ()
 

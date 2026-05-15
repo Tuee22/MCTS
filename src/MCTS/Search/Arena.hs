@@ -37,8 +37,8 @@ module MCTS.Search.Arena
 
 import Control.Monad.ST (ST)
 import Data.Array.ST (STUArray, newArray, readArray, writeArray)
-import Data.STRef (STRef, modifySTRef', newSTRef, readSTRef, writeSTRef)
 import Data.Int (Int32)
+import Data.STRef (STRef, modifySTRef', newSTRef, readSTRef, writeSTRef)
 import Data.Word (Word8)
 
 type NodeId = Int32
@@ -105,39 +105,39 @@ allocNode arena parent action = do
             modifySTRef' (arenaCursor arena) (+ 1)
             pure nid
 
-{-# INLINABLE readVisits #-}
+{-# INLINEABLE readVisits #-}
 readVisits :: Arena s -> NodeId -> ST s Int32
 readVisits arena = readArray (arenaVisits arena)
 
-{-# INLINABLE addVisits #-}
+{-# INLINEABLE addVisits #-}
 addVisits :: Arena s -> NodeId -> Int32 -> ST s ()
 addVisits arena nid n = do
     !current <- readArray (arenaVisits arena) nid
     writeArray (arenaVisits arena) nid (current + n)
 
-{-# INLINABLE readValueSum #-}
+{-# INLINEABLE readValueSum #-}
 readValueSum :: Arena s -> NodeId -> ST s Float
 readValueSum arena = readArray (arenaValueSum arena)
 
-{-# INLINABLE addValueSum #-}
+{-# INLINEABLE addValueSum #-}
 addValueSum :: Arena s -> NodeId -> Float -> ST s ()
 addValueSum arena nid v = do
     !current <- readArray (arenaValueSum arena) nid
     writeArray (arenaValueSum arena) nid (current + v)
 
-{-# INLINABLE readActionId #-}
+{-# INLINEABLE readActionId #-}
 readActionId :: Arena s -> NodeId -> ST s Word8
 readActionId arena = readArray (arenaActionId arena)
 
-{-# INLINABLE readParent #-}
+{-# INLINEABLE readParent #-}
 readParent :: Arena s -> NodeId -> ST s NodeId
 readParent arena = readArray (arenaParent arena)
 
-{-# INLINABLE readFirstChild #-}
+{-# INLINEABLE readFirstChild #-}
 readFirstChild :: Arena s -> NodeId -> ST s NodeId
 readFirstChild arena = readArray (arenaFirstChild arena)
 
-{-# INLINABLE readNumChildren #-}
+{-# INLINEABLE readNumChildren #-}
 readNumChildren :: Arena s -> NodeId -> ST s Int32
 readNumChildren arena = readArray (arenaNumChildren arena)
 
@@ -162,4 +162,6 @@ bulkVisits :: Arena s -> Int -> ST s [(NodeId, Int32)]
 bulkVisits arena n = do
     cursor <- readSTRef (arenaCursor arena)
     let limit = min n cursor
-    mapM (\nid -> do v <- readArray (arenaVisits arena) nid; pure (nid, v)) [0 .. fromIntegral (limit - 1)]
+    mapM
+        (\nid -> do v <- readArray (arenaVisits arena) nid; pure (nid, v))
+        [0 .. fromIntegral (limit - 1)]

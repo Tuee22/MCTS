@@ -251,7 +251,7 @@ Per doctrine §Test Organization, each tier is a separate cabal stanza:
 | `mcts-integration` | subprocess | exercises the real `mcts` binary across the FFI to every backend; same-backend determinism (same seed and logical game inputs ⇒ same determinism payloads, three seeds per backend) |
 | `mcts-cross-backend` | round-robin verify | the `verify` cohort under `--rng cpp` covering backends (ii), (iii), (iv), (v); backend (i) excluded by the `VerifyBackend` type |
 | `mcts-legacy-parity` | round-robin verify, legacy envelope | `verify legacy-parity` across all five backends with `max_plies = 10000` pinned and a fixture seed; pre-flight guard asserts (i) neither throws nor reaches the cap, see [Draw rule](#draw-rule) |
-| `mcts-haskell-style` | lint | `fourmolu --mode check`, `hlint --with-group=default --with-group=extra + .hlint.yaml`, `cabal format` round-trip equality |
+| `mcts-haskell-style` | lint | pinned style-tool `fourmolu --mode check`, `hlint --with-group=default --with-group=extra + .hlint.yaml`, `cabal format` round-trip equality |
 
 A single `tasty` tree spanning all tiers is forbidden by doctrine; the stanza split gives Cabal-native parallelism and lets contributors target one tier (`cabal test mcts-unit`).
 
@@ -653,19 +653,31 @@ Q7 and the `mcts-legacy-parity` test stanza retire alongside (i), since both req
 
 ## Build and run
 
-The project ships a Dockerfile and `compose.yaml` (inspired by `MCTS_legacy/docker/`) so the toolchain is reproducible:
+The project ships `docker/Dockerfile` and a root-level `compose.yaml`
+(inspired by `MCTS_legacy/docker/`) so the toolchain is reproducible. All
+supported development, validation, formatting, linting, benchmark, and backend
+build work happens inside this container. Ambient host-level toolchain fallback
+is unsupported; in particular, Fourmolu and HLint must never be taken from the
+host `PATH`.
 
 - **Base:** `ubuntu:24.04`
 - **C++:** latest stable GCC shipped with 24.04, C++23 enabled (GCC only — Clang is not supported). LLVM/BOLT pinned in the Dockerfile for the post-link reordering step (see [Compiler and runtime tuning](#compiler-and-runtime-tuning)). GHC's `-fllvm` backend (used for the Haskell engine) shares this same pinned LLVM, so the container carries one LLVM version regardless of which language is being compiled — the C++ toolchain itself remains GCC.
 - **Rust:** latest stable, installed via `rustup`; minor version pinned in the Dockerfile.
 - **Haskell:** `ghcup`-managed, pinned to **GHC 9.14.1** and **Cabal 3.16.1.0** (per `HASKELL_CLI_TOOL.md`). LLVM toolchain pinned for GHC's `-fllvm` backend — the same LLVM version used by BOLT, so the container only carries one.
+- **Haskell style tools:** the container installs Fourmolu and HLint into
+  `/opt/mcts-style-tools/bin/` with a separate pinned formatter-tools compiler,
+  **GHC 9.12.4**. The main project remains pinned to GHC 9.14.1; the style
+  compiler exists only to make `fourmolu-0.19.0.1` and `hlint-3.10`
+  reproducible while their parser dependencies track a different GHC API
+  window.
 
 ```bash
 docker compose up -d
 docker compose exec mcts bash
 # inside the container:
 cabal build all
-cabal test
+cabal test all
+cabal run exe:mcts -- check-code
 mcts bench rollouts --backend haskell --threading single --rng native --games 100000 --seed 42
 ```
 
@@ -675,7 +687,11 @@ The Haskell CLI follows the conventions in [`HASKELL_CLI_TOOL.md`](HASKELL_CLI_T
 - Commands modelled as Haskell ADTs; `optparse-applicative` parser generated from a separate `CommandSpec`.
 - `tasty` (+ `tasty-hunit`, `tasty-quickcheck`, `tasty-golden`) for tests, partitioned into the `test-suite` stanzas listed in [`mcts test all`](#mcts-test-all).
 - `brick` + `vty` for the interactive TUI screens (`play`, `inspect replay`); pure terminal, no graphical dependencies. This is the only addition to the doctrine's standard stack.
-- `fourmolu` + `hlint` + `cabal format` as the code-quality stack, with `fourmolu.yaml` committed at repo root; exposed both as `mcts lint haskell` and as the `mcts-haskell-style` test-suite.
+- `fourmolu` + `hlint` + `cabal format` as the code-quality stack, with
+  `fourmolu.yaml` committed at repo root; the policy invocation path for
+  Fourmolu/HLint is the container-owned `/opt/mcts-style-tools/bin/`, and the
+  gate is exposed both as `mcts lint haskell` and as the
+  `mcts-haskell-style` test-suite. Host `PATH` fallback is not supported.
 - Strict toolchain pinning via `cabal.project` and `tested-with: ghc ==9.14.1`.
 
 See [Doctrine scope](#doctrine-scope) above for the explicit in-scope / out-of-scope split against `HASKELL_CLI_TOOL.md`.
@@ -840,7 +856,8 @@ MCTS/
   bench/               -- Cabal benchmark targets (criterion / tasty-bench)
   test/                -- determinism and cross-backend verification tests
                        --   test/golden/legacy/ — MCTS_legacy fixtures for Q6
-  docker/              -- Dockerfile, compose.yaml
+  docker/              -- Dockerfile
+  compose.yaml         -- root-level Docker Compose entrypoint
   cabal.project        -- toolchain pin, report-card knobs ($G_*, $S_*, $S_LP)
   fourmolu.yaml        -- formatter config (per HASKELL_CLI_TOOL.md)
   DEVELOPMENT_PLAN/    -- authoritative execution-ordered development plan

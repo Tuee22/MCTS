@@ -37,11 +37,13 @@ Stanzas](../../DEVELOPMENT_PLAN/system-components.md):
 | `mcts-integration` | Subprocess | Real `mcts` binary across the FFI to every backend; same-backend determinism (Q4) at 3 seeds per backend; Q6 golden comparison for backend (i) against `test/golden/legacy/` |
 | `mcts-cross-backend` | Round-robin verify | `verify` cohort under `--rng cpp` covering `(ii)..(v)`; backend (i) excluded by the `VerifyBackend` GADT |
 | `mcts-legacy-parity` | Round-robin verify, legacy envelope | `verify legacy-parity` across all five backends with `max_plies = 10000` pinned and fixture seed `S_LP = 42`; pre-flight guard asserts (i) does not throw or reach `MAX_ROLLOUT_ITERS` |
-| `mcts-haskell-style` | Lint | `fourmolu --mode check`, `hlint`, `cabal format` temp-file round-trip byte-equality |
+| `mcts-haskell-style` | Lint | `cabal format` temp-file round-trip byte-equality, pinned style-tool `fourmolu --mode check` and `hlint`, plus the bootstrap source walker for tabs and the conservative forbidden-symbol subset |
 
-Each stanza declares `type: exitcode-stdio-1.0`, `tasty` as the runner, and a
-dedicated `test/<stanza>/Main.hs`. The single-tree-across-stanzas pattern is
-forbidden.
+Each stanza declares `type: exitcode-stdio-1.0`, the `tasty` dependencies, and a
+dedicated `test/<stanza>/Main.hs`. `mcts-unit` now runs through a `tasty` tree;
+the remaining stanzas are still hand-written `Main.hs` smoke/property checks
+until their Phase 7 runner migration lands. The single-tree-across-stanzas
+pattern is forbidden.
 
 ## Property Invariants
 
@@ -79,8 +81,11 @@ implementation. The plan is a typed `[Subprocess]` sequence run via `Plan / Appl
 2. `mcts lint docs` (rendered as `cabal exec mcts -- lint docs`; generated-section
    drift on the `GeneratedSectionRule` registry).
 3. `cabal build all` warning-clean under the pinned toolchain.
-4. `cabal test mcts-haskell-style` (`fourmolu --mode check` + `hlint` + `cabal
-   format` round-trip).
+4. `cabal test mcts-haskell-style` (`cabal format` temp-file round-trip,
+   `/opt/mcts-style-tools/bin/fourmolu --mode check`,
+   `/opt/mcts-style-tools/bin/hlint`, and the bootstrap source walker). The
+   style tools are installed inside the container with the separate pinned
+   formatter-tools GHC `9.12.4`; ambient host tools are never used as a fallback.
 5. `cabal test mcts-unit`.
 6. `cabal test mcts-integration`.
 7. `cabal test mcts-cross-backend`.

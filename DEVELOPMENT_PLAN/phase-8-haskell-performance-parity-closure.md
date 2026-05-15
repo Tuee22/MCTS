@@ -18,10 +18,11 @@
 
 ## Phase Status
 
-📋 **Planned**. Still blocked by real Phase `7` closure. The current report-card path
-is a logical baseline and does not provide Q1/Q2 performance evidence against the
-PGO+BOLT C++ steelman. Phase `8` starts only after the real five-backend cohort and
-measured report card are in place.
+🔄 **Active**. Sprint `8.1` has started on the surfaces that are meaningful before
+real Phase `7` closure: the LLVM-free GHC `-O2` tuning subset, RTS defaults, and
+hot-path `INLINABLE` pragmas have landed. The final parity proof remains blocked by
+the real five-backend cohort and measured Q1/Q2 report card against the PGO+BOLT C++
+steelman.
 
 ## Phase Summary
 
@@ -48,9 +49,8 @@ cross-language second opinion.
 ## Sprint 8.1: Haskell Compiler and RTS Tuning 🔄
 
 **Status**: Active
-**Implementation**: `mcts.cabal` (ghc-options),
-`src/MCTS/Engine/Board.hs`, `src/MCTS/Search/Arena.hs`,
-`src/MCTS/Search/Search.hs`, `src/MCTS/Search/Rollout.hs`
+**Implementation**: `mcts.cabal` (ghc-options), `src/MCTS/Engine.hs`,
+`src/MCTS/Search/Arena.hs`, `src/MCTS/Search/UCT.hs`, `src/MCTS/Rng/Mix.hs`
 **Docs to update**: `documents/engineering/compiler_runtime_tuning.md`,
 `DEVELOPMENT_PLAN/system-components.md`
 
@@ -81,8 +81,8 @@ report-card numbers move toward parity with backend (ii).
 - The executable `mcts.cabal` stanza declares
   `ghc-options: -with-rtsopts=-A64m -n4m -qg1 -qb -T` baked into the binary per
   [00-overview.md → Hard Constraints item 20](00-overview.md).
-- `INLINABLE` pragmas on every exported engine primitive in `src/MCTS/Engine/`
-  and `src/MCTS/Search/`.
+- `INLINABLE` pragmas on the current hot exported primitives in
+  `src/MCTS/Engine.hs`, `src/MCTS/Rng/Mix.hs`, and `src/MCTS/Search/`.
 - `SPECIALIZE` pragmas on the search loop for the concrete game type so the
   inner loop sees no class dictionaries.
 - Strict fields everywhere (`{-# UNPACK #-} !Int` etc.) — Sprint 3.1 set this up
@@ -117,13 +117,14 @@ report-card numbers move toward parity with backend (ii).
   -fmax-simplifier-iterations=20 -fworker-wrapper
   -fstatic-argument-transformation`. The executable stanza adds
   `-threaded "-with-rtsopts=-A64m -n4m -qg1 -qb -T"` so the doctrine
-  RTS knobs are baked into the binary. `cabal test all` passes with the
-  new flag set.
+  RTS knobs are baked into the binary. The validation gate remains
+  `cabal test all` under the pinned toolchain.
 - Add `-fllvm`, `-optlo-mcpu=native`, and `-optlc-mcpu=native` once the
   Docker image pins the matching LLVM (Sprint 1.1).
-- Add `INLINABLE` / `SPECIALIZE` pragmas to the hot path
-  (`MCTS.Search.UCT.uctSearch`, `MCTS.Search.Arena.*`, the rollout loop
-  in `MCTS.Search.UCT.rollout`).
+- `INLINABLE` pragmas landed on `MCTS.Rng.Mix`, exported arena accessors,
+  `MCTS.Search.UCT.uctSearch` / `uctSearchWithEquity` / `descend` / `rollout`,
+  and the hot `MCTS.Engine` functions. Add the `SPECIALIZE` pragmas once the
+  final concrete search API and representation settle.
 - Replace `Maybe`/`Either` in the rollout inner loop with sentinels /
   unboxed sums.
 - Run profiling and decide whether the `MutableByteArray#` migration is

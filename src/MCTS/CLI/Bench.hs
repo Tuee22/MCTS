@@ -50,7 +50,13 @@ runBenchRow clock inputs backend = do
                 let elapsed = max 1 (fromIntegral end - fromIntegral start :: Integer)
                     gamesPerSecond = fromIntegral (inputGames backendInputs) * 1000000000.0 / fromIntegral elapsed :: Double
                     simsPerSecond = gamesPerSecond * fromIntegral (simPerMove (inputSims backendInputs) :: Int)
-                 in Right BenchRow{rowInputs = backendInputs, rowBatch = batch, rowGamesPerSecond = gamesPerSecond, rowSimsPerSecond = simsPerSecond}
+                 in Right
+                        BenchRow
+                            { rowInputs = backendInputs
+                            , rowBatch = batch
+                            , rowGamesPerSecond = gamesPerSecond
+                            , rowSimsPerSecond = simsPerSecond
+                            }
 
 renderBench :: OutputOptions -> [BenchRow] -> String
 renderBench output rows =

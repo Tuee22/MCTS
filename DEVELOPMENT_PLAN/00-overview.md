@@ -188,7 +188,10 @@ inherits that split verbatim. No sprint may schedule adoption of an out-of-scope
   `import-export-style`, `indent-wheres`, `record-brace-space`,
   `newlines-between-decls`, `haddock-style`, `let-style`, `in-style`, `unicode`); the
   `mcts-haskell-style` test-suite enforces all three plus the `cabal format` temp-file
-  round-trip byte-equality compare.
+  round-trip byte-equality compare. Fourmolu and HLint are installed with a separate
+  pinned formatter-tools GHC `9.12.4` into `/opt/mcts-style-tools/bin/` inside the
+  container; the project compiler remains GHC `9.14.1`. Ambient host fallback is
+  not supported.
 - Testing Doctrine and Test Organization — five Cabal stanzas, each
   `type: exitcode-stdio-1.0`, each with its own `tasty` tree; a single `tasty` tree
   spanning all tiers is forbidden. Parser tests use `execParserPure`. Canonical property
@@ -377,7 +380,9 @@ referenceability.
     `mcts-haskell-style`. A single `tasty` tree spanning all tiers is forbidden.
 28. `fourmolu.yaml` at repo root pins the twelve doctrine-mandated settings; the
     `mcts-haskell-style` stanza enforces them plus `cabal format` temp-file round-trip
-    byte-equality.
+    byte-equality through the separate formatter-tools install (`ghc-9.12.4`,
+    `fourmolu-0.19.0.1`, `hlint-3.10`) under `/opt/mcts-style-tools/bin/` inside the
+    container. Host `PATH` fallback is never allowed.
 29. Report-card knobs are pinned in `cabal.project`: `G_R = 100_000`, `G_S = 1_000`,
     `G_V = 50`, `G_LP = 10`, `S_BENCH = 10_000`, `S_VERIFY = 10_000`,
     `S_LP_SIMS = 10_000`, `S_LP = 42`.
@@ -388,7 +393,10 @@ referenceability.
     `docker/Dockerfile` shared by GHC's `-fllvm` backend and BOLT post-link. The base
     is `ubuntu:24.04`; the C++ toolchain is GCC (latest stable on 24.04); Rust is
     `rustup`-installed with a pinned minor version; Haskell is `ghcup`-managed and
-    pinned to GHC `9.14.1` and Cabal `3.16.1.0`.
+    pinned to GHC `9.14.1` and Cabal `3.16.1.0`; Haskell style tools use a separate
+    pinned GHC `9.12.4` and do not alter the project compiler. Root-level
+    `compose.yaml` is the supported entrypoint and all project work happens in the
+    container.
 32. Move notation matches the legacy engine: `*(x,y)` for pawn moves, `H(x,y)` for
     horizontal walls, `V(x,y)` for vertical walls, x,y ∈ [0,8] for pawns and ∈ [0,7]
     for walls. `inspect show` / `inspect replay` and the `play` TUI render in this
@@ -466,12 +474,12 @@ referenceability.
 
 | Surface | Current Repo State | Intended End State |
 |---------|--------------------|--------------------|
-| Repository layout | `app/`, `src/MCTS/`, `cpp-legacy/`, `cpp-imperative/`, `cpp-functional/`, `rust/`, `bench/`, `test/`, `docker/`, `cabal.project`, `fourmolu.yaml`, `.hlint.yaml`, `.gitignore`, `mcts.cabal`, generated-artefact targets `documents/cli/commands.md`, `share/man/man1/mcts.1`, and `share/completion/{bash,zsh,fish}/` | Same layout, with the placeholder backend trees replaced by the real optimized implementations and retained golden anchors |
-| Build artefacts | `mcts.cabal` declares the `mcts` binary and all Haskell test stanzas; `cabal build all` is the validation gate under the pinned toolchain. Foreign backend directories contain smoke-buildable C ABI / `cdylib` skeletons but are not linked into the Haskell binary. | `cabal build all`-produced `mcts` binary, plus per-backend shared libraries (`cpp-legacy/libmcts_cpp_legacy.so`, `cpp-imperative/libmcts_cpp_imperative.so`, `cpp-functional/libmcts_cpp_functional.so`, `rust/target/release/libmcts_rust.so`) |
-| CLI surface | The complete command family is wired for the logical baseline: `bench`, `verify`, `inspect`, `test`, `lint`, `docs`, `commands`, `help`, `check-code`, `build`, and smoke `play`. Generated command docs are in sync with the renderer, tracked generated-file drift fails `mcts lint files`, and `mcts test all` routes recursive CLI calls through `cabal exec mcts -- ...`. | Same surface backed by real Haskell, C++, and Rust engines plus interactive TUIs |
-| Test stanzas | Five Cabal stanzas exist: `mcts-unit`, `mcts-integration`, `mcts-cross-backend`, `mcts-legacy-parity`, `mcts-haskell-style`; the current tests are simple executable `Main.hs` smoke/property checks, and `cabal test all` is the validation gate under the pinned toolchain. | Same stanzas, strengthened to use the doctrine-required `tasty` runners, real FFI-backed cohort, and external golden fixtures |
-| Toolchain | `mcts.cabal` pins `tested-with: ghc ==9.14.1`; `cabal.project` pins `with-compiler: ghc-9.14.1` and report-card knobs. | GHC `9.14.1`, Cabal `3.16.1.0`, GCC latest stable on `ubuntu:24.04`, Rust latest stable with pinned minor, LLVM pinned in the Dockerfile |
-| Determinism contract | Implemented for the logical in-process five-backend baseline under `mcts verify` and the Cabal tests. Transcript codec, SHA-256 content addressing, cache root resolution, prefix lookup, baseline equity sidecars, and transcript-pair divergence metrics are implemented. | Enforced by real cross-backend `mcts verify {rollouts,selfplay,legacy-parity}` plus same-backend determinism cases under `mcts-integration` |
+| Repository layout | `app/`, `src/MCTS/`, `src/MCTS/Generated/`, `cpp-legacy/`, `cpp-imperative/`, `cpp-functional/`, `rust/`, `bench/`, `test/`, `docker/`, root `compose.yaml`, `cabal.project`, `fourmolu.yaml`, `.hlint.yaml`, `.gitignore`, `mcts.cabal`, generated-artefact targets `documents/cli/commands.md`, `share/man/man1/mcts.1`, and `share/completion/{bash,zsh,fish}/` | Same layout, with the placeholder backend trees replaced by the real optimized implementations and retained golden anchors |
+| Build artefacts | `mcts.cabal` declares the `mcts` binary, all Haskell test stanzas, and the doctrine-standard dependency envelope; `cabal build all` is the validation gate under the pinned toolchain. Foreign backend directories contain smoke-buildable C ABI / `cdylib` skeletons but are not linked into the Haskell binary. | `cabal build all`-produced `mcts` binary, plus per-backend shared libraries (`cpp-legacy/libmcts_cpp_legacy.so`, `cpp-imperative/libmcts_cpp_imperative.so`, `cpp-functional/libmcts_cpp_functional.so`, `rust/target/release/libmcts_rust.so`) |
+| CLI surface | The complete command family is wired for the logical baseline: `bench`, `verify`, `inspect`, `test`, `lint`, `docs`, `commands`, `help`, `check-code`, `build`, and smoke `play`. Generated command docs are checked against the renderer, tracked generated-file drift fails `mcts lint files`, generated path/section registries live under `src/MCTS/Generated/`, and `mcts test all` routes recursive CLI calls through `cabal exec mcts -- ...`. | Same surface backed by real Haskell, C++, and Rust engines plus interactive TUIs |
+| Test stanzas | Five Cabal stanzas exist: `mcts-unit`, `mcts-integration`, `mcts-cross-backend`, `mcts-legacy-parity`, `mcts-haskell-style`; the current tests are simple executable `Main.hs` smoke/property checks with `tasty` dependencies declared, and `cabal test all` is the validation gate under the pinned container toolchain. `mcts-haskell-style` runs `cabal format` through a temp-file round-trip and requires container-owned `fourmolu` / `hlint`; ambient host fallback is never allowed. | Same stanzas, strengthened to use the doctrine-required `tasty` runners, real FFI-backed cohort, and external golden fixtures |
+| Toolchain | `mcts.cabal` pins `tested-with: ghc ==9.14.1`; `cabal.project` pins `with-compiler: ghc-9.14.1` and report-card knobs. The style-tool policy pins GHC `9.12.4` only for Fourmolu/HLint installation inside the container. | GHC `9.14.1`, Cabal `3.16.1.0`, style GHC `9.12.4` for `fourmolu-0.19.0.1` / `hlint-3.10`, GCC latest stable on `ubuntu:24.04`, Rust latest stable with pinned minor, LLVM pinned in the Dockerfile |
+| Determinism contract | Implemented for the logical in-process five-backend baseline under `mcts verify` and the Cabal tests. Transcript codec, full logical v1 envelope, SHA-256 content addressing, cache root resolution, prefix lookup, binary `MEQ1` equity sidecars, layered envelope checks, and transcript-pair divergence metrics are implemented. | Enforced by real cross-backend `mcts verify {rollouts,selfplay,legacy-parity}` plus same-backend determinism cases under `mcts-integration` |
 | Performance parity | Not proven. Report-card rendering exists as a logical baseline and explicitly marks external fixture parity pending. | Haskell (v) within tolerance of C++ (ii) on Q1 and Q2, single-threaded and on 8 workers, recorded in the `mcts test all` report card |
 
 ## Related Documents

@@ -9,6 +9,7 @@ module MCTS.Prerequisite
 
 import Data.List (nub)
 import MCTS.Error (AppError (..))
+import MCTS.Subprocess (ProcessOutput (..), Subprocess (..), capture)
 import System.Directory (doesDirectoryExist, doesFileExist, findExecutable)
 
 data PrerequisiteNode = PrerequisiteNode
@@ -27,50 +28,76 @@ prerequisiteRegistry =
         "install ghcup from https://www.haskell.org/ghcup/"
         []
         "ghcup"
-    , (executableNode "ghc-9.14.1" "GHC 9.14.1 on PATH or under ghcup" "export PATH=$HOME/.ghcup/bin:$PATH" ["ghcup"] "ghc-9.14.1")
-    , (executableNode "cabal-3.16.1.0" "Cabal 3.16.1.0 on PATH or under ghcup" "export PATH=$HOME/.ghcup/bin:$PATH" ["ghcup"] "cabal")
-    , executableNode
+    , versionNode
+        "ghc-9.14.1"
+        "GHC 9.14.1 on PATH or under ghcup"
+        "export PATH=$HOME/.ghcup/bin:$PATH and run ghcup install ghc 9.14.1"
+        ["ghcup"]
+        "ghc-9.14.1"
+        ["--numeric-version"]
+        "9.14.1"
+    , versionNode
+        "cabal-3.16.1.0"
+        "Cabal 3.16.1.0 on PATH or under ghcup"
+        "export PATH=$HOME/.ghcup/bin:$PATH and run ghcup install cabal 3.16.1.0"
+        ["ghcup"]
+        "cabal"
+        ["--numeric-version"]
+        "3.16.1.0"
+    , versionPrefixNode
         "cxx"
-        "C++ compiler for C ABI backends"
-        "install GCC or Clang and expose c++ on PATH"
+        "GCC/G++ C++ compiler for C ABI backends"
+        "install GCC/G++ from ubuntu:24.04 build-essential and expose c++ on PATH"
         []
         "c++"
-    , executableNode
+        ["--version"]
+        ""
+    , versionPrefixNode
         "llvm"
-        "LLVM toolchain (shared by GHC -fllvm and BOLT)"
-        "install LLVM; pin one minor across GHC -fllvm and BOLT"
+        "LLVM 19 toolchain (shared by GHC -fllvm and BOLT)"
+        "install LLVM 19 and expose llvm-config on PATH"
         []
         "llvm-config"
-    , executableNode
+        ["--version"]
+        "19."
+    , versionContainsNode
         "bolt"
-        "BOLT post-link optimizer"
-        "install LLVM BOLT (llvm-bolt) for the cpp-imperative/cpp-functional/rust steelman stacks"
+        "LLVM BOLT 19 post-link optimizer"
+        "install LLVM BOLT 19 (llvm-bolt) for the cpp-imperative/cpp-functional/rust steelman stacks"
         ["llvm"]
         "llvm-bolt"
-    , executableNode
+        ["--version"]
+        "LLVM version 19."
+    , versionContainsNode
         "rustup"
         "rustup toolchain manager"
         "install rustup from https://rustup.rs"
         []
         "rustup"
-    , executableNode
+        ["--version"]
+        "rustup"
+    , versionContainsNode
         "cargo"
-        "Cargo for the Rust backend"
-        "install rustup/cargo and expose cargo on PATH"
+        "Cargo for the Rust 1.95.0 backend"
+        "install rustup/cargo 1.95.0 and expose cargo on PATH"
         ["rustup"]
         "cargo"
-    , executableNode
+        ["--version"]
+        "1.95.0"
+    , versionContainsNode
         "rustc"
-        "rustc for the Rust backend"
-        "install rustup/rustc and expose rustc on PATH"
+        "rustc 1.95.0 for the Rust backend"
+        "install rustup/rustc 1.95.0 and expose rustc on PATH"
         ["rustup"]
         "rustc"
+        ["--version"]
+        "1.95.0"
     , PrerequisiteNode
         "mimalloc"
         "mimalloc allocator (linked into the steelman backends)"
-        "install mimalloc; the Docker image pins one version"
+        "install libmimalloc-dev; the Docker image uses the Ubuntu Noble package"
         []
-        (fmap (/= Nothing) (findExecutable "mimalloc-redirect"))
+        (versionProbe "pkg-config" ["--modversion", "mimalloc"] (const True))
     , PrerequisiteNode
         "pgo-profiles"
         "Profile directory root for PGO/BOLT builds"
@@ -89,6 +116,12 @@ prerequisiteRegistry =
         "run mcts docs generate"
         []
         (doesFileExist "test/golden/legacy/README.md")
+    , PrerequisiteNode
+        "libmcts-cpp-legacy-built"
+        "cpp-legacy shared library exists for dynamic FFI smoke tests"
+        "run make -C cpp-legacy smoke"
+        ["cxx"]
+        (doesFileExist "cpp-legacy/build/libmcts_cpp_legacy.so")
     ]
 
 prerequisitesForBuild :: String -> [PrerequisiteNode]
@@ -104,6 +137,74 @@ prerequisitesForBuild backend =
 executableNode :: String -> String -> String -> [String] -> String -> PrerequisiteNode
 executableNode ident description remedy deps exe =
     PrerequisiteNode ident description remedy deps ((/= Nothing) <$> findExecutable exe)
+
+versionNode
+    :: String
+    -> String
+    -> String
+    -> [String]
+    -> FilePath
+    -> [String]
+    -> String
+    -> PrerequisiteNode
+versionNode ident description remedy deps exe args expected =
+    PrerequisiteNode ident description remedy deps $ do
+        versionProbe exe args (== expected)
+
+versionPrefixNode
+    :: String
+    -> String
+    -> String
+    -> [String]
+    -> FilePath
+    -> [String]
+    -> String
+    -> PrerequisiteNode
+versionPrefixNode ident description remedy deps exe args expectedPrefix =
+    PrerequisiteNode ident description remedy deps $
+        versionProbe exe args (prefixMatches expectedPrefix)
+
+versionContainsNode
+    :: String
+    -> String
+    -> String
+    -> [String]
+    -> FilePath
+    -> [String]
+    -> String
+    -> PrerequisiteNode
+versionContainsNode ident description remedy deps exe args expectedNeedle =
+    PrerequisiteNode ident description remedy deps $
+        versionProbe exe args (contains expectedNeedle)
+
+versionProbe :: FilePath -> [String] -> (String -> Bool) -> IO Bool
+versionProbe exe args predicate = do
+    executable <- findExecutable exe
+    case executable of
+        Nothing -> pure False
+        Just _ -> do
+            result <- capture (Subprocess exe args Nothing Nothing)
+            pure $
+                case result of
+                    Right output -> predicate (firstLine (processStdout output <> processStderr output))
+                    Left _ -> False
+
+firstLine :: String -> String
+firstLine content =
+    case lines content of
+        line : _ -> line
+        [] -> ""
+
+prefixMatches :: String -> String -> Bool
+prefixMatches "" value = not (null value)
+prefixMatches prefix value = take (length prefix) value == prefix
+
+contains :: String -> String -> Bool
+contains needle haystack = any (prefixMatches needle) (tails haystack)
+
+tails :: [a] -> [[a]]
+tails [] = [[]]
+tails xs@(_ : rest) = xs : tails rest
 
 transitiveClosure :: [PrerequisiteNode] -> [String] -> [PrerequisiteNode]
 transitiveClosure registry seeds =

@@ -42,7 +42,7 @@ initialBoard =
         , boardPly = 0
         }
 
-{-# INLINABLE legalMoves #-}
+{-# INLINEABLE legalMoves #-}
 legalMoves :: Board -> [Action]
 legalMoves board
     | isTerminal maxBound board = []
@@ -144,7 +144,7 @@ pawnForSide side board =
         Hero -> boardHero board
         Villain -> boardVillain board
 
-{-# INLINABLE applyMove #-}
+{-# INLINEABLE applyMove #-}
 applyMove :: Action -> Board -> Board
 applyMove action board =
     advancePly . toggleSide $
@@ -181,16 +181,15 @@ toggleSide board = board{boardSideToMove = otherSide (boardSideToMove board)}
 advancePly :: Board -> Board
 advancePly board = board{boardPly = boardPly board + 1}
 
-{-# INLINABLE isTerminal #-}
+{-# INLINEABLE isTerminal #-}
 isTerminal :: Word16 -> Board -> Bool
 isTerminal maxPlies board =
     terminalWinner maxPlies board /= Nothing
 
-{-# INLINABLE terminalWinner #-}
+{-# INLINEABLE terminalWinner #-}
 terminalWinner :: Word16 -> Board -> Maybe Winner
 terminalWinner maxPlies board
     | snd (boardHero board) == 8 = Just HeroWin
     | snd (boardVillain board) == 0 = Just VillainWin
     | boardPly board >= maxPlies = Just Draw
     | otherwise = Nothing
-

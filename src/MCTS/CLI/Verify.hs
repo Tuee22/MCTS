@@ -12,7 +12,10 @@ runVerifyCommand output command =
     case command of
         VerifyRollouts allowStale backends inputs -> run "verify rollouts" (verifyRunDetailed allowStale Rollouts backends inputs)
         VerifySelfplay allowStale backends inputs -> run "verify selfplay" (verifyRunDetailed allowStale Selfplay backends inputs)
-        VerifyLegacyParity workload allowStale backends inputs -> run ("verify legacy-parity " <> workloadName workload) (legacyParityRunDetailed allowStale workload backends inputs)
+        VerifyLegacyParity workload allowStale backends inputs ->
+            run
+                ("verify legacy-parity " <> workloadName workload)
+                (legacyParityRunDetailed allowStale workload backends inputs)
   where
     run label action = do
         result <- action

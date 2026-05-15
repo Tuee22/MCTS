@@ -66,4 +66,3 @@ rate n total = fromIntegral n / fromIntegral total
 
 fixed4 :: Double -> String
 fixed4 = printf "%.4f"
-

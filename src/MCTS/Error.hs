@@ -4,6 +4,8 @@ module MCTS.Error
     , renderError
     ) where
 
+import Data.Text (Text)
+import qualified Data.Text as Text
 import MCTS.Types (Action, Backend, MoveRecord, backendIdentifier)
 
 data EnvelopeMismatchScope
@@ -31,9 +33,9 @@ data AppError
     | IOErrorText String
     deriving (Eq, Show)
 
-renderError :: AppError -> String
+renderError :: AppError -> Text
 renderError err =
-    case err of
+    Text.pack $ case err of
         TranscriptNotFound ref ->
             "transcript not found: " <> ref
         TranscriptAmbiguous ref candidates ->

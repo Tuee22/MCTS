@@ -14,8 +14,10 @@ module MCTS.Transcript
     , listTranscriptFiles
     ) where
 
-import qualified Data.ByteString as BS
 import Control.Exception (IOException, try)
+import Data.Bits (shiftL)
+import qualified Data.Bits as Bits
+import qualified Data.ByteString as BS
 import Data.ByteString.Builder
     ( Builder
     , byteString
@@ -26,8 +28,6 @@ import Data.ByteString.Builder
     , word8
     )
 import qualified Data.ByteString.Lazy as LBS
-import qualified Data.Bits as Bits
-import Data.Bits (shiftL)
 import Data.Char (isHexDigit)
 import Data.List (isSuffixOf, sort, sortOn)
 import Data.Word (Word16, Word32, Word64, Word8)
@@ -45,10 +45,10 @@ import System.Directory
     )
 import System.Environment (lookupEnv)
 import System.FilePath ((</>))
-import qualified System.Posix.IO as PosixIO
-import qualified System.Posix.Unistd as PosixUnistd
 import System.IO (Handle, hFlush, openBinaryTempFile)
 import qualified System.Info as Info
+import qualified System.Posix.IO as PosixIO
+import qualified System.Posix.Unistd as PosixUnistd
 
 encodeTranscript :: Transcript -> BS.ByteString
 encodeTranscript transcript =
@@ -108,7 +108,8 @@ runConfigHash = sha256Hex . encodeRunConfig
 
 playTranscriptHash :: RunConfig -> [MoveRecord] -> String
 playTranscriptHash config records =
-    sha256Hex (encodeRunConfig config <> LBS.toStrict (toLazyByteString (mconcat (map encodeRecord records))))
+    sha256Hex
+        (encodeRunConfig config <> LBS.toStrict (toLazyByteString (mconcat (map encodeRecord records))))
 
 encodeHeader :: RunConfig -> Builder
 encodeHeader config =
