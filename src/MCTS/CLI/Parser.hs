@@ -302,6 +302,7 @@ cachePruneParser =
     CachePrune
         <$> OA.switch (OA.long "keep-current" <> OA.help "Keep current backend/build sidecars")
         <*> optionalStringOption "cache-dir" "DIR" "Transcript cache root"
+        <*> planOptionsParser
 
 divergenceParser :: OA.Parser DivergenceOptions
 divergenceParser =

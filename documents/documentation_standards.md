@@ -309,7 +309,7 @@ currently scheduled registry entries are:
 | Generation target | Marker key prefix | Owning sprint |
 |-------------------|-------------------|---------------|
 | CLI command reference | `command-registry`, `cli-help.*` | Sprint 1.2 / Sprint 1.3 |
-| Generated section index in this file | `documentation-standards.*` | Sprint 1.3 |
+| CLI command surface matrix | `command-matrix` | Sprint 1.3 |
 | Cross-language types (TypeScript / Go mirrors) | `cross-language-types.*` | **Deferred** — no non-Haskell consumer is in scope today |
 
 ### How to Regenerate

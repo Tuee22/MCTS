@@ -291,9 +291,9 @@ sidecar directory is `<cache-root>/transcripts/<arch>/<sha>/`. Inside, one
 
 - `<backend>-<engine_build_id_prefix16>.eq` — the per-move equity series,
   binary format below.
-- `<backend>-<engine_build_id_prefix16>.envelope` — exactly the envelope
-  block extracted from the `.eq` header (see below), so scripts can
-  `cat .envelope` without parsing.
+- `<backend>-<engine_build_id_prefix16>.envelope` — exactly the binary engine
+  envelope block supplied by the backend that wrote the sidecar, so scripts can
+  `cat .envelope` without parsing the `.eq` stream.
 
 `<backend>` is the string identifier (`cpp-legacy`, `cpp-imperative`,
 `cpp-functional`, `rust`, `haskell`). `<engine_build_id_prefix16>` is
@@ -317,8 +317,9 @@ Current implementation baseline: `src/MCTS/Transcript/EquitySidecar.hs`
 stores `EqStream` in the binary `MEQ1` format below and writes a neighbouring
 `.envelope` file containing the same binary envelope block used in the transcript.
 `inspect show --with-equity` writes that stream and renders its per-move equity
-values, while `inspect cache list` and `inspect cache prune --keep-current`
-exercise the documented cache layout.
+values, while `inspect cache list` marks each sidecar as originator, foreign, or
+unknown and `inspect cache prune --keep-current` exercises the documented cache
+layout through a Plan/Apply deletion plan.
 
 ```text
 # Example: .eq sidecar wire format
@@ -342,12 +343,12 @@ Terminator:
   u32 sentinel = 0xFFFFFFFF
 ```
 
-Visits are recorded so the REPL can sanity-check this column's recompute
-against the transcript's recorded visits: under `--rng cpp` within the
-(ii)–(v) cohort they MUST agree (built-in determinism check that fires
-on every cache write); under `--rng native` or cross-build they
-*usually* agree, and disagreement is surfaced as the divergence-smell
-metric (see [determinism_contract.md → Divergence Smell](./determinism_contract.md)).
+Visits are not duplicated in the `.eq` stream. A recompute writer compares
+recomputed visits against the transcript's recorded visit table before writing
+the sidecar: under `--rng cpp` within the (ii)–(v) cohort they MUST agree;
+under `--rng native` or cross-build they *usually* agree, and disagreement is
+surfaced as the divergence-smell metric (see
+[determinism_contract.md → Divergence Smell](./determinism_contract.md)).
 
 ### Originator vs Foreign Columns
 
@@ -362,8 +363,10 @@ sidecar directory is a foreign column: a recompute by a different
 engine, useful for cross-engine comparison but not "the original
 numbers."
 
-The REPL marks the originator with a ★ and surfaces envelope match
-status (verified / build-mismatch / foreign-view) per
+`mcts inspect cache list` marks every slot as `originator`, `foreign`, or
+`unknown` (when the neighbouring transcript is absent or unreadable). The REPL
+marks the originator with a ★ and surfaces envelope match status (verified /
+build-mismatch / foreign-view) per
 [cli_command_surface.md → `mcts inspect replay`](./cli_command_surface.md).
 
 ## Hash-Prefix Lookup

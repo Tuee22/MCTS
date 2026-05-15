@@ -5,27 +5,41 @@ module MCTS.CLI.Inspect
     , renderTranscript
     ) where
 
+import Control.Monad.IO.Class (liftIO)
 import Data.List (intercalate, sortOn)
 import MCTS.CLI.Command
-import MCTS.CLI.Output (OutputFormat (..), OutputOptions (..), outputLine, renderError)
+import MCTS.CLI.Output (OutputFormat (..), OutputOptions (..), outputLine, renderErrorString)
 import qualified MCTS.Engine.Recompute as Recompute
+import qualified MCTS.Env as Env
 import MCTS.Notation (renderMove, renderWinner)
+import MCTS.Plan (Plan (..), PlanOptions (..), renderPlanWith, writePlanFile)
 import MCTS.Transcript
 import MCTS.Transcript.EquitySidecar
 import MCTS.Types
 import MCTS.Verify.Divergence
 import System.Directory (getModificationTime)
+import System.Exit (ExitCode (..))
 import System.FilePath (takeBaseName)
 
-runInspect :: OutputOptions -> InspectCommand -> IO Int
-runInspect output command =
+runInspect :: InspectCommand -> Env.App ExitCode
+runInspect command = do
+    env <- Env.askEnv
+    code <- liftIO (inspectWithOutput (Env.envOutputOptions env) command)
+    pure (intToExitCode code)
+
+inspectWithOutput :: OutputOptions -> InspectCommand -> IO Int
+inspectWithOutput output command =
     case command of
         InspectList cacheDir -> inspectList output cacheDir
         InspectShow options -> inspectShow output options
-        InspectReplay options -> inspectReplay options
+        InspectReplay options -> inspectReplay output options
         InspectCache (CacheList cacheDir) -> inspectCacheList output cacheDir
-        InspectCache (CachePrune keepCurrent cacheDir) -> inspectCachePrune output keepCurrent cacheDir
+        InspectCache (CachePrune keepCurrent cacheDir planOptions) -> inspectCachePrune output keepCurrent cacheDir planOptions
         InspectDivergence options -> inspectDivergence output options
+
+intToExitCode :: Int -> ExitCode
+intToExitCode 0 = ExitSuccess
+intToExitCode n = ExitFailure n
 
 inspectList :: OutputOptions -> Maybe FilePath -> IO Int
 inspectList output cacheDir = do
@@ -134,11 +148,12 @@ inspectShow :: OutputOptions -> ShowOptions -> IO Int
 inspectShow output options = do
     found <- lookupByPrefix (showCacheDir options) (showRef options)
     case found of
-        Left err -> outputLine (renderError err) >> pure 1
-        Right path -> do
+        Left err -> outputLine (renderErrorString output err) >> pure 1
+        Right ref -> do
+            let path = transcriptRefPath ref
             decoded <- readTranscriptFile path
             case decoded of
-                Left err -> outputLine (renderError err) >> pure 1
+                Left err -> outputLine (renderErrorString output err) >> pure 1
                 Right transcript -> do
                     stream <-
                         if showWithEquity options
@@ -150,7 +165,7 @@ inspectShow output options = do
                                     Right stream -> do
                                         _ <- writeEquitySidecarStream (showCacheDir options) transcript stream
                                         pure (Just stream)
-                                    Left err -> outputLine (renderError err) >> pure Nothing
+                                    Left err -> outputLine (renderErrorString output err) >> pure Nothing
                             else pure Nothing
                     outputLine (renderTranscript output options path stream transcript)
                     pure 0
@@ -236,15 +251,16 @@ showEquity value =
     let scaled = fromInteger (round (value * 10000)) / 10000 :: Double
      in show scaled
 
-inspectReplay :: ReplayOptions -> IO Int
-inspectReplay options = do
+inspectReplay :: OutputOptions -> ReplayOptions -> IO Int
+inspectReplay output options = do
     found <- lookupByPrefix (replayCacheDir options) (replayRef options)
     case found of
-        Left err -> outputLine (renderError err) >> pure 1
-        Right path -> do
+        Left err -> outputLine (renderErrorString output err) >> pure 1
+        Right ref -> do
+            let path = transcriptRefPath ref
             decoded <- readTranscriptFile path
             case decoded of
-                Left err -> outputLine (renderError err) >> pure 1
+                Left err -> outputLine (renderErrorString output err) >> pure 1
                 Right transcript -> do
                     let totalMoves = sum (map (length . gameMoves) (transcriptGames transcript))
                         hashValue = take 8 (takeBaseName path)
@@ -255,7 +271,9 @@ inspectReplay options = do
 
 inspectCacheList :: OutputOptions -> Maybe FilePath -> IO Int
 inspectCacheList output cacheDir = do
+    root <- resolveCacheRoot cacheDir
     sidecars <- listEquitySidecars cacheDir
+    rows <- mapM (cacheRowFor root) sidecars
     outputLine $
         case outputFormat output of
             JsonFormat ->
@@ -263,50 +281,108 @@ inspectCacheList output cacheDir = do
                     <> intercalate
                         ","
                         [ "{\"transcript\":\""
-                            <> sidecarTranscriptHash entry
-                            <> "\",\"backend\":\""
-                            <> backendIdentifier (sidecarBackend entry)
+                            <> cacheTranscriptHash row
+                            <> "\",\"originator\":"
+                            <> cacheOriginJson row
+                            <> ",\"backend\":\""
+                            <> backendIdentifier (cacheBackend row)
                             <> "\",\"build_id\":\""
-                            <> sidecarBuildId entry
+                            <> cacheBuildId row
                             <> "\",\"path\":\""
-                            <> sidecarEqPath entry
+                            <> cacheEqPath row
                             <> "\"}"
-                        | entry <- sidecars
+                        | row <- rows
                         ]
                     <> "]"
             _ ->
-                if null sidecars
+                if null rows
                     then "no equity sidecars cached"
-                    else unlines ("transcript backend          build-id          path" : map renderSidecar sidecars)
+                    else
+                        unlines ("transcript origin      backend          build-id          path" : map renderSidecar rows)
     pure 0
   where
-    renderSidecar entry =
-        take 8 (sidecarTranscriptHash entry)
+    renderSidecar row =
+        take 8 (cacheTranscriptHash row)
             <> "  "
-            <> pad 15 (backendIdentifier (sidecarBackend entry))
+            <> pad 10 (cacheOriginLabel row)
             <> "  "
-            <> pad 16 (take 16 (sidecarBuildId entry))
+            <> pad 15 (backendIdentifier (cacheBackend row))
             <> "  "
-            <> sidecarEqPath entry
+            <> pad 16 (take 16 (cacheBuildId row))
+            <> "  "
+            <> cacheEqPath row
 
-inspectCachePrune :: OutputOptions -> Bool -> Maybe FilePath -> IO Int
-inspectCachePrune output keepCurrent cacheDir = do
-    count <- pruneEquitySidecars cacheDir keepCurrent
-    outputLine $
-        case outputFormat output of
-            JsonFormat -> "{\"pruned\":" <> show count <> "}"
-            _ -> "pruned " <> show count <> " equity sidecar" <> if count == 1 then "" else "s"
+inspectCachePrune :: OutputOptions -> Bool -> Maybe FilePath -> PlanOptions -> IO Int
+inspectCachePrune output keepCurrent cacheDir planOptions = do
+    stale <- prunableEquitySidecars cacheDir keepCurrent
+    let plan = Plan "inspect cache prune" stale
+        renderedPlan = renderPlanWith renderPruneStep plan
+    writePlanFile (planFile planOptions) renderedPlan
+    if planDryRun planOptions
+        then outputLine renderedPlan
+        else do
+            mapM_ removeEquitySidecar stale
+            outputLine $
+                case outputFormat output of
+                    JsonFormat -> "{\"pruned\":" <> show (length stale) <> "}"
+                    _ -> "pruned " <> show (length stale) <> " equity sidecar" <> if length stale == 1 then "" else "s"
     pure 0
+
+renderPruneStep :: SidecarEntry -> String
+renderPruneStep entry =
+    "delete "
+        <> sidecarEqPath entry
+        <> " and "
+        <> sidecarEnvelopePath entry
+
+data CacheSidecarRow = CacheSidecarRow
+    { cacheTranscriptHash :: !String
+    , cacheOrigin :: !(Maybe Bool)
+    , cacheBackend :: !Backend
+    , cacheBuildId :: !String
+    , cacheEqPath :: !FilePath
+    }
+
+cacheRowFor :: FilePath -> SidecarEntry -> IO CacheSidecarRow
+cacheRowFor root entry = do
+    decoded <- readTranscriptFile (transcriptPath root (sidecarTranscriptHash entry))
+    let origin =
+            case decoded of
+                Right transcript -> Just (sidecarIsOriginator transcript entry)
+                Left _ -> Nothing
+    pure
+        CacheSidecarRow
+            { cacheTranscriptHash = sidecarTranscriptHash entry
+            , cacheOrigin = origin
+            , cacheBackend = sidecarBackend entry
+            , cacheBuildId = sidecarBuildId entry
+            , cacheEqPath = sidecarEqPath entry
+            }
+
+cacheOriginLabel :: CacheSidecarRow -> String
+cacheOriginLabel row =
+    case cacheOrigin row of
+        Just True -> "originator"
+        Just False -> "foreign"
+        Nothing -> "unknown"
+
+cacheOriginJson :: CacheSidecarRow -> String
+cacheOriginJson row =
+    case cacheOrigin row of
+        Just True -> "true"
+        Just False -> "false"
+        Nothing -> "null"
 
 inspectDivergence :: OutputOptions -> DivergenceOptions -> IO Int
 inspectDivergence output options = do
     found <- lookupByPrefix (divergenceCacheDir options) (divergenceRef options)
     case found of
-        Left err -> outputLine (renderError err) >> pure 1
-        Right path -> do
+        Left err -> outputLine (renderErrorString output err) >> pure 1
+        Right ref -> do
+            let path = transcriptRefPath ref
             decoded <- readTranscriptFile path
             case decoded of
-                Left err -> outputLine (renderError err) >> pure 1
+                Left err -> outputLine (renderErrorString output err) >> pure 1
                 Right transcript -> do
                     sidecars <-
                         filter ((== takeBaseName path) . sidecarTranscriptHash)

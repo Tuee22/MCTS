@@ -61,7 +61,7 @@ RUN ghcup install ghc "${STYLE_GHC_VERSION}" \
 
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
         | sh -s -- -y --profile minimal --default-toolchain "${RUST_VERSION}" \
-    && rustup component add llvm-tools-preview
+    && rustup component add llvm-tools-preview rustfmt
 
 RUN ln -sf "/usr/bin/llvm-config-${LLVM_VERSION}" /usr/local/bin/llvm-config \
     && if [ -x "/usr/bin/llvm-bolt-${LLVM_VERSION}" ]; then ln -sf "/usr/bin/llvm-bolt-${LLVM_VERSION}" /usr/local/bin/llvm-bolt; fi \

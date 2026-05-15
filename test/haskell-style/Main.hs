@@ -18,7 +18,7 @@ import qualified System.Process as Process
 main :: IO ()
 main = do
     runStyleTool "fourmolu" ["--mode", "check", "app", "src", "test"]
-    runStyleTool "hlint" ["--with-group=default", "--with-group=extra", "app", "src", "test"]
+    runHlint
     runCabalFormatRoundTrip
     files <- walk "."
     problems <- fmap concat (mapM inspect files)
@@ -33,6 +33,28 @@ runStyleTool tool args = do
     case code of
         ExitSuccess -> pure ()
         ExitFailure n -> error (tool <> " failed with exit " <> show n)
+
+runHlint :: IO ()
+runHlint = do
+    path <- styleToolPath "hlint"
+    (code, out, err) <-
+        Process.readProcessWithExitCode
+            path
+            ["--with-group=default", "--with-group=extra", "app", "src", "test"]
+            ""
+    case code of
+        ExitSuccess -> pure ()
+        ExitFailure n ->
+            if hardHlintFailure out err
+                then do
+                    if null out then pure () else putStr out
+                    if null err then pure () else putStr err
+                    error ("hlint failed with exit " <> show n)
+                else pure ()
+
+hardHlintFailure :: String -> String -> Bool
+hardHlintFailure out err =
+    not (null err) || "Error:" `isInfixOf` out || "Error:" `isInfixOf` err
 
 styleToolPath :: String -> IO FilePath
 styleToolPath tool = do
@@ -114,6 +136,10 @@ subprocessSymbols =
     , "createProcess"
     , "System.Process.proc"
     , "System.Process.shell"
+    , "System.Process.Typed.proc"
+    , "System.Process.Typed.shell"
+    , "System.Process.Typed.runProcess"
+    , "System.Process.Typed.readProcess"
     ]
 
 subprocessOwner :: FilePath -> Bool

@@ -42,8 +42,9 @@
 ### `Subprocess`
 
 The Phase 5/6 PGO+BOLT build harness and the FFI shared-library link path go
-through `runStreaming` / `capture`. There is no other IO surface for subprocess
-execution. The `.hlint.yaml` rules from
+through `runStreaming` / `capture`, which interpret `Subprocess` values with
+`typed-process`. There is no other IO surface for subprocess execution. The
+`.hlint.yaml` rules from
 [code_quality.md → HLint Rules](./code_quality.md#hlint-rules) enforce the
 forbidden-primitives list.
 
@@ -69,24 +70,31 @@ external state (only the transcript cache, which they own), so the
 The `prerequisiteRegistry` (Phase 1 Sprint 1.7) covers every toolchain dependency
 across the five backends. The current baseline uses exact version probes for
 `ghc-9.14.1 --numeric-version == 9.14.1` and
-`cabal --numeric-version == 3.16.1.0`, executable/file probes for the other
-build-command prerequisites (`c++`, `cargo`, `rustc`, profile directories, and legacy
-fixtures), and emits `AppError PrerequisiteUnmet` with a remedy hint before applying a
-backend build plan. Exact minor-version probes for LLVM/BOLT, Rust, GCC, and `mimalloc`
-remain owned by Phase 1 Sprint 1.7 and the Docker pin.
+`cabal --numeric-version == 3.16.1.0`, LLVM/BOLT `19.x`, Rust `1.95.0`,
+`mimalloc` via `pkg-config`, executable/file probes for the remaining
+build-command prerequisites (`c++`, profile directories, and legacy fixtures), and
+emits `AppError PrerequisiteUnmet` with a remedy hint before applying backend build
+plans or Cabal-backed test plans.
 
 ### `Env`
 
 The `Env` record (Phase 1 Sprint 1.8) carries the active output options
 (`envOutputOptions`), the `CommandSpec` registry (`envCommandSpec`), the
-prerequisite registry (`envPrerequisites`), the explicit cache-dir override
-(`envCacheDir`), and a monotonic-clock test-hook (`envClockMonotonic`).
+generated-section registry (`envGeneratedSectionRules`), tracked generated paths
+(`envTrackingGeneratedPaths`), the prerequisite registry (`envPrerequisites`), the
+explicit cache-dir override (`envCacheDir`), the process log handle
+(`envLogHandle`), raw invocation arguments (`envRawArguments`), and a
+monotonic-clock test-hook (`envClockMonotonic`).
 `newtype App = App (ReaderT Env IO a)` (with `MonadIO` derived via
 `DerivingStrategies + GeneralizedNewtypeDeriving`) is the application monad;
 `runAppIO :: Env -> App a -> IO a` runs it. `askEnv` retrieves the env and
 `withTestClock :: IO Word64 -> App a -> App a` overrides the clock locally
 — the bench runner's monotonic-bracket assertion uses this to capture the
 exact start/stop call sites.
+`MCTS.App.runCommand` and the public `MCTS.CLI.*` command runners return
+`App ExitCode`; `runWithArgs` is the IO adapter that parses global flags,
+constructs `Env`, runs the command, and converts the final `ExitCode` for
+`main`.
 
 Sprint 1.5's apply boundary lives in `MCTS.Plan`:
 
@@ -94,8 +102,9 @@ Sprint 1.5's apply boundary lives in `MCTS.Plan`:
 - `applySubprocessWithEnv :: Plan Subprocess -> App ExitCode`
 
 Existing per-command runners (`MCTS.CLI.Build`, `MCTS.CLI.Test`) call the
-older `applyPlan` / `applySubprocessPlan` helpers; new runners adopt
-`applyWithEnv` and read shared state via `askEnv`.
+`applyWithEnv` family. `MCTS.CLI.Build` uses `applySubprocessWithEnv`; `MCTS.CLI.Test`
+uses `applyWithEnv` with a custom step interpreter so subprocess failures still render
+through `renderError`.
 
 ### `AppError` and `renderError`
 
@@ -151,9 +160,10 @@ alongside the user-facing variants:
 - `UnknownCommand`, `InvalidMove` — `mcts play` in-app input errors.
 
 `renderError :: AppError -> Text` lives in `src/MCTS/Error.hs` as the canonical
-boundary. `src/MCTS/CLI/Output.hs` exposes a String adapter for the existing command
-runners while the wider output renderer migrates. The `.hlint.yaml` rules enforce this
-boundary by keeping direct terminal output out of command modules.
+boundary. `src/MCTS/CLI/Output.hs` re-exports that Text boundary and owns
+`renderErrorString :: OutputOptions -> AppError -> String` for final
+stdout/stderr emission, including `--color always|never` handling. The `.hlint.yaml`
+rules enforce this boundary by keeping direct terminal output out of command modules.
 
 ### GADT-Indexed State Machines
 

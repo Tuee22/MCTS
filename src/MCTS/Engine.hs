@@ -4,11 +4,15 @@ module MCTS.Engine
     , legalMoves
     , applyMove
     , isTerminal
+    , terminalOutcome
+    , nonTerminalOutcome
     , terminalWinner
+    , nonTerminalRank
     ) where
 
-import Data.List (nub, sortOn)
-import Data.Word (Word16, Word8)
+import Data.Bits (setBit, testBit)
+import Data.List (sortOn)
+import Data.Word (Word16, Word64, Word8)
 import MCTS.Types
     ( Action (..)
     , Side (..)
@@ -18,10 +22,10 @@ import MCTS.Types
     )
 
 data Board = Board
-    { boardHero :: !(Int, Int)
-    , boardVillain :: !(Int, Int)
-    , boardWallsH :: ![(Int, Int)]
-    , boardWallsV :: ![(Int, Int)]
+    { boardHero :: !Word64
+    , boardVillain :: !Word64
+    , boardWallsH :: !Word64
+    , boardWallsV :: !Word64
     , boardHeroWalls :: !Word8
     , boardVillainWalls :: !Word8
     , boardSideToMove :: !Side
@@ -32,10 +36,10 @@ data Board = Board
 initialBoard :: Board
 initialBoard =
     Board
-        { boardHero = (4, 0)
-        , boardVillain = (4, 8)
-        , boardWallsH = []
-        , boardWallsV = []
+        { boardHero = pawnSlot 4 0
+        , boardVillain = pawnSlot 4 8
+        , boardWallsH = 0
+        , boardWallsV = 0
         , boardHeroWalls = 10
         , boardVillainWalls = 10
         , boardSideToMove = Hero
@@ -86,15 +90,15 @@ wallsRemaining board =
 wallExists :: Board -> Action -> Bool
 wallExists board action =
     case action of
-        WallH x y -> (x, y) `elem` boardWallsH board
-        WallV x y -> (x, y) `elem` boardWallsV board
+        WallH x y -> wallBitSet (boardWallsH board) x y
+        WallV x y -> wallBitSet (boardWallsV board) x y
         Pawn _ _ -> False
 
 applyWallOnly :: Action -> Board -> Board
 applyWallOnly action board =
     case action of
-        WallH x y -> board{boardWallsH = nub ((x, y) : boardWallsH board)}
-        WallV x y -> board{boardWallsV = nub ((x, y) : boardWallsV board)}
+        WallH x y -> board{boardWallsH = setWallBit (boardWallsH board) x y}
+        WallV x y -> board{boardWallsV = setWallBit (boardWallsV board) x y}
         Pawn _ _ -> board
 
 pathExists :: Side -> Board -> Bool
@@ -118,6 +122,31 @@ pathExists side board = go [] [pawnForSide side board]
                     ]
              in go (p : seen) (rest <> next)
 
+shortestDistance :: Side -> Board -> Int
+shortestDistance side board = go [] [(pawnForSide side board, 0)]
+  where
+    target (_, y) =
+        case side of
+            Hero -> y == 8
+            Villain -> y == 0
+
+    go _ [] = 99
+    go seen ((p, distance) : rest)
+        | target p = distance
+        | p `elem` seen = go seen rest
+        | otherwise =
+            let next =
+                    [ (q, distance + 1)
+                    | q <- neighbours p
+                    , q `notElem` seen
+                    , not (edgeBlocked board p q)
+                    ]
+             in go (p : seen) (rest <> next)
+
+nonTerminalRank :: Board -> Int
+nonTerminalRank board =
+    shortestDistance Villain board - shortestDistance Hero board
+
 neighbours :: (Int, Int) -> [(Int, Int)]
 neighbours (x, y) =
     [ (nx, ny)
@@ -132,43 +161,43 @@ edgeBlocked :: Board -> (Int, Int) -> (Int, Int) -> Bool
 edgeBlocked board (x1, y1) (x2, y2)
     | x1 == x2 && abs (y1 - y2) == 1 =
         let y = min y1 y2
-         in any (`elem` boardWallsH board) [(x1 - 1, y), (x1, y)]
+         in any (uncurry (wallBitSet (boardWallsH board))) [(x1 - 1, y), (x1, y)]
     | y1 == y2 && abs (x1 - x2) == 1 =
         let x = min x1 x2
-         in any (`elem` boardWallsV board) [(x, y1 - 1), (x, y1)]
+         in any (uncurry (wallBitSet (boardWallsV board))) [(x, y1 - 1), (x, y1)]
     | otherwise = False
 
 pawnForSide :: Side -> Board -> (Int, Int)
 pawnForSide side board =
     case side of
-        Hero -> boardHero board
-        Villain -> boardVillain board
+        Hero -> pawnCoords (boardHero board)
+        Villain -> pawnCoords (boardVillain board)
 
 {-# INLINEABLE applyMove #-}
 applyMove :: Action -> Board -> Board
 applyMove action board =
     advancePly . toggleSide $
         case (boardSideToMove board, action) of
-            (Hero, Pawn x y) -> board{boardHero = (x, y)}
-            (Villain, Pawn x y) -> board{boardVillain = (x, y)}
+            (Hero, Pawn x y) -> board{boardHero = pawnSlot x y}
+            (Villain, Pawn x y) -> board{boardVillain = pawnSlot x y}
             (Hero, WallH x y) ->
                 board
-                    { boardWallsH = nub ((x, y) : boardWallsH board)
+                    { boardWallsH = setWallBit (boardWallsH board) x y
                     , boardHeroWalls = decrement (boardHeroWalls board)
                     }
             (Villain, WallH x y) ->
                 board
-                    { boardWallsH = nub ((x, y) : boardWallsH board)
+                    { boardWallsH = setWallBit (boardWallsH board) x y
                     , boardVillainWalls = decrement (boardVillainWalls board)
                     }
             (Hero, WallV x y) ->
                 board
-                    { boardWallsV = nub ((x, y) : boardWallsV board)
+                    { boardWallsV = setWallBit (boardWallsV board) x y
                     , boardHeroWalls = decrement (boardHeroWalls board)
                     }
             (Villain, WallV x y) ->
                 board
-                    { boardWallsV = nub ((x, y) : boardWallsV board)
+                    { boardWallsV = setWallBit (boardWallsV board) x y
                     , boardVillainWalls = decrement (boardVillainWalls board)
                     }
 
@@ -184,12 +213,50 @@ advancePly board = board{boardPly = boardPly board + 1}
 {-# INLINEABLE isTerminal #-}
 isTerminal :: Word16 -> Board -> Bool
 isTerminal maxPlies board =
-    terminalWinner maxPlies board /= Nothing
+    terminalOutcome maxPlies board /= nonTerminalOutcome
+
+{-# INLINEABLE terminalOutcome #-}
+terminalOutcome :: Word16 -> Board -> Float
+terminalOutcome maxPlies board
+    | snd (pawnCoords (boardHero board)) == 8 = 1.0
+    | snd (pawnCoords (boardVillain board)) == 0 = -1.0
+    | boardPly board >= maxPlies = 0.0
+    | otherwise = nonTerminalOutcome
 
 {-# INLINEABLE terminalWinner #-}
 terminalWinner :: Word16 -> Board -> Maybe Winner
-terminalWinner maxPlies board
-    | snd (boardHero board) == 8 = Just HeroWin
-    | snd (boardVillain board) == 0 = Just VillainWin
-    | boardPly board >= maxPlies = Just Draw
-    | otherwise = Nothing
+terminalWinner maxPlies board =
+    let outcome = terminalOutcome maxPlies board
+     in if outcome == 1.0
+            then Just HeroWin
+            else
+                if outcome == -1.0
+                    then Just VillainWin
+                    else
+                        if outcome == 0.0
+                            then Just Draw
+                            else Nothing
+
+nonTerminalOutcome :: Float
+nonTerminalOutcome = 2.0
+
+pawnSlot :: Int -> Int -> Word64
+pawnSlot x y = fromIntegral (y * 9 + x)
+
+pawnCoords :: Word64 -> (Int, Int)
+pawnCoords value =
+    let idx = max 0 (min 80 (fromIntegral value))
+     in (idx `mod` 9, idx `div` 9)
+
+setWallBit :: Word64 -> Int -> Int -> Word64
+setWallBit bits x y
+    | validWallCoord x y = setBit bits (y * 8 + x)
+    | otherwise = bits
+
+wallBitSet :: Word64 -> Int -> Int -> Bool
+wallBitSet bits x y =
+    validWallCoord x y && testBit bits (y * 8 + x)
+
+validWallCoord :: Int -> Int -> Bool
+validWallCoord x y =
+    x >= 0 && x <= 7 && y >= 0 && y <= 7

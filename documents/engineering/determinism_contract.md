@@ -342,32 +342,28 @@ independent universe.
 
 ### `non_terminal_rank` Operational Definition
 
-`non_terminal_rank` is the legacy engine's per-child secondary sort key,
-defined by `MCTS_legacy/backend/core/mcts.cpp` (the exact function and line
-range are pinned by Phase 3 Sprint 3.3 by reading the legacy source —
-provisionally `uct_node::best_move()` and its `non_terminal_rank` helper).
-Operationally:
+`non_terminal_rank` is the legacy engine's per-child secondary sort key. The
+imported source pins the definition in
+`cpp-legacy/legacy-core/board.cpp:395`: `board::get_non_terminal_rank()` returns
+`villains_shortest_distance - heros_shortest_distance`. The legacy callers use
+that value in `cpp-legacy/legacy-core/mcts.hpp:258`-`266` for the domain-specific
+non-terminal shortcut, and in `cpp-legacy/legacy-core/mcts.hpp:400`-`421` as the
+secondary display/order key after equity.
 
-1. Among the legal children of a node, those whose subtree contains at least
-   one non-terminal leaf are ranked **before** those whose subtree is fully
-   terminal.
-2. Within each of those two groups, the rank is the child's position in the
-   board's canonical legal-move enumeration order (the same enumeration that
-   feeds the single-byte action wire format in
-   [transcript_format.md → Action Enumeration](./transcript_format.md#action-enumeration)).
+Operationally, every backend computes the shortest path length from each pawn to
+its goal row under the current wall set, then ranks the child by:
+
+```text
+non_terminal_rank = villain_shortest_distance - hero_shortest_distance
+```
 
 The full sort key is `(equity desc, non_terminal_rank asc)`: equity (a `Float`)
-descending as the primary key, `non_terminal_rank` (a `uint16_t`) ascending as
-the deterministic tiebreaker. Because both keys are derived from the same
-visit-and-value state across all five backends, and because the legal-move
-enumeration order is fixed by the wire format, every backend produces the same
-ordering for every node — modulo equity drift, which is bounded by the
+descending as the primary key, `non_terminal_rank` ascending as the deterministic
+tiebreaker, and canonical action ID ascending as the final stable fallback. Because
+these keys derive from the same visit/value state and the same wall graph across all
+five backends, every backend produces the same ordering for every node — modulo
+equity drift, which is bounded by the
 [Cross-Backend Equity Tolerance](#cross-backend-equity-tolerance) above.
-
-The Phase 3 Sprint 3.3 deliverable closes only when this subsection's legacy
-citation is replaced with the precise function and line range from
-`MCTS_legacy/backend/core/mcts.cpp`, and all five backends' tie-break
-implementations cite the same definition.
 
 ## Verify Mismatch Output
 
@@ -626,10 +622,12 @@ for the on-disk layout and the `.eq` wire format, and
 38](../../DEVELOPMENT_PLAN/00-overview.md) for the constraint pin.
 
 Current implementation baseline: `inspect show --with-equity` writes the
-logical originator sidecar, `inspect cache list` enumerates sidecar slots, and
-`inspect cache prune --keep-current` retains `<backend>-logical` build ids until
+logical originator sidecar, `inspect cache list` enumerates sidecar slots with
+originator / foreign / unknown markers, and `inspect cache prune --keep-current`
+retains `<backend>-logical` build ids through a Plan/Apply deletion plan until
 live backend envelopes are available through FFI. Foreign recompute sidecars and
-originator markers remain Sprint `2.7` / `7.5` closure work.
+live-envelope stale detection remain Sprint `3.6` / `4.7` / `5.5` / `6.5` /
+`7.5` closure work.
 
 Baseline layered envelope verification exists in `MCTS.Verify.Envelope`: verify cohorts
 check `host_arch` and envelope version at cohort level, compare each transcript's

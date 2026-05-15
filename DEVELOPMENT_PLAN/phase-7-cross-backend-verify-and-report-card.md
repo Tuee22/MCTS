@@ -115,8 +115,13 @@ the real `mcts` binary across the FFI to every backend.
 ### Remaining Work
 
 - Baseline landed: `mcts-unit` and `mcts-integration` Cabal stanzas exist and are
-  wired against the logical backend baseline. The `mcts-unit` stanza now covers the
-  doctrine's required property-test categories at fixture scale: transcript
+  wired against the logical backend baseline through in-stanza `tasty` runners.
+  `cabal test mcts-integration` validates the logical five-backend same-backend
+  determinism baseline at three seeds per backend, bounded FFI smoke drivers for all
+  four foreign backends when their container-built shared libraries are present, live
+  `mcts_<backend>_get_envelope` loading for those same foreign libraries, and the
+  equity-sidecar originator marker integration check. The `mcts-unit` stanza now
+  covers the doctrine's required property-test categories at fixture scale: transcript
   `decode . encode == id`, sorted-record contract, cpp-legacy draw rejection,
   splitmix bounded bijection (`mix 42 i` unique for `i ∈ [0, 1023]`), every
   `AppError` variant renders to non-empty text, the prerequisite registry is
@@ -220,13 +225,13 @@ constraint at the type level and `LegacyParityBackend` requiring (i) at parse ti
 ### Remaining Work
 
 - Baseline landed: `mcts-cross-backend` and `mcts-legacy-parity` Cabal stanzas exist
-  and are wired against the logical five-backend cohort. The `mcts-cross-backend`
-  stanza now exercises the four-backend `(ii)..(v)` round-robin under
-  `--rng cpp` (single-threaded), and additionally asserts the cohort-constraint
-  surface rejects (a) a cohort containing `cpp-legacy` and (b) a single-backend
-  cohort, both with `AppError VerifyCohortTooSmall`. The `mcts-legacy-parity`
-  stanza exercises the full-five-backend cohort under the legacy envelope and
-  asserts a cohort missing `cpp-legacy` is rejected.
+  and are wired against the logical five-backend cohort through in-stanza `tasty`
+  runners. `cabal test mcts-cross-backend` exercises the four-backend `(ii)..(v)`
+  round-robin under `--rng cpp` (single-threaded), and additionally asserts the
+  cohort-constraint surface rejects (a) a cohort containing `cpp-legacy` and (b) a
+  single-backend cohort, both with `AppError VerifyCohortTooSmall`.
+  `cabal test mcts-legacy-parity` exercises the full-five-backend cohort under the
+  legacy envelope and asserts a cohort missing `cpp-legacy` is rejected.
 - Replace logical in-process comparisons with the real FFI-backed `(ii)..(v)` cohort
   and real legacy-parity cohort.
 - Enforce the final `VerifyBackend` / `LegacyParityBackend` GADT shapes rather than
@@ -269,8 +274,8 @@ and emits the tidy summary block answering Q1–Q7 in one screenful.
      haskell` is exercised inside the `mcts-haskell-style` Cabal stanza in step 4;
      it does not need its own plan step here.)
   4. Run `cabal test mcts-haskell-style` (pinned style-tool `fourmolu --mode check`
-     + `hlint --with-group=default --with-group=extra` + `cabal format`
-     round-trip).
+     + `hlint --with-group=default --with-group=extra` with only `Error:` findings
+     blocking + `cabal format` round-trip).
   5. Run `cabal test mcts-unit`.
   6. Run `cabal test mcts-integration`.
   7. Run `cabal test mcts-cross-backend`.
@@ -404,10 +409,11 @@ so the contract is reviewable in one place:
 
 ### Remaining Work
 
-- Baseline landed: `mcts test all --dry-run`, `mcts test <stanza>`, a Plan/Apply
-  runner, report-card rendering, and the pinned command sequence exist. Recursive
-  CLI steps now route through `cabal exec mcts -- ...`, and the benchmark commands
-  accept the comma-separated backend cohorts used by the report-card workload.
+- Baseline landed and validated: `mcts test all --dry-run`, `mcts test <stanza>`, a
+  Plan/Apply runner, report-card rendering, and the pinned command sequence exist.
+  The dry-run renders the fifteen typed `Subprocess` steps in order; recursive CLI
+  steps route through `cabal exec mcts -- ...`, and the benchmark commands accept
+  the comma-separated backend cohorts used by the report-card workload.
 - Replace logical report-card placeholders with measured Q1-Q7 evidence from the real
   backends.
 - Ensure the large pinned benchmark/verify workload remains practical for the final

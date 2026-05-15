@@ -4,11 +4,14 @@ module MCTS.CLI.Bench
     , monotonicNanos
     ) where
 
+import Control.Monad.IO.Class (liftIO)
 import Data.Word (Word64)
 import GHC.Clock (getMonotonicTimeNSec)
 import MCTS.CLI.Output (OutputFormat (..), OutputOptions (..), outputLine)
 import MCTS.Driver
+import qualified MCTS.Env as Env
 import MCTS.Types
+import System.Exit (ExitCode (..))
 
 data BenchRow = BenchRow
     { rowInputs :: !RunInputs
@@ -17,8 +20,11 @@ data BenchRow = BenchRow
     , rowSimsPerSecond :: !Double
     }
 
-runBench :: OutputOptions -> [Backend] -> RunInputs -> IO Int
-runBench = runBenchWithClock monotonicNanos
+runBench :: [Backend] -> RunInputs -> Env.App ExitCode
+runBench backends inputs = do
+    env <- Env.askEnv
+    code <- liftIO (runBenchWithClock (Env.envClock env) (Env.envOutputOptions env) backends inputs)
+    pure (intToExitCode code)
 
 -- | Test-injectable variant: the caller can supply a custom monotonic
 -- clock (e.g., an `IORef`-backed counter under `mcts-integration`'s
@@ -123,6 +129,10 @@ joinWith separator (x : xs) = x <> separator <> joinWith separator xs
 -- comparable.
 monotonicNanos :: IO Word64
 monotonicNanos = getMonotonicTimeNSec
+
+intToExitCode :: Int -> ExitCode
+intToExitCode 0 = ExitSuccess
+intToExitCode n = ExitFailure n
 
 showFF :: Double -> String
 showFF value = show (fromInteger (round (value * 10)) / 10 :: Double)

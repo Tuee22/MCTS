@@ -3,16 +3,22 @@
 
 #include <stdint.h>
 
+#if defined(__GNUC__) || defined(__clang__)
+#define MCTS_FUNCTIONAL_API __attribute__((visibility("default")))
+#else
+#define MCTS_FUNCTIONAL_API
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 typedef struct mcts_functional_board mcts_functional_board;
 
-mcts_functional_board* mcts_functional_new_board(void);
-void mcts_functional_free_board(mcts_functional_board*);
-int mcts_functional_is_terminal(const mcts_functional_board*);
-uint8_t mcts_functional_select_uct_move(mcts_functional_board*, uint64_t seed, uint32_t sims);
+MCTS_FUNCTIONAL_API mcts_functional_board* mcts_functional_new_board(void);
+MCTS_FUNCTIONAL_API void mcts_functional_free_board(mcts_functional_board*);
+MCTS_FUNCTIONAL_API int mcts_functional_is_terminal(const mcts_functional_board*);
+MCTS_FUNCTIONAL_API uint8_t mcts_functional_select_uct_move(mcts_functional_board*, uint64_t seed, uint32_t sims);
 
 typedef struct {
     uint16_t envelope_version;
@@ -32,7 +38,7 @@ typedef struct {
     uint8_t  fp_env;
 } mcts_functional_envelope;
 
-const mcts_functional_envelope *mcts_functional_get_envelope(void);
+MCTS_FUNCTIONAL_API const mcts_functional_envelope *mcts_functional_get_envelope(void);
 
 #ifdef __cplusplus
 }

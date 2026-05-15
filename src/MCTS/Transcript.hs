@@ -1,5 +1,6 @@
 module MCTS.Transcript
-    ( encodeTranscript
+    ( TranscriptRef (..)
+    , encodeTranscript
     , decodeTranscript
     , encodeRunConfig
     , encodeEnvelope
@@ -49,6 +50,12 @@ import System.IO (Handle, hFlush, openBinaryTempFile)
 import qualified System.Info as Info
 import qualified System.Posix.IO as PosixIO
 import qualified System.Posix.Unistd as PosixUnistd
+
+data TranscriptRef = TranscriptRef
+    { transcriptRefHash :: !String
+    , transcriptRefPath :: !FilePath
+    }
+    deriving (Eq, Show)
 
 encodeTranscript :: Transcript -> BS.ByteString
 encodeTranscript transcript =
@@ -604,7 +611,7 @@ listTranscriptFiles explicit = do
             names <- getDirectoryContents dir
             pure (sort [dir </> name | name <- names, ".tr" `isSuffixOf` name])
 
-lookupByPrefix :: Maybe FilePath -> String -> IO (Either AppError FilePath)
+lookupByPrefix :: Maybe FilePath -> String -> IO (Either AppError TranscriptRef)
 lookupByPrefix explicit prefix
     | length prefix < 4 || any (not . isHexDigit) prefix =
         pure (Left (TranscriptNotFound prefix))
@@ -614,9 +621,13 @@ lookupByPrefix explicit prefix
         pure $
             case matches of
                 [] -> Left (TranscriptNotFound prefix)
-                [one] -> Right one
-                many -> Left (TranscriptAmbiguous prefix many)
+                [one] -> Right (TranscriptRef (pathHash one) one)
+                many -> Left (TranscriptAmbiguous prefix (map pathHash many))
 
 isPrefixOfPathHash :: String -> FilePath -> Bool
 isPrefixOfPathHash prefix path =
-    take (length prefix) (takeWhile (/= '.') (reverse (takeWhile (/= '/') (reverse path)))) == prefix
+    take (length prefix) (pathHash path) == prefix
+
+pathHash :: FilePath -> String
+pathHash path =
+    takeWhile (/= '.') (reverse (takeWhile (/= '/') (reverse path)))

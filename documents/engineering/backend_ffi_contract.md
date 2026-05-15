@@ -30,6 +30,20 @@ function pointers via `foreign import ccall "dynamic"`; this keeps Cabal builds
 independent of platform-specific `extra-libraries` paths while the backend build
 harness is still active. The target fully-optimized install may still link the
 canonical FFI load names at build time once the PGO/BOLT artefact paths settle.
+The current smoke build products are `cpp-legacy/build/libmcts_cpp_legacy.so`,
+`cpp-imperative/build/libmcts_cpp_imperative.so`,
+`cpp-functional/build/libmcts_cpp_functional.so`, and
+`rust/target/release/libmcts_rust.so`; only the Rust smoke product already uses the
+target canonical load directory. The C++ canonical install-name symlinks are created
+by the future PGO/BOLT install step, not by the smoke `make` targets.
+
+The current Haskell smoke drivers
+(`src/MCTS/Driver/{CppLegacy,CppImperative,CppFunctional,Rust}.hs`) use dynamic
+`mcts_<backend>_new_board`, `mcts_<backend>_is_terminal`,
+`mcts_<backend>_select_uct_move`, and `mcts_<backend>_free_board` symbols to run a
+bounded game against each real smoke shared library. The smoke ABI returns the chosen
+action only; the operator-facing transcript/verify drivers remain logical until the
+backend C ABIs expose sorted visit-vector instrumentation.
 
 The **FFI load name** is the canonical install path matching
 [../../README.md → Repository layout (target)](../../README.md); the Haskell FFI
@@ -169,6 +183,18 @@ marshalling the struct to the wire format is a memcpy of the
 non-length-prefixed fields plus length-prefixed copies of
 `compiler_version[0..compiler_version_len)` and
 `libm_id[0..libm_id_len)`.
+
+Current baseline: `src/MCTS/FFI/Common.hs` dynamically loads
+`mcts_<backend>_get_envelope` via `dlopen` / `dlsym`, marshals the C/Rust
+process-static struct into `EngineEnvelope`, and the per-backend modules expose
+`loadCppLegacyEnvelope`, `loadCppImperativeEnvelope`,
+`loadCppFunctionalEnvelope`, and `loadRustEnvelope`. The integration stanza
+validates the live envelope path for all four foreign smoke libraries when their
+shared artefacts are present. The Rust smoke cdylib also stamps
+`compiler_version` from `rustc --version` through `rust/build.rs` and
+`MCTS_RUSTC_VERSION`. Post-link `engine_build_id` patching, runtime CPU/FP
+probes, and routing these live envelopes into final verify/recompute decisions
+remain owned by the backend envelope sprints.
 
 #### Field Capture Protocol
 

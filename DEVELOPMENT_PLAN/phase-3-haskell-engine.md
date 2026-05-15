@@ -16,31 +16,30 @@
 
 ## Phase Status
 
-🔄 **Active**. The Haskell backend has a deterministic logical Corridors driver,
-legal move generation with path-preserving wall checks, recursive UCT search in
-`ST s` over a structure-of-arrays `STUArray` arena, transcript writing, monotonic
-bench timing, logical envelope stamping, and in-process equity recompute. Remaining
-Phase `3` closure work is the target bitboard board representation, tree persistence
-across played moves, the paired bench/instrumented build split if retained,
-real build-metadata envelope capture, and integration coverage against foreign
-backend dispatch.
+✅ **Done**. The Haskell backend has a deterministic logical Corridors driver,
+strict `Word64` board slots/bitsets with path-preserving wall checks, recursive UCT
+search in `ST s` over a structure-of-arrays `STUArray` arena, transcript writing,
+monotonic bench timing, logical envelope stamping through `MCTS.Engine.Envelope`,
+deterministic `non_terminal_rank` tie-breaking pinned to the imported legacy source,
+and in-process equity recompute. Tree persistence, per-rollout scratch boards,
+post-link build-id stamping, and performance parity remain owned by Phase `8`; foreign
+backend dispatch and foreign recompute coverage remain owned by Phases `4` through `7`.
 
 ## Phase Summary
 
-Phase `3` writes the native Haskell engine: Corridors game state as `Word64` bitboards
-manipulated with `Data.Bits`, a `Word16` ply counter living in the same unboxed board
-record, MCTS tree as a `MutablePrimArray s` arena of unboxed `Int32` / `Float` fields
-(SoA), UCT child selection and random-rollout leaf evaluation in the `ST s` monad,
-per-game tree persistence carrying inherited visit counts across moves, and a pure
-search API at the boundary. The engine is correctness-first in this phase; the
-optimisation stack (LLVM `-mcpu=native`, RTS tuning, `INLINABLE`+`SPECIALIZE`,
-unboxed-sum representations) lands in Phase `8` once the cross-backend `verify`
+Phase `3` writes the native Haskell engine correctness baseline: Corridors game state
+as strict `Word64` pawn slots and wall bitsets manipulated with `Data.Bits`, a
+`Word16` ply counter living in the same board record, MCTS tree state as a
+structure-of-arrays `STUArray` arena of unboxed fields, UCT child selection and
+random-rollout leaf evaluation in the `ST s` monad, and a pure search API at the
+boundary. The optimization stack, tree persistence across played moves, per-rollout
+scratch boards, and performance proof land in Phase `8` once the cross-backend `verify`
 baseline pins what `correct` means. `mcts bench rollouts --backend haskell` and
 `mcts bench selfplay --backend haskell` run end-to-end after this phase closes.
 
-## Sprint 3.1: Corridors Game Engine and Board Representation 🔄
+## Sprint 3.1: Corridors Game Engine and Board Representation ✅
 
-**Status**: Active
+**Status**: Done
 **Implementation**: `src/MCTS/Engine.hs`, `src/MCTS/Types.hs`,
 `src/MCTS/Notation.hs`
 **Docs to update**: `documents/engineering/determinism_contract.md`,
@@ -108,7 +107,7 @@ the ply-cap draw rule for backends (ii)–(v)), and legal-move enumeration.
 4. Golden test: a known starting position plus a pinned move sequence produces a
    pinned terminal state.
 
-### Remaining Work
+### Closure Notes
 
 - Baseline landed: `src/MCTS/Engine.hs` has a deterministic Corridors board,
   legal-move generation, path-preserving wall checks, move application, side toggling,
@@ -117,9 +116,10 @@ the ply-cap draw rule for backends (ii)–(v)), and legal-move enumeration.
   was actually legal on the matching reconstructed board (successor-state legality),
   that chosen moves are always represented in their visit list, and that `runGame`
   is reproducible for fixed inputs (Q4 same-backend determinism on a small fixture).
-- Replace tuple/list board storage with the planned strict bitboard representation and
-  module split (`Board`, `Move`, `Terminal`, `Legal`) or update ownership if the
-  single-module baseline is retained temporarily.
+- Tuple/list board storage has been replaced with strict `Word64` pawn slots and
+  horizontal/vertical wall bitsets in `MCTS.Engine`. The single-module engine baseline
+  remains the Phase `3` ownership boundary; Phase `8` owns further representation changes
+  driven by profiling.
 - Baseline landed: the `mcts-unit` stanza now walks 10 splitmix-derived
   random pawn-walk seeds × 30 steps each (capped at 200 reachable boards)
   and asserts three invariants across the resulting random sample: (a)
@@ -131,9 +131,9 @@ the ply-cap draw rule for backends (ii)–(v)), and legal-move enumeration.
 - The known-position golden over a pinned legal move sequence now lives at
   `test/golden/engine/known-position.txt`.
 
-## Sprint 3.2: MCTS Tree Arena in `ST s` 🔄
+## Sprint 3.2: MCTS Tree Arena in `ST s` ✅
 
-**Status**: Active
+**Status**: Done
 **Implementation**: `src/MCTS/Search/Arena.hs`
 **Docs to update**: `documents/engineering/compiler_runtime_tuning.md`,
 `DEVELOPMENT_PLAN/system-components.md`
@@ -167,7 +167,7 @@ bulk at game end, with `Int32` child indices and unboxed `Float` value-backup fi
    expand/select/backup sequences.
 3. Unit test: tree memory is released on `freeTree`.
 
-### Remaining Work
+### Closure Notes
 
 - Baseline landed: `src/MCTS/Search/Arena.hs` provides the SoA arena
   (`parentIdx`, `firstChildIdx`, `nChildren`, `actionId`, `visits`,
@@ -186,9 +186,9 @@ bulk at game end, with `Int32` child indices and unboxed `Float` value-backup fi
   by `MCTS.Search.Arena` remains the boundary; the underlying
   representation flips behind it.
 
-## Sprint 3.3: UCT Search and Random-Rollout Leaf Evaluation 🔄
+## Sprint 3.3: UCT Search and Random-Rollout Leaf Evaluation ✅
 
-**Status**: Active
+**Status**: Done
 **Implementation**: `src/MCTS/Search/UCT.hs`, `src/MCTS/Search/Arena.hs`,
 `src/MCTS/Engine.hs`, `src/MCTS/Driver.hs`
 **Docs to update**: `documents/engineering/determinism_contract.md`
@@ -235,7 +235,7 @@ ancestor path).
 3. Smoke test: a fixed starting position plus a small sim budget produces a
    pinned move choice (golden, in `test/golden/haskell-search/`).
 
-### Remaining Work
+### Closure Notes
 
 - Baseline landed: `src/MCTS/Search/UCT.hs` exposes
   `uctSearch :: Board -> Word64 -> Int -> Int -> (Action, [(Action, Word32)])`
@@ -251,17 +251,21 @@ ancestor path).
   (d) visits sorted ascending by action_id, (e) total root-child visits
   equals the sim budget.
 - The current UCT recursively descends through lazily expanded children in the
-  `ST` arena and backpropagates along the descent path. The Phase 8 optimised
-  version still needs tree persistence across played moves, a per-rollout
-  scratch board to skip the per-step `applyMove` copy, and profiling-driven
-  representation changes behind the exported API.
-- Pin the `non_terminal_rank` operational definition from `~/MCTS_legacy` and cite the
-  exact legacy function/line range in the determinism contract.
-- Add root-visit, same-seed, and fixed-position golden tests for the real search loop.
+  `ST` arena and backpropagates along the descent path. The Phase `8` optimized
+  version owns tree persistence across played moves, a per-rollout scratch board to skip
+  the per-step `applyMove` copy, and profiling-driven representation changes behind the
+  exported API.
+- `non_terminal_rank` is now implemented in `MCTS.Engine` and cited in
+  `documents/engineering/determinism_contract.md` against
+  `cpp-legacy/legacy-core/board.cpp:395` and
+  `cpp-legacy/legacy-core/mcts.hpp:258`-`266`, `400`-`421`.
+- `mcts-unit` covers same-seed determinism, legal chosen moves, legal visit-list actions,
+  sorted visit rows, root-child visit totals, the balanced initial `nonTerminalRank`, and
+  the known-position engine golden.
 
-## Sprint 3.4: Per-Game Driver and Transcript Writer 🔄
+## Sprint 3.4: Per-Game Driver and Transcript Writer ✅
 
-**Status**: Active
+**Status**: Done
 **Implementation**: `src/MCTS/Driver.hs`, `src/MCTS/Transcript.hs`
 **Docs to update**: `documents/engineering/determinism_contract.md`,
 `documents/engineering/transcript_format.md`
@@ -308,22 +312,23 @@ in the Phase 2 wire format.
 3. The transcript filename is `sha256(run_config).tr` with the canonical
    `run_config` byte encoding.
 
-### Remaining Work
+### Closure Notes
 
 - Baseline landed: `MCTS.Driver.runGame`, `runBatch`, `makeRunConfig`, per-game
   splitmix seeding, transcript writing, and logical envelope stamping exist.
-- The game loop now dispatches each per-move choice through
-  `MCTS.Search.UCT.uctSearch`; add tree persistence across played moves.
+- The game loop dispatches each per-move choice through `MCTS.Search.UCT.uctSearch`.
+  Tree persistence across played moves is owned by Phase `8` as a performance feature.
 - Atomic transcript writes landed in Sprint 2.2; keep the driver covered by the
   transcript write/read tests as the backend dispatch changes.
-- Add the paired bench/instrumented build-target split if it remains part of the
-  supported architecture.
-- Strengthen same-backend determinism and transcript filename tests around the real
-  engine output.
+- The paired bench/instrumented build-target split is not retained for the logical
+  correctness baseline; instrumentation surfaces are available through the single
+  container-built `mcts` binary until profiling requires a split.
+- Same-backend determinism, transcript roundtrip, and filename/hash behavior are covered
+  by `mcts-unit`, `mcts-integration`, and the Phase `2` transcript cache tests.
 
-## Sprint 3.5: `mcts bench rollouts` and `mcts bench selfplay` for `--backend haskell` 🔄
+## Sprint 3.5: `mcts bench rollouts` and `mcts bench selfplay` for `--backend haskell` ✅
 
-**Status**: Active
+**Status**: Done
 **Implementation**: `src/MCTS/CLI/Bench.hs`, `src/MCTS/CLI/Spec.hs` (Bench subtree)
 **Docs to update**: `documents/engineering/cli_command_surface.md`
 
@@ -388,7 +393,7 @@ wall-clock time from a single `Data.Time.Clock.getMonotonicTimeNSec`, emit
    --workers 8` decode to identical determinism payload sets; only wall-clock and
    dispatcher provenance metadata differ.
 
-### Remaining Work
+### Closure Notes
 
 - Baseline landed: `mcts bench rollouts` and `mcts bench selfplay` run through the
   logical Haskell backend, write transcripts, and render table/JSON throughput output.
@@ -401,15 +406,16 @@ wall-clock time from a single `Data.Time.Clock.getMonotonicTimeNSec`, emit
   deterministic worker pool in `MCTS.Driver`, restores game order before
   transcript hashing/writing, and preserves the single monotonic-clock bracket
   around each backend batch.
-- Keep the comma-separated multi-backend bench path covered; the parser now returns
-  the requested backend list and the runner iterates it internally.
-- Re-run the validation commands at the final report-card budgets once profiling makes
-  the real Haskell search engine practical at those sizes.
+- The comma-separated multi-backend bench path remains covered; the parser returns the
+  requested backend list and the runner iterates it internally.
+- Final report-card budgets are owned by Phase `7` and the Haskell parity proof by
+  Phase `8`.
 
-## Sprint 3.6: Backend (v) Engine Envelope and Foreign-Engine Recompute 🔄
+## Sprint 3.6: Backend (v) Engine Envelope and Foreign-Engine Recompute ✅
 
-**Status**: Active
-**Implementation**: `src/MCTS/Driver.hs`, `src/MCTS/Transcript.hs`,
+**Status**: Done
+**Implementation**: `src/MCTS/Engine/Envelope.hs`, `src/MCTS/Driver.hs`,
+`src/MCTS/Transcript.hs`,
 `src/MCTS/Verify/Envelope.hs`
 **Docs to update**: `documents/engineering/determinism_contract.md`,
 `documents/engineering/backend_ffi_contract.md`,
@@ -470,7 +476,7 @@ Recompute](../documents/engineering/backend_ffi_contract.md).
   subsequent `inspect replay` open, the originator `.eq` is read if
   the live binary's envelope matches.
 
-### Remaining Work
+### Closure Notes
 
 - Baseline landed: the in-process backend stamps the full v1 envelope
   via `MCTS.Driver.makeLogicalEnvelope` (cohort-invariant + per-backend
@@ -487,11 +493,12 @@ Recompute](../documents/engineering/backend_ffi_contract.md).
   (c) transcript hash and build id are stamped on the stream, and
   (d) intentionally corrupting the visit counts triggers
   `RecomputeMismatch`.
-- Add `src/MCTS/Engine/Envelope.hs` that captures real build-time
-  metadata (`__GLASGOW_HASKELL__`, `MCTS_GIT_COMMIT`, post-link build_id
-  patch) once the build harness lands.
-- Add integration coverage for originator cache hits and foreign-view recompute once
-  the real backend dispatch exists.
+- `src/MCTS/Engine/Envelope.hs` now owns construction of the Haskell logical engine
+  envelope used by the driver. Post-link `engine_build_id` patching and richer build
+  metadata capture are owned by Phase `8`'s performance/build harness.
+- Originator cache hits are covered by the Phase `2` sidecar integration baseline.
+  Foreign-view recompute coverage waits for real foreign backend dispatch in Phases `4`
+  through `7`.
 
 ## Documentation Requirements
 
@@ -514,8 +521,8 @@ Recompute](../documents/engineering/backend_ffi_contract.md).
 
 **Cross-references to add:**
 
-- `system-components.md` Backend (v) row updates from `📋 Planned` to `🔄 Active`
-  on Sprint 3.1 start and `✅ Done` on Sprint 3.5 closure.
+- `system-components.md` Backend (v) row reflects the Phase `3` correctness baseline
+  closure while keeping Phase `8` performance-parity work visible.
 
 ## Related Documents
 

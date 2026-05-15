@@ -6,21 +6,40 @@
 -- `#[repr(C)]` for every type crossing the boundary so layouts match.
 -- Per the FFI doctrine this module routes through `MCTS.FFI.Common`.
 module MCTS.FFI.Rust
-    ( withRustBoard
+    ( RustGame
+    , withRustBoard
+    , withRustGame
+    , loadRustEnvelope
     ) where
 
 import Foreign.Ptr (Ptr)
 import MCTS.Error (AppError)
-import MCTS.FFI.Common (withDynamicBoard)
+import MCTS.FFI.Common
+    ( DynamicGame
+    , EngineEnvelope
+    , loadDynamicEnvelope
+    , withDynamicBoard
+    , withDynamicGame
+    )
 import MCTS.Types (Backend (Rust))
 import qualified System.Info as Info
 
 newtype RustBoard = RustBoard (Ptr ())
 
+type RustGame = DynamicGame
+
 withRustBoard :: (RustBoard -> IO a) -> IO (Either AppError a)
 withRustBoard body =
     withDynamicBoard Rust rustLibraryPath "mcts_rust" $
         body . RustBoard
+
+withRustGame :: (RustGame -> IO a) -> IO (Either AppError a)
+withRustGame =
+    withDynamicGame Rust rustLibraryPath "mcts_rust"
+
+loadRustEnvelope :: IO (Either AppError EngineEnvelope)
+loadRustEnvelope =
+    loadDynamicEnvelope Rust rustLibraryPath "mcts_rust"
 
 rustLibraryPath :: FilePath
 rustLibraryPath =

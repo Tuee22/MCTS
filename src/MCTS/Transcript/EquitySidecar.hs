@@ -13,9 +13,14 @@ module MCTS.Transcript.EquitySidecar
     , sidecarStem
     , writeEquitySidecar
     , writeEquitySidecarStream
+    , writeEquitySidecarStreamWithEnvelope
     , listEquitySidecars
+    , prunableEquitySidecars
     , pruneEquitySidecars
+    , removeEquitySidecar
     , isCurrentSidecar
+    , isOriginator
+    , sidecarIsOriginator
     ) where
 
 import Control.Exception (IOException, try)
@@ -204,12 +209,15 @@ writeEquitySidecar explicit transcriptHash transcript =
 -- | Like `writeEquitySidecar` but accepts an explicit `EqStream` so a
 -- recompute-driven stream can be persisted.
 writeEquitySidecarStream :: Maybe FilePath -> Transcript -> EqStream -> IO SidecarEntry
-writeEquitySidecarStream explicit transcript stream = do
+writeEquitySidecarStream explicit transcript =
+    writeEquitySidecarStreamWithEnvelope explicit (transcriptEnvelope transcript)
+
+writeEquitySidecarStreamWithEnvelope :: Maybe FilePath -> Envelope -> EqStream -> IO SidecarEntry
+writeEquitySidecarStreamWithEnvelope explicit envelope stream = do
     root <- resolveCacheRoot explicit
-    let envelope = transcriptEnvelope transcript
-        transcriptHash = eqTranscriptHash stream
+    let transcriptHash = eqTranscriptHash stream
         dir = sidecarDirectory root transcriptHash
-        stem = sidecarStem (envelopeBackend envelope) (envelopeBuildId envelope)
+        stem = sidecarStem (eqBackend stream) (eqBuildId stream)
         eqPath = dir </> stem <> ".eq"
         envelopePath = dir </> stem <> ".envelope"
         envelopeBytes = LBS.toStrict (Builder.toLazyByteString (encodeEnvelope envelope))
@@ -219,8 +227,8 @@ writeEquitySidecarStream explicit transcript stream = do
     pure
         SidecarEntry
             { sidecarTranscriptHash = transcriptHash
-            , sidecarBackend = envelopeBackend envelope
-            , sidecarBuildId = envelopeBuildId envelope
+            , sidecarBackend = eqBackend stream
+            , sidecarBuildId = eqBuildId stream
             , sidecarEqPath = eqPath
             , sidecarEnvelopePath = envelopePath
             }
@@ -271,17 +279,29 @@ listEquitySidecars explicit = do
 
 pruneEquitySidecars :: Maybe FilePath -> Bool -> IO Int
 pruneEquitySidecars explicit keepCurrent = do
-    entries <- listEquitySidecars explicit
-    let stale =
-            if keepCurrent
-                then filter (not . isCurrentSidecar) entries
-                else entries
-    mapM_ removeSidecar stale
+    stale <- prunableEquitySidecars explicit keepCurrent
+    mapM_ removeEquitySidecar stale
     pure (length stale)
+
+prunableEquitySidecars :: Maybe FilePath -> Bool -> IO [SidecarEntry]
+prunableEquitySidecars explicit keepCurrent = do
+    entries <- listEquitySidecars explicit
+    pure $
+        if keepCurrent
+            then filter (not . isCurrentSidecar) entries
+            else entries
 
 isCurrentSidecar :: SidecarEntry -> Bool
 isCurrentSidecar entry =
     sidecarBuildId entry == backendIdentifier (sidecarBackend entry) <> "-logical"
+
+isOriginator :: Transcript -> EqStream -> Bool
+isOriginator transcript stream =
+    eqBackend stream == runBackend (transcriptConfig transcript)
+
+sidecarIsOriginator :: Transcript -> SidecarEntry -> Bool
+sidecarIsOriginator transcript entry =
+    sidecarBackend entry == runBackend (transcriptConfig transcript)
 
 listHashDirectory :: FilePath -> FilePath -> IO [SidecarEntry]
 listHashDirectory archDir hashName = do
@@ -311,8 +331,8 @@ entryFor dir transcriptHash eqName = do
                     }
                 ]
 
-removeSidecar :: SidecarEntry -> IO ()
-removeSidecar entry = do
+removeEquitySidecar :: SidecarEntry -> IO ()
+removeEquitySidecar entry = do
     removeFileIfExists (sidecarEqPath entry)
     removeFileIfExists (sidecarEnvelopePath entry)
 

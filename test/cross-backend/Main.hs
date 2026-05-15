@@ -4,16 +4,21 @@ import MCTS.Driver
 import MCTS.Error (AppError (..))
 import MCTS.Types
 import MCTS.Verify
+import Test.Tasty (defaultMain, testGroup)
+import Test.Tasty.HUnit (assertFailure, testCase, (@?=))
 
 -- | Phase 7 Sprint 7.2 declares the four-backend `(ii)..(v)` round-robin under
 -- `--rng cpp` as the canonical cross-backend cohort. The cpp-legacy backend
 -- must be rejected at the verify boundary; the cohort minimum is two
 -- backends.
 main :: IO ()
-main = do
-    rolloutsCheck
-    cohortConstraintsCheck
-    putStrLn "mcts-cross-backend PASS"
+main =
+    defaultMain $
+        testGroup
+            "mcts-cross-backend"
+            [ testCase "four-backend rollout cohort" rolloutsCheck
+            , testCase "cohort constraints" cohortConstraintsCheck
+            ]
 
 rolloutsCheck :: IO ()
 rolloutsCheck = do
@@ -33,11 +38,9 @@ rolloutsCheck = do
             [CppImperative, CppFunctional, Rust, Haskell]
             inputs{inputThreading = SingleThreaded}
     case detailed of
-        Left err -> error ("cross-backend verify failed: " <> show err)
+        Left err -> assertFailure ("cross-backend verify failed: " <> show err)
         Right result ->
-            if length (verifyBatches result) /= 4
-                then error "cross-backend verify did not produce 4 batches"
-                else pure ()
+            length (verifyBatches result) @?= 4
 
 cohortConstraintsCheck :: IO ()
 cohortConstraintsCheck = do
@@ -46,9 +49,9 @@ cohortConstraintsCheck = do
     rejectsLegacy <- verifyRun Rollouts [CppLegacy, CppImperative, Haskell] inputs
     case rejectsLegacy of
         Left (VerifyCohortTooSmall _) -> pure ()
-        other -> error ("expected VerifyCohortTooSmall rejecting cpp-legacy, got " <> show other)
+        other -> assertFailure ("expected VerifyCohortTooSmall rejecting cpp-legacy, got " <> show other)
     -- A single-backend cohort must fail the minimum-cohort check.
     rejectsSingle <- verifyRun Rollouts [Haskell] inputs
     case rejectsSingle of
         Left (VerifyCohortTooSmall _) -> pure ()
-        other -> error ("expected VerifyCohortTooSmall on single-backend cohort, got " <> show other)
+        other -> assertFailure ("expected VerifyCohortTooSmall on single-backend cohort, got " <> show other)

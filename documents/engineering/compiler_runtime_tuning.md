@@ -86,6 +86,13 @@ commands run:
    [./backend_ffi_contract.md → Backends and Linkage](./backend_ffi_contract.md)
    for the full install-name vs build-intermediate table.
 
+Current implementation baseline: the Plan/Apply surface and prerequisite gate run
+inside the container, but the apply steps still delegate to each backend's smoke
+`make` target. The smoke builds validate the toolchain and C ABI skeletons with the
+same C++23 optimization flag set listed above, default-visible C ABI exports, and a
+`mimalloc` link. The two-stage PGO, BOLT, static allocator link discipline, paired
+bench/instrumented artefacts, and install-name steps remain active Phase 5/6 work.
+
 ### Code-Level Requirements
 
 Grouped by priority per the project [../../README.md → Compiler and runtime
@@ -182,6 +189,14 @@ The `mcts build rust` Plan/Apply command runs:
 - **BOLT** post-link, same shape as the C++ backends.
 - **`mimalloc`** as `#[global_allocator]` (via the `mimalloc` crate).
 
+Current implementation baseline: `mcts build rust` validates the pinned Rust toolchain
+inside the container and delegates to `cargo build --release`, producing the smoke
+`cdylib` at `rust/target/release/libmcts_rust.so`. The smoke crate is split into the
+planned `board`, `tree`, `search`, `rollout`, `c_abi`, and `envelope` modules and
+declares `mimalloc::MiMalloc` as `#[global_allocator]`; `rust/build.rs` stamps
+`rustc --version` into the live FFI envelope as `compiler_version`. The rustc
+PGO/BOLT pipeline remains active Phase 6 work.
+
 ### Code-Level Requirements
 
 - **`u16` ply counter in board state** (correctness — see
@@ -241,7 +256,11 @@ until Sprint 1.1 pins LLVM in `docker/Dockerfile`. `INLINABLE` pragmas
 are landed on the hot path: every primitive in `MCTS.Search.Arena`,
 `MCTS.Search.UCT`, `MCTS.Rng.Mix`, and the exported engine functions
 in `MCTS.Engine` (`legalMoves`, `applyMove`, `isTerminal`,
-`terminalWinner`).
+`terminalOutcome`, `terminalWinner`). The rollout inner loop calls
+`terminalOutcome`, which returns a strict `Float` sentinel (`1.0` hero
+win, `-1.0` villain win, `0.0` draw, `nonTerminalOutcome = 2.0`) and
+therefore avoids allocating through the public `Maybe Winner`
+`terminalWinner` API on each rollout step.
 
 ### RTS Tuning
 

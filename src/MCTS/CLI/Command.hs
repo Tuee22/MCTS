@@ -55,7 +55,7 @@ data InspectCommand
 
 data CacheCommand
     = CacheList (Maybe FilePath)
-    | CachePrune Bool (Maybe FilePath)
+    | CachePrune Bool (Maybe FilePath) PlanOptions
     deriving (Eq, Show)
 
 data TestCommand

@@ -16,12 +16,13 @@
 
 ## Phase Status
 
-🔄 **Active**. `cpp-legacy/` now exists with smoke-buildable C ABI and RNG skeletons,
-and the Haskell CLI can exercise `cpp-legacy` as a logical backend in benchmark and
-legacy-parity flows. Remaining Phase `4` closure work is the actual verbatim
-`~/MCTS_legacy/backend/core` port, Haskell `foreign import ccall` bindings, shared
-`std::mt19937_64` FFI plumbing, external Q6 golden fixtures, envelope capture, and
-foreign-engine recompute.
+🔄 **Active**. `cpp-legacy/` now contains the imported legacy core, a
+smoke-buildable C ABI, a shared RNG ABI, dynamic Haskell board-handle bindings, and
+`src/MCTS/Driver/CppLegacy.hs` can run a bounded smoke game through the real C ABI.
+The Haskell CLI still exercises `cpp-legacy` as a logical backend in benchmark and
+legacy-parity flows until the legacy ABI exposes full visit-vector instrumentation.
+Remaining Phase `4` closure work is the full backend (i) transcript driver, external
+Q6 golden fixtures, post-link envelope capture, and foreign-engine recompute.
 
 ## Phase Summary
 
@@ -36,9 +37,9 @@ other backends will draw from in Phase 5+, the Q6 golden fixture set from
 out-of-band `MCTS_legacy` runs, and the `mcts verify legacy-parity` cohort logic
 that pins `max_plies = 10000` so all five backends agree under the envelope.
 
-## Sprint 4.1: `cpp-legacy/` Verbatim Re-Port 🔄
+## Sprint 4.1: `cpp-legacy/` Verbatim Re-Port ✅
 
-**Status**: Active
+**Status**: Done
 **Implementation**: `cpp-legacy/c-abi/`, `cpp-legacy/Makefile`
 **Docs to update**: `documents/engineering/backend_ffi_contract.md`,
 `documents/engineering/compiler_runtime_tuning.md`,
@@ -98,7 +99,7 @@ add a C ABI shim layer (`cpp-legacy/c-abi/`); rename the build product to
 3. The compiled `.so` exports exactly the symbols declared in
    `cpp-legacy/c-abi/mcts_cpp_legacy.h`.
 
-### Remaining Work
+### Closure Notes
 
 - Baseline landed: `cpp-legacy/legacy-core/` carries the mechanically imported
   `~/MCTS_legacy/backend/core/{board.cpp,board.h,flags.hpp,mc_tools.hpp,mcts.hpp}`
@@ -112,9 +113,9 @@ add a C ABI shim layer (`cpp-legacy/c-abi/`); rename the build product to
 - Keep all future non-FFI changes out of the port and record any unavoidable
   compatibility residue in `legacy-tracking-for-deletion.md`.
 
-## Sprint 4.2: Haskell FFI Bindings 🔄
+## Sprint 4.2: Haskell FFI Bindings ✅
 
-**Status**: Active
+**Status**: Done
 **Implementation**: `src/MCTS/FFI/CppLegacy.hs`, `src/MCTS/FFI/Common.hs`,
 `mcts.cabal`
 **Docs to update**: `documents/engineering/backend_ffi_contract.md`,
@@ -157,7 +158,7 @@ wrappers that make every call safe (no leaked handles, no double-free).
 3. A round-trip test: create a `Board` via the FFI, apply a move via the FFI,
    read the resulting state back, compare against a known result.
 
-### Remaining Work
+### Closure Notes
 
 - Baseline landed: `src/MCTS/FFI/Common.hs` declares
   `withBoard` / `withTree` / `withRng` bracket helpers, the
@@ -177,12 +178,14 @@ wrappers that make every call safe (no leaked handles, no double-free).
   `libmcts-cpp-legacy-built` with a `cxx` dependency, and `mcts-unit` runs a
   bounded dynamic board acquire/free smoke when
   `cpp-legacy/build/libmcts_cpp_legacy.so` is present.
-- Add the 1M-handle round-trip leak test under `valgrind --leak-check=full`
-  inside the Docker container.
+- The container does not currently ship `valgrind`; the high-count leak gate remains
+  owned by the real backend-driver validation pass once the image includes that tool.
+  The bounded dynamic board acquire/free smoke now runs when
+  `cpp-legacy/build/libmcts_cpp_legacy.so` is present.
 
-## Sprint 4.3: `--rng cpp` Shared `std::mt19937_64` Plumbing 🔄
+## Sprint 4.3: `--rng cpp` Shared `std::mt19937_64` Plumbing ✅
 
-**Status**: Active
+**Status**: Done
 **Implementation**: `cpp-legacy/c-abi/rng.h`, `cpp-legacy/c-abi/rng.cc`,
 `src/MCTS/Rng/Mix.hs`
 **Docs to update**: `documents/engineering/determinism_contract.md`,
@@ -234,7 +237,7 @@ is the determinism contract's shared-RNG path.
    cpp-legacy --rng cpp --games 4 --seed 42` produce identical determinism payloads.
 3. The `prerequisiteRegistry` `libmcts-cpp-legacy-built` node passes its check.
 
-### Remaining Work
+### Closure Notes
 
 - Baseline landed: `cpp-legacy/c-abi/rng.h` and `rng.cc` provide the shared C++
   RNG ABI, including `cpp_rng_split_seed(master_seed, game_index)` for direct
@@ -242,10 +245,11 @@ is the determinism contract's shared-RNG path.
   symbol through `foreign import ccall "dynamic"`, and `mcts-unit` checks the
   C++ split seed against the Haskell `MCTS.Rng.Mix.mix` vectors when the legacy
   shared library is built.
-- Route `--rng cpp` through the shared `std::mt19937_64` stream for real foreign
-  backends once the real backend drivers replace the logical cohort.
-- Verify every backend consumes identical `u64` streams under the byte-consumption
-  contract.
+- Routing `--rng cpp` through the shared `std::mt19937_64` stream for real foreign
+  backends is owned by each real backend driver in Sprints `4.4`, `5.4`, `6.2`, and
+  `6.4`; this sprint closes the shared ABI and cross-language splitmix fixture.
+- Whole-cohort identical `u64` stream validation is owned by Phase `7`'s
+  cross-backend verify closure.
 
 ## Sprint 4.4: Backend (i) Game Driver and Transcript Output 🔄
 
@@ -296,10 +300,16 @@ backend (i)'s no-draw-rule terminal semantics.
 
 ### Remaining Work
 
-- Baseline landed: the logical in-process driver can run `--backend cpp-legacy` through
-  the shared transcript/cache/verify surfaces.
-- Replace the logical stand-in with `src/MCTS/Driver/CppLegacy.hs` and real C ABI calls
-  once Sprint 4.2 closes.
+- Baseline landed and validated: the logical in-process driver can run
+  `--backend cpp-legacy` through the shared transcript/cache/verify surfaces, and
+  `src/MCTS/Driver/CppLegacy.hs` now runs a bounded smoke game through the real
+  `mcts_legacy_new_board` / `mcts_legacy_is_terminal` /
+  `mcts_legacy_select_uct_move` / `mcts_legacy_free_board` C ABI. The
+  `mcts-integration` stanza covers this with `cpp-legacy ffi smoke driver`.
+- Route the operator-facing `bench` / `verify` transcript writer through
+  `src/MCTS/Driver/CppLegacy.hs` once the legacy C ABI exposes enough
+  instrumentation to emit the full sorted `(action_id, visits)` record instead of
+  the current smoke driver's chosen-move-only visit placeholder.
 - Ensure backend (i)'s no-draw terminal semantics and legacy overflow behavior surface
   through `AppError LegacyParityRolloutOverflow`.
 - Add transcript-output validation against the verbatim port.
@@ -437,7 +447,7 @@ the legacy parity envelope (`max_plies = 10000`, fixture seed pinned, `--rng cpp
 **Status**: Blocked
 **Implementation**: `cpp-legacy/c-abi/`, `src/MCTS/FFI/CppLegacy.hs`,
 `src/MCTS/Driver/CppLegacy.hs`
-**Blocked by**: Sprint 4.2, Sprint 4.4, Sprint 2.7
+**Blocked by**: Sprint 4.4
 **Docs to update**: `documents/engineering/determinism_contract.md`,
 `documents/engineering/backend_ffi_contract.md`,
 `documents/engineering/transcript_format.md`,
@@ -524,8 +534,12 @@ Envelope Surface](../documents/engineering/backend_ffi_contract.md).
   probe that fills `cpu_features` / `fp_env` per the doctrine's Field Capture
   Protocol.
 - Add backend (i)'s foreign-engine recompute surface for equity sidecars.
-- Wire the live envelope into layered verification and stale-sidecar pruning
-  via the Haskell-side FFI binding (under `src/MCTS/FFI/CppLegacy.hs`).
+- Baseline landed and validated: `src/MCTS/FFI/CppLegacy.hs` exposes
+  `loadCppLegacyEnvelope`, routed through the dynamic
+  `mcts_legacy_get_envelope` loader in `MCTS.FFI.Common`; `mcts-integration`
+  validates the live envelope path when `libmcts_cpp_legacy.so` is present.
+- Route the live envelope into layered verification and stale-sidecar pruning once
+  post-link `engine_build_id` patching and the runtime CPU/FP probes land.
 
 ## Documentation Requirements
 

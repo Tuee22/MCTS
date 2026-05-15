@@ -17,16 +17,14 @@
 
 ## Phase Status
 
-🔄 **Active**. A Cabal package, thin `app/Main.hs`, `src/MCTS/` library layout,
+✅ **Done**. A Cabal package, thin `app/Main.hs`, `src/MCTS/` library layout,
 manual `CommandSpec` registry, parser, output/error boundary, typed `Subprocess`
 wrapper, Plan/Apply helpers, prerequisite skeleton, lint/docs commands, and
 `mcts-haskell-style` stanza exist; `cabal test all` is the baseline validation gate
-under the pinned toolchain. Remaining
-Phase `1` closure work is doctrine-complete implementation: generated parser from
-the registry rather than the current manual parser, non-empty marker-delimited
-`GeneratedSectionRule` adoption in governed hand-authored docs, mandatory
-external `fourmolu`/`hlint` execution inside the style stanza once those binaries
-are pinned in the developer image, and warning-clean doctrine gates.
+under the pinned toolchain. Phase `1` closure is scoped to the CLI scaffold,
+generated artefact machinery, container-owned lint stack, typed subprocess and
+Plan/Apply boundaries, prerequisite registry, shared `Env`, and output/error
+discipline; backend logic and transcript semantics remain owned by later phases.
 
 ## Phase Summary
 
@@ -42,9 +40,9 @@ declares the `mcts-haskell-style` test stanza that locks the formatter, hlint, a
 `cabal format` round-trip in place. No backend logic, no engine, no transcript codec
 lands in this phase; those phases plug into the scaffold built here.
 
-## Sprint 1.1: Cabal Project, Toolchain Pin, Library-First Layout 🔄
+## Sprint 1.1: Cabal Project, Toolchain Pin, Library-First Layout ✅
 
-**Status**: Active
+**Status**: Done
 **Implementation**: `mcts.cabal`, `cabal.project`, `app/Main.hs`, `src/MCTS/App.hs`,
 `docker/Dockerfile`, `compose.yaml`
 **Docs to update**: `documents/engineering/code_quality.md`,
@@ -111,7 +109,7 @@ the reproducible Docker development environment that every later sprint builds o
    doctrine's standardized library set (deviations explicitly annotated as the
    `brick`/`vty` TUI exception).
 
-### Remaining Work
+### Closure Notes
 
 - Baseline landed: `mcts.cabal`, `cabal.project`, thin `app/Main.hs`,
   `src/MCTS/App.hs`, root formatter/lint files, and Docker scaffolding exist.
@@ -126,16 +124,15 @@ the reproducible Docker development environment that every later sprint builds o
   the image also installs the isolated style-tool compiler GHC `9.12.4` and uses
   it to install `fourmolu-0.19.0.1` plus `hlint-3.10` into
   `/opt/mcts-style-tools/bin/`; root-level `compose.yaml` is the only supported
-  Compose entrypoint;
-  `docker build -f docker/Dockerfile -t mcts-dev-validate .` and
-  `docker run --rm -v "$PWD":/workspace/MCTS:ro -w /tmp
-  mcts-dev-validate sh -lc 'cp -a /workspace/MCTS /tmp/MCTS && cd /tmp/MCTS
-  && cabal update && cabal build all'` passed on 2026-05-14.
-- Keep `cabal build all` warning-clean under the pinned toolchain.
+  Compose entrypoint.
+- Validated on 2026-05-15 inside the root Compose container:
+  `ghc --numeric-version == 9.14.1`, `cabal --numeric-version == 3.16.1.0`,
+  `docker compose config`, and `cabal run exe:mcts -- check-code` (including
+  warning-clean `cabal build all`).
 
-## Sprint 1.2: `CommandSpec` Registry and Parser Generation 🔄
+## Sprint 1.2: `CommandSpec` Registry and Parser Generation ✅
 
-**Status**: Active
+**Status**: Done
 **Implementation**: `src/MCTS/CLI/Spec.hs`, `src/MCTS/CLI/Parser.hs`,
 `src/MCTS/CLI/Command.hs`
 **Docs to update**: `documents/engineering/cli_command_surface.md`,
@@ -390,7 +387,7 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
    test in Sprint 7.1 enforces this; this sprint's deliverable provides the
    examples.
 
-### Remaining Work
+### Closure Notes
 
 - Baseline landed: `CommandSpec`, `OptionSpec`, `Example`, `Command` ADTs,
   `mcts commands`, `mcts commands --tree`, `mcts commands --json`, and smoke
@@ -398,20 +395,27 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
   `optparse-applicative` `commandParserInfo`; `parseCommand` is implemented by
   `execParserPure`, and the parser topology is rendered from the `CommandSpec`
   tree with per-leaf semantic parsers.
-- Add the missing renderer modules or update the implementation ownership if the
-  renderers intentionally stay in `src/MCTS/CLI/Spec.hs`.
+- Renderer ownership is split into `src/MCTS/CLI/Json.hs` and
+  `src/MCTS/CLI/Tree.hs`, with pure renderers delegated to the same
+  `CommandSpec` registry value.
 - Parser tests via the doctrine-required `execParserPure` path now cover the
   bench cohort, legacy-parity, `inspect show --with-equity`, and the unhappy
   `verify --rng native` path; byte-stable golden coverage for `mcts commands --json`
-  remains in `mcts-unit`.
-- Bind the README's full concrete invocation set into leaf `Example` entries.
+  lives in `mcts-unit`.
+- The README's full concrete invocation set is bound into leaf `Example` entries.
+  Validated on 2026-05-15 inside the root Compose container with
+  `cabal test mcts-unit`, `cabal run exe:mcts -- commands --tree`,
+  `cabal run exe:mcts -- commands --json`, `cabal run exe:mcts -- help bench selfplay`,
+  and `cabal run exe:mcts -- check-code`.
 
-## Sprint 1.3: Generated Artefacts Registry and Docs Pipeline 🔄
+## Sprint 1.3: Generated Artefacts Registry and Docs Pipeline ✅
 
-**Status**: Active
-**Implementation**: `src/MCTS/CLI/Docs.hs`, `documents/cli/commands.md`,
-`share/man/man1/mcts.1`, `share/completion/bash/mcts`,
-`share/completion/zsh/_mcts`, `share/completion/fish/mcts.fish`
+**Status**: Done
+**Implementation**: `src/MCTS/CLI/Docs.hs`, `src/MCTS/Generated/Paths.hs`,
+`src/MCTS/Generated/Sections.hs`, `documents/engineering/cli_command_surface.md`,
+`documents/cli/commands.md`, `share/man/man1/mcts.1`,
+`share/completion/bash/mcts`, `share/completion/zsh/_mcts`,
+`share/completion/fish/mcts.fish`
 **Docs to update**: `documents/engineering/code_quality.md`,
 `documents/documentation_standards.md`,
 `DEVELOPMENT_PLAN/system-components.md`
@@ -463,40 +467,36 @@ text-artefact derived from the `CommandSpec` registry.
 4. Hand-editing a `trackingGeneratedPaths` entry produces an `mcts lint files`
    failure.
 
-### Remaining Work
+### Closure Notes
 
-- Baseline landed: `mcts docs check` / `mcts docs generate` compare and write
+- `mcts docs check` / `mcts docs generate` compare and write
   `documents/cli/commands.md`, `share/man/man1/mcts.1`, and the bash/zsh/fish
-  completion files from the command registry. The command Markdown renderer now emits
-  the governed-doc metadata and the documented `inspect show --envelope` row, and
-  `mcts lint files` fails on drift in tracked generated paths.
-  `MCTS.CLI.Docs` now also exposes `GeneratedSectionRule`,
-  `generatedSectionRules`, `spliceMarkerRegion`, `applyGeneratedSection`,
-  and `checkGeneratedSection` so marker-delimited regions like
-  `<!-- mcts:<key>:start --> ... <!-- mcts:<key>:end -->` can be spliced
-  idempotently. The `mcts-unit` stanza now exercises (a) the splice
-  replaces the existing region and is idempotent, (b) missing markers
-  produce `AppError DocsCheckDrift`, (c) `checkGeneratedSection` matches
-  the already-applied case and reports drift on stale source.
-- `runDocs` now traverses both registries: `mcts docs check` runs
-  `checkPaths generatedFiles` then `checkSections generatedSectionRules`;
-  `mcts docs generate` writes fully-generated files and then splices
-  each section rule (idempotently — only writes when the marker region
-  actually changed). The plan output enumerates both
-  `write <path>` and `splice <path> <key>` lines. The
-  `generatedSectionRules` registry is currently empty (every
-  command-spec-derived doc is fully-generated); a non-empty rule
-  set lands when a governed doc carries a marker region inside an
-  otherwise-hand-authored file.
-- The fully-generated path registry now lives in
-  `src/MCTS/Generated/Paths.hs`, and the marker-delimited section registry and
-  splice/check helpers live in `src/MCTS/Generated/Sections.hs`. `MCTS.CLI.Docs`
-  re-exports those values for compatibility while the command runner consumes the
-  split registries directly.
+  completion files from the command registry through
+  `src/MCTS/Generated/Paths.hs`; `mcts lint files` fails on drift in tracked
+  generated paths.
+- `src/MCTS/Generated/Sections.hs` owns a non-empty `GeneratedSectionRule`
+  registry. The governed
+  `documents/engineering/cli_command_surface.md` command matrix is now enclosed
+  by `<!-- mcts:command-matrix:start -->` /
+  `<!-- mcts:command-matrix:end -->`, declares
+  `**Generated sections**: command-matrix`, and is rendered from the same
+  `CommandSpec` registry that drives parser and generated CLI artefacts.
+- `runDocs` traverses both registries: `mcts docs check` checks
+  fully-generated paths and marker-delimited sections; `mcts docs generate`
+  writes fully-generated files and splices each section rule. File reads are
+  forced before rewrites so marker regeneration can safely overwrite a file it
+  just inspected.
+- Validated on 2026-05-15 inside the root Compose container with
+  `cabal test mcts-unit`, `cabal run exe:mcts -- docs check`,
+  byte-idempotence of two consecutive `cabal run exe:mcts -- docs generate`
+  runs over the generated surfaces, a synthetic marker-region drift rejected by
+  `mcts docs check` with the path/key/remedy message, a synthetic
+  `documents/cli/commands.md` edit rejected by `mcts lint files`, and final
+  green `mcts docs check` plus `mcts lint files`.
 
-## Sprint 1.4: Lint Stack, `fourmolu.yaml`, `mcts-haskell-style` Stanza 🔄
+## Sprint 1.4: Lint Stack, `fourmolu.yaml`, `mcts-haskell-style` Stanza ✅
 
-**Status**: Active
+**Status**: Done
 **Implementation**: `fourmolu.yaml`, `.hlint.yaml`, `src/MCTS/CLI/Lint.hs`,
 `src/MCTS/App.hs` (`CheckCode` branch), `test/haskell-style/Main.hs`, `mcts.cabal`
 **Docs to update**: `documents/engineering/code_quality.md`,
@@ -521,18 +521,18 @@ forbidden-symbol HLint rules behind the `mcts-haskell-style` test stanza plus th
   direct-symbol negative-space rules for `print`, `exitFailure`,
   `Text.IO.putStrLn`, direct terminal formatting, `callProcess`,
   `readCreateProcess`, `System.Process.createProcess`, `System.Process.proc`,
-  and `System.Process.shell`; source-walker owner exceptions are the current
-  bootstrap gate until the external `hlint` path gains equivalent module-scoped
-  enforcement.
+  and `System.Process.shell`. The owning interpreter module uses a source-level
+  HLint annotation for its scoped exception; external HLint is the hard gate for
+  emitted `Error:` findings.
 - `src/MCTS/CLI/Lint.hs` owns the current `mcts lint files|docs|haskell|all` runners.
   `mcts lint files` enforces the `forbiddenPathRegistry` (`.github/workflows/`,
   `.husky/`, `.githooks/`, `.pre-commit-config.yaml`, `pre-commit-*.yaml`, root
   `Makefile`, root `justfile`, root `Taskfile.yml`) plus the
   `trackingGeneratedPaths` no-hand-edit check, per
   [../HASKELL_CLI_TOOL.md → Forbidden Surfaces](../HASKELL_CLI_TOOL.md).
-- The current `src/MCTS/App.hs` `CheckCode` branch dispatches lint, docs check, and
-  warning-clean `cabal build all`; a dedicated `src/MCTS/CheckCode.hs` module remains
-  open if that ownership split is retained per
+- `src/MCTS/CheckCode.hs` owns the `check-code` dispatcher. `src/MCTS/App.hs` routes the
+  top-level `CheckCode` constructor to that owner, which dispatches lint, docs check, and
+  warning-clean `cabal build all` per
   [../HASKELL_CLI_TOOL.md → CLI surface](../HASKELL_CLI_TOOL.md).
 - `src/MCTS/CLI/Command.hs` gains the `CheckCode` constructor on the top-level
   `Command` ADT and a matching `CommandSpec` leaf in the registry per
@@ -543,9 +543,9 @@ forbidden-symbol HLint rules behind the `mcts-haskell-style` test stanza plus th
 - `mcts.cabal` declares the `mcts-haskell-style` test-suite with
   `type: exitcode-stdio-1.0`, `main-is: Main.hs`, `hs-source-dirs: test/haskell-style`.
   The suite asserts `fourmolu --mode check` succeeds, `hlint --with-group=default
-  --with-group=extra` (with `.hlint.yaml` picked up from the repo root) succeeds,
-  and `cabal format` round-trips byte-equally via a temp file. The exact `hlint`
-  flag pair is pinned per
+  --with-group=extra` (with `.hlint.yaml` picked up from the repo root) runs and emits
+  no `Error:` findings, and `cabal format` round-trips byte-equally via a temp file. The
+  exact `hlint` flag pair is pinned per
   [../README.md → `mcts test all` → Test-suite stanzas](../README.md) and
   [system-components.md → Test Stanzas](system-components.md).
 
@@ -557,21 +557,21 @@ forbidden-symbol HLint rules behind the `mcts-haskell-style` test stanza plus th
 4. A synthetic violation (e.g. a `print` call in `src/MCTS/App.hs`) is rejected by
    `mcts lint haskell` with a clear hlint error.
 
-### Remaining Work
+### Closure Notes
 
 - Baseline landed: `fourmolu.yaml`, `.hlint.yaml`, `mcts lint files|docs|haskell|all`,
-  `mcts check-code`, and the `mcts-haskell-style` Cabal stanza exist.
+  `mcts check-code`, and the `mcts-haskell-style` Cabal stanza.
   `.hlint.yaml` now carries the full doctrine-mandated forbidden-symbol names:
   the `System.Process.*` constructors (`callProcess`, `readCreateProcess`,
   `readCreateProcessWithExitCode`, `createProcess`, `proc`, `shell`) and the
   direct output primitives (`print`, `exitFailure`, `Data.Text.IO.putStrLn`,
-  `Data.Text.IO.hPutStrLn`). The `mcts-haskell-style` stanza currently enforces a
+  `Data.Text.IO.hPutStrLn`). The `mcts-haskell-style` stanza enforces a
   conservative source-walker subset by walking every `.hs` file
   (excluding the lint stanza itself), rejecting tab characters, the direct
   subprocess primitives it can identify textually, and direct
   `exitFailure` / `Data.Text.IO.*PutStrLn` output calls outside their owner
-  modules. Unqualified `print` and the module-scoped HLint rules remain owned by
-  the external `hlint` path. The forbidden-path set is now a typed
+  modules. Unqualified `print` and the module-scoped rules are enforced by
+  the external container-pinned `hlint` path. The forbidden-path set is a typed
   `forbiddenPathRegistry :: [ForbiddenPath]` value in `MCTS.CLI.Lint`,
   where each entry pairs a path with a rationale string; the `mcts-unit`
   stanza pins the registry against the doctrine's expected set and
@@ -584,10 +584,14 @@ forbidden-symbol HLint rules behind the `mcts-haskell-style` test stanza plus th
   to GHC `9.14.1` while matching the isolated formatter-tools GHC model.
 - The `check-code` dispatcher now lives in dedicated `src/MCTS/CheckCode.hs`;
   `src/MCTS/App.hs` only routes the top-level constructor to that owner.
+- Validated on 2026-05-15 inside the root Compose container:
+  `cabal test mcts-haskell-style`, `cabal run exe:mcts -- lint all`,
+  `cabal run exe:mcts -- check-code`, plus a temporary synthetic `print` violation
+  rejected by container-pinned HLint with `Error: Use output boundary`.
 
-## Sprint 1.5: `Plan / Apply` Boundary 🔄
+## Sprint 1.5: `Plan / Apply` Boundary ✅
 
-**Status**: Active
+**Status**: Done
 **Implementation**: `src/MCTS/Plan.hs`, `src/MCTS/CLI/Command.hs`
 **Docs to update**: `documents/engineering/cli_command_surface.md`,
 `documents/engineering/haskell_code_guide.md`
@@ -618,36 +622,26 @@ for free.
 2. A property test (Sprint 7.1) asserts `render is deterministic` over the `Plan`
    renderer.
 
-### Remaining Work
+### Closure Notes
 
-- Baseline landed: `Plan`, `PlanOptions`, deterministic plan rendering, `--dry-run`,
-  and `--plan-file` support for `mcts test all`, `mcts docs generate`, and
-  `mcts build *`. `MCTS.Plan` now exports the doctrine-shaped `buildPlan ::
-  String -> (input -> Either AppError [step]) -> input -> Either AppError
-  (Plan step)`, the generic `applyPlan :: (step -> IO (Either AppError
-  ExitCode)) -> Plan step -> IO ExitCode`, and the subprocess specialization
-  `applySubprocessPlan :: Plan Subprocess -> IO ExitCode`. The build/test
-  command runners (`MCTS.CLI.Build`, `MCTS.CLI.Test`) consume these helpers.
-- The doctrine's `apply :: Env -> Plan a -> IO ExitCode` shape now lives
-  in `MCTS.Plan` as `applyWithEnv :: (Env -> step -> IO (Either AppError
-  ExitCode)) -> Plan step -> App ExitCode` and the subprocess
-  specialization `applySubprocessWithEnv :: Plan Subprocess -> App
-  ExitCode`. `MCTS.CLI.Build` now executes its backend plan through
-  `applySubprocessWithEnv` via `Env.runAppIO Env.defaultEnv`. The
-  `mcts-unit` stanza exercises `applyWithEnv` end-to-end through
-  `runAppIO defaultEnv`. `MCTS.CLI.Test` keeps a custom error-rendering
-  apply (it prints offending step errors via `outputLine` rather than
-  short-circuiting silently); the migration of that runner to a custom
-  `applyWithEnv` `runStep` lands alongside Sprint 1.9's renderer
-  unification.
-- Deterministic-render property coverage and golden coverage for representative
-  plans land alongside Sprint 7.1 property-based coverage; the current
-  `mcts-unit` exercise covers determinism on identical plans and round-trip on
-  `renderPlanWith`.
+- `MCTS.Plan` exports the doctrine-shaped `buildPlan`, `applyPlan`,
+  `applySubprocessPlan`, `applyWithEnv`, and `applySubprocessWithEnv` helpers.
+  Plan rendering is deterministic and byte-stable over repeated renders.
+- `mcts test all`, `mcts docs generate`, and `mcts build *` all support
+  `--dry-run` and `--plan-file <path>` at the parser level and declare those
+  options in their `CommandSpec` leaf metadata. `mcts-unit` asserts the
+  metadata for every current Plan/Apply leaf.
+- `MCTS.CLI.Build` executes backend plans through `applySubprocessWithEnv`, and
+  `MCTS.CLI.Test` now uses `applyWithEnv` with a custom `runStep` that preserves
+  its explicit `renderError` output on subprocess failure.
+- Validated on 2026-05-15 inside the root Compose container with
+  `cabal test mcts-unit`, `cabal run exe:mcts -- test all --dry-run --plan-file /tmp/mcts-test-plan.txt`,
+  `cabal run exe:mcts -- docs generate --dry-run --plan-file /tmp/mcts-docs-plan.txt`,
+  and `cabal run exe:mcts -- build cpp-imperative --dry-run --plan-file /tmp/mcts-build-plan.txt`.
 
-## Sprint 1.6: `Subprocess` ADT and Interpreter 🔄
+## Sprint 1.6: `Subprocess` ADT and Interpreter ✅
 
-**Status**: Active
+**Status**: Done
 **Implementation**: `src/MCTS/Subprocess.hs`, `.hlint.yaml`
 **Docs to update**: `documents/engineering/haskell_code_guide.md`,
 `documents/engineering/code_quality.md`
@@ -679,7 +673,7 @@ shared-library builds, and every subprocess call site go through one IO boundary
   IO boundary for subprocess execution.
 - `.hlint.yaml` rules name `callProcess`, `readCreateProcess`,
   `System.Process.createProcess`, `System.Process.proc`, `System.Process.shell`, and
-  future `typed-process` smart constructors per
+  `typed-process` smart constructors per
   [../HASKELL_CLI_TOOL.md → Architecture → Subprocesses as Typed Values
   → Forbidden patterns](../HASKELL_CLI_TOOL.md). The current source-walker bootstrap
   enforces owner-module exceptions for the direct textual subset it can check safely.
@@ -691,23 +685,28 @@ shared-library builds, and every subprocess call site go through one IO boundary
    rejected by `mcts lint haskell`.
 3. A golden test of `renderSubprocess` over a sample value passes.
 
-### Remaining Work
+### Closure Notes
 
-- Baseline landed: `Subprocess`, `renderSubprocess`, `runStreaming`, and `capture`
-  exist and are used by the lint, docs/build gate, build harness, and test runner.
-- Keep the fallback source walker's conservative textual checks aligned with the
-  fuller `.hlint.yaml` rule set as the external `hlint` binary lands; once that
-  binary is pinned, `hlint` becomes the complete forbidden-symbol gate and the
-  source walker can stay a bootstrap guard or be removed.
-- Decide whether the final interpreter uses the doctrine's `typed-process` dependency
-  or formally records the current `process`-package interpreter as a scoped deviation.
-- `test/golden/cli/subprocess.txt` now pins `renderSubprocess` shell quoting and
-  the unit suite asserts `AppError SubprocessFailed` includes the rendered command
+- `Subprocess`, `renderSubprocess`, `runStreaming`, and `capture` exist and are
+  used by the lint, docs/build gate, build harness, prerequisite probes, and test
+  runner. The interpreter now uses the doctrine-standard `typed-process`
+  dependency; the library no longer depends directly on the lower-level
+  `process` package.
+- The external container-pinned HLint path rejects emitted `Error:` findings for
+  direct `System.Process.*` and `System.Process.Typed.*` smart constructors
+  outside `src/MCTS/Subprocess.hs`. The source walker remains as an additional
+  bootstrap guard for the conservative textual subset.
+- `test/golden/cli/subprocess.txt` pins `renderSubprocess` shell quoting, and the
+  unit suite asserts `AppError SubprocessFailed` includes the rendered command
   and exit code.
+- Validated on 2026-05-15 inside the root Compose container with
+  `cabal build all`, `cabal test mcts-unit`, `cabal test mcts-haskell-style`, and
+  a synthetic `/tmp/HlintTypedSynthetic.hs` using `System.Process.Typed.proc`
+  rejected by the container-pinned HLint as `Error: Use typed subprocess boundary`.
 
-## Sprint 1.7: `prerequisiteRegistry` 🔄
+## Sprint 1.7: `prerequisiteRegistry` ✅
 
-**Status**: Active
+**Status**: Done
 **Implementation**: `src/MCTS/Prerequisite.hs`, `mcts.cabal` (consumer modules)
 **Docs to update**: `documents/engineering/haskell_code_guide.md`,
 `documents/engineering/code_quality.md`
@@ -736,32 +735,28 @@ typed boundary and emits structured remedy hints on failure.
    asserts the `AppError PrerequisiteUnmet` payload.
 2. A property test asserts the registry has no cycles.
 
-### Remaining Work
+### Closure Notes
 
-- Baseline landed: `PrerequisiteNode`, `prerequisiteRegistry`,
-  `checkPrerequisites`, `transitiveClosure`, and `registryHasCycle` exist.
-  The registry now carries real version-aware probes for `ghcup`, `ghc-9.14.1`,
-  `cabal`, `c++`, `llvm-config` (LLVM `19.x`), `llvm-bolt` (LLVM `19.x`),
-  `rustup`, `cargo` / `rustc` (`1.95.0`), and `mimalloc` via `pkg-config`,
-  plus the `pgo-profiles` directory probe and the `logical-backends` /
-  `legacy-fixtures` stubs. `nodeDependsOn` carries the
-  dependency edges (`cargo`/`rustc` depend on `rustup`; `bolt` depends on
-  `llvm`; `ghc-9.14.1`/`cabal-3.16.1.0` depend on `ghcup`).
-  `prerequisitesForBuild` now resolves through `transitiveClosure`, so
-  `mcts build cpp-imperative` automatically pulls `cxx`, `llvm`, `bolt`,
-  `pgo-profiles`, and `mimalloc` in dependency order. The `mcts-unit` stanza
-  exercises the closure idempotence, the `bolt → llvm` edge, and asserts the
-  registry is acyclic.
-- Exact GHC/Cabal checks landed for `ghc-9.14.1 --numeric-version == 9.14.1`
-  and `cabal --numeric-version == 3.16.1.0` through the typed `Subprocess`
-  capture boundary. The LLVM/BOLT `19.x`, Rust `1.95.0`, and `mimalloc`
-  probes now use the same typed `Subprocess` capture boundary.
-- Run prerequisite closure before every non-build Plan/Apply command that
-  needs external tools.
+- `PrerequisiteNode`, `prerequisiteRegistry`, `checkPrerequisites`,
+  `transitiveClosure`, and `registryHasCycle` exist. The registry carries
+  version-aware probes for `ghcup`, `ghc-9.14.1`, `cabal`, `c++`,
+  `llvm-config` (LLVM `19.x`), `llvm-bolt` (LLVM `19.x`), `rustup`,
+  `cargo` / `rustc` (`1.95.0`), and `mimalloc` via `pkg-config`, plus the
+  `pgo-profiles` directory probe and the `logical-backends` /
+  `legacy-fixtures` stubs.
+- `nodeDependsOn` carries dependency edges (`cargo`/`rustc` depend on
+  `rustup`; `bolt` depends on `llvm`; `ghc-9.14.1`/`cabal-3.16.1.0` depend
+  on `ghcup`). `prerequisitesForBuild` and `prerequisitesForTest` resolve
+  through `transitiveClosure`.
+- `mcts build *` checks backend build prerequisites before apply, and
+  `mcts test all` / `mcts test <stanza>` check the pinned GHC/Cabal test
+  prerequisite closure before applying Cabal-backed test plans.
+- Validated on 2026-05-15 inside the root Compose container with
+  `cabal test mcts-unit` and `cabal run exe:mcts -- test mcts-integration`.
 
-## Sprint 1.8: `Env` Record and `ReaderT App` 🔄
+## Sprint 1.8: `Env` Record and `ReaderT App` ✅
 
-**Status**: Active
+**Status**: Done
 **Implementation**: `src/MCTS/App.hs`, `src/MCTS/Env.hs`, every CLI runner
 **Docs to update**: `documents/engineering/haskell_code_guide.md`
 
@@ -795,27 +790,31 @@ Thread one shared `Env` record through every command runner via `ReaderT Env IO`
 1. `cabal build all` succeeds.
 2. Every command runner module imports `MCTS.Env` and uses `App`.
 
-### Remaining Work
+### Closure Notes
 
-- Baseline landed: `src/MCTS/Env.hs` declares the `Env` record carrying
-  `envOutputOptions`, `envCommandSpec`, `envPrerequisites`, `envCacheDir`,
-  and the `envClockMonotonic` test-hook field. The `App` newtype is
-  `newtype App a = App (ReaderT Env IO a)` with `MonadIO` and the standard
-  instances derived via `DerivingStrategies` + `GeneralizedNewtypeDeriving`.
-  `runAppIO`, `askEnv`, and `withTestClock` round-trip through the
-  `mcts-unit` stanza. `mtl` and `transformers` are added as library
-  dependencies.
-- Migrate `MCTS.App.runCommand` and every `MCTS.CLI.*` runner from
-  `... -> IO Int` to `... -> App ExitCode`. The migration is a per-runner
-  refactor that can land incrementally: each runner that gets the typed
-  boundary can drop its explicit `OutputOptions` / cache-dir argument and
-  read them from `askEnv`.
-- Wire the Sprint 3.5 monotonic-clock bracket assertion using
-  `envClockMonotonic` once the real bench runner exists.
+- `src/MCTS/Env.hs` declares the shared `Env` record carrying
+  `envOutputOptions`, `envCommandSpec`, `envGeneratedSectionRules`,
+  `envTrackingGeneratedPaths`, `envPrerequisites`, `envCacheDir`,
+  `envLogHandle`, `envRawArguments`, and the `envClockMonotonic` test-hook
+  field. The `App` newtype is `newtype App a = App (ReaderT Env IO a)` with
+  `MonadIO` and the standard instances derived via `DerivingStrategies` +
+  `GeneralizedNewtypeDeriving`.
+- `MCTS.App.runCommand` and the public runners in `MCTS.CLI.Bench`,
+  `MCTS.CLI.Build`, `MCTS.CLI.Docs`, `MCTS.CLI.Inspect`, `MCTS.CLI.Lint`,
+  `MCTS.CLI.Test`, and `MCTS.CLI.Verify` now return `App ExitCode` and read
+  shared state through `askEnv`. `MCTS.CheckCode` uses the same boundary for
+  the aggregate gate.
+- `runAppIO`, `askEnv`, `withTestClock`, the generated registry fields, and the
+  default command spec round-trip through the `mcts-unit` stanza.
+- Validated on 2026-05-15 inside the root Compose container with
+  `cabal build all`, `cabal test mcts-unit`, CLI smoke checks for
+  `commands --tree`, `docs check`, `lint files`, and `build cpp-legacy --dry-run`,
+  plus a container `grep` signature check showing every public command runner
+  returns `Env.App ExitCode`.
 
-## Sprint 1.9: `AppError`, `renderError`, Output Discipline 🔄
+## Sprint 1.9: `AppError`, `renderError`, Output Discipline ✅
 
-**Status**: Active
+**Status**: Done
 **Implementation**: `src/MCTS/Error.hs`, `src/MCTS/CLI/Output.hs`, `.hlint.yaml`
 **Docs to update**: `documents/engineering/code_quality.md`,
 `documents/engineering/haskell_code_guide.md`
@@ -897,23 +896,26 @@ Implement the single `AppError` ADT, the `renderError` boundary, and the `--form
    table` emits a TTY-friendly table; `mcts <subcommand> --format plain` emits
    newline-delimited output suitable for piping.
 
-### Remaining Work
+### Closure Notes
 
-- Baseline landed: `AppError`, `EnvelopeMismatchScope`, `renderError`,
-  `OutputOptions`, `--format`, `--color`, `--no-color`, stdout/stderr helpers, and
-  command-level JSON/table/plain rendering paths exist. The `mcts-unit` stanza
-  now smoke-renders every `AppError` variant, pins
+- `AppError`, `EnvelopeMismatchScope`, and the canonical
+  `MCTS.Error.renderError :: AppError -> Text` boundary exist. `MCTS.CLI.Output`
+  re-exports the Text boundary and owns `renderErrorString :: OutputOptions -> AppError -> String`
+  for final stdout/stderr emission.
+- `OutputOptions`, `--format json|table|plain`, `--color auto|always|never`,
+  `--no-color`, stdout/stderr helpers, and command-level JSON/table/plain rendering
+  paths exist. `--color always` renders errors with ANSI red at the output boundary;
+  `--color never` / `--no-color` render plain text.
+- The `mcts-unit` stanza smoke-renders every `AppError` variant, pins
   `test/golden/cli/errors.txt`, and asserts the `TranscriptNotFound`,
   `DocsCheckDrift`, and `PrerequisiteUnmet` renderings carry the user-visible
   references (ref, remedy command, remedy hint).
-- The canonical `MCTS.Error.renderError` boundary now has the doctrine-pinned
-  `AppError -> Text` shape. `MCTS.CLI.Output.renderError` remains a
-  `String`-returning adapter for existing command runners while the wider output
-  renderer migrates.
-- TTY-aware default format selection landed (`table` on TTY, `plain` otherwise)
-  through `parseGlobalOutputOptionsIO`; actual color rendering remains open.
-- Add synthetic lint tests for direct terminal/output violations once Sprint `1.4`
-  upgrades the style stanza to invoke real `fourmolu` / `hlint`.
+- Validated on 2026-05-15 inside the root Compose container with
+  `cabal build all`, `cabal test mcts-unit`, `mcts inspect list --format json`,
+  `mcts inspect list --format table`, `mcts commands --format plain`,
+  `mcts --color always verify selfplay --backend cpp-imperative,haskell --rng native`,
+  and a synthetic `/tmp/HlintPrintSynthetic.hs` using `print` rejected by the
+  container-pinned HLint as `Error: Use output boundary`.
 
 ## Documentation Requirements
 

@@ -6,38 +6,48 @@ module MCTS.CLI.Lint
     , forbiddenPathPaths
     ) where
 
+import Control.Monad.IO.Class (liftIO)
 import Data.List (isPrefixOf, isSuffixOf)
 import MCTS.CLI.Command (DocsCommand (..), LintCommand (..))
 import MCTS.CLI.Docs (runDocs)
-import MCTS.CLI.Output (outputLine, renderError)
+import MCTS.CLI.Output (outputLine, renderErrorString)
+import qualified MCTS.Env as Env
 import MCTS.Generated.Paths (generatedFiles)
 import MCTS.Subprocess (Subprocess (..), runStreaming)
 import System.Directory (doesDirectoryExist, doesFileExist, listDirectory)
+import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
 
-runLint :: LintCommand -> IO Int
+runLint :: LintCommand -> Env.App ExitCode
 runLint command =
     case command of
-        LintFiles _ -> report "files" =<< lintFiles
+        LintFiles _ -> report "files" =<< liftIO lintFiles
         LintDocs _ -> runDocs DocsCheck
         LintHaskell _ -> runStyleStanza
         LintAll -> do
             a <- runLint (LintFiles False)
             b <- runLint (LintDocs False)
             c <- runLint (LintHaskell False)
-            pure (maximum [a, b, c])
+            pure (maxExitCode [a, b, c])
   where
     report label problems =
         if null problems
-            then outputLine (label <> " lint PASS") >> pure 0
-            else outputLine (unlines problems) >> pure 1
+            then liftIO (outputLine (label <> " lint PASS")) >> pure ExitSuccess
+            else liftIO (outputLine (unlines problems)) >> pure (ExitFailure 1)
 
-runStyleStanza :: IO Int
+runStyleStanza :: Env.App ExitCode
 runStyleStanza = do
-    result <- runStreaming (Subprocess "cabal" ["test", "mcts-haskell-style"] Nothing Nothing)
+    env <- Env.askEnv
+    result <- liftIO (runStreaming (Subprocess "cabal" ["test", "mcts-haskell-style"] Nothing Nothing))
     case result of
-        Right _ -> outputLine "haskell lint PASS" >> pure 0
-        Left err -> outputLine (renderError err) >> pure 1
+        Right _ -> liftIO (outputLine "haskell lint PASS") >> pure ExitSuccess
+        Left err -> liftIO (outputLine (renderErrorString (Env.envOutputOptions env) err)) >> pure (ExitFailure 1)
+
+maxExitCode :: [ExitCode] -> ExitCode
+maxExitCode codes =
+    if all (== ExitSuccess) codes
+        then ExitSuccess
+        else ExitFailure 1
 
 lintFiles :: IO [String]
 lintFiles = do

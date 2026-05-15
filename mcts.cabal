@@ -26,7 +26,13 @@ library
         MCTS.CLI.Verify
         MCTS.CheckCode
         MCTS.Driver
+        MCTS.Driver.CppFunctional
+        MCTS.Driver.CppImperative
+        MCTS.Driver.CppLegacy
+        MCTS.Driver.ForeignSmoke
+        MCTS.Driver.Rust
         MCTS.Engine
+        MCTS.Engine.Envelope
         MCTS.Engine.Recompute
         MCTS.Env
         MCTS.Error
@@ -81,7 +87,6 @@ library
         path-io,
         prettyprinter,
         prettyprinter-ansi-terminal,
-        process,
         safe-exceptions,
         temporary,
         text,

@@ -3,7 +3,7 @@
 **Status**: Authoritative source
 **Supersedes**: N/A
 **Referenced by**: ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, ../../DEVELOPMENT_PLAN/phase-2-transcript-codec-and-determinism.md, ../../DEVELOPMENT_PLAN/phase-3-haskell-engine.md, ../../DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md, ../../DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md, ../../DEVELOPMENT_PLAN/phase-6-cpp-functional-and-rust.md, ../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md, ../documentation_standards.md, ./README.md
-**Generated sections**: none
+**Generated sections**: command-matrix
 
 > **Purpose**: Operator-facing `mcts` command matrix. Defers to
 > [../../HASKELL_CLI_TOOL.md](../../HASKELL_CLI_TOOL.md) for Command Topology,
@@ -39,6 +39,7 @@ completion scripts under `share/completion/` all derive from the same `CommandSp
 registry that drives this table. Phase-owned per
 [../../DEVELOPMENT_PLAN/system-components.md](../../DEVELOPMENT_PLAN/system-components.md).
 
+<!-- mcts:command-matrix:start -->
 | Command | Purpose |
 |---------|---------|
 | `mcts bench rollouts [opts]` | Random-rollouts benchmark across the requested backend cohort |
@@ -50,20 +51,25 @@ registry that drives this table. Phase-owned per
 | `mcts inspect list` | Non-interactive enumeration of the local transcript cache |
 | `mcts inspect show <hash-prefix> [opts]` | Non-interactive transcript dump in legacy notation |
 | `mcts inspect replay <hash-prefix> [opts]` | Interactive `brick` TUI for forward/back navigation with multi-backend equity overlay |
-| `mcts inspect cache list` | Enumerate equity-sidecar entries per transcript (one row per cached `(backend, build)` slot) |
-| `mcts inspect cache prune [--keep-current]` | Delete stale equity-sidecar entries (envelope-mismatched against the current live binaries); `--keep-current` retains slots matching live binaries |
-| `mcts inspect divergence <hash-prefix>` | Emit the cross-backend divergence-rate matrix (visit-Δ, move-Δ, equity-L2) for a single transcript across all cached backend columns |
-| `mcts test all [--dry-run] [--plan-file <path>]` | Plan/Apply: every cabal stanza plus pinned report card |
+| `mcts inspect cache list` | Enumerate equity-sidecar entries per transcript |
+| `mcts inspect cache prune [--keep-current] [--dry-run] [--plan-file <path>]` | Delete stale equity-sidecar entries |
+| `mcts inspect divergence <hash-prefix>` | Emit the cross-backend divergence-rate matrix for a single transcript |
+| `mcts test all [--dry-run] [--plan-file <path>]` | Plan/Apply: every Cabal stanza plus pinned report card |
 | `mcts test <stanza>` | Run a named Cabal test-suite stanza |
-| `mcts lint files\|docs\|haskell\|all` | Lint stack |
+| `mcts lint files [--write]` | Check whitespace, final newlines, forbidden paths, and tracked generated-file drift |
+| `mcts lint docs [--write]` | Run the generated-docs drift gate |
+| `mcts lint haskell [--write]` | Run Fourmolu, HLint, and the Cabal-format round trip |
+| `mcts lint all` | Run every lint gate |
 | `mcts docs check` | Compare rendered output against on-disk markers and tracked paths |
-| `mcts docs generate` | Splice rendered output into markers; idempotent |
-| `mcts commands` | Flat list of every subcommand |
-| `mcts commands --tree` | Tree rendering |
-| `mcts commands --json` | JSON command schema |
+| `mcts docs generate [--dry-run] [--plan-file <path>]` | Splice rendered output into markers and write tracked generated paths |
+| `mcts commands [--tree\|--json]` | Flat, tree, or JSON rendering of the command registry |
 | `mcts help <subcommand>` | Focused help; equivalent to `<subcommand> --help` |
-| `mcts check-code` | Doctrine alignment, formatter, hlint, warning-clean build, docs check |
-| `mcts build {cpp-legacy\|cpp-imperative\|cpp-functional\|rust} [--dry-run] [--plan-file <path>]` | Plan/Apply: per-backend build harness (PGO+BOLT pipeline) |
+| `mcts check-code` | Doctrine alignment, formatter, HLint, warning-clean build, docs check |
+| `mcts build cpp-legacy [--dry-run] [--plan-file <path>]` | Plan/Apply: legacy C++ backend build harness |
+| `mcts build cpp-imperative [--dry-run] [--plan-file <path>]` | Plan/Apply: imperative C++ backend build harness |
+| `mcts build cpp-functional [--dry-run] [--plan-file <path>]` | Plan/Apply: functional C++ backend build harness |
+| `mcts build rust [--dry-run] [--plan-file <path>]` | Plan/Apply: Rust backend build harness |
+<!-- mcts:command-matrix:end -->
 
 Current implementation baseline: `src/MCTS/CLI/Parser.hs` exposes
 `commandParserInfo`, an `optparse-applicative` parser rendered from the
@@ -113,11 +119,11 @@ command also live in
 | `--envelope` | `inspect show` | `False` | Dump the transcript's engine-envelope block as plain text (one field per line) before the per-move output. Useful for scripting (`diff`-friendly) and forensics. |
 | `--cache-states N` | `inspect replay` | `20` | In-memory MCTS-state LRU cache for back-navigation. |
 | `--allow-stale` | `verify rollouts`, `verify selfplay`, `verify legacy-parity` | off | Downgrade per-backend-slot `EngineEnvelopeMismatch` from hard fail to a warning; verify proceeds on visit counts only. Cohort-level mismatches (`host_arch`, `shared_rng_build_id`, `cohort_config_hash`) remain hard fails. Forensic use only. |
-| `--keep-current` | `inspect cache prune` | off | Only delete sidecar slots whose envelope does NOT match a live binary; preserves the current build's cached recomputes. |
+| `--keep-current` | `inspect cache prune` | off | In the Phase 2 baseline, only deletes sidecar slots whose build id does not match the logical `<backend>-logical` current slot; live-envelope matching lands with the backend FFI envelope work. |
 | `--cache-dir <path>` | every cache-touching command | `$MCTS_CACHE_DIR` else `./.mcts-cache/` | Resolves before the env-var fallback. |
 | `--format json\|table\|plain` | every non-TUI command | `table` on TTY, `plain` otherwise | Per [HASKELL_CLI_TOOL.md → Output Rules](../../HASKELL_CLI_TOOL.md). TUI commands (`play`, `inspect replay`) ignore the flag. |
 | `--color auto\|always\|never`, `--no-color` | every non-TUI command | `auto` | TUI commands ignore the flag. |
-| `--dry-run` | every Plan/Apply command (`test all`, `build <backend>`) | off | Renders the typed `Plan` and exits 0. |
+| `--dry-run` | every Plan/Apply command (`test all`, `build <backend>`, `inspect cache prune`) | off | Renders the typed `Plan` and exits 0. |
 | `--plan-file <path>` | every Plan/Apply command | unset | Writes the rendered plan to disk for out-of-band review. |
 
 ## Backend Identifiers

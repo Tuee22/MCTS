@@ -86,8 +86,10 @@ one canonical `mcts` operator surface:
 [../../HASKELL_CLI_TOOL.md → Generated Artifacts](../../HASKELL_CLI_TOOL.md). The
 current baseline keeps fully-generated path renderers and `trackingGeneratedPaths` in
 `src/MCTS/Generated/Paths.hs`; marker-delimited section rules and splice/check helpers
-live in `src/MCTS/Generated/Sections.hs`. `src/MCTS/CLI/Docs.hs` consumes both
-registries and re-exports them for tests and compatibility. Markers follow the
+live in `src/MCTS/Generated/Sections.hs`. The current section registry includes
+the `command-matrix` region in `documents/engineering/cli_command_surface.md`.
+`src/MCTS/CLI/Docs.hs` consumes both registries and re-exports them for tests and
+compatibility. Markers follow the
 conventions in
 [../documentation_standards.md → Generated Sections](../documentation_standards.md#11-generated-sections).
 
@@ -132,8 +134,9 @@ stanzas](../../README.md):
 
 `.hlint.yaml` is picked up automatically from the repo root. The `default` and
 `extra` group pair enables both the canonical lint rule set and the additional
-"extra" rules; the doctrine's negative-space rules and project-specific bans
-above ride alongside.
+"extra" rules. Built-in HLint hints remain advisory; the style stanza treats only
+emitted `Error:` findings from the doctrine's negative-space rules and project-specific
+bans above as the hard gate.
 
 ### `fourmolu.yaml`
 

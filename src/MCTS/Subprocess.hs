@@ -6,9 +6,12 @@ module MCTS.Subprocess
     , capture
     ) where
 
+import qualified Data.ByteString.Lazy.Char8 as ByteString
 import MCTS.Error (AppError (..))
 import System.Exit (ExitCode (..))
-import qualified System.Process as Process
+import qualified System.Process.Typed as Process
+
+{-# ANN module "HLint: ignore Use typed subprocess boundary" #-}
 
 data Subprocess = Subprocess
     { subprocessPath :: !FilePath
@@ -31,12 +34,7 @@ renderSubprocess subprocess =
 
 runStreaming :: Subprocess -> IO (Either AppError ExitCode)
 runStreaming subprocess = do
-    let process =
-            (Process.proc (subprocessPath subprocess) (subprocessArguments subprocess))
-                { Process.cwd = subprocessWorkingDirectory subprocess
-                , Process.env = subprocessEnvironment subprocess
-                }
-    code <- Process.withCreateProcess process $ \_ _ _ handle -> Process.waitForProcess handle
+    code <- Process.runProcess (processConfig subprocess)
     pure $
         case code of
             ExitSuccess -> Right ExitSuccess
@@ -44,16 +42,32 @@ runStreaming subprocess = do
 
 capture :: Subprocess -> IO (Either AppError ProcessOutput)
 capture subprocess = do
-    let process =
-            (Process.proc (subprocessPath subprocess) (subprocessArguments subprocess))
-                { Process.cwd = subprocessWorkingDirectory subprocess
-                , Process.env = subprocessEnvironment subprocess
-                }
-    (code, out, err) <- Process.readCreateProcessWithExitCode process ""
+    (code, out, err) <- Process.readProcess (processConfig subprocess)
     pure $
         case code of
-            ExitSuccess -> Right ProcessOutput{processStdout = out, processStderr = err, processExitCode = code}
-            ExitFailure n -> Left (SubprocessFailed (renderSubprocess subprocess <> "\n" <> err) n)
+            ExitSuccess ->
+                Right
+                    ProcessOutput
+                        { processStdout = ByteString.unpack out
+                        , processStderr = ByteString.unpack err
+                        , processExitCode = code
+                        }
+            ExitFailure n -> Left (SubprocessFailed (renderSubprocess subprocess <> "\n" <> ByteString.unpack err) n)
+
+processConfig :: Subprocess -> Process.ProcessConfig () () ()
+processConfig subprocess =
+    withWorkingDirectory $
+        withEnvironment $
+            Process.proc (subprocessPath subprocess) (subprocessArguments subprocess)
+  where
+    withWorkingDirectory =
+        case subprocessWorkingDirectory subprocess of
+            Nothing -> id
+            Just path -> Process.setWorkingDir path
+    withEnvironment =
+        case subprocessEnvironment subprocess of
+            Nothing -> id
+            Just env -> Process.setEnv env
 
 shellQuote :: String -> String
 shellQuote value

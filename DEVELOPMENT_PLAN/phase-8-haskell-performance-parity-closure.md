@@ -125,8 +125,10 @@ report-card numbers move toward parity with backend (ii).
   `MCTS.Search.UCT.uctSearch` / `uctSearchWithEquity` / `descend` / `rollout`,
   and the hot `MCTS.Engine` functions. Add the `SPECIALIZE` pragmas once the
   final concrete search API and representation settle.
-- Replace `Maybe`/`Either` in the rollout inner loop with sentinels /
-  unboxed sums.
+- The rollout inner loop now uses the strict `MCTS.Engine.terminalOutcome`
+  sentinel primitive (`1.0` hero win, `-1.0` villain win, `0.0` draw,
+  `nonTerminalOutcome = 2.0`) instead of calling the public `Maybe Winner`
+  `terminalWinner` API. `cabal test mcts-unit` validates the sentinel path.
 - Run profiling and decide whether the `MutableByteArray#` migration is
   warranted; record the outcome in
   `documents/engineering/compiler_runtime_tuning.md`.

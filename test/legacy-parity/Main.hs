@@ -4,12 +4,17 @@ import MCTS.Driver
 import MCTS.Error (AppError (..))
 import MCTS.Types
 import MCTS.Verify
+import Test.Tasty (defaultMain, testGroup)
+import Test.Tasty.HUnit (assertFailure, testCase, (@?=))
 
 main :: IO ()
-main = do
-    fullCohortCheck
-    cohortConstraintsCheck
-    putStrLn "mcts-legacy-parity PASS"
+main =
+    defaultMain $
+        testGroup
+            "mcts-legacy-parity"
+            [ testCase "full five-backend cohort" fullCohortCheck
+            , testCase "cohort constraints" cohortConstraintsCheck
+            ]
 
 -- The legacy-parity cohort is all five backends under the legacy envelope:
 -- `max_plies = MAX_ROLLOUT_ITERS = 10000`, `--rng cpp`, single-threaded,
@@ -25,11 +30,9 @@ fullCohortCheck = do
                 }
     result <- legacyParityRunDetailed False Selfplay allBackends inputs
     case result of
-        Left err -> error ("legacy parity failed: " <> show err)
+        Left err -> assertFailure ("legacy parity failed: " <> show err)
         Right detailed ->
-            if length (verifyBatches detailed) /= length allBackends
-                then error "legacy parity did not produce one batch per backend"
-                else pure ()
+            length (verifyBatches detailed) @?= length allBackends
 
 cohortConstraintsCheck :: IO ()
 cohortConstraintsCheck = do
@@ -39,4 +42,4 @@ cohortConstraintsCheck = do
     rejectsMissingLegacy <- legacyParityRun Selfplay [CppImperative, Haskell] inputs
     case rejectsMissingLegacy of
         Left (VerifyCohortTooSmall _) -> pure ()
-        other -> error ("expected VerifyCohortTooSmall when cpp-legacy missing, got " <> show other)
+        other -> assertFailure ("expected VerifyCohortTooSmall when cpp-legacy missing, got " <> show other)

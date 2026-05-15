@@ -23,6 +23,9 @@ import MCTS.Engine
     ( Board
     , applyMove
     , legalMoves
+    , nonTerminalOutcome
+    , nonTerminalRank
+    , terminalOutcome
     , terminalWinner
     )
 import MCTS.Rng.Mix (mix)
@@ -104,12 +107,19 @@ uctSearchWithEquity board seed nSims maxPlies = runST $ do
     let sortedRows = sortOn (\(a, _, _) -> actionId a) rows
         visitsOut = [(a, v) | (a, v, _) <- sortedRows]
         equityOut = [(a, e) | (a, _, e) <- sortedRows]
-        best = case reverse (sortOn (\(_, v, _) -> v) sortedRows) of
+        best = case sortOn finalChoiceKey sortedRows of
             (a, _, _) : _ -> a
             [] -> case rootMoves of
                 a : _ -> a
                 [] -> error "MCTS.Search.UCT: no legal moves and no fallback"
     pure (best, visitsOut, equityOut)
+  where
+    finalChoiceKey (action, visits, equity) =
+        ( negate (fromIntegral visits :: Int)
+        , negate equity
+        , nonTerminalRank (applyMove action board)
+        , actionId action
+        )
 
 -- | Recursive descent. Returns the rollout outcome from Hero's
 -- perspective. Side-effects: increments `nid`'s visit count and value
@@ -156,7 +166,7 @@ descend arena nid board seed maxPlies = do
                             pure 0.0
                         else do
                             np <- pure (visits + 1)
-                            chosenIdx <- pickByUctIndex arena fc numKids np
+                            chosenIdx <- pickByUctIndex arena fc numKids np board
                             let bestNid = fc + chosenIdx
                             actByte <- Arena.readActionId arena bestNid
                             case actionFromId actByte of
@@ -205,11 +215,12 @@ pickByUctIndex
     -> Arena.NodeId
     -> Int32
     -> Int32
+    -> Board
     -> ST s Int32
-pickByUctIndex arena firstChild numKids np = do
+pickByUctIndex arena firstChild numKids np board = do
     scored <- mapM scoreIdx [0 .. numKids - 1]
-    case sortOn (negate . snd) scored of
-        (idx, _) : _ -> pure idx
+    case sortOn scoreKey scored of
+        (idx, _, _, _) : _ -> pure idx
         [] -> pure 0
   where
     cParam :: Float
@@ -220,13 +231,21 @@ pickByUctIndex arena firstChild numKids np = do
         let nid = firstChild + i
         n <- Arena.readVisits arena nid
         v <- Arena.readValueSum arena nid
-        let score
+        actionByte <- Arena.readActionId arena nid
+        let action = actionFromId actionByte
+            rank =
+                case action of
+                    Just value -> nonTerminalRank (applyMove value board)
+                    Nothing -> maxBound
+            score
                 | n == 0 = 1.0e30
                 | otherwise =
                     let q = v / fromIntegral n
                         u = cParam * sqrt (lnNp / fromIntegral n)
                      in q + u
-        pure (i, score)
+        pure (i, score, rank, actionByte)
+    scoreKey (_, score, rank, actionByte) =
+        (negate score, rank, actionByte)
 
 -- | Random rollout from `board` to a terminal state or the ply cap.
 {-# INLINEABLE rollout #-}
@@ -236,12 +255,10 @@ rollout = go 0
     go !step !board !seed !maxPlies
         | step >= maxPlies = 0.0
         | otherwise =
-            case terminalWinner (fromIntegral maxPlies) board of
-                Just HeroWin -> 1.0
-                Just VillainWin -> -1.0
-                Just Draw -> 0.0
-                Nothing ->
-                    case legalMoves board of
+            let outcome = terminalOutcome (fromIntegral maxPlies) board
+             in if outcome /= nonTerminalOutcome
+                    then outcome
+                    else case legalMoves board of
                         [] -> 0.0
                         moves ->
                             let n = length moves

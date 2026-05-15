@@ -16,11 +16,13 @@
 
 ## Phase Status
 
-🔄 **Active**. `cpp-imperative/` now exists with a smoke-buildable C ABI skeleton, and
-the Haskell CLI can exercise `cpp-imperative` as a logical backend in benchmark and
-verify flows. Remaining Phase `5` closure work is the real C++23 steelman engine,
-paired bench/instrumented artefacts, Haskell FFI bindings, PGO+BOLT+`mimalloc` build
-harness, envelope capture, and foreign-engine recompute.
+🔄 **Active**. `cpp-imperative/` now exists with a smoke-buildable C ABI skeleton, the
+canonical `mcts build cpp-imperative` path validates the container toolchain/profile
+prerequisites and runs the smoke build, and the Haskell CLI can exercise
+`cpp-imperative` as a logical backend in benchmark and verify flows. Remaining Phase `5`
+closure work is the real C++23 steelman engine, paired bench/instrumented artefacts,
+PGO+BOLT+`mimalloc` optimized build products, live envelope capture, and foreign-engine
+recompute.
 
 ## Phase Summary
 
@@ -139,11 +141,16 @@ backend-agnostic from the Haskell side.
 
 ### Remaining Work
 
-- Baseline landed: `cpp-imperative/` has a smoke-buildable C ABI skeleton, Makefile,
-  README, and `build/libmcts_cpp_imperative.so` output path.
+- Baseline landed and validated: `cpp-imperative/` has a smoke-buildable C ABI
+  skeleton, README, and `build/libmcts_cpp_imperative.so` output path. The smoke
+  Makefile uses the doctrine C++23 optimization flag set
+  (`-std=c++23 -O3 -march=native -mtune=native -flto -fno-plt
+  -fno-semantic-interposition -fvisibility=hidden
+  -fvisibility-inlines-hidden -fno-exceptions -fPIC`), links `mimalloc`, and keeps
+  the C ABI symbols default-visible; `nm -D` confirms the exported
+  `mcts_imperative_*` symbol set after `mcts build cpp-imperative`.
 - Replace the smoke implementation with the real C++23 imperative steelman engine.
-- Add the final compiler/link flags, allocator link strategy, and source layout
-  described by the sprint.
+- Add the final paired bench/instrumented source layout described by the sprint.
 - Validate warning-clean builds and update tuning docs with any final flag decisions.
 
 ## Sprint 5.2: FFI Bindings for Backend (ii) 🔄
@@ -184,13 +191,17 @@ pattern as backend (i), reusing the `MCTS.FFI.Common` RAII wrappers from Phase 4
 ### Remaining Work
 
 - Baseline landed: `src/MCTS/FFI/CppImperative.hs` declares
-  `withCppImperativeBoard` routed through `MCTS.FFI.Common.liftFFI`
-  with the doctrine-required `mcts_imperative_new_board` symbol name.
+  `withCppImperativeBoard` and `withCppImperativeGame` routed through
+  `MCTS.FFI.Common.liftFFI` / `withDynamicGame` with the doctrine-required
+  `mcts_imperative_new_board`, `mcts_imperative_is_terminal`, and
+  `mcts_imperative_select_uct_move` symbol names. The `mcts-integration` stanza
+  validates the smoke game path when `cpp-imperative/build/libmcts_cpp_imperative.so`
+  is present.
 - Replace the stand-in handle type with `foreign import ccall` pointers
   and add the `mcts.cabal` `extra-libraries: mcts_cpp_imperative` and
   `extra-lib-dirs: cpp-imperative/build` directives once the cdylib
-  build step is wired in. Add the `libmcts-cpp-imperative-built`
-  prerequisite node.
+  build step is wired in. The `libmcts-cpp-imperative-built` prerequisite node
+  is present in `prerequisiteRegistry`.
 
 ## Sprint 5.3: PGO+BOLT+`mimalloc` Build Harness 🔄
 
@@ -275,11 +286,14 @@ that backend (v) Haskell must match.
 ### Remaining Work
 
 - Baseline landed: `mcts build cpp-imperative --dry-run` renders a typed plan and the
-  apply path smoke-builds `cpp-imperative/` through `make`.
+  apply path smoke-builds `cpp-imperative/` through `make` with the doctrine C++23
+  flag set and `mimalloc` link. The prerequisite gate checks GCC, LLVM/BOLT,
+  `.build/profiles`, and the Ubuntu `libmimalloc-dev` library path inside the
+  container. The registry also carries the future full-pipeline nodes for `perf`,
+  per-backend `pgo-profile` / `bolt-profile` directories, and smoke shared-library
+  artefacts.
 - Replace the smoke `make` plan with the full two-stage PGO, BOLT, and `mimalloc`
   pipeline.
-- Add prerequisite checks for GCC, LLVM/BOLT, allocator availability, and profile
-  directories.
 - Add idempotence and failure-mode tests for the generated build plan.
 
 ## Sprint 5.4: Backend (ii) Game Driver and Transcript Output 🔄
@@ -325,9 +339,12 @@ rollouts/selfplay/legacy-parity` (where cohort includes (ii)) run end-to-end.
 ### Remaining Work
 
 - Baseline landed: the logical in-process driver can run `--backend cpp-imperative`
-  through bench, verify, transcript, and report-card smoke surfaces.
-- Replace the logical stand-in with `src/MCTS/Driver/CppImperative.hs` and the real
-  backend (ii) C ABI.
+  through bench, verify, transcript, and report-card smoke surfaces, and
+  `src/MCTS/Driver/CppImperative.hs` can run a bounded chosen-move smoke game
+  through the real backend (ii) C ABI.
+- Route the operator-facing bench/verify transcript writer through
+  `src/MCTS/Driver/CppImperative.hs` once the backend (ii) C ABI exposes sorted
+  visit-vector instrumentation rather than only the chosen action.
 - Add transcript-output validation for the optimized engine.
 - Add two-backend wiring smoke tests against Haskell once both real drivers exist.
 
@@ -394,9 +411,11 @@ that ships at the canonical FFI load path).
   `rng_source_envelope`, `host_arch_envelope`, `engine_git_commit`,
   `compiler_id`) and the optimization-dependent slots (`engine_build_id`,
   `cpu_features`, `fp_flags`, `fp_env`) zero-initialized pending the
-  PGO+BOLT pipeline and post-link patch.
-- Add backend (ii)'s live envelope capture after the real optimized driver exists
-  (the optimization-dependent slots flip on once the build harness lands).
+  PGO+BOLT pipeline and post-link patch. `src/MCTS/FFI/CppImperative.hs` exposes
+  `loadCppImperativeEnvelope`, and `mcts-integration` validates the dynamic
+  `mcts_imperative_get_envelope` path when the smoke shared library is present.
+- Extend backend (ii)'s live envelope capture after the real optimized driver exists
+  so the optimization-dependent slots flip on once the build harness lands.
 - Add foreign-engine recompute for backend (ii) equity sidecars.
 - Patch the final post-BOLT shared library with the shipping `engine_build_id`.
 

@@ -17,18 +17,26 @@ module MCTS.FFI.Common
     , ForeignTree
     , ForeignRng
     , EngineEnvelope (..)
+    , DynamicGame (..)
     , withBoard
     , withTree
     , withRng
     , withDynamicBoard
+    , withDynamicGame
+    , loadDynamicEnvelope
     , liftFFI
     ) where
 
 import Control.Exception (SomeException, bracket, try)
-import Data.Word (Word32, Word8)
-import Foreign.Ptr (FunPtr, Ptr)
+import Data.Char (chr)
+import Data.Word (Word16, Word32, Word64, Word8)
+import Foreign.C.Types (CInt (..))
+import Foreign.Marshal.Array (peekArray)
+import Foreign.Ptr (FunPtr, Ptr, castPtr, plusPtr)
+import Foreign.Storable (peekByteOff)
 import MCTS.Error (AppError (..))
 import MCTS.Types (Backend)
+import Numeric (showHex)
 import qualified System.Posix.DynamicLinker as DL
 
 -- | Opaque foreign pointers. Each `MCTS.FFI.*` module re-exports these
@@ -44,7 +52,8 @@ type ForeignRng backend = Ptr backend
 -- wire envelope block in
 -- [../../documents/engineering/transcript_format.md → Envelope Block](../../documents/engineering/transcript_format.md).
 data EngineEnvelope = EngineEnvelope
-    { engineEnvBackend :: !Backend
+    { engineEnvVersion :: !Word16
+    , engineEnvBackend :: !Backend
     , engineEnvRngSource :: !Word8
     , engineEnvHostArch :: !Word8
     , engineEnvSharedRngBuildId :: !String
@@ -59,6 +68,12 @@ data EngineEnvelope = EngineEnvelope
     , engineEnvFpEnv :: !Word8
     }
     deriving (Eq, Show)
+
+data DynamicGame = DynamicGame
+    { dynamicGameBoard :: !(Ptr ())
+    , dynamicGameIsTerminal :: !(IO Bool)
+    , dynamicGameSelectMove :: !(Word64 -> Word32 -> IO Word8)
+    }
 
 -- | `bracket`-style RAII for foreign board handles. The acquirer
 -- allocates via the per-backend `mcts_<backend>_new_board`; the
@@ -100,6 +115,12 @@ withRng backend acquire release body =
 
 foreign import ccall "dynamic" mkBoardNew :: FunPtr (IO (Ptr ())) -> IO (Ptr ())
 foreign import ccall "dynamic" mkBoardFree :: FunPtr (Ptr () -> IO ()) -> Ptr () -> IO ()
+foreign import ccall "dynamic"
+    mkDynamicIsTerminal :: FunPtr (Ptr () -> IO CInt) -> Ptr () -> IO CInt
+foreign import ccall "dynamic"
+    mkDynamicSelectMove
+        :: FunPtr (Ptr () -> Word64 -> Word32 -> IO Word8) -> Ptr () -> Word64 -> Word32 -> IO Word8
+foreign import ccall "dynamic" mkDynamicEnvelope :: FunPtr (IO (Ptr ())) -> IO (Ptr ())
 
 -- | Dynamically load a backend shared library, call its
 -- `mcts_<backend>_new_board` / `mcts_<backend>_free_board` pair, and run
@@ -124,6 +145,101 @@ withDynamicBoard backend libraryPath symbolPrefix body =
                 freeFun <- DL.dlsym library (symbolPrefix <> "_free_board")
                 bracket (mkBoardNew newFun) (mkBoardFree freeFun) body
             )
+
+withDynamicGame
+    :: Backend
+    -> FilePath
+    -> String
+    -> (DynamicGame -> IO a)
+    -> IO (Either AppError a)
+withDynamicGame backend libraryPath symbolPrefix body =
+    liftFFI backend (symbolPrefix <> "_select_uct_move") $
+        bracket
+            (DL.dlopen libraryPath [DL.RTLD_NOW])
+            DL.dlclose
+            ( \library -> do
+                newFun <- DL.dlsym library (symbolPrefix <> "_new_board")
+                freeFun <- DL.dlsym library (symbolPrefix <> "_free_board")
+                isTerminalFun <- DL.dlsym library (symbolPrefix <> "_is_terminal")
+                selectMoveFun <- DL.dlsym library (symbolPrefix <> "_select_uct_move")
+                bracket (mkBoardNew newFun) (mkBoardFree freeFun) $ \board ->
+                    body
+                        DynamicGame
+                            { dynamicGameBoard = board
+                            , dynamicGameIsTerminal = (/= 0) <$> mkDynamicIsTerminal isTerminalFun board
+                            , dynamicGameSelectMove = mkDynamicSelectMove selectMoveFun board
+                            }
+            )
+
+loadDynamicEnvelope
+    :: Backend
+    -> FilePath
+    -> String
+    -> IO (Either AppError EngineEnvelope)
+loadDynamicEnvelope backend libraryPath symbolPrefix =
+    liftFFI backend (symbolPrefix <> "_get_envelope") $
+        bracket
+            (DL.dlopen libraryPath [DL.RTLD_NOW])
+            DL.dlclose
+            ( \library -> do
+                envelopeFun <- DL.dlsym library (symbolPrefix <> "_get_envelope")
+                envelopePtr <- mkDynamicEnvelope envelopeFun
+                peekEngineEnvelope backend envelopePtr
+            )
+
+peekEngineEnvelope :: Backend -> Ptr () -> IO EngineEnvelope
+peekEngineEnvelope backend ptr = do
+    version <- peekByteOff ptr 0
+    rngSource <- peekByteOff ptr 2
+    hostArch <- peekByteOff ptr 3
+    sharedRng <- digestAt 4
+    cohortHash <- digestAt 36
+    engineBuild <- digestAt 68
+    gitCommit <- asciiAt 100 40 40
+    compilerId <- peekByteOff ptr 140
+    compilerVersionLen <- peekByteOff ptr 141 :: IO Word8
+    compilerVersion <- asciiAt 142 63 (fromIntegral compilerVersionLen)
+    fpFlags <- peekByteOff ptr 208
+    libmIdLen <- peekByteOff ptr 212 :: IO Word8
+    libmId <- asciiAt 213 63 (fromIntegral libmIdLen)
+    cpuFeatures <- peekByteOff ptr 276
+    fpEnv <- peekByteOff ptr 280
+    pure
+        EngineEnvelope
+            { engineEnvVersion = version
+            , engineEnvBackend = backend
+            , engineEnvRngSource = rngSource
+            , engineEnvHostArch = hostArch
+            , engineEnvSharedRngBuildId = sharedRng
+            , engineEnvCohortConfigHash = cohortHash
+            , engineEnvBuildId = engineBuild
+            , engineEnvGitCommit = gitCommit
+            , engineEnvCompilerId = compilerId
+            , engineEnvCompilerVersion = compilerVersion
+            , engineEnvFpFlags = fpFlags
+            , engineEnvLibmId = libmId
+            , engineEnvCpuFeatures = cpuFeatures
+            , engineEnvFpEnv = fpEnv
+            }
+  where
+    digestAt :: Int -> IO String
+    digestAt offset = bytesToHex <$> bytesAt offset 32
+
+    asciiAt :: Int -> Int -> Int -> IO String
+    asciiAt offset maxLen rawLen = do
+        bytes <- bytesAt offset maxLen
+        pure (takeWhile (/= '\NUL') (map (chr . fromIntegral) (take rawLen bytes)))
+
+    bytesAt :: Int -> Int -> IO [Word8]
+    bytesAt offset len = peekArray len (castPtr (ptr `plusPtr` offset) :: Ptr Word8)
+
+bytesToHex :: [Word8] -> String
+bytesToHex =
+    concatMap byteToHex
+  where
+    byteToHex byte =
+        let rendered = showHex byte ""
+         in if byte < 16 then '0' : rendered else rendered
 
 -- | Lift any IO action into `Either AppError a`. Foreign exceptions
 -- surface as `FFIFailure backend symbol message`.

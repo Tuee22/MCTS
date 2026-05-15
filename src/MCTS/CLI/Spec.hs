@@ -1,8 +1,11 @@
+{-# LANGUAGE DuplicateRecordFields #-}
+
 module MCTS.CLI.Spec
     ( CommandSpec (..)
     , OptionSpec (..)
     , Example (..)
     , commandSpec
+    , commandRows
     , leafSpecs
     , renderCommandList
     , renderCommandTree
@@ -26,7 +29,7 @@ data OptionSpec = OptionSpec
     { longName :: !String
     , shortName :: !(Maybe Char)
     , metavar :: !(Maybe String)
-    , optionDescription :: !String
+    , description :: !String
     , required :: !Bool
     }
     deriving (Eq, Show)
@@ -48,11 +51,12 @@ commandSpec =
             [ leaf
                 "rollouts"
                 "Random-rollout benchmark"
-                "mcts bench rollouts --backend haskell --games 8 --seed 42"
+                "mcts bench rollouts --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell --threading single --rng native --games 100000 --seed 42"
             , leaf
                 "selfplay"
                 "Self-play benchmark"
-                "mcts bench selfplay --backend haskell --games 8 --seed 42 --sims 100"
+                "mcts bench selfplay --backend haskell --rng native --games 1000 --seed 42 --sims 10000"
+                `withExample` "mcts bench selfplay --backend haskell --rng native --workers 32 --games 1000 --seed 42 --sims 10000"
             ]
         , node
             "verify"
@@ -64,24 +68,26 @@ commandSpec =
             , leaf
                 "selfplay"
                 "Verify self-play visit counts"
-                "mcts verify selfplay --backend cpp-imperative,cpp-functional,rust,haskell --games 2 --seed 42 --sims 100"
+                "mcts verify selfplay --backend cpp-imperative,rust,haskell --threading single --games 50 --seed 42 --max-plies 200 --sims 10000"
             , leaf
                 "legacy-parity"
                 "Verify legacy parity envelope"
                 "mcts verify legacy-parity selfplay --backend cpp-legacy,haskell --games 1 --seed 42 --sims 10"
             ]
-        , leaf "play" "Play or spectate a game" "mcts play --backend haskell --side hero --sims 100"
+        , leaf "play" "Play or spectate a game" "mcts play --backend haskell --side hero --sims 10000"
+            `withExample` "mcts play --backend haskell --side villain --vs cpp-imperative --sims 10000"
         , node
             "inspect"
             "Inspect transcript cache"
             [ leaf "list" "List cached transcripts" "mcts inspect list"
-            , leaf "show" "Show one transcript" "mcts inspect show 7a2f --top 10"
-            , leaf "replay" "Replay one transcript" "mcts inspect replay 7a2f --top 10"
+            , leaf "show" "Show one transcript" "mcts inspect show 7a2f --top 10 --with-equity"
+            , leaf "replay" "Replay one transcript" "mcts inspect replay 7a2f --top 15"
             , node
                 "cache"
                 "Inspect sidecar cache"
                 [ leaf "list" "List sidecars" "mcts inspect cache list"
-                , leaf "prune" "Prune stale sidecars" "mcts inspect cache prune --keep-current"
+                , leaf "prune" "Prune stale sidecars" "mcts inspect cache prune --keep-current --dry-run"
+                    `withOptions` planOptions
                 ]
             , leaf "divergence" "Show divergence matrix" "mcts inspect divergence 7a2f"
             ]
@@ -89,6 +95,7 @@ commandSpec =
             "test"
             "Run tests"
             [ leaf "all" "Run full suite and report card" "mcts test all --dry-run"
+                `withOptions` planOptions
             , leaf "<stanza>" "Run one cabal stanza" "mcts test mcts-unit"
             ]
         , node
@@ -104,6 +111,7 @@ commandSpec =
             "Generated docs"
             [ leaf "check" "Check generated docs" "mcts docs check"
             , leaf "generate" "Generate docs" "mcts docs generate"
+                `withOptions` planOptions
             ]
         , leaf "commands" "Show command registry" "mcts commands --tree"
         , leaf "help" "Focused help" "mcts help bench selfplay"
@@ -112,14 +120,21 @@ commandSpec =
             "build"
             "Build backend artefacts"
             [ leaf "cpp-legacy" "Build legacy C++ backend" "mcts build cpp-legacy --dry-run"
+                `withOptions` planOptions
             , leaf "cpp-imperative" "Build imperative C++ backend" "mcts build cpp-imperative --dry-run"
+                `withExample` "mcts build cpp-imperative"
+                `withOptions` planOptions
             , leaf "cpp-functional" "Build functional C++ backend" "mcts build cpp-functional --dry-run"
+                `withOptions` planOptions
             , leaf "rust" "Build Rust backend" "mcts build rust --dry-run"
+                `withOptions` planOptions
             ]
         ]
   where
     node n s cs = CommandSpec n s s cs [] []
     leaf n s ex = CommandSpec n s s [] commonOptions [Example ex s]
+    withExample spec ex = spec{examples = examples spec <> [Example ex (summary spec)]}
+    withOptions spec extra = spec{options = options spec <> extra}
 
 commonOptions :: [OptionSpec]
 commonOptions =
@@ -127,14 +142,28 @@ commonOptions =
     , OptionSpec "color" Nothing (Just "auto|always|never") "Color mode" False
     ]
 
+planOptions :: [OptionSpec]
+planOptions =
+    [ OptionSpec "dry-run" Nothing Nothing "Render the plan without applying it" False
+    , OptionSpec "plan-file" Nothing (Just "PATH") "Write the rendered plan to a file" False
+    ]
+
 leafSpecs :: CommandSpec -> [CommandSpec]
 leafSpecs spec
     | null (children spec) = [spec]
     | otherwise = concatMap leafSpecs (children spec)
 
+commandRows :: [(String, CommandSpec)]
+commandRows =
+    [ (path, spec)
+    | (path, spec) <- flatten [] commandSpec
+    , null (children spec)
+    , path /= "mcts"
+    ]
+
 renderCommandList :: String
 renderCommandList =
-    unlines [path | (path, spec) <- flatten [] commandSpec, null (children spec), path /= "mcts"]
+    unlines [path | (path, _) <- commandRows]
 
 renderCommandTree :: String
 renderCommandTree = draw 0 commandSpec
@@ -178,12 +207,6 @@ renderCommandMarkdown =
         ]
             <> concatMap markdownRow commandRows
   where
-    commandRows =
-        [ (path, spec)
-        | (path, spec) <- flatten [] commandSpec
-        , null (children spec)
-        , path /= "mcts"
-        ]
     markdownRow (path, spec)
         | path == "mcts verify legacy-parity" =
             ["- `" <> path <> " {rollouts|selfplay}` - " <> summary spec]

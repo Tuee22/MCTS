@@ -9,8 +9,10 @@ module MCTS.CLI.Output
     , outputLine
     , errLine
     , renderError
+    , renderErrorString
     ) where
 
+import Data.Text (Text)
 import qualified Data.Text as Text
 import MCTS.Error (AppError)
 import qualified MCTS.Error as Error
@@ -85,5 +87,16 @@ outputLine = hPutStrLn stdout
 errLine :: String -> IO ()
 errLine = hPutStrLn stderr
 
-renderError :: AppError -> String
-renderError = Text.unpack . Error.renderError
+renderError :: AppError -> Text
+renderError = Error.renderError
+
+renderErrorString :: OutputOptions -> AppError -> String
+renderErrorString options =
+    colorizeError options . Text.unpack . renderError
+
+colorizeError :: OutputOptions -> String -> String
+colorizeError options message =
+    case outputColor options of
+        ColorAlways -> "\ESC[31m" <> message <> "\ESC[0m"
+        ColorAuto -> message
+        ColorNever -> message

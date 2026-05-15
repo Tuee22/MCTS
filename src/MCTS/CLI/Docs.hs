@@ -10,8 +10,11 @@ module MCTS.CLI.Docs
     , checkGeneratedSection
     ) where
 
+import Control.Exception (evaluate)
+import Control.Monad.IO.Class (liftIO)
 import MCTS.CLI.Command (DocsCommand (..))
-import MCTS.CLI.Output (outputLine, renderError)
+import MCTS.CLI.Output (outputLine, renderErrorString)
+import qualified MCTS.Env as Env
 import MCTS.Error (AppError (..))
 import MCTS.Generated.Paths (generatedCommandsPath, generatedFiles, trackingGeneratedPaths)
 import MCTS.Generated.Sections
@@ -23,29 +26,32 @@ import MCTS.Generated.Sections
     )
 import MCTS.Plan (writePlanFile)
 import System.Directory (createDirectoryIfMissing, doesFileExist)
+import System.Exit (ExitCode (..))
 import System.FilePath (takeDirectory)
 
-runDocs :: DocsCommand -> IO Int
-runDocs command =
+runDocs :: DocsCommand -> Env.App ExitCode
+runDocs command = do
+    env <- Env.askEnv
+    let output = Env.envOutputOptions env
     case command of
         DocsCheck -> do
-            result <- docsCheck
+            result <- liftIO docsCheck
             case result of
-                Right () -> outputLine "docs check PASS" >> pure 0
-                Left err -> outputLine (renderError err) >> pure 1
+                Right () -> liftIO (outputLine "docs check PASS") >> pure ExitSuccess
+                Left err -> liftIO (outputLine (renderErrorString output err)) >> pure (ExitFailure 1)
         DocsGenerate dryRun planFile -> do
             let plan =
                     unlines $
                         ["write " <> path | (path, _) <- generatedFiles]
                             <> ["splice " <> sectionPath rule <> " " <> sectionKey rule | rule <- generatedSectionRules]
-            writePlanFile planFile plan
+            liftIO (writePlanFile planFile plan)
             if dryRun
-                then outputLine plan >> pure 0
+                then liftIO (outputLine plan) >> pure ExitSuccess
                 else do
-                    mapM_ writeGenerated generatedFiles
-                    mapM_ writeSection generatedSectionRules
-                    outputLine plan
-                    pure 0
+                    liftIO (mapM_ writeGenerated generatedFiles)
+                    liftIO (mapM_ writeSection generatedSectionRules)
+                    liftIO (outputLine plan)
+                    pure ExitSuccess
 
 -- | `mcts docs check` walks both the fully-generated path registry and
 -- the marker-delimited section registry. First drift in either layer
@@ -64,7 +70,7 @@ checkPaths ((path, expected) : rest) = do
     if not exists
         then pure (Left (DocsCheckDrift path "fully-generated"))
         else do
-            actual <- readFile path
+            actual <- readFileStrict path
             if actual == expected
                 then checkPaths rest
                 else pure (Left (DocsCheckDrift path "fully-generated"))
@@ -76,7 +82,7 @@ checkSections (rule : rest) = do
     if not exists
         then pure (Left (DocsCheckDrift (sectionPath rule) (sectionKey rule)))
         else do
-            actual <- readFile (sectionPath rule)
+            actual <- readFileStrict (sectionPath rule)
             case checkGeneratedSection actual rule of
                 Right () -> checkSections rest
                 Left err -> pure (Left err)
@@ -87,7 +93,7 @@ writeSection rule = do
     if not exists
         then pure ()
         else do
-            current <- readFile (sectionPath rule)
+            current <- readFileStrict (sectionPath rule)
             case applyGeneratedSection current rule of
                 Right rendered ->
                     if rendered == current
@@ -99,3 +105,9 @@ writeGenerated :: (FilePath, String) -> IO ()
 writeGenerated (path, rendered) = do
     createDirectoryIfMissing True (takeDirectory path)
     writeFile path rendered
+
+readFileStrict :: FilePath -> IO String
+readFileStrict path = do
+    content <- readFile path
+    _ <- evaluate (length content)
+    pure content

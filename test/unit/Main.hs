@@ -1,3 +1,5 @@
+{-# LANGUAGE DuplicateRecordFields #-}
+
 module Main where
 
 import Control.Monad.IO.Class (liftIO)
@@ -19,6 +21,7 @@ import MCTS.CLI.Docs
     ( GeneratedSectionRule (..)
     , applyGeneratedSection
     , checkGeneratedSection
+    , generatedSectionRules
     , spliceMarkerRegion
     )
 import MCTS.CLI.Inspect (InspectRow (..), renderInspectRows, renderTranscript)
@@ -27,6 +30,8 @@ import MCTS.CLI.Output (OutputFormat (..), OutputOptions (..), defaultOutputOpti
 import MCTS.CLI.Parser (commandParserInfo, parseBackends, parseCommand)
 import MCTS.CLI.Spec
     ( CommandSpec (..)
+    , OptionSpec (..)
+    , commandRows
     , commandSpec
     , leafSpecs
     , renderCommandJson
@@ -35,7 +40,16 @@ import MCTS.CLI.Spec
     )
 import MCTS.Crypto.SHA256 (sha256Hex)
 import MCTS.Driver
-import MCTS.Engine (Board (..), applyMove, initialBoard, isTerminal, legalMoves)
+import MCTS.Engine
+    ( Board (..)
+    , applyMove
+    , initialBoard
+    , isTerminal
+    , legalMoves
+    , nonTerminalOutcome
+    , nonTerminalRank
+    , terminalOutcome
+    )
 import qualified MCTS.Engine.Recompute as Recompute
 import MCTS.Env (Env (..), askEnv, defaultEnv, envClock, runAppIO, withTestClock)
 import MCTS.Error (AppError (..), EnvelopeMismatchScope (..), renderError)
@@ -54,6 +68,7 @@ import MCTS.Prerequisite
     ( PrerequisiteNode (..)
     , checkPrerequisites
     , prerequisiteRegistry
+    , prerequisitesForTest
     , registryHasCycle
     , transitiveClosure
     )
@@ -64,7 +79,8 @@ import qualified MCTS.Search.Arena as Arena
 import qualified MCTS.Search.UCT as UCT
 import MCTS.Subprocess (Subprocess (..), renderSubprocess)
 import MCTS.Transcript
-    ( decodeTranscript
+    ( TranscriptRef (..)
+    , decodeTranscript
     , encodeTranscript
     , hostArch
     , lookupByPrefix
@@ -172,6 +188,7 @@ runUnit = do
     exerciseSidecars transcript
     exercisePrerequisiteClosure
     exercisePlanShape
+    exercisePlanOptionMetadata
     exerciseErrorRenderings
     exerciseErrorGolden
     exerciseSubprocessGolden
@@ -363,7 +380,7 @@ exerciseLookup = do
     assert "lookup resolves exact prefix" (exact == Right "ok")
     removeDirectoryIfExists cacheRoot
 
-lookupShape :: Either AppError FilePath -> Either String String
+lookupShape :: Either AppError TranscriptRef -> Either String String
 lookupShape result =
     case result of
         Left (TranscriptNotFound _) -> Left "not-found"
@@ -393,16 +410,35 @@ exerciseSidecars transcript = do
     removeDirectoryIfExists cacheRoot
     currentEntry <- writeEquitySidecar (Just cacheRoot) hashValue transcript
     _ <- writeEquitySidecar (Just cacheRoot) hashValue stale
+    let foreignEnvelope =
+            (transcriptEnvelope transcript)
+                { envelopeBackend = Rust
+                , envelopeBuildId = "rust-logical"
+                }
+        foreignStream =
+            (equityStreamForTranscript hashValue transcript)
+                { eqBackend = Rust
+                , eqBuildId = "rust-logical"
+                }
+    foreignEntry <- writeEquitySidecarStreamWithEnvelope (Just cacheRoot) foreignEnvelope foreignStream
     decoded <- decodeEqStream <$> BS.readFile (sidecarEqPath currentEntry)
     assert
         "equity sidecar roundtrip"
         (decoded == Right (equityStreamForTranscript hashValue transcript))
+    assert
+        "originator sidecar helper"
+        (isOriginator transcript (equityStreamForTranscript hashValue transcript))
+    assert "foreign sidecar helper" (not (isOriginator transcript foreignStream))
+    assert "originator entry helper" (sidecarIsOriginator transcript currentEntry)
+    assert "foreign entry helper" (not (sidecarIsOriginator transcript foreignEntry))
     listed <- listEquitySidecars (Just cacheRoot)
-    assert "equity sidecar list" (length listed == 2)
+    assert "equity sidecar list" (length listed == 3)
     pruned <- pruneEquitySidecars (Just cacheRoot) True
     assert "equity sidecar keep-current prune" (pruned == 1)
     remaining <- listEquitySidecars (Just cacheRoot)
-    assert "equity sidecar current remains" (map sidecarBuildId remaining == ["haskell-logical"])
+    assert
+        "equity sidecar current remains"
+        (map sidecarBuildId remaining == ["haskell-logical", "rust-logical"])
     removeDirectoryIfExists cacheRoot
 
 removeDirectoryIfExists :: FilePath -> IO ()
@@ -452,6 +488,18 @@ exercisePrerequisiteClosure = do
     assert "bolt closure includes llvm" ("llvm" `elem` boltClosure)
     let legacyLibClosure = map nodeId (transitiveClosure prerequisiteRegistry ["libmcts-cpp-legacy-built"])
     assert "legacy shared library prerequisite includes cxx" ("cxx" `elem` legacyLibClosure)
+    let imperativeLibClosure = map nodeId (transitiveClosure prerequisiteRegistry ["libmcts-cpp-imperative-built"])
+    assert "imperative shared library prerequisite includes cxx" ("cxx" `elem` imperativeLibClosure)
+    let functionalLibClosure = map nodeId (transitiveClosure prerequisiteRegistry ["libmcts-cpp-functional-built"])
+    assert "functional shared library prerequisite includes cxx" ("cxx" `elem` functionalLibClosure)
+    let rustLibClosure = map nodeId (transitiveClosure prerequisiteRegistry ["libmcts-rust-built"])
+    assert "rust shared library prerequisite includes rustup" ("rustup" `elem` rustLibClosure)
+    let lldClosure = map nodeId (transitiveClosure prerequisiteRegistry ["lld-linker"])
+    assert "lld linker prerequisite includes llvm" ("llvm" `elem` lldClosure)
+    let testClosure = map nodeId prerequisitesForTest
+    assert "test prerequisite closure includes ghc" ("ghc-9.14.1" `elem` testClosure)
+    assert "test prerequisite closure includes cabal" ("cabal-3.16.1.0" `elem` testClosure)
+    assert "test prerequisite closure includes ghcup dependency" ("ghcup" `elem` testClosure)
 
 exercisePlanShape :: IO ()
 exercisePlanShape = do
@@ -479,6 +527,26 @@ exercisePlanShape = do
     -- applySubprocessPlan is callable as a smoke check on an empty plan
     emptyCode <- applySubprocessPlan (Plan "empty" [])
     assert "applySubprocessPlan succeeds on empty plan" (emptyCode == ExitSuccess)
+
+exercisePlanOptionMetadata :: IO ()
+exercisePlanOptionMetadata = do
+    let planApplyLeaves =
+            [ "mcts test all"
+            , "mcts docs generate"
+            , "mcts inspect cache prune"
+            , "mcts build cpp-legacy"
+            , "mcts build cpp-imperative"
+            , "mcts build cpp-functional"
+            , "mcts build rust"
+            ]
+    assert "Plan/Apply leaves declare --dry-run and --plan-file" (all hasPlanOptions planApplyLeaves)
+  where
+    hasPlanOptions path =
+        case lookup path commandRows of
+            Nothing -> False
+            Just spec ->
+                let optionNames = map longName (options spec)
+                 in all (`elem` optionNames) ["dry-run", "plan-file"]
 
 exerciseSortedRecords :: IO ()
 exerciseSortedRecords = do
@@ -801,6 +869,7 @@ exerciseUctSearch = do
         (action2, visits2) = UCT.uctSearch initialBoard 42 16 50
         legal = legalMoves initialBoard
     assert "uctSearch is deterministic for fixed inputs" ((action1, visits1) == (action2, visits2))
+    assert "initial non-terminal rank is balanced" (nonTerminalRank initialBoard == 0)
     assert "uctSearch's chosen action is legal" (action1 `elem` legal)
     assert "uctSearch's visit list covers every legal action" (length visits1 == length legal)
     -- Each move in the visit list must be a legal action.
@@ -917,17 +986,16 @@ exerciseUniquePrefixProperty = do
         result <- lookupByPrefix (Just cacheRoot) prefix
         let collisions = [h | h <- allHashes, prefix `prefixOf` h]
         case (collisions, result) of
-            ([_], Right path) ->
+            ([_], Right ref) ->
                 -- Unique: must return the one matching hash.
-                if expectedHash `isInfixOf` path
+                if transcriptRefHash ref == expectedHash
                     then pure ()
-                    else error ("unique prefix " <> prefix <> " returned wrong path: " <> path)
+                    else error ("unique prefix " <> prefix <> " returned wrong hash: " <> transcriptRefHash ref)
             (_ : _ : _, Left (TranscriptAmbiguous _ candidates)) ->
                 if length candidates == length collisions
                     then pure ()
                     else error ("ambiguous prefix " <> prefix <> " returned wrong candidate count")
             _ -> error ("unexpected lookup result for prefix " <> prefix <> ": " <> show result)
-    isInfixOf needle haystack = any (needle `prefixOf`) (tails haystack)
 
 -- | Sprint 3.5 monotonic-clock bracket assertion. The test injects a
 -- custom clock that increments on every call, so the bench start/stop
@@ -998,6 +1066,7 @@ exerciseMarkerSplice = do
                 , sectionKey = "k"
                 , sectionStartMarker = "<!-- mcts:k:start -->"
                 , sectionEndMarker = "<!-- mcts:k:end -->"
+                , sectionOwner = "test"
                 , sectionRender = "new"
                 }
     case applyGeneratedSection "no markers here\n" rule of
@@ -1008,6 +1077,16 @@ exerciseMarkerSplice = do
     case checkGeneratedSection source rule of
         Left (DocsCheckDrift "test.md" "k") -> pure ()
         other -> error ("expected drift on stale source, got " <> show other)
+    assert
+        "real generated section registry is non-empty"
+        ( any
+            ( \registered ->
+                sectionPath registered == "documents/engineering/cli_command_surface.md"
+                    && sectionKey registered == "command-matrix"
+                    && sectionOwner registered == "MCTS.Generated.Sections.renderCommandMatrix"
+            )
+            generatedSectionRules
+        )
 
 -- | Sprint 7.1 + 7.3: pin `commands --tree`, `commands --json`, and the
 -- report-card summary block as golden fixtures. The fixtures live in
@@ -1100,6 +1179,8 @@ exerciseEnv = do
     assert
         "default env carries the command spec"
         (case leaves of leaf : _ -> not (null (examples leaf)); _ -> False)
+    assert "default env carries generated section rules" (not (null (envGeneratedSectionRules env)))
+    assert "default env carries generated path registry" (not (null (envTrackingGeneratedPaths env)))
     -- runAppIO threads the env through and `askEnv` returns the same value.
     same <- runAppIO env $ do
         e <- askEnv
@@ -1130,6 +1211,9 @@ exerciseEngineProperties = do
         game2 = runGame inputs 0
     assert "runGame is reproducible for fixed inputs" (game1 == game2)
     assert "runGame produces at least one move from the initial board" (not (null (gameMoves game1)))
+    assert
+        "initial board uses non-terminal outcome sentinel"
+        (terminalOutcome 200 initialBoard == nonTerminalOutcome)
     let allRecords = gameMoves game1
         chosenInLegal record =
             let board = applyChain (map moveChosen (takeBefore (moveIndex record) allRecords))

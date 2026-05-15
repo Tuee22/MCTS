@@ -2,22 +2,32 @@ module MCTS.CheckCode
     ( runCheckCode
     ) where
 
+import Control.Monad.IO.Class (liftIO)
 import MCTS.CLI.Command (DocsCommand (DocsCheck), LintCommand (LintAll))
 import MCTS.CLI.Docs (runDocs)
 import MCTS.CLI.Lint (runLint)
-import MCTS.CLI.Output (outputLine, renderError)
+import MCTS.CLI.Output (outputLine, renderErrorString)
+import qualified MCTS.Env as Env
 import MCTS.Subprocess (Subprocess (..), runStreaming)
+import System.Exit (ExitCode (..))
 
-runCheckCode :: IO Int
+runCheckCode :: Env.App ExitCode
 runCheckCode = do
     lintCode <- runLint LintAll
     docsCode <- runDocs DocsCheck
     buildCode <- runBuildGate
-    pure (maximum [lintCode, docsCode, buildCode])
+    pure (maxExitCode [lintCode, docsCode, buildCode])
 
-runBuildGate :: IO Int
+runBuildGate :: Env.App ExitCode
 runBuildGate = do
-    result <- runStreaming (Subprocess "cabal" ["build", "all"] Nothing Nothing)
+    env <- Env.askEnv
+    result <- liftIO (runStreaming (Subprocess "cabal" ["build", "all"] Nothing Nothing))
     case result of
-        Right _ -> outputLine "build all PASS" >> pure 0
-        Left err -> outputLine (renderError err) >> pure 1
+        Right _ -> liftIO (outputLine "build all PASS") >> pure ExitSuccess
+        Left err -> liftIO (outputLine (renderErrorString (Env.envOutputOptions env) err)) >> pure (ExitFailure 1)
+
+maxExitCode :: [ExitCode] -> ExitCode
+maxExitCode codes =
+    if all (== ExitSuccess) codes
+        then ExitSuccess
+        else ExitFailure 1

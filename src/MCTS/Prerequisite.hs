@@ -2,6 +2,7 @@ module MCTS.Prerequisite
     ( PrerequisiteNode (..)
     , prerequisiteRegistry
     , prerequisitesForBuild
+    , prerequisitesForTest
     , checkPrerequisites
     , transitiveClosure
     , registryHasCycle
@@ -68,6 +69,18 @@ prerequisiteRegistry =
         "llvm-bolt"
         ["--version"]
         "LLVM version 19."
+    , executableNode
+        "perf"
+        "Linux perf profiler for BOLT profile generation"
+        "install linux-tools/perf in the project container before running full BOLT profile generation"
+        []
+        "perf"
+    , executableNode
+        "lld-linker"
+        "LLVM LLD 19 linker for the Rust backend"
+        "install LLVM LLD 19 and expose ld.lld-19 on PATH"
+        ["llvm"]
+        "ld.lld-19"
     , versionContainsNode
         "rustup"
         "rustup toolchain manager"
@@ -97,13 +110,18 @@ prerequisiteRegistry =
         "mimalloc allocator (linked into the steelman backends)"
         "install libmimalloc-dev; the Docker image uses the Ubuntu Noble package"
         []
-        (versionProbe "pkg-config" ["--modversion", "mimalloc"] (const True))
+        mimallocProbe
     , PrerequisiteNode
         "pgo-profiles"
         "Profile directory root for PGO/BOLT builds"
         "create .build/profiles when running optimized backend builds"
         []
         (doesDirectoryExist ".build/profiles")
+    , profileDirectoryNode "cpp-imperative-pgo-profile" "cpp-imperative/pgo-profile"
+    , profileDirectoryNode "cpp-imperative-bolt-profile" "cpp-imperative/bolt-profile"
+    , profileDirectoryNode "cpp-functional-pgo-profile" "cpp-functional/pgo-profile"
+    , profileDirectoryNode "cpp-functional-bolt-profile" "cpp-functional/bolt-profile"
+    , profileDirectoryNode "rust-pgo-profile" "rust/pgo-profile"
     , PrerequisiteNode
         "logical-backends"
         "The logical in-process backend cohort is available"
@@ -122,21 +140,52 @@ prerequisiteRegistry =
         "run make -C cpp-legacy smoke"
         ["cxx"]
         (doesFileExist "cpp-legacy/build/libmcts_cpp_legacy.so")
+    , PrerequisiteNode
+        "libmcts-cpp-imperative-built"
+        "cpp-imperative shared library exists for dynamic FFI smoke tests"
+        "run mcts build cpp-imperative"
+        ["cxx"]
+        (doesFileExist "cpp-imperative/build/libmcts_cpp_imperative.so")
+    , PrerequisiteNode
+        "libmcts-cpp-functional-built"
+        "cpp-functional shared library exists for dynamic FFI smoke tests"
+        "run mcts build cpp-functional"
+        ["cxx"]
+        (doesFileExist "cpp-functional/build/libmcts_cpp_functional.so")
+    , PrerequisiteNode
+        "libmcts-rust-built"
+        "Rust cdylib exists for dynamic FFI smoke tests"
+        "run mcts build rust"
+        ["cargo", "rustc"]
+        (doesFileExist "rust/target/release/libmcts_rust.so")
     ]
 
 prerequisitesForBuild :: String -> [PrerequisiteNode]
 prerequisitesForBuild backend =
     transitiveClosure prerequisiteRegistry $
         case backend of
-            "rust" -> ["cargo", "rustc", "pgo-profiles"]
+            "rust" -> ["cargo", "rustc", "lld-linker", "pgo-profiles"]
             "cpp-legacy" -> ["cxx"]
             "cpp-imperative" -> ["cxx", "llvm", "bolt", "pgo-profiles", "mimalloc"]
             "cpp-functional" -> ["cxx", "llvm", "bolt", "pgo-profiles", "mimalloc"]
             _ -> []
 
+prerequisitesForTest :: [PrerequisiteNode]
+prerequisitesForTest =
+    transitiveClosure prerequisiteRegistry ["ghc-9.14.1", "cabal-3.16.1.0", "logical-backends"]
+
 executableNode :: String -> String -> String -> [String] -> String -> PrerequisiteNode
 executableNode ident description remedy deps exe =
     PrerequisiteNode ident description remedy deps ((/= Nothing) <$> findExecutable exe)
+
+profileDirectoryNode :: String -> FilePath -> PrerequisiteNode
+profileDirectoryNode ident path =
+    PrerequisiteNode
+        ident
+        ("Profile directory exists: " <> path)
+        ("create " <> path <> " before running the full optimized backend build")
+        ["pgo-profiles"]
+        (doesDirectoryExist path)
 
 versionNode
     :: String
@@ -201,6 +250,17 @@ prefixMatches prefix value = take (length prefix) value == prefix
 
 contains :: String -> String -> Bool
 contains needle haystack = any (prefixMatches needle) (tails haystack)
+
+mimallocProbe :: IO Bool
+mimallocProbe = do
+    candidates <-
+        mapM
+            doesFileExist
+            [ "/usr/lib/aarch64-linux-gnu/libmimalloc.so"
+            , "/usr/lib/x86_64-linux-gnu/libmimalloc.so"
+            , "/usr/local/lib/libmimalloc.so"
+            ]
+    pure (or candidates)
 
 tails :: [a] -> [[a]]
 tails [] = [[]]

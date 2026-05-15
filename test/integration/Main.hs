@@ -1,39 +1,205 @@
 module Main where
 
+import Data.Word (Word32, Word8)
 import MCTS.Driver
+import MCTS.Driver.CppFunctional (runGameCppFunctional)
+import MCTS.Driver.CppImperative (runGameCppImperative)
+import MCTS.Driver.CppLegacy (runGameCppLegacy)
+import MCTS.Driver.Rust (runGameRust)
+import MCTS.Error (AppError)
+import MCTS.FFI.Common (EngineEnvelope (..))
+import MCTS.FFI.CppFunctional (loadCppFunctionalEnvelope)
+import MCTS.FFI.CppImperative (loadCppImperativeEnvelope)
+import MCTS.FFI.CppLegacy (loadCppLegacyEnvelope)
+import MCTS.FFI.Rust (loadRustEnvelope)
+import MCTS.Transcript
+import MCTS.Transcript.EquitySidecar
 import MCTS.Types
+import System.Directory (doesFileExist)
+import System.IO.Temp (withSystemTempDirectory)
+import Test.Tasty (TestTree, defaultMain, testGroup)
+import Test.Tasty.HUnit (assertBool, assertFailure, testCase, (@?=))
 
 main :: IO ()
-main = do
-    mapM_ sameBackend allBackends
-    putStrLn "mcts-integration PASS"
+main =
+    defaultMain $
+        testGroup
+            "mcts-integration"
+            [ testGroup "same-backend determinism" (map sameBackend allBackends)
+            , testGroup
+                "foreign ffi smoke drivers"
+                [ testCase
+                    "cpp-legacy"
+                    (foreignFfiSmokeDriver "cpp-legacy/build/libmcts_cpp_legacy.so" CppLegacy runGameCppLegacy)
+                , testCase
+                    "cpp-imperative"
+                    ( foreignFfiSmokeDriver
+                        "cpp-imperative/build/libmcts_cpp_imperative.so"
+                        CppImperative
+                        runGameCppImperative
+                    )
+                , testCase
+                    "cpp-functional"
+                    ( foreignFfiSmokeDriver
+                        "cpp-functional/build/libmcts_cpp_functional.so"
+                        CppFunctional
+                        runGameCppFunctional
+                    )
+                , testCase "rust" (foreignFfiSmokeDriver "rust/target/release/libmcts_rust.so" Rust runGameRust)
+                ]
+            , testGroup
+                "foreign ffi live envelopes"
+                [ testCase
+                    "cpp-legacy"
+                    (foreignFfiEnvelope "cpp-legacy/build/libmcts_cpp_legacy.so" CppLegacy loadCppLegacyEnvelope)
+                , testCase
+                    "cpp-imperative"
+                    ( foreignFfiEnvelope
+                        "cpp-imperative/build/libmcts_cpp_imperative.so"
+                        CppImperative
+                        loadCppImperativeEnvelope
+                    )
+                , testCase
+                    "cpp-functional"
+                    ( foreignFfiEnvelope
+                        "cpp-functional/build/libmcts_cpp_functional.so"
+                        CppFunctional
+                        loadCppFunctionalEnvelope
+                    )
+                , testCase "rust" (foreignFfiEnvelope "rust/target/release/libmcts_rust.so" Rust loadRustEnvelope)
+                ]
+            , testCase "equity sidecar originator markers" sidecarOriginMarkers
+            ]
 
-sameBackend :: Backend -> IO ()
-sameBackend backend = do
-    -- The integration stanza asserts Q4 same-backend determinism across
-    -- three pinned seeds per backend. With the real UCT search wired
-    -- through `MCTS.Search.UCT.uctSearch`, the per-move search cost is
-    -- much higher than the previous synthetic baseline, so the
-    -- per-seed game count and sim budget are reduced. The Q4 property
-    -- (two consecutive runs at the same seed produce identical
-    -- determinism payloads) does not depend on game count.
-    let baseInputs =
-            defaultRunInputs
-                { inputBackend = backend
-                , inputRng = CppRng
-                , inputGames = 1
-                , inputSims = FixedSims 4
-                , inputMaxPlies = 20
-                }
-    mapM_ (sameBackendSeed baseInputs backend) ([42, 43, 44] :: [Integer])
+sameBackend :: Backend -> TestTree
+sameBackend backend =
+    testGroup
+        (backendIdentifier backend)
+        [ testCase ("seed " <> show seedValue) (sameBackendSeed baseInputs seedValue)
+        | seedValue <- [42, 43, 44 :: Integer]
+        ]
+  where
+    baseInputs =
+        defaultRunInputs
+            { inputBackend = backend
+            , inputRng = CppRng
+            , inputGames = 1
+            , inputSims = FixedSims 4
+            , inputMaxPlies = 20
+            }
 
-sameBackendSeed :: RunInputs -> Backend -> Integer -> IO ()
-sameBackendSeed baseInputs backend seedValue = do
+sameBackendSeed :: RunInputs -> Integer -> IO ()
+sameBackendSeed baseInputs seedValue = do
     let inputs = baseInputs{inputSeed = fromIntegral seedValue}
         first = runGame inputs 0
         second = runGame inputs 0
-    if first == second
+    first @?= second
+
+sidecarOriginMarkers :: IO ()
+sidecarOriginMarkers =
+    withSystemTempDirectory "mcts-sidecars" $ \cacheRoot -> do
+        let inputs =
+                defaultRunInputs
+                    { inputBackend = Haskell
+                    , inputRng = CppRng
+                    , inputGames = 1
+                    , inputSims = FixedSims 4
+                    , inputMaxPlies = 12
+                    }
+            transcript =
+                Transcript
+                    (makeRunConfig inputs)
+                    (makeLogicalEnvelope Haskell CppRng)
+                    [runGame inputs 0]
+        written <- writeTranscript (Just cacheRoot) transcript
+        case written of
+            Left err -> assertFailure ("transcript write failed: " <> show err)
+            Right (hashValue, _) -> do
+                originEntry <- writeEquitySidecar (Just cacheRoot) hashValue transcript
+                let foreignEnvelope =
+                        (transcriptEnvelope transcript)
+                            { envelopeBackend = Rust
+                            , envelopeBuildId = "rust-logical"
+                            }
+                    foreignStream =
+                        (equityStreamForTranscript hashValue transcript)
+                            { eqBackend = Rust
+                            , eqBuildId = "rust-logical"
+                            }
+                foreignEntry <- writeEquitySidecarStreamWithEnvelope (Just cacheRoot) foreignEnvelope foreignStream
+                listed <- listEquitySidecars (Just cacheRoot)
+                length listed @?= 2
+                assertBool "origin sidecar is marked as originator" (sidecarIsOriginator transcript originEntry)
+                assertBool
+                    "foreign sidecar is not marked as originator"
+                    (not (sidecarIsOriginator transcript foreignEntry))
+
+foreignFfiSmokeDriver
+    :: FilePath
+    -> Backend
+    -> (RunInputs -> Word32 -> IO (Either AppError GameTranscript))
+    -> IO ()
+foreignFfiSmokeDriver libraryPath backend runner = do
+    present <- doesFileExist libraryPath
+    if not present
         then pure ()
-        else
-            error
-                ("same-backend determinism failed for " <> backendIdentifier backend <> " seed=" <> show seedValue)
+        else do
+            result <-
+                runner
+                    defaultRunInputs
+                        { inputBackend = backend
+                        , inputWorkload = Selfplay
+                        , inputRng = CppRng
+                        , inputGames = 1
+                        , inputSims = FixedSims 4
+                        , inputMaxPlies = 8
+                        }
+                    0
+            case result of
+                Left err -> assertFailure (backendIdentifier backend <> " FFI smoke driver failed: " <> show err)
+                Right game -> do
+                    assertBool (backendIdentifier backend <> " FFI smoke produced moves") (not (null (gameMoves game)))
+                    assertBool
+                        (backendIdentifier backend <> " FFI smoke records chosen visits")
+                        (all (\record -> moveChosen record `elem` map fst (moveVisits record)) (gameMoves game))
+
+foreignFfiEnvelope :: FilePath -> Backend -> IO (Either AppError EngineEnvelope) -> IO ()
+foreignFfiEnvelope libraryPath backend loader = do
+    present <- doesFileExist libraryPath
+    if not present
+        then pure ()
+        else do
+            result <- loader
+            case result of
+                Left err -> assertFailure (backendIdentifier backend <> " FFI envelope failed: " <> show err)
+                Right envelope -> do
+                    engineEnvVersion envelope @?= 1
+                    engineEnvBackend envelope @?= backend
+                    engineEnvRngSource envelope @?= 1
+                    engineEnvHostArch envelope @?= expectedHostArch
+                    engineEnvBuildId envelope @?= replicate 64 '0'
+                    engineEnvCompilerId envelope @?= expectedCompilerId backend
+                    case backend of
+                        Rust ->
+                            assertBool
+                                "rust envelope carries rustc compiler version"
+                                ("rustc " `prefixOf` engineEnvCompilerVersion envelope)
+                        _ -> pure ()
+
+expectedHostArch :: Word8
+expectedHostArch =
+    case hostArch of
+        "arm64" -> 1
+        _ -> 0
+
+expectedCompilerId :: Backend -> Word8
+expectedCompilerId backend =
+    case backend of
+        Rust -> 2
+        Haskell -> 3
+        _ -> 0
+
+prefixOf :: String -> String -> Bool
+prefixOf [] _ = True
+prefixOf _ [] = False
+prefixOf (x : xs) (y : ys) = x == y && prefixOf xs ys

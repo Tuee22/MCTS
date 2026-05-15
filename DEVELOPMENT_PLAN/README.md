@@ -35,8 +35,9 @@ Phase `0` is `Done`: Sprint `0.1` (plan-suite bootstrap) closed on initial
 commit and Sprint `0.2` (doctrine-driven scheduling audit) closed on
 2026-05-14 with the audit replay recorded in
 [phase-0-planning-documentation.md](phase-0-planning-documentation.md).
-Phases `1` through `7` are now `Active` on an implementation baseline that
-includes: a Cabal package with the pinned GHC 9.14.1 / Cabal 3.16.1.0
+Phases `1`, `2`, and `3` are `Done`; Phases `4` through `7` are now
+`Active` on an implementation baseline that includes: a Cabal package with the
+pinned GHC 9.14.1 / Cabal 3.16.1.0
 toolchain plus the doctrine-standard dependency envelope in `mcts.cabal`;
 the thin `app/Main.hs`;
 the `CommandSpec` registry; the `optparse-applicative` parser rendered from
@@ -48,37 +49,51 @@ the `Env` record and `ReaderT App` monad;
 `applySubprocessPlan`, `applyWithEnv`, `applySubprocessWithEnv` helpers;
 the dependency-edge-aware `prerequisiteRegistry` with `transitiveClosure`,
 `registryHasCycle`, exact GHC/Cabal probes, LLVM/BOLT 19 probes, Rust 1.95.0
-probes, and `mimalloc` probing; a real ST-arena MCTS engine
+probes, `ld.lld-19`, foreign shared-library artefact nodes, profile-directory
+nodes, and `mimalloc` probing; a real ST-arena MCTS engine
 (`MCTS.Search.Arena` + `MCTS.Search.UCT`) wired through every backend's
 driver; deterministic multi-worker game dispatch; the pinned monotonic clock
 (`getMonotonicTimeNSec`) for bench timing with an injectable test hook;
-baseline equity-sidecar cache inspection/pruning; layered envelope verify (cohort-invariant +
-per-backend-slot fields); smoke-buildable foreign-backend placeholder
-trees with the doctrine-shaped `mcts_<backend>_get_envelope` C ABI
-surface for all four foreign backends; split generated-artifact registries in
+baseline equity-sidecar cache inspection/pruning with originator markers and Plan/Apply
+pruning; layered envelope verify (cohort-invariant +
+per-backend-slot fields); smoke-buildable foreign-backend placeholder trees
+with the doctrine-shaped `mcts_<backend>_get_envelope` C ABI surface for all
+four foreign backends; bounded Haskell FFI smoke drivers that allocate each
+foreign backend through its dynamic C ABI, run a smoke self-play game, and
+record chosen-move visit counts when the shared libraries are present; dynamic
+Haskell loaders for each foreign backend's live `mcts_<backend>_get_envelope`
+struct; C++
+backends (ii) and (iii) smoke builds using the doctrine C++23 flag set with
+hidden visibility, default-visible C ABI exports, and `mimalloc`; backend (iv)
+Rust split into the planned module topology with `mimalloc::MiMalloc` as the
+global allocator; split generated-artifact registries in
 `MCTS.Generated.Paths` and `MCTS.Generated.Sections` with marker-delimited
-`GeneratedSectionRule` support and an empty current section registry; the full
+`GeneratedSectionRule` support and the governed CLI command matrix generated
+inside `documents/engineering/cli_command_surface.md`; the full
 forbidden-symbol set in `.hlint.yaml` plus the conservative
-`mcts-haskell-style` source-walker bootstrap, an unconditional `cabal format`
+`mcts-haskell-style` source-walker guard, an unconditional `cabal format`
 temp-file round-trip, and mandatory container-owned `fourmolu`/`hlint`
 execution. Phase `1` now adopts the separate formatter-tools compiler policy by
 building `fourmolu-0.19.0.1` and `hlint-3.10` into
 `/opt/mcts-style-tools/bin/` with pinned style GHC `9.12.4`, while the project
 compiler remains GHC `9.14.1`. Host-level fallback to ambient toolchains or
 style binaries is never allowed. The baseline also includes byte-level goldens for the
-transcript wire format and the CLI surfaces, and all
-five Cabal test-suite stanzas. The validation gate for this baseline
+transcript wire format and the CLI surfaces, and all five Cabal test-suite
+stanzas. The validation gate for this baseline
 remains `cabal test all` under the pinned GHC `9.14.1` toolchain.
 
 This is **not** the final parity-proven architecture. The implemented backend cohort is
 a deterministic logical baseline used to validate the CLI, transcript, cache, and test
-surfaces. The real sprint-owned remaining work is still explicit: full foreign-engine
-drivers and recompute sidecars, the C++23 imperative and functional engines, the
-Rust `cdylib`, the PGO+BOLT+`mimalloc` pipelines, the tree-persistent / bitboard
-Haskell performance engine, the `brick` / `vty` TUIs, external legacy golden fixtures,
-and the Phase `8`
-performance-parity proof remain open. Those surfaces stay `Active` / `Planned` rather
-than being marked `Done` until their validation gates pass against the real artefacts.
+surfaces, with bounded FFI smoke coverage proving that the foreign shared
+libraries can be reached from Haskell. The real sprint-owned remaining work is
+still explicit: full visit-vector foreign-engine drivers and recompute
+sidecars, the C++23 imperative and functional engines beyond their smoke
+libraries, the Rust engine beyond its smoke `cdylib`, the PGO+BOLT and static
+allocator-link pipelines, the tree-persistent / bitboard Haskell performance
+engine, the `brick` / `vty` TUIs, external legacy golden fixtures, and the
+Phase `8` performance-parity proof remain open. Those surfaces stay `Active` /
+`Planned` rather than being marked `Done` until their validation gates pass
+against the real artefacts.
 
 ## Document Index
 
@@ -127,13 +142,13 @@ A sprint can move to `Done` only when all of the following are true:
 | Phase | Name | Status | Document |
 |-------|------|--------|----------|
 | 0 | Planning and Documentation Topology | ✅ Done | [phase-0-planning-documentation.md](phase-0-planning-documentation.md) |
-| 1 | Haskell CLI Surface, `CommandSpec`, Lint Stack | 🔄 Active (wired baseline; doctrine-complete lint/docs stack still open) | [phase-1-haskell-cli-surface.md](phase-1-haskell-cli-surface.md) |
-| 2 | Transcript Codec, RNG, and Determinism Contract | 🔄 Active (full v1 envelope + MEQ1 sidecar baseline; live backend capture open) | [phase-2-transcript-codec-and-determinism.md](phase-2-transcript-codec-and-determinism.md) |
-| 3 | Backend (v) Haskell Engine | 🔄 Active (recursive ST-arena UCT baseline; bitboard/tree-persistence/perf work open) | [phase-3-haskell-engine.md](phase-3-haskell-engine.md) |
-| 4 | Backend (i) C++ Legacy Port and FFI Bridge | 🔄 Active (C ABI skeleton; verbatim legacy port/FFI open) | [phase-4-cpp-legacy-port-and-ffi-bridge.md](phase-4-cpp-legacy-port-and-ffi-bridge.md) |
-| 5 | Backend (ii) C++ Imperative Steelman with PGO+BOLT | 🔄 Active (smoke skeleton; steelman engine and PGO+BOLT open) | [phase-5-cpp-imperative-steelman.md](phase-5-cpp-imperative-steelman.md) |
-| 6 | Backends (iii) C++ Functional-Style and (iv) Rust | 🔄 Active (smoke skeletons; real engines and pipelines open) | [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md) |
-| 7 | Cross-Backend Verify, Test Stanzas, POC Report Card | 🔄 Active (test stanzas and logical verify wiring present; real cohort/TUIs/report-card evidence open) | [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md) |
+| 1 | Haskell CLI Surface, `CommandSpec`, Lint Stack | ✅ Done | [phase-1-haskell-cli-surface.md](phase-1-haskell-cli-surface.md) |
+| 2 | Transcript Codec, RNG, and Determinism Contract | ✅ Done (full v1 transcript/envelope codec, cache lookup, splitmix, MEQ1 sidecars, originator markers) | [phase-2-transcript-codec-and-determinism.md](phase-2-transcript-codec-and-determinism.md) |
+| 3 | Backend (v) Haskell Engine | ✅ Done (strict Word64 board baseline, recursive ST-arena UCT, deterministic tie-break, bench wiring, recompute) | [phase-3-haskell-engine.md](phase-3-haskell-engine.md) |
+| 4 | Backend (i) C++ Legacy Port and FFI Bridge | 🔄 Active (legacy core imported; bounded FFI smoke driver landed; full transcript driver/fixtures open) | [phase-4-cpp-legacy-port-and-ffi-bridge.md](phase-4-cpp-legacy-port-and-ffi-bridge.md) |
+| 5 | Backend (ii) C++ Imperative Steelman with PGO+BOLT | 🔄 Active (C++23 + `mimalloc` smoke skeleton and bounded FFI smoke driver landed; steelman engine and PGO+BOLT open) | [phase-5-cpp-imperative-steelman.md](phase-5-cpp-imperative-steelman.md) |
+| 6 | Backends (iii) C++ Functional-Style and (iv) Rust | 🔄 Active (C++ functional and Rust smoke libraries plus bounded FFI smoke drivers landed; real engines and pipelines open) | [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md) |
+| 7 | Cross-Backend Verify, Test Stanzas, POC Report Card | 🔄 Active (test stanzas, bounded FFI smoke coverage, and logical verify wiring present; real cohort/TUIs/report-card evidence open) | [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md) |
 | 8 | Haskell Performance Parity Closure | 🔄 Active (Sprint 8.1 partial: GHC/RTS/INLINABLE baseline landed; LLVM/PGO/SPECIALIZE open) | [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md) |
 
 ## Current Plan Status
@@ -220,10 +235,10 @@ Implemented in the worktree:
   conservative forbidden-symbol subset it can check textually; it also runs
   `cabal format` through a temp-file round-trip and invokes the mandatory
   container-installed `fourmolu` / `hlint` binaries from
-  `/opt/mcts-style-tools/bin/`. The mandatory external formatter path closes by
+  `/opt/mcts-style-tools/bin/`. The mandatory external formatter path is closed by
   pinning a separate formatter-tools GHC `9.12.4` and installing
-  `fourmolu-0.19.0.1` plus `hlint-3.10` into the container; the fuller rule set
-  lives in `.hlint.yaml` for that external `hlint` path.
+  `fourmolu-0.19.0.1` plus `hlint-3.10` into the container; the fuller hard-error
+  rule set lives in `.hlint.yaml` for that external `hlint` path.
 - `mcts lint files` fails on tracked generated-file drift, `mcts lint haskell`
   delegates to `cabal test mcts-haskell-style`, and `mcts check-code` runs lint/docs
   plus `cabal build all` through the dedicated `MCTS.CheckCode` module.
@@ -236,22 +251,29 @@ Implemented in the worktree:
   `mcts_<backend>_get_envelope()` accessor returning process-static
   memory. `cpp-legacy/legacy-core/` now mechanically imports the legacy
   `backend/core` board and MCTS sources, and the legacy C ABI delegates board
-  allocation / UCT selection to those types. The shared C++ RNG also exposes
-  `cpp_rng_split_seed`, with `MCTS.Rng.Cpp` checking it against the Haskell
-  splitmix mixer when the library is built.
+  allocation / UCT selection to those types. Backends (ii) and (iii) smoke-build
+  with the target C++23 flag baseline, hidden visibility, default-visible C ABI
+  exports, and `mimalloc`; backend (iv) Rust is split into the planned module
+  topology and uses `mimalloc::MiMalloc` as its global allocator. The Haskell
+  FFI layer has bounded smoke drivers and live envelope loaders for all four
+  foreign shared libraries.
+  The shared C++ RNG also exposes `cpp_rng_split_seed`, with `MCTS.Rng.Cpp`
+  checking it against the Haskell splitmix mixer when the library is built.
 - `MCTS.CLI.Docs` exposes `GeneratedSectionRule`,
   `applyGeneratedSection`, and `checkGeneratedSection` for
   marker-delimited generated regions (`<!-- mcts:<key>:start --> ...
-  <!-- mcts:<key>:end -->`).
+  <!-- mcts:<key>:end -->`); the current registry includes the
+  `command-matrix` section in
+  `documents/engineering/cli_command_surface.md`.
 
 Remaining work is the difference between this baseline and the target end state:
 foreign-engine recompute sidecars, the optimized Haskell engine beyond the current
 `INLINABLE` baseline (`SPECIALIZE`, `-fllvm`, and `MutableByteArray#` if profiling
-justifies it) per Phase 8, real foreign C
-ABI drivers beyond board lifecycle calls, PGO+BOLT pipelines, real cross-backend bit-for-bit proof against
-non-logical backends, interactive `brick`/`vty` TUIs for `play` and `inspect
-replay`, external golden fixtures under `test/golden/legacy/`, and Phase `8`
-performance parity closure.
+justifies it) per Phase 8, full foreign C ABI transcript drivers beyond the
+bounded smoke games, PGO+BOLT pipelines, real cross-backend bit-for-bit proof
+against non-logical backends, interactive `brick`/`vty` TUIs for `play` and
+`inspect replay`, external golden fixtures under `test/golden/legacy/`, and
+Phase `8` performance parity closure.
 
 The retirement protocol (i)→(ii)→(iii)→(v) named in [00-overview.md](00-overview.md) and
 owned by Phase `8` is the long-running closure mechanism: each retiring backend's

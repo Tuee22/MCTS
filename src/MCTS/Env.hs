@@ -5,10 +5,8 @@
 -- a single `ReaderT Env IO` per
 -- [../HASKELL_CLI_TOOL.md → Application Environment](../HASKELL_CLI_TOOL.md).
 --
--- This module also carries the `App` newtype and `runAppIO` helper so a
--- command runner can opt into the doctrine boundary without a global rewire
--- in one change. The migration of each CLI runner to `... -> App ExitCode`
--- happens in subsequent Phase 1 closure work.
+-- This module also carries the `App` newtype and `runAppIO` helper used by
+-- `MCTS.App` to run the command dispatcher inside the shared environment.
 module MCTS.Env
     ( Env (..)
     , defaultEnv
@@ -25,7 +23,10 @@ import Control.Monad.Reader (ReaderT (..), ask, local, runReaderT)
 import Data.Word (Word64)
 import qualified MCTS.CLI.Output as Output
 import qualified MCTS.CLI.Spec as Spec
+import qualified MCTS.Generated.Paths as GeneratedPaths
+import qualified MCTS.Generated.Sections as GeneratedSections
 import qualified MCTS.Prerequisite as Prerequisite
+import System.IO (Handle, stdout)
 
 -- | One shared record that every doctrine-aligned command runner receives.
 --
@@ -33,9 +34,13 @@ import qualified MCTS.Prerequisite as Prerequisite
 --
 --   * `envOutputOptions` — output discipline (`--format`, `--color`)
 --   * `envCommandSpec` — the `CommandSpec` registry (single source of truth)
+--   * `envGeneratedSectionRules` — marker-delimited generated doc registry
+--   * `envTrackingGeneratedPaths` — fully-generated path registry
 --   * `envPrerequisites` — the `prerequisiteRegistry` value
 --   * `envCacheDir` — explicit `--cache-dir` override; `Nothing` means resolve
 --     via env / project tree
+--   * `envLogHandle` — process log/output handle for future output-boundary unification
+--   * `envRawArguments` — parsed invocation context retained for diagnostics
 --   * `envClockMonotonic` — monotonic clock test-hook returning nanoseconds
 --     since some fixed epoch; production runners use the system monotonic
 --     clock, but the Phase 3 Sprint 3.5 timing-bracket assertion overrides
@@ -43,8 +48,12 @@ import qualified MCTS.Prerequisite as Prerequisite
 data Env = Env
     { envOutputOptions :: !Output.OutputOptions
     , envCommandSpec :: !Spec.CommandSpec
+    , envGeneratedSectionRules :: ![GeneratedSections.GeneratedSectionRule]
+    , envTrackingGeneratedPaths :: ![FilePath]
     , envPrerequisites :: ![Prerequisite.PrerequisiteNode]
     , envCacheDir :: !(Maybe FilePath)
+    , envLogHandle :: !Handle
+    , envRawArguments :: ![String]
     , envClockMonotonic :: IO Word64
     }
 
@@ -57,8 +66,12 @@ defaultEnv =
     Env
         { envOutputOptions = Output.defaultOutputOptions
         , envCommandSpec = Spec.commandSpec
+        , envGeneratedSectionRules = GeneratedSections.generatedSectionRules
+        , envTrackingGeneratedPaths = GeneratedPaths.trackingGeneratedPaths
         , envPrerequisites = Prerequisite.prerequisiteRegistry
         , envCacheDir = Nothing
+        , envLogHandle = stdout
+        , envRawArguments = []
         , envClockMonotonic = pure 0
         }
 
@@ -66,8 +79,8 @@ defaultEnv =
 newtype App a = App {unApp :: ReaderT Env IO a}
     deriving newtype (Functor, Applicative, Monad, MonadIO)
 
--- | Run an `App` computation with an `Env`. New runners can be written with
--- type `... -> App ExitCode` and called from `MCTS.App` through `runAppIO env`.
+-- | Run an `App` computation with an `Env`. `MCTS.App` uses this as the single
+-- IO adapter for the `... -> App ExitCode` command runners.
 runAppIO :: Env -> App a -> IO a
 runAppIO env action = runReaderT (unApp action) env
 

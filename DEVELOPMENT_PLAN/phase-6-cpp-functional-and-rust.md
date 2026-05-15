@@ -17,10 +17,13 @@
 ## Phase Status
 
 🔄 **Active**. `cpp-functional/` and `rust/` now exist with smoke-buildable C ABI /
-`cdylib` skeletons, and the Haskell CLI can exercise both as logical backends in
-benchmark and verify flows. Remaining Phase `6` closure work is the real
-functional-style C++ engine, real Rust engine, Haskell FFI bindings, PGO+BOLT
-pipelines, envelope capture, and foreign-engine recompute.
+`cdylib` skeletons, `mcts build cpp-functional` / `mcts build rust` validate the
+container toolchain through the Plan/Apply build surface, Rust uses the planned
+module topology plus `mimalloc` as `#[global_allocator]`, and the Haskell CLI can
+exercise both as logical backends in benchmark and verify flows. Remaining Phase
+`6` closure work is the real functional-style C++ engine, real Rust engine, live
+foreign pointer bindings, PGO+BOLT pipelines, envelope capture, and foreign-engine
+recompute.
 
 ## Phase Summary
 
@@ -109,11 +112,18 @@ underneath so the optimisation stack still applies.
 
 ### Remaining Work
 
-- Baseline landed: `cpp-functional/` has a smoke-buildable C ABI skeleton, Makefile,
-  README, and `build/libmcts_cpp_functional.so` output path.
+- Baseline landed and validated: `cpp-functional/` has a smoke-buildable C ABI
+  skeleton, Makefile, README, and `build/libmcts_cpp_functional.so` output path.
+  `mcts build cpp-functional --dry-run` renders `make -C cpp-functional smoke`,
+  `mcts build cpp-functional` produces the smoke shared library inside the
+  container, and `mcts bench rollouts --backend cpp-functional --threading single
+  --rng cpp --games 8 --seed 42` completes through the logical driver. The smoke
+  Makefile uses the same doctrine C++23 optimization flag set as backend (ii), links
+  `mimalloc`, and keeps the C ABI symbols default-visible; `nm -D` confirms the
+  exported `mcts_functional_*` symbol set after `mcts build cpp-functional`.
 - Replace the smoke implementation with the real functional-style C++23 engine.
-- Share the final optimization stack with backend (ii) so the comparison isolates
-  style rather than flags or allocator choices.
+- Add the final paired bench/instrumented source layout while preserving the shared
+  optimization stack with backend (ii).
 - Add parity/tuning documentation once the real implementation lands.
 
 ## Sprint 6.2: FFI Bindings, Build Harness, Driver for Backend (iii) 🔄
@@ -164,21 +174,31 @@ variant.
 
 ### Remaining Work
 
-- Baseline landed: `mcts build cpp-functional --dry-run` renders a typed plan, the
-  apply path smoke-builds `cpp-functional/`, the logical driver can run
-  `--backend cpp-functional`, and `src/MCTS/FFI/CppFunctional.hs` declares
-  `withCppFunctionalBoard` routed through `MCTS.FFI.Common.liftFFI` with
-  the doctrine-required `mcts_functional_new_board` symbol name.
+- Baseline landed and validated: `mcts build cpp-functional --dry-run` renders a
+  typed plan, the apply path smoke-builds `cpp-functional/`, the logical driver can
+  run `--backend cpp-functional`, and `src/MCTS/FFI/CppFunctional.hs` declares
+  `withCppFunctionalBoard` / `withCppFunctionalGame` routed through
+  `MCTS.FFI.Common.liftFFI` / `withDynamicGame` with the doctrine-required
+  `mcts_functional_new_board`, `mcts_functional_is_terminal`, and
+  `mcts_functional_select_uct_move` symbol names. `src/MCTS/Driver/CppFunctional.hs`
+  can run a bounded chosen-move smoke game through that ABI; `mcts-integration`
+  validates the path when the smoke shared library is present.
 - Replace the stand-in handle type with `foreign import ccall` pointers
   and add the cabal `extra-libraries` directives once the cdylib build
-  step is wired in.
+  step is wired in. The `libmcts-cpp-functional-built`,
+  `cpp-functional-pgo-profile`, and `cpp-functional-bolt-profile` prerequisite
+  nodes are present in `prerequisiteRegistry`.
 - Replace the smoke build with the same PGO+BOLT+`mimalloc` pipeline as backend (ii).
-- Add transcript-output and two-backend verify smoke tests against the real engine.
+- Route operator-facing transcript output through the real backend once the C ABI
+  exposes sorted visit-vector instrumentation, then add two-backend verify smoke
+  tests against the real engine.
 
 ## Sprint 6.3: `rust/` Rust Engine and `cdylib` 🔄
 
 **Status**: Active
-**Implementation**: `rust/Cargo.toml`, `rust/src/lib.rs`
+**Implementation**: `rust/Cargo.toml`, `rust/src/lib.rs`, `rust/src/board.rs`,
+`rust/src/tree.rs`, `rust/src/search.rs`, `rust/src/rollout.rs`,
+`rust/src/c_abi.rs`, `rust/src/envelope.rs`
 **Docs to update**: `documents/engineering/compiler_runtime_tuning.md`,
 `documents/engineering/backend_ffi_contract.md`,
 `DEVELOPMENT_PLAN/system-components.md`
@@ -249,11 +269,19 @@ exposed as a `cdylib` for the Haskell FFI.
 
 ### Remaining Work
 
-- Baseline landed: `rust/Cargo.toml`, `rust/src/lib.rs`, and README exist with a
-  `cdylib`/`staticlib` smoke target and pinned release-profile shape.
+- Baseline landed and validated: `rust/Cargo.toml`, `rust/src/lib.rs`, and README
+  exist with a `cdylib`/`staticlib` smoke target and pinned release-profile shape.
+  The smoke crate is split across `board.rs`, `tree.rs`, `search.rs`,
+  `rollout.rs`, `c_abi.rs`, and `envelope.rs`, and declares
+  `mimalloc::MiMalloc` as the process global allocator. `mcts build rust
+  --dry-run` renders `cargo build --release`, `mcts build rust` produces
+  `rust/target/release/libmcts_rust.so` inside the container, and
+  `mcts bench rollouts --backend rust --threading single --rng cpp --games 8
+  --seed 42` completes through the logical driver.
 - Replace the smoke exports with the real Rust engine and C ABI surface.
-- Pin the Rust minor version through Docker/toolchain configuration.
-- Add `mimalloc` as the global allocator and the final rustc flags/build profile.
+- Rust minor pin is in `docker/Dockerfile` (`RUST_VERSION=1.95.0`) and the
+  prerequisite registry checks `cargo` / `rustc` `1.95.0`.
+- Add the final rustc flags/build profile to the PGO+BOLT harness.
 
 ## Sprint 6.4: FFI Bindings, PGO+BOLT Build Harness, Driver for Backend (iv) 🔄
 
@@ -331,15 +359,22 @@ dispatch, and the verify dispatch.
 
 ### Remaining Work
 
-- Baseline landed: `mcts build rust --dry-run` renders a typed plan, the apply path
-  delegates to `cargo build --release`, the logical driver can run `--backend rust`,
-  and `src/MCTS/FFI/Rust.hs` declares `withRustBoard` routed through
-  `MCTS.FFI.Common.liftFFI` with the doctrine-required `mcts_rust_new_board`
-  symbol name.
+- Baseline landed and validated: `mcts build rust --dry-run` renders a typed plan,
+  the apply path delegates to `cargo build --release`, the logical driver can run
+  `--backend rust`, and `src/MCTS/FFI/Rust.hs` declares `withRustBoard` /
+  `withRustGame` routed through `MCTS.FFI.Common.liftFFI` / `withDynamicGame`
+  with the doctrine-required `mcts_rust_new_board`, `mcts_rust_is_terminal`, and
+  `mcts_rust_select_uct_move` symbol names. `src/MCTS/Driver/Rust.hs` can run a
+  bounded chosen-move smoke game through that ABI; `mcts-integration` validates the
+  path when the Rust `cdylib` is present.
 - Replace the stand-in handle type with `foreign import ccall` pointers and add
   the cabal `extra-libraries` directives once the cdylib build step is wired in.
+  The `libmcts-rust-built`, `rust-pgo-profile`, and `lld-linker` prerequisite nodes
+  are present in `prerequisiteRegistry`.
 - Replace the smoke build with the rustc PGO+BOLT+`mimalloc` pipeline.
-- Add transcript-output and cross-backend smoke tests against the real Rust engine.
+- Route operator-facing transcript output through the real Rust engine once the C ABI
+  exposes sorted visit-vector instrumentation, then add cross-backend smoke tests
+  against the real Rust engine.
 
 ## Sprint 6.5: Backends (iii) and (iv) Engine Envelope and Foreign-Engine Recompute ⏸️
 
@@ -419,11 +454,17 @@ fields.
   `mcts_rust_get_envelope()` accessors. The Rust accessor returns a `const`
   static envelope filled at compile time from
   `option_env!("MCTS_GIT_COMMIT")`, the target arch, and the compiler tag
-  (`compiler_id = 2 = rustc`); the C++ accessor mirrors the (i)/(ii) shape with
-  optimization-dependent slots zero-initialized pending the PGO+BOLT pipeline.
-- Add live envelope capture for backends (iii) and (iv) after their real drivers and
-  FFI surfaces exist (in particular the `engine_build_id` post-link patch and the
-  `cpu_features` / `fp_env` runtime probes).
+  (`compiler_id = 2 = rustc`). `rust/build.rs` captures `rustc --version` inside
+  the container and exports it as `MCTS_RUSTC_VERSION`, so the Rust envelope's
+  `compiler_version` slot is live even in the smoke cdylib. The C++ accessor
+  mirrors the (i)/(ii) shape with optimization-dependent slots zero-initialized
+  pending the PGO+BOLT pipeline.
+  `src/MCTS/FFI/CppFunctional.hs` and `src/MCTS/FFI/Rust.hs` expose
+  `loadCppFunctionalEnvelope` and `loadRustEnvelope`, and `mcts-integration`
+  validates both live envelope paths when their smoke shared libraries are present.
+- Extend live envelope capture for backends (iii) and (iv) after their real drivers
+  and final build surfaces exist (in particular the `engine_build_id` post-link
+  patch and the `cpu_features` / `fp_env` runtime probes).
 - Add foreign-engine recompute for both backends' equity sidecars.
 - Add envelope-mismatch and cross-backend recompute integration coverage.
 

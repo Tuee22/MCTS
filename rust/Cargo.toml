@@ -2,6 +2,7 @@
 name = "mcts_rust"
 version = "0.1.0"
 edition = "2024"
+build = "build.rs"
 
 [lib]
 crate-type = ["cdylib", "staticlib"]
@@ -9,6 +10,9 @@ crate-type = ["cdylib", "staticlib"]
 [features]
 default = []
 instrumentation = []
+
+[dependencies]
+mimalloc = "0.1"
 
 [profile.release]
 opt-level = 3

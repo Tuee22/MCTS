@@ -1,7 +1,7 @@
-hero=(4,2)
-villain=(4,7)
-wallsH=[(1,0),(0,0)]
-wallsV=[]
+hero=22
+villain=67
+wallsH=3
+wallsV=0
 heroWalls=9
 villainWalls=9
 sideToMove=Villain

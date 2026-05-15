@@ -47,6 +47,26 @@
     lhs: "System.Process.shell"
     rhs: "MCTS.Subprocess.Subprocess"
 
+- error:
+    name: "Use typed subprocess boundary"
+    lhs: "System.Process.Typed.proc"
+    rhs: "MCTS.Subprocess.Subprocess"
+
+- error:
+    name: "Use typed subprocess boundary"
+    lhs: "System.Process.Typed.shell"
+    rhs: "MCTS.Subprocess.Subprocess"
+
+- error:
+    name: "Use typed subprocess boundary"
+    lhs: "System.Process.Typed.runProcess"
+    rhs: "MCTS.Subprocess.runStreaming"
+
+- error:
+    name: "Use typed subprocess boundary"
+    lhs: "System.Process.Typed.readProcess"
+    rhs: "MCTS.Subprocess.capture"
+
 # --------------------------------------------------------------------------
 # Output boundary (outside src/MCTS/CLI/Output.hs)
 # --------------------------------------------------------------------------

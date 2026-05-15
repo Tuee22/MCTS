@@ -3,6 +3,7 @@ module MCTS.App
     , runWithArgs
     ) where
 
+import Control.Monad.IO.Class (liftIO)
 import MCTS.CLI.Bench (runBench)
 import MCTS.CLI.Build (runBuild)
 import MCTS.CLI.Command
@@ -18,6 +19,7 @@ import MCTS.CLI.Verify (runVerifyCommand)
 import MCTS.CheckCode (runCheckCode)
 import MCTS.Driver (defaultRunInputs, runBatch)
 import qualified MCTS.Driver as Driver
+import qualified MCTS.Env as Env
 import MCTS.Types (Backend, RngSource (NativeRng), Workload (Selfplay), backendIdentifier)
 import System.Environment (getArgs)
 import System.Exit (ExitCode (..), exitWith)
@@ -32,37 +34,43 @@ runWithArgs :: [String] -> IO Int
 runWithArgs rawArgs = do
     (output, args) <- parseGlobalOutputOptionsIO rawArgs
     case parseCommand args of
-        Left err -> errLine (renderError err) >> pure 2
-        Right command -> runCommand output command
+        Left err -> errLine (renderErrorString output err) >> pure 2
+        Right command -> do
+            let env = Env.defaultEnv{Env.envOutputOptions = output, Env.envRawArguments = rawArgs}
+            code <- Env.runAppIO env (runCommand command)
+            pure (exitCodeToInt code)
 
-runCommand :: OutputOptions -> Command -> IO Int
-runCommand output command =
+runCommand :: Command -> Env.App ExitCode
+runCommand command =
     case command of
-        Bench (BenchRollouts backends inputs) -> runBench output backends inputs
-        Bench (BenchSelfplay backends inputs) -> runBench output backends inputs
-        Verify verifyCommand -> runVerifyCommand output verifyCommand
-        Inspect inspectCommand -> runInspect output inspectCommand
-        Test testCommand -> runTestCommand output testCommand
+        Bench (BenchRollouts backends inputs) -> runBench backends inputs
+        Bench (BenchSelfplay backends inputs) -> runBench backends inputs
+        Verify verifyCommand -> runVerifyCommand verifyCommand
+        Inspect inspectCommand -> runInspect inspectCommand
+        Test testCommand -> runTestCommand testCommand
         Lint lintCommand -> runLint lintCommand
         Docs docsCommand -> runDocs docsCommand
         Build buildCommand -> runBuild buildCommand
         Commands options ->
-            outputLine
-                ( if commandsJson options
-                    then renderCommandJson
-                    else
-                        if commandsTree options
-                            then renderCommandTree
-                            else renderCommandList
+            liftIO
+                ( outputLine
+                    ( if commandsJson options
+                        then renderCommandJson
+                        else
+                            if commandsTree options
+                                then renderCommandTree
+                                else renderCommandList
+                    )
                 )
-                >> pure 0
+                >> pure ExitSuccess
         Help (HelpOptions target) ->
-            outputLine ("help: mcts " <> unwords target <> "\nRun `mcts commands --tree` for the command tree.")
-                >> pure 0
+            liftIO
+                (outputLine ("help: mcts " <> unwords target <> "\nRun `mcts commands --tree` for the command tree."))
+                >> pure ExitSuccess
         CheckCode -> runCheckCode
         Play options -> runPlay options
 
-runPlay :: PlayOptions -> IO Int
+runPlay :: PlayOptions -> Env.App ExitCode
 runPlay options = do
     let seed = maybe 42 fromIntegral (playSeed options)
         inputs =
@@ -74,17 +82,23 @@ runPlay options = do
                 , Driver.inputSeed = fromIntegral (seed :: Integer)
                 , Driver.inputSims = playSims options
                 }
-    result <- runBatch inputs
+    result <- liftIO (runBatch inputs)
     case result of
-        Left message -> outputLine message >> pure 1
+        Left message -> liftIO (outputLine message) >> pure (ExitFailure 1)
         Right batch ->
-            outputLine
-                ( "played one logical game with "
-                    <> backendIdentifier (playBackend options)
-                    <> " hash="
-                    <> Driver.batchHash batch
+            liftIO
+                ( outputLine
+                    ( "played one logical game with "
+                        <> backendIdentifier (playBackend options)
+                        <> " hash="
+                        <> Driver.batchHash batch
+                    )
                 )
-                >> pure 0
+                >> pure ExitSuccess
+
+exitCodeToInt :: ExitCode -> Int
+exitCodeToInt ExitSuccess = 0
+exitCodeToInt (ExitFailure n) = n
 
 _keepBackend :: Backend -> Backend
 _keepBackend = id

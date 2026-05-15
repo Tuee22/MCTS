@@ -3,16 +3,22 @@
 
 #include <stdint.h>
 
+#if defined(__GNUC__) || defined(__clang__)
+#define MCTS_IMPERATIVE_API __attribute__((visibility("default")))
+#else
+#define MCTS_IMPERATIVE_API
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 typedef struct mcts_imperative_board mcts_imperative_board;
 
-mcts_imperative_board* mcts_imperative_new_board(void);
-void mcts_imperative_free_board(mcts_imperative_board*);
-int mcts_imperative_is_terminal(const mcts_imperative_board*);
-uint8_t mcts_imperative_select_uct_move(mcts_imperative_board*, uint64_t seed, uint32_t sims);
+MCTS_IMPERATIVE_API mcts_imperative_board* mcts_imperative_new_board(void);
+MCTS_IMPERATIVE_API void mcts_imperative_free_board(mcts_imperative_board*);
+MCTS_IMPERATIVE_API int mcts_imperative_is_terminal(const mcts_imperative_board*);
+MCTS_IMPERATIVE_API uint8_t mcts_imperative_select_uct_move(mcts_imperative_board*, uint64_t seed, uint32_t sims);
 
 typedef struct {
     uint16_t envelope_version;
@@ -32,7 +38,7 @@ typedef struct {
     uint8_t  fp_env;
 } mcts_imperative_envelope;
 
-const mcts_imperative_envelope *mcts_imperative_get_envelope(void);
+MCTS_IMPERATIVE_API const mcts_imperative_envelope *mcts_imperative_get_envelope(void);
 
 #ifdef __cplusplus
 }

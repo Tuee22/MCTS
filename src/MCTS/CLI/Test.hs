@@ -3,33 +3,55 @@ module MCTS.CLI.Test
     , testAllPlan
     ) where
 
+import Control.Monad.IO.Class (liftIO)
 import MCTS.CLI.Command (TestCommand (..))
-import MCTS.CLI.Output (OutputFormat (..), OutputOptions (..), outputLine, renderError)
+import MCTS.CLI.Output (OutputFormat (..), OutputOptions (..), outputLine, renderErrorString)
+import qualified MCTS.Env as Env
 import MCTS.Plan
+import MCTS.Prerequisite (checkPrerequisites, prerequisitesForTest)
 import MCTS.ReportCard
 import MCTS.Subprocess
+import System.Exit (ExitCode (..))
 
-runTestCommand :: OutputOptions -> TestCommand -> IO Int
-runTestCommand output command =
+runTestCommand :: TestCommand -> Env.App ExitCode
+runTestCommand command = do
+    env <- Env.askEnv
+    runWithOutput (Env.envOutputOptions env) command
+
+runWithOutput :: OutputOptions -> TestCommand -> Env.App ExitCode
+runWithOutput output command =
     case command of
         TestAll opts -> do
             let plan = testAllPlan
                 rendered = renderPlan plan
-            writePlanFile (planFile opts) rendered
+            liftIO (writePlanFile (planFile opts) rendered)
             if planDryRun opts
-                then outputLine rendered >> pure 0
+                then liftIO (outputLine rendered) >> pure ExitSuccess
                 else do
-                    code <- runStanzaPlan plan
-                    if code == 0
-                        then
-                            outputLine
-                                ( if outputFormat output == JsonFormat
-                                    then renderReportCardJson defaultReportCard
-                                    else renderReportCard defaultReportCard
-                                )
-                                >> pure 0
-                        else pure code
-        TestStanza stanza -> runStanzaPlan (Plan ("test " <> stanza) [Subprocess "cabal" ["test", stanza] Nothing Nothing])
+                    prerequisites <- liftIO (checkPrerequisites prerequisitesForTest)
+                    case prerequisites of
+                        Left err -> liftIO (outputLine (renderErrorString output err)) >> pure (ExitFailure 1)
+                        Right () -> do
+                            code <- runStanzaPlan output plan
+                            if code == ExitSuccess
+                                then
+                                    liftIO
+                                        ( outputLine
+                                            ( if outputFormat output == JsonFormat
+                                                then renderReportCardJson defaultReportCard
+                                                else renderReportCard defaultReportCard
+                                            )
+                                        )
+                                        >> pure ExitSuccess
+                                else pure code
+        TestStanza stanza -> do
+            prerequisites <- liftIO (checkPrerequisites prerequisitesForTest)
+            case prerequisites of
+                Left err -> liftIO (outputLine (renderErrorString output err)) >> pure (ExitFailure 1)
+                Right () ->
+                    runStanzaPlan
+                        output
+                        (Plan ("test " <> stanza) [Subprocess "cabal" ["test", stanza] Nothing Nothing])
 
 testAllPlan :: Plan Subprocess
 testAllPlan =
@@ -157,12 +179,11 @@ testAllPlan =
 mctsStep :: [String] -> Subprocess
 mctsStep args = Subprocess "cabal" (["exec", "mcts", "--"] <> args) Nothing Nothing
 
-runStanzaPlan :: Plan Subprocess -> IO Int
-runStanzaPlan plan = go (planSteps plan)
+runStanzaPlan :: OutputOptions -> Plan Subprocess -> Env.App ExitCode
+runStanzaPlan output = applyWithEnv (runTestStep output)
   where
-    go [] = pure 0
-    go (step : rest) = do
+    runTestStep outputOptions _env step = do
         result <- runStreaming step
         case result of
-            Left err -> outputLine (renderError err) >> pure 1
-            Right _ -> go rest
+            Left err -> outputLine (renderErrorString outputOptions err) >> pure (Right (ExitFailure 1))
+            Right code -> pure (Right code)

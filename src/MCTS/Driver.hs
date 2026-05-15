@@ -14,9 +14,10 @@ import Data.Bits (xor)
 import Data.List (sortOn)
 import Data.Word (Word16, Word32, Word64)
 import MCTS.Engine (Board, applyMove, initialBoard, terminalWinner)
+import MCTS.Engine.Envelope (makeEngineEnvelope)
 import MCTS.Rng.Mix (mix)
 import qualified MCTS.Search.UCT as UCT
-import MCTS.Transcript (hostArch, writeTranscript)
+import MCTS.Transcript (writeTranscript)
 import MCTS.Types
 
 data RunInputs = RunInputs
@@ -196,21 +197,4 @@ effectiveMaxPlies inputs =
 -- cohort-invariant fields (`envelopeRngSource`, `envelopeHostArch`) are
 -- captured from the active run.
 makeLogicalEnvelope :: Backend -> RngSource -> Envelope
-makeLogicalEnvelope backend rng =
-    Envelope
-        { envelopeVersion = 1
-        , envelopeBackend = backend
-        , envelopeRngSource = rng
-        , envelopeHostArch = hostArch
-        , envelopeSharedRngBuildId = zeroDigest
-        , envelopeCohortConfigHash = zeroDigest
-        , envelopeEngineBuildId = zeroDigest
-        , envelopeEngineGitCommit = ""
-        , envelopeCompilerId = 3 -- ghc
-        , envelopeCompilerVersion = "9.14.1"
-        , envelopeFpFlags = 0
-        , envelopeLibmId = ""
-        , envelopeCpuFeatures = 0
-        , envelopeFpEnv = 0
-        , envelopeBuildId = backendIdentifier backend <> "-logical"
-        }
+makeLogicalEnvelope = makeEngineEnvelope
