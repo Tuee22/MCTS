@@ -4,6 +4,7 @@ mod envelope;
 mod rollout;
 mod search;
 mod tree;
+mod xoshiro256pp;
 
 #[global_allocator]
 static GLOBAL_ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;

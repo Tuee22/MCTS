@@ -52,7 +52,7 @@ the ply-cap draw rule for backends (ii)–(v)), and legal-move enumeration.
 
 ### Deliverables
 
-- `src/MCTS/Engine/Board.hs` declares an unboxed strict record per
+- `src/MCTS/Engine.hs` declares the strict board representation per
   [00-overview.md → Hard Constraints item 20](00-overview.md):
 
   ```haskell
@@ -73,19 +73,19 @@ the ply-cap draw rule for backends (ii)–(v)), and legal-move enumeration.
   positional win has been recorded; `isTerminal` is checked next, before the next
   move is selected. The counter is restored to its start-of-rollout value as part of
   the per-rollout scratch snapshot/undo path (wired in Phase 8).
-- `src/MCTS/Engine/Move.hs` exposes `applyMove :: Move -> Board -> Board` plus the
+- `src/MCTS/Engine.hs` exposes `applyMove :: Action -> Board -> Board` plus the
   unapply path for the per-rollout scratch board reuse (the scratch path is wired
   in Phase 8; this sprint provides the pure version).
-- `src/MCTS/Engine/Terminal.hs` exposes
+- `src/MCTS/Engine.hs` exposes
   `isTerminal :: Word16 -> Board -> Bool` honouring the ply cap:
   `hero_wins || villain_wins || ply_count >= max_plies` per
   [00-overview.md → Hard Constraints item 9](00-overview.md). On ply-cap
   termination, `terminalEval` returns `0.0`. `isTerminal` is called after each
   `applyMove` inside the rollout loop and immediately before each selection step
   inside the UCT descent; a terminal node is never expanded.
-- `src/MCTS/Engine/Legal.hs` exposes `legalMoves :: Board -> Vector Move` plus the
-  variant that writes into a caller-provided buffer (`legalMovesInto`); the
-  buffer-reuse path matters in Phase 8.
+- `src/MCTS/Engine.hs` exposes `legalMoves :: Board -> [Action]`; a
+  caller-provided-buffer variant is deferred to Phase `8` profiling work if the
+  current list boundary remains hot.
 - The legal-move generator must enforce the Corridors path-existence invariant per
   [../README.md → Game: Corridors](../README.md): walls cannot fully enclose
   either player. A wall placement is legal only if both pawns retain at least one
@@ -150,13 +150,10 @@ bulk at game end, with `Int32` child indices and unboxed `Float` value-backup fi
   with parallel arrays for `parentIdx :: Int32`, `firstChildIdx :: Int32`,
   `nChildren :: Word16`, `actionId :: Word8`, `visits :: Int32`,
   `valueSum :: Float`.
-- `src/MCTS/Search/Node.hs` exposes the strict per-node accessors and mutators in
-  `ST s`.
-- `src/MCTS/Search/Tree.hs` exposes `newTree`, `freeTree`, `treeRoot`,
-  `treeReroot`. Tree persistence carries inherited visit counts across moves: when
-  a move is played, the chosen child becomes the new root and its accumulated
-  visits are kept; the rest of the tree is discarded incrementally per
-  [00-overview.md → Hard Constraints item 14](00-overview.md).
+- `src/MCTS/Search/Arena.hs` exposes the strict per-node accessors and mutators in
+  `ST s`, plus `newArena`, `freeArena`, `treeRoot`, and `treeReroot`. Full tree
+  persistence across played moves is deferred to Phase `8`; the current correctness
+  baseline allocates a fresh arena per per-move search.
 - Trees are memory-resident only — nothing is serialised between runs.
 
 ### Validation
@@ -201,7 +198,7 @@ ancestor path).
 
 ### Deliverables
 
-- `src/MCTS/Search/Uct.hs` exposes `selectBestChild` implementing UCT in the
+- `src/MCTS/Search/UCT.hs` exposes `selectBestChild` implementing UCT in the
   selection phase, with deterministic tie-break on `(equity desc, non_terminal_rank
   asc)` per the project [README → Cross-backend
   verification](../README.md). The operational definition of `non_terminal_rank`
@@ -212,18 +209,12 @@ ancestor path).
   that subsection with the precise function and line range, and confirming every
   other backend's tie-break implementation (Phases 4–6) will cite the same
   definition.
-- `src/MCTS/Search/Rollout.hs` exposes the random-rollout leaf evaluator: from the
+- `src/MCTS/Search/UCT.hs` owns the random-rollout leaf evaluator: from the
   expanded leaf, play random legal moves until terminal (positional win or ply cap),
   return the terminal evaluation (`-1.0`, `0.0`, `+1.0` from hero's perspective).
-- `src/MCTS/Search/Search.hs` exposes the pure API at the boundary per
-  [00-overview.md → Hard Constraints item 20](00-overview.md):
-
-  ```haskell
-  search :: GameState -> Seed -> SearchBudget -> Tree -> (Move, Tree)
-  ```
-
-  `Tree` is opaque; internally backed by the `ST` arena and frozen at the API
-  boundary if tree-persistence semantics need it.
+- The current pure boundary is
+  `uctSearch :: Board -> Word64 -> Int -> Int -> (Action, [(Action, Word32)])`;
+  internally it uses `runST` with the mutable arena.
 - The search runs in `ST s` internally with `runST` at the boundary; no `IORef`,
   no `MVar`, no `forkIO` inside the search.
 
@@ -278,31 +269,26 @@ in the Phase 2 wire format.
 
 ### Deliverables
 
-- `src/MCTS/Driver/Game.hs` exposes `runGame :: GameInputs -> App Transcript`,
-  where `GameInputs` carries `master_seed`, `game_index`, `max_plies`,
-  `sim_budget`, the backend selector, and the threading mode (the per-game
-  driver is single-threaded internally per
+- `src/MCTS/Driver.hs` exposes `runGame :: RunInputs -> Word32 -> GameTranscript`
+  and `runBatch :: RunInputs -> IO (Either String BatchResult)`,
+  where `RunInputs` carries `inputSeed`, `inputMaxPlies`, `inputSims`,
+  the backend selector, cache override, and the threading mode; the `Word32`
+  argument is the game index. The per-game driver is single-threaded internally per
   [00-overview.md → Hard Constraints item 2](00-overview.md)).
 - Per-game seed comes from `MCTS.Rng.Mix.mix master_seed game_index` (Phase 2
   Sprint 2.5).
-- `src/MCTS/Driver/Transcript.hs` exposes `writeTranscript :: Transcript -> App
-  TranscriptRef`, computing the hash, resolving the cache root, and writing
+- `src/MCTS/Transcript.hs` exposes `writeTranscript`, computing the hash, resolving
+  the cache root, and writing
   `<sha>.tr` atomically (write to temp, fsync, rename).
-- For random-rollout-only benchmark (`mcts bench rollouts`), the driver runs a
-  pure-engine loop with no tree at all: play random games end-to-end as fast as
-  the engine allows.
-- The native Haskell backend (v) honours the paired build-target scheme per
-  [../README.md → Cross-backend verification → Compile-time toggle for
-  instrumentation](../README.md). The toggle is a Cabal flag
-  `instrumentation: True|False` declared in `mcts.cabal`; the driver module
-  `src/MCTS/Driver/Game.hs` uses CPP `#ifdef MCTS_INSTRUMENTED` to splice in the
-  transcript writer and the `readVisits` instrumentation hook. Two library
-  targets are produced — `mcts-bench` (Cabal flag off) and `mcts-instrumented`
-  (Cabal flag on). The engine library (search, rollout, board, RNG) is one
-  shared artefact between them; only the driver compiles twice. `mcts bench`
-  links against `mcts-bench`; `mcts verify`, `mcts play`, `mcts inspect replay`
-  link against `mcts-instrumented`. The bench library has nothing to disable,
-  so the instrumentation code literally does not exist in it.
+- For random-rollout-only benchmark (`mcts bench rollouts`), the current logical
+  baseline reuses the UCT dispatch with a one-simulation budget so the transcript
+  and visit-table path stays identical to self-play. A future throughput-only
+  no-tree fast path is Phase `8` performance work if profiling justifies it.
+- The native Haskell backend (v) uses the single container-built `mcts` binary in
+  the current correctness baseline. Visit tables are available directly from
+  `MCTS.Search.UCT.uctSearch`, so the paired bench/instrumented split is not part
+  of the Phase `3` closure; any future Haskell split is profiling-driven Phase `8`
+  work.
 
 ### Validation
 
@@ -336,7 +322,7 @@ in the Phase 2 wire format.
 
 Wire the bench command into the CLI for `--backend haskell` end-to-end: parse, plan,
 prerequisite-check, dispatch through a worker pool (single or multi), measure
-wall-clock time from a single `Data.Time.Clock.getMonotonicTimeNSec`, emit
+wall-clock time from a single `GHC.Clock.getMonotonicTimeNSec`, emit
 `games/sec` and `sims/sec`.
 
 ### Deliverables
@@ -365,7 +351,7 @@ wall-clock time from a single `Data.Time.Clock.getMonotonicTimeNSec`, emit
   streams are independent of worker scheduling.
 - **Monotonic clock contract** per
   [../README.md → Benchmarks](../README.md) (line 177). The clock is
-  `Data.Time.Clock.getMonotonicTimeNSec` (monotonic, nanosecond resolution).
+  `GHC.Clock.getMonotonicTimeNSec` (monotonic, nanosecond resolution).
   It is started inside the Haskell driver **just before the first game is
   dispatched** into the worker pool and stopped **just after the last game's
   transcript returns through the FFI** (for native Haskell, "returns from the
@@ -435,21 +421,11 @@ Recompute](../documents/engineering/backend_ffi_contract.md).
 
 ### Deliverables
 
-- `src/MCTS/Engine/Envelope.hs` — a module that constructs the
-  `Envelope` for the in-process Haskell backend from build-time
-  values. Compiler ID/version comes from `__GLASGOW_HASKELL__` via
-  a CPP-passed `MCTS_GHC_VERSION` macro in `cabal.project`. `fp_flags`
-  is filled from `-DMCTS_FP_FAST_MATH=0 -DMCTS_FP_FMA_ALLOWED=...`
-  emitted by the Cabal stanza. `libm_id` is empty (the Haskell hot
-  path makes no libm transcendental calls — `log` / `sqrt` go through
-  GHC primops on `Double#`, which compile to LLVM IR and inline; the
-  envelope captures this as `libm_id = ""`). `engine_build_id` is the
-  SHA-256 of the linked `mcts` binary (since the Haskell engine is
-  in-process), embedded by a post-link patcher invoked from the
-  `Subprocess` boundary of the build harness. `cpu_features` is
-  captured at startup via `cpuid` via a small C shim or via inspecting
-  `getCpuModel`-style introspection; the resulting bitfield is
-  cached for the process lifetime.
+- `src/MCTS/Engine/Envelope.hs` constructs the current logical `Envelope` for the
+  in-process Haskell backend. The Phase `3` baseline stamps deterministic
+  cohort-invariant fields and logical per-backend-slot stand-ins; post-link
+  `engine_build_id`, CPU-feature, FP-environment, and richer compiler metadata
+  capture remain Phase `8` performance/build-harness work.
 - `src/MCTS/Engine/Recompute.hs` — the in-process foreign-engine
   recompute path: given a transcript's bytes, parse the `RunConfig`,
   replay the search from move 0, emit `(move_index, n_alternatives,

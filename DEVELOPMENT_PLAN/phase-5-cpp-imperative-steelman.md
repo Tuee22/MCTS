@@ -16,13 +16,28 @@
 
 ## Phase Status
 
-🔄 **Active**. `cpp-imperative/` now exists with a smoke-buildable C ABI skeleton, the
-canonical `mcts build cpp-imperative` path validates the container toolchain/profile
-prerequisites and runs the smoke build, and the Haskell CLI can exercise
-`cpp-imperative` as a logical backend in benchmark and verify flows. Remaining Phase `5`
-closure work is the real C++23 steelman engine, paired bench/instrumented artefacts,
-PGO+BOLT+`mimalloc` optimized build products, live envelope capture, and foreign-engine
-recompute.
+✅ **Done (sprint-owned surfaces)**. Sprints 5.1, 5.2, 5.3, 5.4, 5.5
+are closed on a *real engine* basis: `cpp-imperative/engine/` now
+hosts the arena-MCTS imperative-steelman engine
+(`state.hpp`/`arena.hpp`/`search.{hpp,cpp}`/`xoshiro256pp.hpp`) per
+Sprint 5.1's doctrine character — flat children, `Word16` ply
+counter + ply-cap terminal, `thread_local` move buffer,
+`__builtin_prefetch` on the UCB descent, `[[likely]]`/`[[unlikely]]`
+on terminal branches, `alignas(64)` arena nodes. The C ABI exposes
+the full `mcts_imperative_search_move` / `mcts_imperative_recompute_move`
+/ post-link `engine_build_id` patch / runtime CPU/FP probes, the
+bench / instrumented split lives in the same TU under
+`MCTS_IMPERATIVE_INSTRUMENTED`, and the Haskell dispatcher routes
+`--backend cpp-imperative` through the real FFI driver. Sprint 5.3
+ships the typed 11-step PGO+BOLT pipeline through `Subprocess` —
+BOLT uses `-instrument` so `perf` is not a closure prerequisite —
+with idempotence + failure-mode coverage in `mcts-unit`. The residual
+steelman optimizations (`-fno-exceptions` on the engine TU,
+per-rollout scratch-board undo) live as ledger items in
+[legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md);
+the measured Q1+Q2 speedup ratio that PGO+BOLT enables ships through
+Phase 7's report-card workflow once the cohort runs against the BOLT
+output.
 
 ## Phase Summary
 
@@ -37,10 +52,13 @@ Phase 1 `Subprocess` boundary. Backend (ii) participates in the four-backend
 `(ii)..(v)` cross-backend `verify` cohort (Phase 7) and in the legacy parity envelope
 cohort (Phase 4).
 
-## Sprint 5.1: `cpp-imperative/` Source Tree and Build Flags 🔄
+## Sprint 5.1: `cpp-imperative/` Source Tree and Build Flags ✅
 
-**Status**: Active
-**Implementation**: `cpp-imperative/c-abi/`, `cpp-imperative/Makefile`
+**Status**: Done (arena-MCTS engine character landed; `-fno-exceptions` and
+per-rollout undo remain ledger items in
+[legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md))
+**Implementation**: `cpp-imperative/engine/{state.hpp,arena.hpp,xoshiro256pp.hpp,search.hpp,search.cpp}`,
+`cpp-imperative/c-abi/`, `cpp-imperative/Makefile`
 **Docs to update**: `documents/engineering/compiler_runtime_tuning.md`,
 `documents/engineering/backend_ffi_contract.md`,
 `DEVELOPMENT_PLAN/system-components.md`
@@ -139,21 +157,43 @@ backend-agnostic from the Haskell side.
    enumeration matches a brute-force Haskell reference (the same reference Phase
    3 used).
 
+### Closure Notes
+
+- Real arena-MCTS steelman engine landed under `cpp-imperative/engine/`:
+  `state.hpp` carries the `Word16` ply counter and the doctrine
+  `is_terminal ↔ ... || ply_count >= max_plies` semantic; `arena.hpp`
+  is the flat `std::vector<UctNode>` with `first_child_idx : u32`,
+  `n_children : u16`, and `alignas(64)` per Sprint 5.1; `search.cpp`
+  drives the UCT loop with `__builtin_prefetch` on child descent,
+  `[[likely]]`/`[[unlikely]]` annotations on terminal branches, a
+  `thread_local` move-list buffer, and an FPU-stable index tie-break.
+  `xoshiro256pp.hpp` supplies the native RNG (selectable from the
+  shim's `RngBackend::Xoshiro` path) per
+  [../README.md → Compiler and runtime tuning item 15](../README.md).
+- `cpp-imperative/c-abi/mcts_cpp_imperative.cc` was rewritten to drive
+  the arena search through `mcts_imperative_search_move` /
+  `mcts_imperative_recompute_move` / `mcts_imperative_select_uct_move`;
+  `mcts_imperative_read_visits` continues to honour the
+  `MCTS_IMPERATIVE_INSTRUMENTED` toggle so the paired `_bench` and
+  `_instrumented` artefacts split correctly. The Makefile builds all
+  three artefacts (`smoke`, `bench`, `instrumented`) warning-clean
+  under the doctrine C++23 flag set.
+- `cabal test all` is green under the pinned GHC `9.14.1` toolchain;
+  `mcts bench rollouts --backend cpp-imperative --rng cpp` rides the
+  arena search end-to-end and writes valid wire-format transcripts.
+
 ### Remaining Work
 
-- Baseline landed and validated: `cpp-imperative/` has a smoke-buildable C ABI
-  skeleton, README, and `build/libmcts_cpp_imperative.so` output path. The smoke
-  Makefile uses the doctrine C++23 optimization flag set
-  (`-std=c++23 -O3 -march=native -mtune=native -flto -fno-plt
-  -fno-semantic-interposition -fvisibility=hidden
-  -fvisibility-inlines-hidden -fno-exceptions -fPIC`), links `mimalloc`, and keeps
-  the C ABI symbols default-visible; `nm -D` confirms the exported
-  `mcts_imperative_*` symbol set after `mcts build cpp-imperative`.
-- Replace the smoke implementation with the real C++23 imperative steelman engine.
-- Add the final paired bench/instrumented source layout described by the sprint.
-- Validate warning-clean builds and update tuning docs with any final flag decisions.
+- `-fno-exceptions` on the imperative engine TU: the legacy
+  `corridors::board::eval` / `get_terminal_eval` paths still
+  `throw std::string`. Removing those throws (or guarding the engine TU
+  with an `-fno-exceptions`-safe board variant) stays a ledger item.
+- Per-rollout scratch-board undo: the current rollout copies the
+  `corridors::board` each move (legacy default). A true per-rollout
+  scratch board with undo would close the steelman's final flop budget
+  improvement and is queued under the same ledger row.
 
-## Sprint 5.2: FFI Bindings for Backend (ii) 🔄
+## Sprint 5.2: FFI Bindings for Backend (ii) ✅
 
 **Status**: Active
 **Implementation**: `src/MCTS/FFI/CppImperative.hs`, `mcts.cabal`
@@ -203,12 +243,19 @@ pattern as backend (i), reusing the `MCTS.FFI.Common` RAII wrappers from Phase 4
   build step is wired in. The `libmcts-cpp-imperative-built` prerequisite node
   is present in `prerequisiteRegistry`.
 
-## Sprint 5.3: PGO+BOLT+`mimalloc` Build Harness 🔄
+## Sprint 5.3: PGO+BOLT+`mimalloc` Build Harness ✅
 
-**Status**: Active
-**Implementation**: `src/MCTS/CLI/Build.hs`,
-`src/MCTS/CLI/Spec.hs` (Build subtree),
-`cpp-imperative/Makefile` (smoke target)
+**Status**: Done (typed Subprocess pipeline lands the 11-step PGO +
+BOLT-instrument + BOLT-optimize + install sequence; BOLT runs without
+`perf` via `llvm-bolt -instrument`; idempotence + failure-mode tests
+live in `mcts-unit`)
+**Implementation**: `src/MCTS/CLI/Build.hs` (`cppImperativePgoBoltPlan`,
+`pgoTrainingGames` / `pgoTrainingSims` / `boltTrainingGames` /
+`boltTrainingSims`), `src/MCTS/CLI/Spec.hs` (Build subtree),
+`cpp-imperative/Makefile` (`pgo-bench-generate`, `pgo-instr-generate`,
+`pgo-bench-use`, `pgo-instr-use`, `bolt-bench-instrument`,
+`bolt-instr-instrument`, `bolt-bench-optimize`, `bolt-instr-optimize`,
+`install-bench`), `test/unit/Main.hs::exerciseCppImperativeBuildPlan`
 **Docs to update**: `documents/engineering/compiler_runtime_tuning.md`,
 `documents/engineering/backend_ffi_contract.md`
 
@@ -283,23 +330,45 @@ that backend (v) Haskell must match.
    confirms no `callProcess` / `readCreateProcess` / `System.Process` call
    sites exist in `src/MCTS/CLI/Build.hs`.
 
-### Remaining Work
+### Closure Notes
 
-- Baseline landed: `mcts build cpp-imperative --dry-run` renders a typed plan and the
-  apply path smoke-builds `cpp-imperative/` through `make` with the doctrine C++23
-  flag set and `mimalloc` link. The prerequisite gate checks GCC, LLVM/BOLT,
-  `.build/profiles`, and the Ubuntu `libmimalloc-dev` library path inside the
-  container. The registry also carries the future full-pipeline nodes for `perf`,
-  per-backend `pgo-profile` / `bolt-profile` directories, and smoke shared-library
-  artefacts.
-- Replace the smoke `make` plan with the full two-stage PGO, BOLT, and `mimalloc`
-  pipeline.
-- Add idempotence and failure-mode tests for the generated build plan.
+- `cppImperativePgoBoltPlan :: [Subprocess]` (in `src/MCTS/CLI/Build.hs`)
+  is the 11-step typed sequence: PGO-instrument both artefacts → PGO
+  training (`bench selfplay --backend cpp-imperative --rng cpp --games
+  100 --seed 42 --sims 10000`) → PGO-optimize both artefacts → BOLT
+  `-instrument` both artefacts → BOLT training (`bench selfplay` with
+  the lighter `(20, 2000)` workload — BOLT block-frequency profiles
+  converge fast) → BOLT `-reorder-blocks=ext-tsp` optimize both
+  artefacts → install (`_bench.bolted.so` → canonical
+  `libmcts_cpp_imperative.so`; `_instrumented.bolted.so` retains its
+  full name).
+- `cpp-imperative/Makefile` carries the per-stage targets and reuses
+  the existing `envelope-build-id` post-link patch so the embedded
+  digest reflects the final shipping `.bolted.so` artefact.
+- BOLT runs without `perf`: `llvm-bolt -instrument` self-records the
+  basic-block profile into `cpp-imperative/bolt-profile/*.fdata` as
+  the BOLT training run exercises the instrumented library. `perf` is
+  no longer a closure-blocking prerequisite, matching the container
+  image's tool set.
+- `mcts-unit::exerciseCppImperativeBuildPlan` covers idempotence
+  (`buildBackendPlan "cpp-imperative" == buildBackendPlan
+  "cpp-imperative"`), the step ordering, the training-run argument
+  shape, and the failure-mode behaviour for an unknown backend
+  identifier.
+- The build harness goes through the typed `Subprocess` boundary
+  (`hlint` confirms no `callProcess` / `readCreateProcess` /
+  `System.Process` smart constructors live in `MCTS.CLI.Build`).
 
-## Sprint 5.4: Backend (ii) Game Driver and Transcript Output 🔄
+## Sprint 5.4: Backend (ii) Game Driver and Transcript Output ✅
 
-**Status**: Active
-**Implementation**: `src/MCTS/Driver.hs`,
+**Status**: Done (visit-vector dispatch through `MCTS.Driver.CppImperative`
++ `MCTS.Driver.ForeignSearch` + `mcts_imperative_search_move` lands
+end-to-end; cross-backend test exercises the
+`{cpp-imperative,cpp-functional,rust,haskell}` cohort)
+**Implementation**: `src/MCTS/Driver/CppImperative.hs`,
+`src/MCTS/Driver/ForeignSearch.hs`, `src/MCTS/Driver/Dispatch.hs`,
+`src/MCTS/FFI/Common.hs::withDynamicSearchGame`,
+`src/MCTS/FFI/CppImperative.hs::withCppImperativeSearchGame`,
 `src/MCTS/CLI/Bench.hs`, `src/MCTS/CLI/Verify.hs`
 **Docs to update**: `documents/engineering/backend_ffi_contract.md`,
 `documents/engineering/cli_command_surface.md`
@@ -336,25 +405,33 @@ rollouts/selfplay/legacy-parity` (where cohort includes (ii)) run end-to-end.
    cohort is where the determinism contract is enforced — but the wiring is
    exercised here.
 
-### Remaining Work
+### Closure Notes
 
-- Baseline landed: the logical in-process driver can run `--backend cpp-imperative`
-  through bench, verify, transcript, and report-card smoke surfaces, and
-  `src/MCTS/Driver/CppImperative.hs` can run a bounded chosen-move smoke game
-  through the real backend (ii) C ABI.
-- Route the operator-facing bench/verify transcript writer through
-  `src/MCTS/Driver/CppImperative.hs` once the backend (ii) C ABI exposes sorted
-  visit-vector instrumentation rather than only the chosen action.
-- Add transcript-output validation for the optimized engine.
-- Add two-backend wiring smoke tests against Haskell once both real drivers exist.
+- `MCTS.Driver.CppImperative.runGameCppImperative` reuses the shared
+  `MCTS.Driver.ForeignSearch.runForeignSearchGame` worker, which calls
+  `searchGameSearchMove` on a `DynamicSearchGame` opener exposing the
+  full `mcts_imperative_search_move` ABI (sorted `(action_id, visits)`
+  vector + chosen action) — not the chosen-action-only smoke.
+- `MCTS.Driver.Dispatch.runBatchDispatch` routes `--backend cpp-imperative`
+  through `runGameCppImperative` whenever
+  `cpp-imperative/build/libmcts_cpp_imperative.so` is present;
+  `cabal build all` stays self-contained when the library is absent.
+- Cross-backend wiring smoke against Haskell rides through the
+  `mcts-cross-backend` stanza's four-backend rollout cohort
+  (`{cpp-imperative, cpp-functional, rust, haskell}`); transcript-output
+  validation rides through the `mcts-unit` self-play workload that
+  writes `cpp-imperative` transcripts under `.mcts-cache/` and the
+  integration stanza's `foreign ffi smoke drivers → cpp-imperative`
+  test.
 
-## Sprint 5.5: Backend (ii) Engine Envelope and Foreign-Engine Recompute ⏸️
+## Sprint 5.5: Backend (ii) Engine Envelope and Foreign-Engine Recompute ✅
 
-**Status**: Blocked
-**Implementation**: `cpp-imperative/c-abi/envelope.{h,cc}`,
-`cpp-imperative/c-abi/recompute.{h,cc}`, `src/MCTS/FFI/CppImperative.hs`,
-`src/MCTS/Driver/CppImperative.hs`
-**Blocked by**: Sprint 5.2, Sprint 5.4, Sprint 2.7
+**Status**: Done (envelope post-link patch + recompute landed;
+PGO+BOLT-specific build-id refresh stays under Sprint 5.3 ledger)
+**Implementation**: `cpp-imperative/c-abi/mcts_cpp_imperative.{h,cc}`
+(envelope runtime probes + `mcts_imperative_recompute_move`),
+`cpp-imperative/Makefile` (post-link `envelope-build-id` target),
+`src/MCTS/FFI/CppImperative.hs` (`withCppImperativeSearchGame`)
 **Docs to update**: `documents/engineering/determinism_contract.md`,
 `documents/engineering/backend_ffi_contract.md`,
 `documents/engineering/transcript_format.md`,

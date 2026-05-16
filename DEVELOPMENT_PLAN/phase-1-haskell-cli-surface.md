@@ -57,20 +57,23 @@ the reproducible Docker development environment that every later sprint builds o
 
 - `mcts.cabal` declares `tested-with: ghc ==9.14.1` per
   [../HASKELL_CLI_TOOL.md → Toolchain pinning](../HASKELL_CLI_TOOL.md). The
-  `build-depends` set includes the doctrine's standardized stack:
+  current `build-depends` set includes the doctrine's standardized non-TUI stack:
   `optparse-applicative`, `text`, `bytestring`, `aeson`, `prettyprinter`,
   `prettyprinter-ansi-terminal`, `ansi-terminal`, `path`, `path-io`, `typed-process`,
   `safe-exceptions`, `tasty`, `tasty-hunit`, `tasty-quickcheck`, `tasty-golden`,
-  `temporary`. The two recorded deviations from doctrine are `brick` + `vty` (gated
-  to the TUI command modules only) and the absence of `dhall` per
+  `temporary`. The two recorded deviations from doctrine are the deferred `brick` +
+  `vty` dependencies (owned by Sprint `7.4` and gated to the TUI command modules only)
+  and the absence of `dhall` per
   [00-overview.md → Doctrine Scope → Stack deviations from doctrine](00-overview.md):
   the doctrine prescribes `dhall` for daemon configuration, daemon configuration
   is itself out of scope (the CLI is short-running only), so the dependency does
   not enter the stack.
 - `cabal.project` declares `with-compiler: ghc-9.14.1` and `Cabal 3.16.1.0` per
-  [../HASKELL_CLI_TOOL.md → Toolchain pinning](../HASKELL_CLI_TOOL.md), plus the
-  report-card knobs (`G_R`, `G_S`, `G_V`, `G_LP`, `S_BENCH`, `S_VERIFY`, `S_LP_SIMS`,
-  `S_LP`) as `program-default-options` or equivalent so Phase `7` can consume them.
+  [../HASKELL_CLI_TOOL.md → Toolchain pinning](../HASKELL_CLI_TOOL.md). The current
+  file records the report-card knobs (`G_R`, `G_S`, `G_V`, `G_LP`, `S_BENCH`,
+  `S_VERIFY`, `S_LP_SIMS`, `S_LP`) as pinned comments consumed by the current
+  `MCTS.CLI.Test` baseline; making those knobs machine-readable remains part of
+  Sprint `7.3`'s final report-card closure.
 - `app/Main.hs` is the thin entrypoint per
   [../HASKELL_CLI_TOOL.md → Project Structure](../HASKELL_CLI_TOOL.md):
 
@@ -118,7 +121,8 @@ the reproducible Docker development environment that every later sprint builds o
   `prettyprinter-ansi-terminal`, `ansi-terminal`, `path`, `path-io`,
   `typed-process`, `safe-exceptions`, `tasty`, `tasty-hunit`,
   `tasty-quickcheck`, `tasty-golden`, `temporary`). The recorded `brick` /
-  `vty` TUI exceptions remain open until the TUI modules land.
+  `vty` TUI exception remains documentation-only until Sprint `7.4` adds the real
+  TUI modules and dependencies.
 - Docker toolchain pinning is now encoded in `docker/Dockerfile` for GHC `9.14.1`,
   Cabal `3.16.1.0`, LLVM/BOLT `19`, GCC/G++, Rust `1.95.0`, and `mimalloc`;
   the image also installs the isolated style-tool compiler GHC `9.12.4` and uses

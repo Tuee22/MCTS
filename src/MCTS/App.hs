@@ -17,8 +17,9 @@ import MCTS.CLI.Test (runTestCommand)
 import MCTS.CLI.Tree (renderCommandList, renderCommandTree)
 import MCTS.CLI.Verify (runVerifyCommand)
 import MCTS.CheckCode (runCheckCode)
-import MCTS.Driver (defaultRunInputs, runBatch)
+import MCTS.Driver (defaultRunInputs)
 import qualified MCTS.Driver as Driver
+import MCTS.Driver.Dispatch (runBatchDispatch)
 import qualified MCTS.Env as Env
 import MCTS.Types (Backend, RngSource (NativeRng), Workload (Selfplay), backendIdentifier)
 import System.Environment (getArgs)
@@ -82,7 +83,7 @@ runPlay options = do
                 , Driver.inputSeed = fromIntegral (seed :: Integer)
                 , Driver.inputSims = playSims options
                 }
-    result <- liftIO (runBatch inputs)
+    result <- liftIO (runBatchDispatch inputs)
     case result of
         Left message -> liftIO (outputLine message) >> pure (ExitFailure 1)
         Right batch ->

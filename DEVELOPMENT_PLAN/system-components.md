@@ -177,16 +177,16 @@ Pinned in `cabal.project` for reproducibility across hosts; see
 
 | Component | Pinned Version | Purpose | Status | Owning Sprint |
 |-----------|----------------|---------|--------|---------------|
-| GHC | `9.14.1` | Haskell compiler for backend (v) and the CLI binary | 🔄 Active (`mcts.cabal` / `cabal.project` / Docker pins; exact prerequisite probe landed; container `cabal build all` passed on 2026-05-14) | Sprint 1.1 |
-| Cabal | `3.16.1.0` | Haskell build tool; per-stanza `type: exitcode-stdio-1.0` | 🔄 Active (`cabal.project` / Docker pins; exact prerequisite probe landed; container `cabal build all` passed on 2026-05-14) | Sprint 1.1 |
-| Style-tool GHC | `9.12.4` | Isolated compiler for installing `fourmolu-0.19.0.1` and `hlint-3.10` into `/opt/mcts-style-tools/bin/` inside the container; not used for project builds | 🔄 Active (Docker install and style stanza path invocation landed) | Sprint 1.4 |
+| GHC | `9.14.1` | Haskell compiler for backend (v) and the CLI binary | ✅ Done (`mcts.cabal` / `cabal.project` / Docker pins and exact prerequisite probe landed) | Sprint 1.1 |
+| Cabal | `3.16.1.0` | Haskell build tool; per-stanza `type: exitcode-stdio-1.0` | ✅ Done (`cabal.project` / Docker pins and exact prerequisite probe landed) | Sprint 1.1 |
+| Style-tool GHC | `9.12.4` | Isolated compiler for installing `fourmolu-0.19.0.1` and `hlint-3.10` into `/opt/mcts-style-tools/bin/` inside the container; not used for project builds | ✅ Done (Docker install and style stanza path invocation landed) | Sprint 1.4 |
 | GCC | Latest stable on `ubuntu:24.04` | C++23 compiler for backends (i), (ii), (iii). Clang not supported. | 🔄 Active (Docker/build-essential baseline; exact version and C++23 validation open) | Sprint 4.1, Sprint 5.1 |
 | LLVM | `19` in `docker/Dockerfile` | Shared by GHC `-fllvm` and BOLT post-link | 🔄 Active (Docker installs LLVM/LLD/BOLT pin; prerequisite probes validate `19.x`) | Sprint 1.1 |
 | `rustup` | Latest stable installer with Rust `1.95.0` selected in `docker/Dockerfile` | Rust toolchain manager for backend (iv) | 🔄 Active (Docker install and prerequisite probes landed; PGO/BOLT Rust build harness open) | Sprint 6.4 |
 | Rust | `1.95.0` in `docker/Dockerfile` | Rust compiler for backend (iv) | 🔄 Active (Docker pin and prerequisite probes landed; Rust backend integration open) | Sprint 6.4 |
 | `mimalloc` | Ubuntu `libmimalloc-dev` in `docker/Dockerfile`; Rust crate `mimalloc = "0.1"` locked in `rust/Cargo.lock` | System allocator for backends (ii), (iii), (iv); static link preferred for FFI determinism | 🔄 Active (Docker package pin and library-path probe landed because the Ubuntu package does not ship `mimalloc.pc`; Rust global allocator landed; C++ static-link validation open) | Sprint 5.3, Sprint 6.4 |
 | BOLT | LLVM `19` package in `docker/Dockerfile` | Post-link binary reordering after PGO for backends (ii), (iii), (iv) | 🔄 Active (Docker pin and prerequisite probe landed; PGO+BOLT pipeline validation open) | Sprint 5.3 |
-| `ghcup` | Latest stable | Manages the pinned GHC and Cabal versions inside the container | 📋 Planned | Sprint 1.1 |
+| `ghcup` | Latest stable binary installed in the container | Manages the pinned GHC and Cabal versions inside the container | ✅ Done (Docker installs `ghcup`; `prerequisiteRegistry` carries a `ghcup` node) | Sprint 1.1 |
 | Target platforms | `amd64` Linux + `arm64` Linux | Both architectures supported; reproducibility envelope is per-architecture (transcripts and report-card metadata carry a `host_arch` tag); cross-arch bit-equality not guaranteed. See [00-overview.md → Hard Constraints item 36](00-overview.md) and [../documents/engineering/determinism_contract.md → Architecture Envelope](../documents/engineering/determinism_contract.md) | 📋 Pinned | n/a |
 
 ## State Locations

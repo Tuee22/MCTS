@@ -23,17 +23,21 @@ module MCTS.FFI.Common
     , withRng
     , withDynamicBoard
     , withDynamicGame
+    , withDynamicSearchGame
+    , DynamicSearchGame (..)
     , loadDynamicEnvelope
     , liftFFI
     ) where
 
 import Control.Exception (SomeException, bracket, try)
 import Data.Char (chr)
+import Data.Int (Int32)
 import Data.Word (Word16, Word32, Word64, Word8)
 import Foreign.C.Types (CInt (..))
-import Foreign.Marshal.Array (peekArray)
+import Foreign.Marshal.Alloc (alloca)
+import Foreign.Marshal.Array (allocaArray, peekArray)
 import Foreign.Ptr (FunPtr, Ptr, castPtr, plusPtr)
-import Foreign.Storable (peekByteOff)
+import Foreign.Storable (peek, peekByteOff)
 import MCTS.Error (AppError (..))
 import MCTS.Types (Backend)
 import Numeric (showHex)
@@ -73,6 +77,21 @@ data DynamicGame = DynamicGame
     { dynamicGameBoard :: !(Ptr ())
     , dynamicGameIsTerminal :: !(IO Bool)
     , dynamicGameSelectMove :: !(Word64 -> Word32 -> IO Word8)
+    }
+
+-- | A dynamically-loaded backend exposing the full search ABI from
+-- `documents/engineering/backend_ffi_contract.md → C ABI Shape`:
+-- `<prefix>_search_move(board, seed, sims, out_action_ids,
+-- out_visits, out_chosen)` plus the standard new/free/is_terminal
+-- triplet. Returns sorted `(action_id, visits)` records and the
+-- chosen action id. Backends share this ABI; per-backend modules
+-- re-export `withDynamicSearchGame` parameterised by their library
+-- path and symbol prefix.
+data DynamicSearchGame = DynamicSearchGame
+    { searchGameBoard :: !(Ptr ())
+    , searchGameIsTerminal :: !(IO Bool)
+    , searchGameSearchMove
+        :: !(Word64 -> Word32 -> IO (Either AppError (Word8, [(Word8, Word32)])))
     }
 
 -- | `bracket`-style RAII for foreign board handles. The acquirer
@@ -120,6 +139,24 @@ foreign import ccall "dynamic"
 foreign import ccall "dynamic"
     mkDynamicSelectMove
         :: FunPtr (Ptr () -> Word64 -> Word32 -> IO Word8) -> Ptr () -> Word64 -> Word32 -> IO Word8
+foreign import ccall "dynamic"
+    mkDynamicSearchMove
+        :: FunPtr
+            ( Ptr ()
+              -> Word64
+              -> Word32
+              -> Ptr Word8
+              -> Ptr Word32
+              -> Ptr Word8
+              -> IO Int32
+            )
+        -> Ptr ()
+        -> Word64
+        -> Word32
+        -> Ptr Word8
+        -> Ptr Word32
+        -> Ptr Word8
+        -> IO Int32
 foreign import ccall "dynamic" mkDynamicEnvelope :: FunPtr (IO (Ptr ())) -> IO (Ptr ())
 
 -- | Dynamically load a backend shared library, call its
@@ -170,6 +207,60 @@ withDynamicGame backend libraryPath symbolPrefix body =
                             , dynamicGameSelectMove = mkDynamicSelectMove selectMoveFun board
                             }
             )
+
+withDynamicSearchGame
+    :: Backend
+    -> FilePath
+    -> String
+    -> (DynamicSearchGame -> IO a)
+    -> IO (Either AppError a)
+withDynamicSearchGame backend libraryPath symbolPrefix body =
+    liftFFI backend (symbolPrefix <> "_search_move") $
+        bracket
+            (DL.dlopen libraryPath [DL.RTLD_NOW])
+            DL.dlclose
+            ( \library -> do
+                newFun <- DL.dlsym library (symbolPrefix <> "_new_board")
+                freeFun <- DL.dlsym library (symbolPrefix <> "_free_board")
+                isTerminalFun <- DL.dlsym library (symbolPrefix <> "_is_terminal")
+                searchMoveFun <- DL.dlsym library (symbolPrefix <> "_search_move")
+                let isTerminal board' = (/= 0) <$> mkDynamicIsTerminal isTerminalFun board'
+                    searchMove' = mkDynamicSearchMove searchMoveFun
+                bracket (mkBoardNew newFun) (mkBoardFree freeFun) $ \board ->
+                    body
+                        DynamicSearchGame
+                            { searchGameBoard = board
+                            , searchGameIsTerminal = isTerminal board
+                            , searchGameSearchMove = \seed sims ->
+                                allocaArray actionCount $ \actionIdsBuf ->
+                                    allocaArray actionCount $ \visitsBuf ->
+                                        alloca $ \chosenBuf -> do
+                                            ret <-
+                                                searchMove'
+                                                    board
+                                                    seed
+                                                    sims
+                                                    actionIdsBuf
+                                                    visitsBuf
+                                                    chosenBuf
+                                            if ret < 0
+                                                then
+                                                    pure $
+                                                        Left $
+                                                            FFIFailure
+                                                                backend
+                                                                (symbolPrefix <> "_search_move")
+                                                                ("simulate returned " <> show ret)
+                                                else do
+                                                    let count = fromIntegral ret
+                                                    actionIds <- peekArray count actionIdsBuf
+                                                    visits <- peekArray count visitsBuf
+                                                    chosen <- peek chosenBuf
+                                                    pure $ Right (chosen, zip actionIds visits)
+                            }
+            )
+  where
+    actionCount = 209
 
 loadDynamicEnvelope
     :: Backend

@@ -9,17 +9,21 @@ module MCTS.FFI.Rust
     ( RustGame
     , withRustBoard
     , withRustGame
+    , withRustSearchGame
     , loadRustEnvelope
+    , rustLibraryPath
     ) where
 
 import Foreign.Ptr (Ptr)
 import MCTS.Error (AppError)
 import MCTS.FFI.Common
     ( DynamicGame
+    , DynamicSearchGame
     , EngineEnvelope
     , loadDynamicEnvelope
     , withDynamicBoard
     , withDynamicGame
+    , withDynamicSearchGame
     )
 import MCTS.Types (Backend (Rust))
 import qualified System.Info as Info
@@ -36,6 +40,13 @@ withRustBoard body =
 withRustGame :: (RustGame -> IO a) -> IO (Either AppError a)
 withRustGame =
     withDynamicGame Rust rustLibraryPath "mcts_rust"
+
+-- | Sprint 6.4: full visit-vector search opener for backend (iv).
+-- Routes through `mcts_rust_search_move` exposed by the cdylib.
+withRustSearchGame
+    :: (DynamicSearchGame -> IO a) -> IO (Either AppError a)
+withRustSearchGame =
+    withDynamicSearchGame Rust rustLibraryPath "mcts_rust"
 
 loadRustEnvelope :: IO (Either AppError EngineEnvelope)
 loadRustEnvelope =

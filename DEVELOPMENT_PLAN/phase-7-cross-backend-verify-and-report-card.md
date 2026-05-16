@@ -16,15 +16,22 @@
 
 ## Phase Status
 
-🔄 **Active**. All five Cabal test stanzas exist and are wired against the logical
-backend cohort. `mcts verify rollouts`, `mcts verify selfplay`, `mcts verify
-legacy-parity`, `mcts test all --dry-run`, report-card rendering, and non-interactive
-replay/divergence smoke surfaces are present. Remaining Phase `7` closure work is to
-run the tests through doctrine-required `tasty` runners against real FFI-backed
-engines, strengthen golden/property coverage, implement the `brick` / `vty` TUIs,
-expand layered envelope verification to the real backend FFI envelope fields, connect
-divergence scoring to foreign recompute sidecars, and replace logical report-card
-placeholders with measured Q1-Q7 evidence.
+🔄 **Active**. All five Cabal test stanzas pass under the pinned
+toolchain with the real FFI-backed engines for backends (i), (ii),
+(iii); the cross-backend and legacy-parity stanzas accept a
+well-formed `VerifyMismatch` outcome until backend (iv) Rust gets a
+real engine (tracked in
+[legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md)).
+Same-backend determinism (Q4), the legacy-parity preflight, the Q6
+golden decode, and the per-backend live envelope checks all pass.
+Remaining Phase `7` closure: the `brick`/`vty` interactive TUIs for
+`mcts play` and `mcts inspect replay` (currently non-interactive
+smoke paths), the doctrine-shaped report-card with measured Q1–Q7
+evidence (currently logical placeholders), and the foreign-engine
+recompute sidecar pipeline that ties Sprint 4.7's
+`mcts_legacy_recompute_move` (and its (ii)/(iii) siblings) into
+`mcts inspect divergence`. All three remain on the legacy tracking
+ledger.
 
 ## Phase Summary
 
@@ -420,9 +427,15 @@ so the contract is reviewable in one place:
   test mode and separate smoke vs full gates if needed.
 - Add JSON/golden coverage for the final tidy report-card summary.
 
-## Sprint 7.4: `mcts play` and `mcts inspect replay` TUIs 🔄
+## Sprint 7.4: `mcts play` and `mcts inspect replay` TUIs ⏸️
 
-**Status**: Active
+**Status**: Blocked (cabal solver cannot resolve `brick` against GHC
+9.14.1's installed `text 2.1.3` / `containers 0.8` / `base 4.22.0.0`
+triple — every `brick`-eligible `config-ini` version conflicts with
+those bounds). Closure requires an upstream `brick` / `config-ini`
+release with compatible bounds. Tracked in
+[legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md).
+**Blocked by**: upstream `brick` / `config-ini` compatibility with GHC 9.14.1
 **Implementation**: `src/MCTS/App.hs` (`runPlay` smoke path),
 `src/MCTS/CLI/Inspect.hs` (`inspectReplay` smoke path),
 `src/MCTS/CLI/Spec.hs` (Play and Inspect.Replay subtrees)
@@ -633,6 +646,19 @@ instead of collapsing it to self-play.
   all` summary contains a four-row matrix with `--rng cpp`
   diagonals at zero and a footnote on the empirically-pinned
   threshold values.
+
+### Closure Notes (per-game writer)
+
+- `writeTranscriptPerGame` in `src/MCTS/Transcript.hs` splits a batch
+  Transcript into N one-game-per-file transcripts, matching the
+  doctrine's transcript wire format. Each per-game file carries
+  `runGames = 1` and the splitmix-derived per-game seed; the per-game
+  hashes differ from the batch hash. `MCTS.Driver.runBatchWithGame`
+  populates the new `BatchResult.batchGameWrites` field; the bench
+  renderer surfaces the N-file write set.
+- `mcts-unit::exercisePerGameTranscriptWriter` covers the entry shape
+  (one entry per game, distinct hashes, each file decodes as a
+  single-game transcript).
 
 ### Remaining Work
 

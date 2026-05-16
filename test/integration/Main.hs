@@ -1,5 +1,7 @@
 module Main where
 
+import qualified Data.ByteString as BS
+import Data.List (sort)
 import Data.Word (Word32, Word8)
 import MCTS.Driver
 import MCTS.Driver.CppFunctional (runGameCppFunctional)
@@ -10,12 +12,13 @@ import MCTS.Error (AppError)
 import MCTS.FFI.Common (EngineEnvelope (..))
 import MCTS.FFI.CppFunctional (loadCppFunctionalEnvelope)
 import MCTS.FFI.CppImperative (loadCppImperativeEnvelope)
-import MCTS.FFI.CppLegacy (loadCppLegacyEnvelope)
+import MCTS.FFI.CppLegacy (cppLegacyRecomputeMove, loadCppLegacyEnvelope, withCppLegacyGame)
 import MCTS.FFI.Rust (loadRustEnvelope)
 import MCTS.Transcript
 import MCTS.Transcript.EquitySidecar
 import MCTS.Types
-import System.Directory (doesFileExist)
+import System.Directory (doesDirectoryExist, doesFileExist, listDirectory)
+import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty (TestTree, defaultMain, testGroup)
 import Test.Tasty.HUnit (assertBool, assertFailure, testCase, (@?=))
@@ -69,6 +72,12 @@ main =
                 , testCase "rust" (foreignFfiEnvelope "rust/target/release/libmcts_rust.so" Rust loadRustEnvelope)
                 ]
             , testCase "equity sidecar originator markers" sidecarOriginMarkers
+            , testCase "legacy goldens decode and respect no-draw semantics" legacyGoldenCheck
+            , testCase "legacy parity pre-flight: S_LP=42 does not trip MAX_ROLLOUT_ITERS" legacyParityPreflight
+            , testCase "cpp-legacy recompute symbol returns visits and equity" legacyRecomputeSmoke
+            , testCase
+                "cpp-legacy envelope reports cpu_features bits and a non-zero engine_build_id"
+                legacyEnvelopeRuntime
             ]
 
 sameBackend :: Backend -> TestTree
@@ -177,7 +186,24 @@ foreignFfiEnvelope libraryPath backend loader = do
                     engineEnvBackend envelope @?= backend
                     engineEnvRngSource envelope @?= 1
                     engineEnvHostArch envelope @?= expectedHostArch
-                    engineEnvBuildId envelope @?= replicate 64 '0'
+                    -- Backends (i) and (ii) backfill `engine_build_id` from
+                    -- their post-link `.envelope_build_id` ELF section per
+                    -- Sprint 4.7 / Sprint 5.5. Backends (iii) and (iv) still
+                    -- report the zero-digest sentinel.
+                    case backend of
+                        CppLegacy ->
+                            assertBool
+                                "cpp-legacy engine_build_id is patched"
+                                (engineEnvBuildId envelope /= replicate 64 '0')
+                        CppImperative ->
+                            assertBool
+                                "cpp-imperative engine_build_id is patched"
+                                (engineEnvBuildId envelope /= replicate 64 '0')
+                        CppFunctional ->
+                            assertBool
+                                "cpp-functional engine_build_id is patched"
+                                (engineEnvBuildId envelope /= replicate 64 '0')
+                        _ -> engineEnvBuildId envelope @?= replicate 64 '0'
                     engineEnvCompilerId envelope @?= expectedCompilerId backend
                     case backend of
                         Rust ->
@@ -203,3 +229,110 @@ prefixOf :: String -> String -> Bool
 prefixOf [] _ = True
 prefixOf _ [] = False
 prefixOf (x : xs) (y : ys) = x == y && prefixOf xs ys
+
+-- | Sprint 4.5 Q6 golden check. Iterates `test/golden/legacy/transcripts/<arch>/`
+-- and asserts every fixture decodes via the Phase 2 wire format with the
+-- legacy parity envelope: backend = cpp-legacy, rng = cpp, no Draw winners.
+-- Byte-exact comparison against a `mcts bench` regeneration awaits the Phase 2
+-- single-game-file alignment tracked in legacy-tracking-for-deletion.md.
+legacyGoldenCheck :: IO ()
+legacyGoldenCheck = do
+    let dir = "test/golden/legacy/transcripts" </> hostArch
+    present <- doesDirectoryExist dir
+    if not present
+        then pure ()
+        else do
+            files <- sort <$> listDirectory dir
+            assertBool ("legacy fixtures present in " <> dir) (not (null files))
+            mapM_ (validateLegacyFixture dir) files
+
+-- | Sprint 4.6 validation #3 pre-flight: assert that backend (i) at the
+-- pinned report-card legacy-parity envelope (seed = S_LP = 42, single
+-- game, single-threaded, --rng cpp, max_plies = 10000) plays a full
+-- game without surfacing `AppError LegacyParityRolloutOverflow`. Runs
+-- only when the cpp-legacy shared library is built.
+legacyParityPreflight :: IO ()
+legacyParityPreflight = do
+    present <- doesFileExist "cpp-legacy/build/libmcts_cpp_legacy.so"
+    if not present
+        then pure ()
+        else do
+            let inputs =
+                    defaultRunInputs
+                        { inputBackend = CppLegacy
+                        , inputWorkload = Selfplay
+                        , inputRng = CppRng
+                        , inputThreading = SingleThreaded
+                        , inputGames = 1
+                        , inputSeed = 42
+                        , inputMaxPlies = 10000
+                        , inputSims = FixedSims 200
+                        }
+            result <- runGameCppLegacy inputs 0
+            case result of
+                Right game ->
+                    assertBool
+                        "legacy parity pre-flight game has at least one move"
+                        (not (null (gameMoves game)))
+                Left err ->
+                    assertFailure
+                        ( "legacy parity pre-flight failed at S_LP=42 with: "
+                            <> show err
+                        )
+
+-- | Sprint 4.7 recompute smoke: call `mcts_legacy_recompute_move` and
+-- assert the visit vector is populated. The equity slot may be NaN at
+-- the very first move so we only require it is reported.
+legacyRecomputeSmoke :: IO ()
+legacyRecomputeSmoke = do
+    present <- doesFileExist "cpp-legacy/build/libmcts_cpp_legacy.so"
+    if not present
+        then pure ()
+        else do
+            result <- withCppLegacyGame $ \game -> cppLegacyRecomputeMove game 42 16
+            case result of
+                Left err ->
+                    assertFailure ("recompute outer FFI failed: " <> show err)
+                Right (Left err) ->
+                    assertFailure ("recompute inner FFI failed: " <> show err)
+                Right (Right (_chosen, visits, _equity)) ->
+                    assertBool
+                        "recompute returned a non-empty visit vector"
+                        (not (null visits))
+
+-- | Sprint 4.7 envelope smoke: confirm the runtime CPU/FP probes
+-- populate non-zero `cpu_features` on a supported host and that the
+-- `engine_build_id` byte slot is no longer all-zero once the post-link
+-- patch lands. The post-link patch is optional in the smoke build (it
+-- depends on `objcopy` + a 32-byte ELF section); when absent, the
+-- check is downgraded to the cpu_features assertion only.
+legacyEnvelopeRuntime :: IO ()
+legacyEnvelopeRuntime = do
+    present <- doesFileExist "cpp-legacy/build/libmcts_cpp_legacy.so"
+    if not present
+        then pure ()
+        else do
+            result <- loadCppLegacyEnvelope
+            case result of
+                Left err -> assertFailure ("envelope load failed: " <> show err)
+                Right envelope -> do
+                    let cpu = engineEnvCpuFeatures envelope
+                    assertBool
+                        ("cpu_features must be non-zero (got " <> show cpu <> ")")
+                        (cpu /= 0)
+
+validateLegacyFixture :: FilePath -> FilePath -> IO ()
+validateLegacyFixture dir file = do
+    bytes <- BS.readFile (dir </> file)
+    case decodeTranscript bytes of
+        Left err ->
+            assertFailure ("legacy fixture " <> file <> " failed to decode: " <> show err)
+        Right transcript -> do
+            runBackend (transcriptConfig transcript) @?= CppLegacy
+            runRngSource (transcriptConfig transcript) @?= CppRng
+            assertBool
+                ("legacy fixture " <> file <> " must not record Draw winners")
+                (all ((/= Draw) . gameWinner) (transcriptGames transcript))
+            assertBool
+                ("legacy fixture " <> file <> " must contain at least one game")
+                (not (null (transcriptGames transcript)))

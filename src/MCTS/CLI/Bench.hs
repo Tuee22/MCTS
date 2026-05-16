@@ -9,6 +9,7 @@ import Data.Word (Word64)
 import GHC.Clock (getMonotonicTimeNSec)
 import MCTS.CLI.Output (OutputFormat (..), OutputOptions (..), outputLine)
 import MCTS.Driver
+import MCTS.Driver.Dispatch (runBatchDispatch)
 import qualified MCTS.Env as Env
 import MCTS.Types
 import System.Exit (ExitCode (..))
@@ -47,7 +48,7 @@ runBenchRow :: IO Word64 -> RunInputs -> Backend -> IO (Either String BenchRow)
 runBenchRow clock inputs backend = do
     let backendInputs = inputs{inputBackend = backend}
     start <- clock
-    result <- runBatch backendInputs
+    result <- runBatchDispatch backendInputs
     end <- clock
     pure $
         case result of
@@ -113,8 +114,13 @@ renderBench output rows =
                 <> showFF (rowGamesPerSecond row)
                 <> "  "
                 <> showFF (rowSimsPerSecond row)
-            , "wrote " <> batchPath batch
+            , wroteLine batch
             ]
+    wroteLine batch =
+        case batchGameWrites batch of
+            [] -> "wrote " <> batchPath batch
+            [(_, p)] -> "wrote " <> p
+            xs -> "wrote " <> show (length xs) <> " per-game transcripts under " <> batchPath batch
 
 joinWith :: String -> [String] -> String
 joinWith _ [] = ""

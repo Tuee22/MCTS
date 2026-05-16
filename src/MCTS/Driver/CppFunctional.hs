@@ -4,11 +4,11 @@ module MCTS.Driver.CppFunctional
 
 import Data.Word (Word32)
 import MCTS.Driver (RunInputs)
-import MCTS.Driver.ForeignSmoke (runDynamicSmokeGame)
+import MCTS.Driver.ForeignSearch (runForeignSearchGame)
 import MCTS.Error (AppError)
-import MCTS.FFI.CppFunctional (withCppFunctionalGame)
+import MCTS.FFI.CppFunctional (withCppFunctionalSearchGame)
 import MCTS.Types (GameTranscript)
 
 runGameCppFunctional :: RunInputs -> Word32 -> IO (Either AppError GameTranscript)
 runGameCppFunctional =
-    runDynamicSmokeGame withCppFunctionalGame
+    runForeignSearchGame withCppFunctionalSearchGame

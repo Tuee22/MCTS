@@ -8,6 +8,7 @@ module MCTS.Verify
     ) where
 
 import MCTS.Driver
+import MCTS.Driver.Dispatch (runBatchDispatch)
 import MCTS.Error (AppError (..))
 import MCTS.Types
 import MCTS.Verify.Envelope (checkTranscriptEnvelopes)
@@ -79,7 +80,7 @@ runAndCompare allowStale workload backends inputs = do
     results <-
         mapM
             ( \backend ->
-                runBatch inputs{inputBackend = backend, inputWorkload = workload}
+                runBatchDispatch inputs{inputBackend = backend, inputWorkload = workload}
             )
             backends
     case sequence results of

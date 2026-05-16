@@ -65,7 +65,7 @@ records of `(action_id, visits)` sorted ascending by action ID, equity excluded.
   - `145..208` vertical walls: `145 + y*8 + x` for `x,y ∈ [0,7]`
   - `209..254` reserved
   - `255` sentinel / invalid
-- `src/MCTS/Transcript/Header.hs` carries the header layout per
+- `src/MCTS/Transcript.hs` carries the header layout per
   [../README.md → Cross-backend verification → Transcript wire format](../README.md).
   Little-endian, no padding, fixed-width fields in this exact order:
   - `magic u32 = "MCTR"` — ASCII bytes `0x4D 0x43 0x54 0x52`.
@@ -100,7 +100,7 @@ records of `(action_id, visits)` sorted ascending by action ID, equity excluded.
     envelope readers, per
     [../documents/engineering/transcript_format.md → Header](../documents/engineering/transcript_format.md).
     Property test `decode . encode == id` covers it.
-- `src/MCTS/Transcript/Record.hs` carries the per-game and per-move layout:
+- `src/MCTS/Transcript.hs` carries the per-game and per-move layout:
   - Per-game body starts with `game_id u32`, then per-move records, then a
     terminator.
   - Per-move record: `move_index u16 | chosen u8 | n_actions u8` followed by
@@ -362,14 +362,12 @@ consumer is wired in Phase 4 once the FFI bridge exists.
   callers that hold a `Word32` wire-format `runConfigGameIndex` widen with
   `fromIntegral` at the call site. Tests pin the mixer output for a known
   `(master_seed, game_index)` pair to a known `Word64`.
-- `src/MCTS/Rng/Source.hs` declares `data RngSource = NativeRng | CppRng`. Parsing
+- `src/MCTS/Types.hs` declares `data RngSource = NativeRng | CppRng`. Parsing
   of `--rng native` and `--rng cpp` is registered in the `CommandSpec`.
-- `src/MCTS/Rng/Native.hs` carries the Haskell-native splitmix RNG consumer
-  (the `splitmix` library on Hackage; backend (v)'s pinned `--rng native`
-  choice per
-  [../documents/engineering/determinism_contract.md → RNG Source Split → Per-Backend Native RNG Table](../documents/engineering/determinism_contract.md));
-  the `bench rollouts` / `bench selfplay` paths for `--backend haskell` use it
-  once Phase 3 lands the engine.
+- The current Haskell-native RNG consumer lives in the Phase 3 driver and search
+  modules by applying `MCTS.Rng.Mix.mix` to the master seed and game/move index.
+  A separate native-RNG module is not present in the baseline; real per-backend
+  native RNG streams remain owned by the backend-driver sprints.
 - The `verify` subtree pins `--rng cpp` at parse time (the `VerifyOptions` record
   has no `verifyRng` field); attempting `--rng native` on `verify` is rejected at
   parse time with `AppError VerifyCohortTooSmall`-style messaging.
@@ -429,10 +427,10 @@ layered cohort-invariant vs per-backend-slot semantics.
 
 ### Deliverables
 
-- `src/MCTS/Transcript/Envelope.hs` — `Envelope` ADT, `encodeEnvelope ::
+- `src/MCTS/Transcript.hs` — `Envelope` ADT, `encodeEnvelope ::
   Envelope -> Builder`, `decodeEnvelope :: Get Envelope`, plus the
   field-by-field record matching the wire format.
-- `src/MCTS/Transcript/Codec.hs` — the existing transcript encoder is
+- `src/MCTS/Transcript/Codec.hs` re-exports the existing transcript encoder, which is
   extended to write the envelope block starting at the offset already
   carried by the header's `envelope_offset` field (which Sprint 2.1
   hard-coded to `48`); the existing decoder reads `envelope_offset`,
@@ -450,11 +448,11 @@ layered cohort-invariant vs per-backend-slot semantics.
   == id` over an arbitrary `Envelope` (generator covers all field
   ranges including empty `libm_id`, max-length `compiler_version`,
   zero `shared_rng_build_id`).
-- Same-backend FFI handshake: at process start, the Haskell driver
-  calls every loaded backend's `mcts_<backend>_get_envelope` (via the
-  Phase 4/5/6 FFI shims) and constructs an `Envelope` value from the
-  returned C struct. The `Envelope` is then stamped into every
-  transcript that backend writes.
+- Same-backend envelope stamping: the Phase `2` codec accepts and preserves a full
+  `Envelope` value in every transcript. The current baseline stamps logical
+  envelopes from the Haskell driver; replacing those logical values with live
+  backend `get_envelope` FFI structs is owned by Sprints `3.6`, `4.7`, `5.5`,
+  and `6.5`.
 
 ### Validation
 
@@ -537,17 +535,13 @@ and `castWord64ToDouble` round-trips.
   path; create the `<sha>/` directory lazily on first write; list
   cohabiting `(backend, build)` slots for the `mcts inspect cache
   list` subcommand.
-- `src/MCTS/CLI/Inspect/Cache.hs` — `mcts inspect cache list` and
+- `src/MCTS/CLI/Inspect.hs` — `mcts inspect cache list` and
   `mcts inspect cache prune [--keep-current]`. `cache list` enumerates
   every `(backend, build)` slot per transcript via the helper above.
-  `cache prune` walks the cache and deletes sidecars whose embedded
-  envelope's per-backend-slot fields no longer match the live binary
-  returned by `mcts_<backend>_get_envelope()`; `--keep-current` retains
-  slots that still match. Live-envelope lookups depend on the per-
-  backend `get_envelope` FFI landing in Sprint 3.6 (haskell), 4.7
-  (cpp-legacy), 5.5 (cpp-imperative), and 6.5 (cpp-functional / rust);
-  until each backend's FFI lands, `cache prune` skips that backend's
-  slots with a warning rendered through `renderError`.
+  `cache prune` walks the cache and deletes sidecars selected by the plan. The
+  current Phase `2` baseline treats the logical `<backend>-logical` build id as
+  current; live-envelope pruning against backend `get_envelope` FFI structs is
+  owned by Sprints `3.6`, `4.7`, `5.5`, `6.5`, and `7.5`.
 - Originator-vs-foreign discrimination: the codec exposes a helper
   `isOriginator :: TranscriptHeader -> EqSidecar -> Bool` that
   compares the `.eq`'s embedded `backend` against the transcript's

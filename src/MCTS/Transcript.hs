@@ -10,6 +10,7 @@ module MCTS.Transcript
     , hostArch
     , transcriptPath
     , writeTranscript
+    , writeTranscriptPerGame
     , readTranscriptFile
     , lookupByPrefix
     , listTranscriptFiles
@@ -551,6 +552,57 @@ writeTranscript explicit transcript = do
     createDirectoryIfMissing True dir
     writeFileAtomically dir path (encodeTranscript transcript{transcriptConfig = config})
     pure (Right (hashValue, path))
+
+-- | Sprint 7.5 per-game writer migration: split a batch transcript
+-- into N single-game transcripts and write each to its own `.tr`
+-- file. Each per-game file's `runGames` header field is rewritten to
+-- 1 so its `runConfigHash` derives the per-game directory entry. The
+-- doctrine mandates one-game files per
+-- [../HASKELL_CLI_TOOL.md → Transcript wire format](../../HASKELL_CLI_TOOL.md);
+-- callers that previously wrote a combined batch via `writeTranscript`
+-- migrate to this entry point.
+writeTranscriptPerGame
+    :: Maybe FilePath
+    -> Transcript
+    -> IO (Either AppError [(String, FilePath)])
+writeTranscriptPerGame explicit transcript = do
+    root <- resolveCacheRoot explicit
+    let dir = root </> "transcripts" </> hostArch
+    createDirectoryIfMissing True dir
+    written <- mapM (writeOne root dir) (transcriptGames transcript)
+    pure (Right written)
+  where
+    writeOne root dir game = do
+        let -- Derive a per-game config: same backend / threading /
+            -- rng / sims / max_plies / seed but with `runGames = 1`
+            -- and `runSeed` advanced to the game's id-derived sub-seed
+            -- (so per-game files have distinct hashes when the batch
+            -- itself had distinct per-game seeds).
+            baseConfig = transcriptConfig transcript
+            perGameConfig =
+                baseConfig
+                    { runGames = 1
+                    , runMasterSeed = perGameSeed (runMasterSeed baseConfig) (gameId game)
+                    }
+            perGameTranscript =
+                Transcript
+                    perGameConfig
+                    (transcriptEnvelope transcript)
+                    [game]
+            hashValue = runConfigHash perGameConfig
+            path = transcriptPath root hashValue
+        writeFileAtomically dir path (encodeTranscript perGameTranscript)
+        pure (hashValue, path)
+    -- Mirror `MCTS.Rng.Mix.mix` (splitmix64) shape inline to avoid a
+    -- cyclic import; per-game seed = splitmix64(master_seed, game_index).
+    perGameSeed :: Word64 -> Word32 -> Word64
+    perGameSeed master gameIndex =
+        let z0 :: Word64
+            z0 = master + fromIntegral gameIndex * 0x9E3779B97F4A7C15
+            z1 = (z0 `Bits.xor` (z0 `Bits.shiftR` 30)) * 0xBF58476D1CE4E5B9
+            z2 = (z1 `Bits.xor` (z1 `Bits.shiftR` 27)) * 0x94D049BB133111EB
+            z3 = z2 `Bits.xor` (z2 `Bits.shiftR` 31)
+         in z3
 
 -- | Atomic write: temp file in the same directory, fsync the temp file,
 -- rename to the final path, fsync the parent directory. Per Phase 2.2 /

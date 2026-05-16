@@ -29,6 +29,8 @@ library
         MCTS.Driver.CppFunctional
         MCTS.Driver.CppImperative
         MCTS.Driver.CppLegacy
+        MCTS.Driver.Dispatch
+        MCTS.Driver.ForeignSearch
         MCTS.Driver.ForeignSmoke
         MCTS.Driver.Rust
         MCTS.Engine
@@ -70,7 +72,7 @@ library
         -Wall -Wcompat -O2 -funbox-strict-fields -fspecialise-aggressively
         -fexpose-all-unfoldings -flate-dmd-anal
         -fmax-simplifier-iterations=20 -fworker-wrapper
-        -fstatic-argument-transformation
+        -fstatic-argument-transformation -fllvm
 
     build-depends:
         aeson,
@@ -103,7 +105,7 @@ executable mcts
         -Wall -Wcompat -O2 -funbox-strict-fields -fspecialise-aggressively
         -fexpose-all-unfoldings -flate-dmd-anal
         -fmax-simplifier-iterations=20 -fworker-wrapper
-        -fstatic-argument-transformation -threaded
+        -fstatic-argument-transformation -fllvm -threaded
         "-with-rtsopts=-A64m -n4m -qg1 -qb -T"
 
     build-depends:
@@ -152,7 +154,9 @@ test-suite mcts-integration
 
     build-depends:
         base >=4.20 && <5,
+        bytestring,
         directory,
+        filepath,
         mcts,
         tasty,
         tasty-hunit,

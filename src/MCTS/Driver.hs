@@ -6,6 +6,7 @@ module MCTS.Driver
     , makeLogicalEnvelope
     , runGame
     , runBatch
+    , runBatchWithGame
     ) where
 
 import Control.Concurrent (MVar, forkIO, newEmptyMVar, newMVar, putMVar, takeMVar)
@@ -17,7 +18,7 @@ import MCTS.Engine (Board, applyMove, initialBoard, terminalWinner)
 import MCTS.Engine.Envelope (makeEngineEnvelope)
 import MCTS.Rng.Mix (mix)
 import qualified MCTS.Search.UCT as UCT
-import MCTS.Transcript (writeTranscript)
+import MCTS.Transcript (writeTranscript, writeTranscriptPerGame)
 import MCTS.Types
 
 data RunInputs = RunInputs
@@ -37,6 +38,14 @@ data BatchResult = BatchResult
     { batchTranscript :: !Transcript
     , batchHash :: !String
     , batchPath :: !FilePath
+    -- ^ Sprint 7.5: legacy single-file batch hash + path retained
+    -- for the bench-summary headline; the per-game write set is
+    -- the authoritative on-disk layout going forward.
+    , batchGameWrites :: ![(String, FilePath)]
+    -- ^ Sprint 7.5 per-game writer migration: one (hash, path) entry
+    -- per game in the batch, matching the doctrine's one-game-per-file
+    -- wire format. Each per-game file is written with `runGames = 1`
+    -- and the per-game seed `splitmix64(master_seed, game_index)`.
     }
     deriving (Eq, Show)
 
@@ -70,27 +79,66 @@ makeRunConfig inputs =
         }
 
 runBatch :: RunInputs -> IO (Either String BatchResult)
-runBatch inputs = do
+runBatch inputs = runBatchWithGame (\gid -> pure (Right (runGame inputs gid))) inputs
+
+-- | Run a batch with a caller-supplied per-game runner that may fail.
+-- The default runner is the pure in-process `runGame`. Backend (i)
+-- routes through this with `runGameCppLegacy` so the bench/verify
+-- transcripts carry the legacy's real `(action_id, visits)` records;
+-- on legacy ABI failure the runner returns `Left` and the whole
+-- batch surfaces the error string.
+runBatchWithGame
+    :: (Word32 -> IO (Either String GameTranscript))
+    -> RunInputs
+    -> IO (Either String BatchResult)
+runBatchWithGame runOne inputs = do
     let config = makeRunConfig inputs
         envelope = makeLogicalEnvelope (inputBackend inputs) (inputRng inputs)
-    games <- runGameBatch inputs
-    let transcript = Transcript config envelope games
-    written <- writeTranscript (inputCacheDir inputs) transcript
-    pure $
-        case written of
-            Right (hashValue, path) -> Right BatchResult{batchTranscript = transcript, batchHash = hashValue, batchPath = path}
-            Left err -> Left (show err)
+    gamesResult <- runGameBatchWith runOne inputs
+    case gamesResult of
+        Left err -> pure (Left err)
+        Right games -> do
+            let transcript = Transcript config envelope games
+            written <- writeTranscript (inputCacheDir inputs) transcript
+            perGame <- writeTranscriptPerGame (inputCacheDir inputs) transcript
+            pure $
+                case (written, perGame) of
+                    (Right (hashValue, path), Right perGameWrites) ->
+                        Right
+                            BatchResult
+                                { batchTranscript = transcript
+                                , batchHash = hashValue
+                                , batchPath = path
+                                , batchGameWrites = perGameWrites
+                                }
+                    (Left err, _) -> Left (show err)
+                    (_, Left err) -> Left (show err)
 
-runGameBatch :: RunInputs -> IO [GameTranscript]
-runGameBatch inputs =
+runGameBatchWith
+    :: (Word32 -> IO (Either String GameTranscript))
+    -> RunInputs
+    -> IO (Either String [GameTranscript])
+runGameBatchWith runOne inputs =
     case inputThreading inputs of
-        SingleThreaded -> pure (map runOne gameIds)
-        MultiThreaded workers -> runGamePool (max 1 workers) runOne gameIds
+        SingleThreaded -> sequenceEither <$> mapM runForce gameIds
+        MultiThreaded workers ->
+            sequenceEither <$> runGamePool (max 1 workers) runForce gameIds
   where
     gameIds = [0 .. max 0 (inputGames inputs - 1)]
-    runOne gameIndex = forceGame (runGame inputs (fromIntegral gameIndex))
+    runForce gameIndex = fmap (fmap forceGame) (runOne (fromIntegral gameIndex))
 
-runGamePool :: Int -> (Int -> GameTranscript) -> [Int] -> IO [GameTranscript]
+sequenceEither :: [Either String a] -> Either String [a]
+sequenceEither = go []
+  where
+    go acc [] = Right (reverse acc)
+    go acc (Right x : rest) = go (x : acc) rest
+    go _ (Left err : _) = Left err
+
+runGamePool
+    :: Int
+    -> (Int -> IO (Either String GameTranscript))
+    -> [Int]
+    -> IO [Either String GameTranscript]
 runGamePool workers runOne gameIds = do
     jobs <- newMVar (zip [0 :: Int ..] gameIds)
     results <- newMVar []
@@ -100,9 +148,12 @@ runGamePool workers runOne gameIds = do
             case next of
                 Nothing -> putMVar done ()
                 Just (idx, gid) -> do
-                    game <- evaluate (runOne gid)
+                    game <- runOne gid
+                    forced <- case game of
+                        Right g -> Right <$> evaluate g
+                        Left err -> pure (Left err)
                     current <- takeMVar results
-                    putMVar results ((idx, game) : current)
+                    putMVar results ((idx, forced) : current)
                     worker
     mapM_ (\_ -> forkIO worker) [1 .. min workers (max 1 (length gameIds))]
     mapM_ (\_ -> takeMVar done) [1 .. min workers (max 1 (length gameIds))]

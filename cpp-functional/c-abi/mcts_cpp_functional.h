@@ -20,6 +20,23 @@ MCTS_FUNCTIONAL_API void mcts_functional_free_board(mcts_functional_board*);
 MCTS_FUNCTIONAL_API int mcts_functional_is_terminal(const mcts_functional_board*);
 MCTS_FUNCTIONAL_API uint8_t mcts_functional_select_uct_move(mcts_functional_board*, uint64_t seed, uint32_t sims);
 
+MCTS_FUNCTIONAL_API int32_t mcts_functional_search_move(
+    mcts_functional_board *board,
+    uint64_t seed,
+    uint32_t sims,
+    uint8_t *out_action_ids,
+    uint32_t *out_visits,
+    uint8_t *out_chosen);
+
+MCTS_FUNCTIONAL_API int32_t mcts_functional_recompute_move(
+    mcts_functional_board *board,
+    uint64_t seed,
+    uint32_t sims,
+    uint8_t *out_action_ids,
+    uint32_t *out_visits,
+    uint8_t *out_chosen,
+    double *out_equity);
+
 typedef struct {
     uint16_t envelope_version;
     uint8_t  rng_source_envelope;

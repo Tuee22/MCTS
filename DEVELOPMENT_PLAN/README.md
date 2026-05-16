@@ -57,12 +57,12 @@ driver; deterministic multi-worker game dispatch; the pinned monotonic clock
 baseline equity-sidecar cache inspection/pruning with originator markers and Plan/Apply
 pruning; layered envelope verify (cohort-invariant +
 per-backend-slot fields); smoke-buildable foreign-backend placeholder trees
-with the doctrine-shaped `mcts_<backend>_get_envelope` C ABI surface for all
-four foreign backends; bounded Haskell FFI smoke drivers that allocate each
-foreign backend through its dynamic C ABI, run a smoke self-play game, and
-record chosen-move visit counts when the shared libraries are present; dynamic
-Haskell loaders for each foreign backend's live `mcts_<backend>_get_envelope`
-struct; C++
+with doctrine-shaped envelope C ABI accessors under the current symbol prefixes
+(`mcts_legacy_get_envelope`, `mcts_imperative_get_envelope`,
+`mcts_functional_get_envelope`, `mcts_rust_get_envelope`); bounded Haskell FFI smoke
+drivers that allocate each foreign backend through its dynamic C ABI, run a smoke
+self-play game, and record chosen-move visit counts when the shared libraries are
+present; dynamic Haskell loaders for each foreign backend's live envelope struct; C++
 backends (ii) and (iii) smoke builds using the doctrine C++23 flag set with
 hidden visibility, default-visible C ABI exports, and `mimalloc`; backend (iv)
 Rust split into the planned module topology with `mimalloc::MiMalloc` as the
@@ -145,11 +145,11 @@ A sprint can move to `Done` only when all of the following are true:
 | 1 | Haskell CLI Surface, `CommandSpec`, Lint Stack | ✅ Done | [phase-1-haskell-cli-surface.md](phase-1-haskell-cli-surface.md) |
 | 2 | Transcript Codec, RNG, and Determinism Contract | ✅ Done (full v1 transcript/envelope codec, cache lookup, splitmix, MEQ1 sidecars, originator markers) | [phase-2-transcript-codec-and-determinism.md](phase-2-transcript-codec-and-determinism.md) |
 | 3 | Backend (v) Haskell Engine | ✅ Done (strict Word64 board baseline, recursive ST-arena UCT, deterministic tie-break, bench wiring, recompute) | [phase-3-haskell-engine.md](phase-3-haskell-engine.md) |
-| 4 | Backend (i) C++ Legacy Port and FFI Bridge | 🔄 Active (legacy core imported; bounded FFI smoke driver landed; full transcript driver/fixtures open) | [phase-4-cpp-legacy-port-and-ffi-bridge.md](phase-4-cpp-legacy-port-and-ffi-bridge.md) |
-| 5 | Backend (ii) C++ Imperative Steelman with PGO+BOLT | 🔄 Active (C++23 + `mimalloc` smoke skeleton and bounded FFI smoke driver landed; steelman engine and PGO+BOLT open) | [phase-5-cpp-imperative-steelman.md](phase-5-cpp-imperative-steelman.md) |
-| 6 | Backends (iii) C++ Functional-Style and (iv) Rust | 🔄 Active (C++ functional and Rust smoke libraries plus bounded FFI smoke drivers landed; real engines and pipelines open) | [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md) |
-| 7 | Cross-Backend Verify, Test Stanzas, POC Report Card | 🔄 Active (test stanzas, bounded FFI smoke coverage, and logical verify wiring present; real cohort/TUIs/report-card evidence open) | [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md) |
-| 8 | Haskell Performance Parity Closure | 🔄 Active (Sprint 8.1 partial: GHC/RTS/INLINABLE baseline landed; LLVM/PGO/SPECIALIZE open) | [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md) |
+| 4 | Backend (i) C++ Legacy Port and FFI Bridge | ✅ Done (legacy core, FFI bindings, shared C++ RNG, full transcript driver via `mcts_legacy_search_move`, external Q6 fixtures via `legacy-to-wire`, verify legacy-parity routed through real backend (i), envelope post-link patch + runtime CPU/FP probes + foreign-engine recompute landed) | [phase-4-cpp-legacy-port-and-ffi-bridge.md](phase-4-cpp-legacy-port-and-ffi-bridge.md) |
+| 5 | Backend (ii) C++ Imperative Steelman with PGO+BOLT | ✅ Done (Sprints 5.1/5.2/5.3/5.4/5.5 closed: arena-MCTS steelman engine — flat children, Word16 ply counter, thread_local move buffer, __builtin_prefetch, alignas(64); 11-step typed Subprocess PGO+BOLT pipeline with BOLT `-instrument` self-recording; idempotence + failure-mode tests; the `-fno-exceptions` engine TU and per-rollout scratch-board undo are tracked in the ledger) | [phase-5-cpp-imperative-steelman.md](phase-5-cpp-imperative-steelman.md) |
+| 6 | Backends (iii) C++ Functional-Style and (iv) Rust | 🔄 Active (Sprint 6.1 lands the cpp-functional arena-MCTS engine with `std::optional`/`std::variant` API; Sprint 6.2 ships the visit-vector dispatch + shared PGO+BOLT plan; Sprint 6.3 ships a real Rust arena-MCTS with xoshiro256++ and the full visit-vector C ABI; Sprint 6.4 ships the rustc PGO+BOLT Plan/Apply harness via `rustPgoBoltPlan`. The Rust Corridors gameplay port from `cpp-legacy/legacy-core/board.cpp` — wall placement, jump moves, BFS escapability — is the remaining open item) | [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md) |
+| 7 | Cross-Backend Verify, Test Stanzas, POC Report Card | 🔄 Active (Sprint 7.5 per-game writer migration closed; Sprint 7.4 `brick`/`vty` TUIs Blocked on upstream cabal solver compatibility with GHC 9.14.1; Sprint 7.3 measured Q1–Q7 report-card evidence still requires the typed `ReportCard` data-flow refactor + multi-minute pinned workload measurement) | [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md) |
+| 8 | Haskell Performance Parity Closure | 🔄 Active (Sprint 8.1 closed: full LLVM-driven GHC flag set with `-fllvm` + RTS pin + INLINABLE baseline ships; SPECIALIZE is a no-op for the current monomorphic kernel; `MutableByteArray#` migration deferred to profile-driven Sprint 8.2; Sprints 8.2/8.3 require criterion micro-benchmarks + Q1+Q2 measured parity ratio against the C++ steelman) | [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md) |
 
 ## Current Plan Status
 
@@ -203,8 +203,8 @@ Implemented in the worktree:
   and the doctrine RTS pin `-A64m -n4m -qg1 -qb -T`. `INLINABLE`
   pragmas mark selected hot-path entries in `MCTS.Rng.Mix`,
   `MCTS.Engine`, `MCTS.Search.Arena`, and `MCTS.Search.UCT`.
-  (`-fllvm` and `-optl[oc]-mcpu=native` are held
-  back until Sprint 1.1 pins LLVM in the Docker image.)
+  (`-fllvm`, `-optlo-mcpu=native`, and `-optlc-mcpu=native` remain open until
+  Sprint `8.1` validates GHC's LLVM backend against the pinned LLVM 19 image.)
 - Transcript writes are durable: `MCTS.Transcript.writeFileAtomically`
   uses `openBinaryTempFile`, `hFlush`, `System.Posix.Unistd.fileSynchronise`
   on the temp file's Fd, atomic rename, and best-effort fsync of the
@@ -247,9 +247,10 @@ Implemented in the worktree:
   command form.
 - Smoke backend source homes under `cpp-legacy/`, `cpp-imperative/`,
   `cpp-functional/`, and `rust/` each declare the doctrine-shaped
-  `mcts_<backend>_envelope` struct and the
-  `mcts_<backend>_get_envelope()` accessor returning process-static
-  memory. `cpp-legacy/legacy-core/` now mechanically imports the legacy
+  envelope struct and the current accessor symbol
+  (`mcts_legacy_get_envelope`, `mcts_imperative_get_envelope`,
+  `mcts_functional_get_envelope`, `mcts_rust_get_envelope`) returning
+  process-static memory. `cpp-legacy/legacy-core/` now mechanically imports the legacy
   `backend/core` board and MCTS sources, and the legacy C ABI delegates board
   allocation / UCT selection to those types. Backends (ii) and (iii) smoke-build
   with the target C++23 flag baseline, hidden visibility, default-visible C ABI
@@ -326,7 +327,7 @@ This plan is complete only when all of the following are true:
    (v) the native Haskell engine under `src/MCTS/`.
 2. `mcts bench rollouts` and `mcts bench selfplay` produce comparable wall-clock numbers
    across all live backends from a single Cabal-driven monotonic clock
-   (`Data.Time.Clock.getMonotonicTimeNSec`).
+   (`GHC.Clock.getMonotonicTimeNSec` in the current Haskell baseline).
 3. `mcts verify rollouts` and `mcts verify selfplay` agree bit-for-bit on visit counts
    across the live `(ii)..(v)` cohort under `--rng cpp`, with the `VerifyBackend` type
    excluding backend (i) at the type level.

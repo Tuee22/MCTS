@@ -46,9 +46,12 @@ closure, backend (ii) retires after backend (iii) reaches parity, backend (iii)
 retires after backend (v) reaches parity. Backend (iv) Rust stays live as the
 cross-language second opinion.
 
-## Sprint 8.1: Haskell Compiler and RTS Tuning 🔄
+## Sprint 8.1: Haskell Compiler and RTS Tuning ✅
 
-**Status**: Active
+**Status**: Done (the LLVM-driven GHC flag set + RTS pin + INLINABLE
+baseline ship under the pinned GHC 9.14.1; `SPECIALIZE` and the
+`MutableByteArray#` migration are profile-driven decisions deferred
+to Sprint 8.2 with the rationale recorded inline)
 **Implementation**: `mcts.cabal` (ghc-options), `src/MCTS/Engine.hs`,
 `src/MCTS/Search/Arena.hs`, `src/MCTS/Search/UCT.hs`, `src/MCTS/Rng/Mix.hs`
 **Docs to update**: `documents/engineering/compiler_runtime_tuning.md`,
@@ -108,30 +111,55 @@ report-card numbers move toward parity with backend (ii).
    `documents/engineering/compiler_runtime_tuning.md`).
 4. Same-backend determinism still holds: the tuning is correctness-preserving.
 
-### Remaining Work
+### Closure Notes
 
-- Baseline landed: `mcts.cabal`'s shared `warnings` common stanza now
-  emits the LLVM-free subset of the doctrine GHC tuning flags:
-  `-O2 -funbox-strict-fields -fspecialise-aggressively
-  -fexpose-all-unfoldings -flate-dmd-anal
+- `mcts.cabal` library and executable stanzas now ship the full
+  LLVM-driven doctrine flag set: `-O2 -funbox-strict-fields
+  -fspecialise-aggressively -fexpose-all-unfoldings -flate-dmd-anal
   -fmax-simplifier-iterations=20 -fworker-wrapper
-  -fstatic-argument-transformation`. The executable stanza adds
-  `-threaded "-with-rtsopts=-A64m -n4m -qg1 -qb -T"` so the doctrine
-  RTS knobs are baked into the binary. The validation gate remains
-  `cabal test all` under the pinned toolchain.
-- Add `-fllvm`, `-optlo-mcpu=native`, and `-optlc-mcpu=native` once the
-  Docker image pins the matching LLVM (Sprint 1.1).
-- `INLINABLE` pragmas landed on `MCTS.Rng.Mix`, exported arena accessors,
-  `MCTS.Search.UCT.uctSearch` / `uctSearchWithEquity` / `descend` / `rollout`,
-  and the hot `MCTS.Engine` functions. Add the `SPECIALIZE` pragmas once the
-  final concrete search API and representation settle.
-- The rollout inner loop now uses the strict `MCTS.Engine.terminalOutcome`
+  -fstatic-argument-transformation -fllvm`. The executable adds
+  `-threaded "-with-rtsopts=-A64m -n4m -qg1 -qb -T"` per
+  [00-overview.md → Hard Constraints item 20](00-overview.md). GHC's
+  LLVM backend is wired to the container's `llc-19` / `opt-19` (the
+  same LLVM 19 BOLT uses), so the Dockerfile carries one LLVM only.
+- `-optlo-mcpu=native` / `-optlc-mcpu=native` are intentionally
+  *not* in the flag set: enabling them on aarch64 inside the
+  container emits LSE (Large System Extensions) instructions that
+  the assembler refuses (`instruction requires: lse`). The default
+  `-fllvm` codegen already targets the project's pinned CPU profile
+  through the GHC native code generator path; if a future profiling
+  pass justifies the per-CPU flag, the assembler invocation needs a
+  matching `-mcpu` extension. Tracked in
+  [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md)
+  as a deferred Sprint 8.2 item.
+- `SPECIALIZE` pragmas on the search loop are not needed for the
+  current implementation: the search kernel (`uctSearch`,
+  `uctSearchWithEquity`, `descend`, `rollout`, `pickByUctIndex`) is
+  already monomorphic over the concrete `Board` and `Word64` types,
+  so there are no type-class dictionaries to specialise away. The
+  `INLINABLE` baseline already exposes the unfoldings across module
+  boundaries. If a future refactor introduces a polymorphic game
+  type, the `SPECIALIZE` pragmas land alongside that change.
+- `MutableByteArray#` migration is profile-driven. The current arena
+  uses `STUArray` (which is itself backed by `MutableByteArray#`
+  under the hood). A direct hand-rolled `MutableByteArray#` arena
+  would skip the `STUArray` indexing layer but requires actual
+  bench-driven evidence that the indexing layer is the bottleneck.
+  Sprint 8.2's `criterion` micro-benchmarks are the right surface
+  for that measurement; the decision is enqueued there rather than
+  forced through here.
+- The rollout inner loop uses the strict `MCTS.Engine.terminalOutcome`
   sentinel primitive (`1.0` hero win, `-1.0` villain win, `0.0` draw,
-  `nonTerminalOutcome = 2.0`) instead of calling the public `Maybe Winner`
-  `terminalWinner` API. `cabal test mcts-unit` validates the sentinel path.
-- Run profiling and decide whether the `MutableByteArray#` migration is
-  warranted; record the outcome in
-  `documents/engineering/compiler_runtime_tuning.md`.
+  `nonTerminalOutcome = 2.0`) instead of `Maybe Winner` per the
+  doctrine's "no `Maybe`/`Either` in the rollout inner loop" rule.
+  `cabal test mcts-unit` validates the sentinel path.
+
+### Validation State
+
+`cabal build all` and `cabal test all` are green under the pinned
+toolchain with the LLVM flag set active. `mcts check-code` runs the
+full lint stack inside the container; the Haskell-style stanza
+(pinned Fourmolu / HLint binaries) passes after the flag change.
 
 ## Sprint 8.2: Profile-Driven Hot-Path Tuning 📋
 
@@ -237,7 +265,7 @@ Not started.
 **Implementation**: `legacy-tracking-for-deletion.md`,
 `test/golden/cpp-legacy/transcripts/<arch>/*.tr`,
 `test/golden/cpp-legacy/throughput.json`,
-`mcts.cabal` (remove `cpp-legacy` extra-libs declaration),
+`src/MCTS/CLI/Build.hs` (remove `cpp-legacy` build entry),
 `cpp-legacy/RETIRED.md`
 **Docs to update**: `documents/engineering/backend_ffi_contract.md`,
 `documents/engineering/determinism_contract.md`,
@@ -275,7 +303,7 @@ record the retirement in the cleanup ledger.
 - `legacy-tracking-for-deletion.md` `Pending Removal` enqueues the row for the
   `cpp-legacy` CLI flag value, the FFI bindings module
   `src/MCTS/FFI/CppLegacy.hs`, the driver module `src/MCTS/Driver/CppLegacy.hs`,
-  the `cpp-legacy` extra-libs declaration in `mcts.cabal`, and the
+  the `cpp-legacy` build/load path, and the
   `mcts-legacy-parity` test stanza. The row moves to `Completed` once the
   surviving cohort's `mcts-cross-backend` stanza runs cleanly without backend
   (i).
@@ -286,11 +314,12 @@ record the retirement in the cleanup ledger.
   golden anchor location, and the parity chain `MCTS_legacy ≡ (i) ≡ (ii)..(v)`
   it preserves as a frozen historical fact per
   [legacy-tracking-for-deletion.md → Retirement Protocol
-  Reference](legacy-tracking-for-deletion.md). The `cpp-legacy/src/` and
-  `cpp-legacy/include/` directories remain in the repository for
+  Reference](legacy-tracking-for-deletion.md). The `cpp-legacy/legacy-core/`
+  directory remains in the repository for
   reference value but are no longer built.
-- `mcts.cabal` removes the `cpp-legacy` extra-libs declaration so `cabal build
-  all` no longer requires the `.so` to be present.
+- The CLI build harness, prerequisite registry, and FFI load surface remove the
+  `cpp-legacy` live-backend path so normal validation no longer expects the `.so`
+  to be present.
 
 ### Validation
 
@@ -312,7 +341,7 @@ Not started.
 **Implementation**: `legacy-tracking-for-deletion.md`,
 `test/golden/cpp-imperative/transcripts/<arch>/*.tr`,
 `test/golden/cpp-imperative/throughput.json`,
-`mcts.cabal` (remove `cpp-imperative` extra-libs declaration),
+`src/MCTS/CLI/Build.hs` (remove `cpp-imperative` build entry),
 `cpp-imperative/RETIRED.md`
 **Docs to update**: `documents/engineering/backend_ffi_contract.md`,
 `documents/engineering/compiler_runtime_tuning.md`,
@@ -337,7 +366,8 @@ the retirement.
   the build harness entry. Moves to `Completed` when the surviving cohort's
   `mcts-cross-backend` stanza runs cleanly.
 - `cpp-imperative/RETIRED.md` documents the retirement.
-- `mcts.cabal` removes the `cpp-imperative` extra-libs declaration.
+- The CLI build harness, prerequisite registry, and FFI load surface remove the
+  `cpp-imperative` live-backend path.
 - The Q1 and Q2 questions are now answered against `test/golden/cpp-imperative/
   throughput.json` rather than against a live (ii) binary, preserving the
   Haskell-vs-(ii) performance target as a fixed number per the project
@@ -361,7 +391,7 @@ Not started.
 **Implementation**: `legacy-tracking-for-deletion.md`,
 `test/golden/cpp-functional/transcripts/<arch>/*.tr`,
 `test/golden/cpp-functional/throughput.json`,
-`mcts.cabal` (remove `cpp-functional` extra-libs declaration),
+`src/MCTS/CLI/Build.hs` (remove `cpp-functional` build entry),
 `cpp-functional/RETIRED.md`
 **Docs to update**: `documents/engineering/backend_ffi_contract.md`,
 `documents/engineering/compiler_runtime_tuning.md`,
@@ -386,7 +416,8 @@ Haskell as the target.
   `cpp-functional` flag value, FFI bindings, driver, and build harness entry,
   moving to `Completed` when the surviving cohort runs cleanly.
 - `cpp-functional/RETIRED.md` documents the retirement.
-- `mcts.cabal` removes the `cpp-functional` extra-libs declaration.
+- The CLI build harness, prerequisite registry, and FFI load surface remove the
+  `cpp-functional` live-backend path.
 
 ### Validation
 

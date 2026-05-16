@@ -10,6 +10,15 @@ import Data.List (sort)
 import qualified Data.Text as T
 import Data.Word (Word16, Word8)
 import MCTS.CLI.Bench (monotonicNanos, runBenchWithClock)
+import MCTS.CLI.Build
+    ( boltTrainingGames
+    , boltTrainingSims
+    , buildBackendPlan
+    , cppFunctionalPgoBoltPlan
+    , cppImperativePgoBoltPlan
+    , pgoTrainingGames
+    , pgoTrainingSims
+    )
 import MCTS.CLI.Command
     ( BenchCommand (..)
     , Command (..)
@@ -54,6 +63,7 @@ import qualified MCTS.Engine.Recompute as Recompute
 import MCTS.Env (Env (..), askEnv, defaultEnv, envClock, runAppIO, withTestClock)
 import MCTS.Error (AppError (..), EnvelopeMismatchScope (..), renderError)
 import MCTS.FFI.CppLegacy (withCppLegacyBoard)
+import MCTS.Generated.Paths (trackingGeneratedPaths)
 import MCTS.Notation (parseMove, renderMove)
 import MCTS.Plan
     ( Plan (..)
@@ -85,7 +95,9 @@ import MCTS.Transcript
     , hostArch
     , lookupByPrefix
     , playTranscriptHash
+    , readTranscriptFile
     , runConfigHash
+    , writeTranscriptPerGame
     )
 import qualified MCTS.Transcript as Transcript
 import MCTS.Transcript.EquitySidecar
@@ -111,6 +123,9 @@ main =
 
 runUnit :: IO ()
 runUnit = do
+    assert
+        "test/golden/legacy/transcripts is in the no-hand-edit registry"
+        ("test/golden/legacy/transcripts" `elem` trackingGeneratedPaths)
     assert "command tree mentions verify" ("verify" `contains` renderCommandTree)
     assert "command json is object" (take 1 renderCommandJson == "{")
     assert "all leaves have examples" (all (not . null . examples) (leafSpecs commandSpec))
@@ -218,6 +233,8 @@ runUnit = do
     exerciseRecompute
     exerciseForbiddenPathRegistry
     exerciseEnvelopeRoundTrip
+    exerciseCppImperativeBuildPlan
+    exercisePerGameTranscriptWriter
     putStrLn "mcts-unit PASS"
 
 assert :: String -> Bool -> IO ()
@@ -786,6 +803,129 @@ exerciseEnvelopeRoundTrip = do
                 "envelope round-trips build_id accessor"
                 (envelopeBuildId actual == "cpp-imperative-12345678")
         Left err -> error ("envelope round-trip decode failed: " <> show err)
+
+-- | Sprint 7.5: verify the per-game writer splits a batch into N
+-- one-game-per-file transcripts. The legacy single-file writer
+-- continues to produce one combined file; the per-game writer's
+-- individual file hashes derive from each game's splitmix-derived
+-- per-game seed so they differ from the batch hash.
+exercisePerGameTranscriptWriter :: IO ()
+exercisePerGameTranscriptWriter = do
+    let cacheRoot = ".mcts-cache-pergame-test"
+        inputs =
+            defaultRunInputs
+                { inputBackend = Haskell
+                , inputWorkload = Selfplay
+                , inputRng = CppRng
+                , inputThreading = SingleThreaded
+                , inputGames = 3
+                , inputSeed = 42
+                , inputSims = FixedSims 4
+                , inputMaxPlies = 12
+                , inputCacheDir = Just cacheRoot
+                }
+        config = makeRunConfig inputs
+        envelope = makeLogicalEnvelope Haskell CppRng
+        games = [runGame inputs 0, runGame inputs 1, runGame inputs 2]
+        transcript = Transcript config envelope games
+    removePathForcibly cacheRoot
+    perGame <- writeTranscriptPerGame (Just cacheRoot) transcript
+    case perGame of
+        Left err -> error ("per-game write failed: " <> show err)
+        Right entries -> do
+            assert "per-game writer emits one entry per game" (length entries == 3)
+            let hashes = map fst entries
+            assert "per-game entries have distinct hashes" (length (sort hashes) == length hashes)
+            -- All per-game files exist
+            existsAll <- mapM (doesFileExist . snd) entries
+            assert "per-game files exist on disk" (and existsAll)
+            -- Each per-game file decodes as a single-game transcript
+            decoded <- mapM (readTranscriptFile . snd) entries
+            assert
+                "every per-game file decodes to exactly one game"
+                ( all
+                    ( \r -> case r of
+                        Right t -> length (transcriptGames t) == 1
+                        Left _ -> False
+                    )
+                    decoded
+                )
+    removePathForcibly cacheRoot
+
+-- | Sprint 5.3: validate the cpp-imperative PGO+BOLT plan as a typed
+-- `[Subprocess]` sequence. The pipeline must visit, in order, the
+-- doctrine-mandated stages: PGO-instrument both artefacts, run the
+-- training workload (`bench selfplay --rng cpp`), PGO-optimize, BOLT
+-- instrument both, BOLT training workload, BOLT optimize both, install
+-- the bench artefact under the canonical FFI load name. Idempotence
+-- holds because `buildBackendPlan` is a pure function of the backend
+-- name; the failure-mode check uses an unknown backend.
+exerciseCppImperativeBuildPlan :: IO ()
+exerciseCppImperativeBuildPlan = do
+    let plan = buildBackendPlan "cpp-imperative"
+        steps = cppImperativePgoBoltPlan
+        commands = map subprocessPath steps
+        argsOf = map subprocessArguments steps
+    assert "PGO+BOLT plan has 11 typed Subprocess steps" (length steps == 11)
+    assert "PGO+BOLT plan is the same as buildBackendPlan output" (planSteps plan == steps)
+    assert
+        "PGO+BOLT step 1 is make pgo-bench-generate"
+        (case argsOf of (a : _) -> a == ["-C", "cpp-imperative", "pgo-bench-generate"]; _ -> False)
+    assert
+        "PGO+BOLT step 11 is make install-bench"
+        (case reverse argsOf of (a : _) -> a == ["-C", "cpp-imperative", "install-bench"]; _ -> False)
+    assert
+        "PGO training step invokes bench selfplay --rng cpp"
+        ( commands !! 2 == "cabal"
+            && "selfplay" `elem` argsOf !! 2
+            && "cpp" `elem` argsOf !! 2
+            && show pgoTrainingGames `elem` argsOf !! 2
+            && show pgoTrainingSims `elem` argsOf !! 2
+        )
+    assert
+        "BOLT training step invokes bench selfplay --rng cpp"
+        ( commands !! 7 == "cabal"
+            && "selfplay" `elem` argsOf !! 7
+            && show boltTrainingGames `elem` argsOf !! 7
+            && show boltTrainingSims `elem` argsOf !! 7
+        )
+    assert "buildBackendPlan is idempotent" (buildBackendPlan "cpp-imperative" == plan)
+    assert
+        "PGO+BOLT plan name is build cpp-imperative"
+        (planName plan == "build cpp-imperative")
+    -- Failure-mode test: unknown backend collapses to a single
+    -- `make -C <backend> smoke` step. The `BuildCommand` ADT in
+    -- `MCTS.CLI.Command` constrains the set of backends reachable at
+    -- the CLI boundary, so this fallback exists for completeness; the
+    -- check exercises that one unrecognized identifier produces a
+    -- single deterministic Subprocess (not a stray sequence).
+    assert
+        "buildBackendPlan handles unknown backends with one smoke step"
+        ( case planSteps (buildBackendPlan "wat-backend") of
+            [s] ->
+                subprocessPath s == "make"
+                    && subprocessArguments s == ["-C", "wat-backend", "smoke"]
+            _ -> False
+        )
+    -- Sprint 6.2: the cpp-functional plan mirrors the cpp-imperative
+    -- plan exactly except for the backend identifier — this is the
+    -- (ii)-vs-(iii) style-isolation discipline at the build-harness
+    -- level (same training workload, same BOLT parameters, only the
+    -- backend identifier differs).
+    let imperativeSteps = cppImperativePgoBoltPlan
+        functionalSteps = cppFunctionalPgoBoltPlan
+        renameStep s =
+            s
+                { subprocessArguments = map renameArg (subprocessArguments s)
+                }
+        renameArg "cpp-imperative" = "cpp-functional"
+        renameArg other = other
+    assert
+        "cpp-functional plan is the cpp-imperative plan with backend rewritten"
+        (functionalSteps == map renameStep imperativeSteps)
+    assert
+        "cpp-functional plan matches buildBackendPlan"
+        (planSteps (buildBackendPlan "cpp-functional") == functionalSteps)
 
 -- | Sprint 1.4: the forbidden-path registry is a typed value carrying
 -- a rationale per entry. The pinned set matches

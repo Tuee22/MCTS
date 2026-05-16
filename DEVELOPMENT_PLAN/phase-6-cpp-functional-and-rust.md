@@ -16,14 +16,24 @@
 
 ## Phase Status
 
-🔄 **Active**. `cpp-functional/` and `rust/` now exist with smoke-buildable C ABI /
-`cdylib` skeletons, `mcts build cpp-functional` / `mcts build rust` validate the
-container toolchain through the Plan/Apply build surface, Rust uses the planned
-module topology plus `mimalloc` as `#[global_allocator]`, and the Haskell CLI can
-exercise both as logical backends in benchmark and verify flows. Remaining Phase
-`6` closure work is the real functional-style C++ engine, real Rust engine, live
-foreign pointer bindings, PGO+BOLT pipelines, envelope capture, and foreign-engine
-recompute.
+🔄 **Active (Rust Corridors gameplay-port residue)**. Backend (iii)
+C++ functional-style is closed at sprint-owned surfaces: Sprint 6.1
+landed the arena-MCTS engine with the functional-style API surface
+(`std::optional<State>` move attempts, `std::variant<ChildIdx,
+NoChild>` select outcomes) on top of the same data layout as backend
+(ii); Sprint 6.2 wired the visit-vector dispatch + the typed
+`cppFunctionalPgoBoltPlan` Subprocess pipeline. Backend (iv) Rust now
+ships a real arena MCTS (`rust/src/{tree.rs,search.rs,xoshiro256pp.rs}`)
+with UCT-1, xoshiro256++ native RNG, and the full
+`mcts_rust_search_move` / `mcts_rust_recompute_move` /
+`mcts_rust_read_visits` C ABI; Sprint 6.4 ships the
+`rustPgoBoltPlan` Plan/Apply harness through the typed `Subprocess`
+boundary. The **Rust Corridors gameplay port** (wall placement, jump
+moves, BFS escapability) from `cpp-legacy/legacy-core/board.cpp`
+remains the largest open item — until it lands, the Haskell
+dispatcher routes `--backend rust` through the in-process logical
+UCT for the operator-facing bench/verify path. Tracked under Sprint
+6.3's ledger row.
 
 ## Phase Summary
 
@@ -37,10 +47,12 @@ C ABI for the FFI bridge, but a wholly separate toolchain with its own PGO and B
 pipeline, `mimalloc` as `#[global_allocator]`, and the pinned `[profile.release]`
 settings from the project README.
 
-## Sprint 6.1: `cpp-functional/` Functional-Style C++ Engine 🔄
+## Sprint 6.1: `cpp-functional/` Functional-Style C++ Engine ✅
 
-**Status**: Active
-**Implementation**: `cpp-functional/c-abi/`, `cpp-functional/Makefile`
+**Status**: Done (arena-MCTS engine with functional-style API surface
+landed; `-fno-exceptions` and per-rollout undo remain ledger items)
+**Implementation**: `cpp-functional/engine/{state.hpp,arena.hpp,xoshiro256pp.hpp,search.hpp,search.cpp}`,
+`cpp-functional/c-abi/`, `cpp-functional/Makefile`
 **Docs to update**: `documents/engineering/compiler_runtime_tuning.md`,
 `documents/engineering/backend_ffi_contract.md`,
 `DEVELOPMENT_PLAN/system-components.md`
@@ -110,28 +122,47 @@ underneath so the optimisation stack still applies.
 3. The same brute-force legal-move agreement test from Phase 5 Sprint 5.1 passes
    for backend (iii) once Sprint 6.2 lands the FFI bindings.
 
+### Closure Notes
+
+- `cpp-functional/engine/` now hosts the arena-MCTS engine with the
+  functional-style API surface per Sprint 6.1: `state.hpp` carries a
+  `try_advance :: const State & -> board && -> std::optional<State>`
+  move attempt (matching the sprint's `std::optional` move-result
+  shape); `search.hpp` exposes `SelectOutcome = std::variant<ChildIdx,
+  NoChild>` for child selection (the `std::variant` rather than
+  sentinel `-1`); the underlying memory layout (`arena.hpp`, flat
+  children, `Word16` ply counter, `thread_local` move buffer,
+  `__builtin_prefetch`, `alignas(64)`) intentionally matches backend
+  (ii) so the (ii)-vs-(iii) comparison isolates *style* as the
+  variable, not memory representation.
+- `cpp-functional/c-abi/mcts_cpp_functional.cc` was rewritten to drive
+  the arena search through `mcts_functional_search_move` /
+  `mcts_functional_recompute_move` / `mcts_functional_select_uct_move`.
+  `cpp-functional/Makefile` builds the smoke + bench + instrumented
+  artefacts under the shared doctrine C++23 flag set; `nm -D` confirms
+  the `mcts_functional_*` symbol surface.
+- `cabal test all` and `mcts check-code` stay green; cross-backend
+  smoke continues to accept a well-formed `VerifyMismatch` per the
+  Phase 7 stanza note.
+
 ### Remaining Work
 
-- Baseline landed and validated: `cpp-functional/` has a smoke-buildable C ABI
-  skeleton, Makefile, README, and `build/libmcts_cpp_functional.so` output path.
-  `mcts build cpp-functional --dry-run` renders `make -C cpp-functional smoke`,
-  `mcts build cpp-functional` produces the smoke shared library inside the
-  container, and `mcts bench rollouts --backend cpp-functional --threading single
-  --rng cpp --games 8 --seed 42` completes through the logical driver. The smoke
-  Makefile uses the same doctrine C++23 optimization flag set as backend (ii), links
-  `mimalloc`, and keeps the C ABI symbols default-visible; `nm -D` confirms the
-  exported `mcts_functional_*` symbol set after `mcts build cpp-functional`.
-- Replace the smoke implementation with the real functional-style C++23 engine.
-- Add the final paired bench/instrumented source layout while preserving the shared
-  optimization stack with backend (ii).
-- Add parity/tuning documentation once the real implementation lands.
+- `-fno-exceptions` on the engine TU: same status as backend (ii) —
+  `corridors::board::eval` / `get_terminal_eval` still throw
+  `std::string`; tracked in the (ii) ledger row, shared.
+- Per-rollout scratch-board undo on (iii) shares (ii)'s status.
 
-## Sprint 6.2: FFI Bindings, Build Harness, Driver for Backend (iii) 🔄
+## Sprint 6.2: FFI Bindings, Build Harness, Driver for Backend (iii) ✅
 
-**Status**: Active
+**Status**: Done (visit-vector FFI binding +
+`cppFunctionalPgoBoltPlan` typed Subprocess pipeline shared with
+backend (ii) + dispatcher routing through real FFI when the shared
+library is present)
 **Implementation**: `cpp-functional/c-abi/`, `cpp-functional/Makefile`,
-`src/MCTS/CLI/Build.hs`, `src/MCTS/Driver.hs`, `src/MCTS/CLI/Bench.hs`,
-`src/MCTS/CLI/Verify.hs`
+`src/MCTS/CLI/Build.hs::cppFunctionalPgoBoltPlan`,
+`src/MCTS/Driver/CppFunctional.hs`, `src/MCTS/Driver/ForeignSearch.hs`,
+`src/MCTS/Driver/Dispatch.hs`,
+`src/MCTS/CLI/Bench.hs`, `src/MCTS/CLI/Verify.hs`
 **Docs to update**: `documents/engineering/backend_ffi_contract.md`,
 `documents/engineering/cli_command_surface.md`
 
@@ -172,33 +203,34 @@ variant.
    --games 8 --seed 42` runs to completion.
 4. Same-backend determinism: two runs produce identical determinism payload sets.
 
-### Remaining Work
+### Closure Notes
 
-- Baseline landed and validated: `mcts build cpp-functional --dry-run` renders a
-  typed plan, the apply path smoke-builds `cpp-functional/`, the logical driver can
-  run `--backend cpp-functional`, and `src/MCTS/FFI/CppFunctional.hs` declares
-  `withCppFunctionalBoard` / `withCppFunctionalGame` routed through
-  `MCTS.FFI.Common.liftFFI` / `withDynamicGame` with the doctrine-required
-  `mcts_functional_new_board`, `mcts_functional_is_terminal`, and
-  `mcts_functional_select_uct_move` symbol names. `src/MCTS/Driver/CppFunctional.hs`
-  can run a bounded chosen-move smoke game through that ABI; `mcts-integration`
-  validates the path when the smoke shared library is present.
-- Replace the stand-in handle type with `foreign import ccall` pointers
-  and add the cabal `extra-libraries` directives once the cdylib build
-  step is wired in. The `libmcts-cpp-functional-built`,
-  `cpp-functional-pgo-profile`, and `cpp-functional-bolt-profile` prerequisite
-  nodes are present in `prerequisiteRegistry`.
-- Replace the smoke build with the same PGO+BOLT+`mimalloc` pipeline as backend (ii).
-- Route operator-facing transcript output through the real backend once the C ABI
-  exposes sorted visit-vector instrumentation, then add two-backend verify smoke
-  tests against the real engine.
+- `MCTS.Driver.CppFunctional.runGameCppFunctional` rides the same
+  `MCTS.Driver.ForeignSearch.runForeignSearchGame` worker as backend
+  (ii), now calling `mcts_functional_search_move` over the visit-vector
+  ABI (sorted `(action_id, visits)` + chosen action) rather than the
+  chosen-action-only smoke.
+- `cppFunctionalPgoBoltPlan` (in `src/MCTS/CLI/Build.hs`) reuses the
+  shared `pgoBoltPlan` builder so the (iii) pipeline is the (ii)
+  pipeline with the backend identifier rewritten — the (ii)-vs-(iii)
+  style-isolation discipline applies at the build harness level. The
+  `mcts-unit::exerciseCppImperativeBuildPlan` test enforces this
+  invariant.
+- `MCTS.Driver.Dispatch.runBatchDispatch` routes `--backend cpp-functional`
+  through the real FFI driver whenever
+  `cpp-functional/build/libmcts_cpp_functional.so` is present.
 
 ## Sprint 6.3: `rust/` Rust Engine and `cdylib` 🔄
 
-**Status**: Active
+**Status**: Active (real arena MCTS algorithm + xoshiro256++ + full
+`mcts_rust_search_move` / `mcts_rust_recompute_move` /
+`mcts_rust_read_visits` C ABI now ship in the cdylib; the Rust
+Corridors gameplay port from `cpp-legacy/legacy-core/` — wall
+placement, jump moves, BFS escapability — remains the largest open
+item and stays a ledger row)
 **Implementation**: `rust/Cargo.toml`, `rust/src/lib.rs`, `rust/src/board.rs`,
 `rust/src/tree.rs`, `rust/src/search.rs`, `rust/src/rollout.rs`,
-`rust/src/c_abi.rs`, `rust/src/envelope.rs`
+`rust/src/c_abi.rs`, `rust/src/envelope.rs`, `rust/src/xoshiro256pp.rs`
 **Docs to update**: `documents/engineering/compiler_runtime_tuning.md`,
 `documents/engineering/backend_ffi_contract.md`,
 `DEVELOPMENT_PLAN/system-components.md`
@@ -267,27 +299,55 @@ exposed as a `cdylib` for the Haskell FFI.
 3. The same brute-force legal-move agreement test from Phase 5 Sprint 5.1
    passes for backend (iv) once Sprint 6.4 lands the FFI bindings.
 
+### Closure Notes
+
+- Real arena MCTS in Rust: `rust/src/tree.rs` carries
+  `#[repr(C, align(64))] Node` with `parent : u32`, `first_child : u32`,
+  `child_count : u16`, `visits : u32`, `q_sum : f64`, `ply_count : u16`
+  in a flat `Vec<Node>` arena. `rust/src/search.rs` runs UCT-1 with
+  `EXPLORATION_C = 1.4`, the standard "first unvisited child" expansion
+  rule, and an FPU-stable index tie-break. `#[inline(always)]` on hot
+  helpers and `#[inline]` on the per-sim worker mirror the C++
+  steelman's hot-path discipline.
+- xoshiro256++ native RNG lives in `rust/src/xoshiro256pp.rs`
+  (`Xoshiro256pp::new(seed)` / `next()` / `bounded(bound)`); matches
+  backend (ii)/(iii)'s native RNG choice so the cross-language
+  comparison isolates engine implementation as the variable.
+- Full C ABI surface: `mcts_rust_search_move(board, seed, sims,
+  out_action_ids, out_visits, out_chosen)` and
+  `mcts_rust_recompute_move(..., out_equity)` ship with the cdylib;
+  `mcts_rust_read_visits` ships as the bench/instrumented split hook.
+  `nm -D` on the smoke cdylib lists all 8 `mcts_rust_*` symbols.
+
 ### Remaining Work
 
-- Baseline landed and validated: `rust/Cargo.toml`, `rust/src/lib.rs`, and README
-  exist with a `cdylib`/`staticlib` smoke target and pinned release-profile shape.
-  The smoke crate is split across `board.rs`, `tree.rs`, `search.rs`,
-  `rollout.rs`, `c_abi.rs`, and `envelope.rs`, and declares
-  `mimalloc::MiMalloc` as the process global allocator. `mcts build rust
-  --dry-run` renders `cargo build --release`, `mcts build rust` produces
-  `rust/target/release/libmcts_rust.so` inside the container, and
-  `mcts bench rollouts --backend rust --threading single --rng cpp --games 8
-  --seed 42` completes through the logical driver.
-- Replace the smoke exports with the real Rust engine and C ABI surface.
-- Rust minor pin is in `docker/Dockerfile` (`RUST_VERSION=1.95.0`) and the
-  prerequisite registry checks `cargo` / `rustc` `1.95.0`.
-- Add the final rustc flags/build profile to the PGO+BOLT harness.
+- **Rust Corridors gameplay port** (the largest remaining piece): the
+  current `rust/src/rollout.rs` exposes a placeholder game (a
+  ply-counting state with `n_legal_moves(ply) = 12 + (ply%5)+1` and a
+  draw-on-ply-cap terminal). The real Corridors logic — pawn movement
+  + jump-over-opponent + wall placement + BFS escapability check — is
+  the multi-hundred-line port from `cpp-legacy/legacy-core/board.cpp`
+  that closes the sprint. Until that lands, the action IDs the Rust
+  search emits do not correspond to legal Corridors moves and the
+  Haskell-side dispatcher in `MCTS.Driver.Dispatch` keeps `--backend
+  rust` on the in-process logical UCT (the smoke driver still rides
+  through the cdylib's `mcts_rust_select_uct_move` for the bounded
+  smoke game). Tracked in `legacy-tracking-for-deletion.md`.
+- Final rustc PGO+BOLT pipeline (Sprint 6.4) wires `mcts build rust`
+  through the same Plan/Apply harness as backends (ii)/(iii); the
+  pipeline shape (instrument → train → optimize → BOLT → install) is
+  identical except for the Cargo toolchain.
 
 ## Sprint 6.4: FFI Bindings, PGO+BOLT Build Harness, Driver for Backend (iv) 🔄
 
-**Status**: Active
+**Status**: Active (PGO+BOLT Plan/Apply harness landed via
+`rustPgoBoltPlan`; full visit-vector FFI binding +
+`withRustSearchGame` shipped; routing `--backend rust` through the
+real FFI driver is blocked on the Corridors gameplay port in Sprint
+6.3's ledger row)
 **Implementation**: `rust/Cargo.toml`, `rust/src/lib.rs`, `mcts.cabal`,
-`src/MCTS/CLI/Build.hs`, `src/MCTS/Driver.hs`, `src/MCTS/CLI/Bench.hs`,
+`src/MCTS/CLI/Build.hs::rustPgoBoltPlan`, `src/MCTS/FFI/Rust.hs::withRustSearchGame`,
+`src/MCTS/Driver/Dispatch.hs`, `src/MCTS/CLI/Bench.hs`,
 `src/MCTS/CLI/Verify.hs`
 **Docs to update**: `documents/engineering/backend_ffi_contract.md`,
 `documents/engineering/cli_command_surface.md`,
@@ -357,24 +417,35 @@ dispatch, and the verify dispatch.
    completion. Bit-equality success or failure at this stage is informational
    — Phase 7 enforces — but the cohort is wired.
 
+### Closure Notes
+
+- `rustPgoBoltPlan` ships the rustc PGO + LLVM-BOLT + install pipeline
+  through the typed `Subprocess` boundary. Steps: (1) `cargo build
+  --release` with `RUSTFLAGS=-C target-cpu=native -C
+  profile-generate=rust/pgo-profile`; (2) PGO training run via
+  `cabal exec mcts -- bench selfplay --backend rust --rng cpp --games
+  100 --seed 42 --sims 10000`; (3) `llvm-profdata merge` of the
+  `.profraw` files into a single `.profdata`; (4) `cargo build
+  --release` with `-C profile-use=rust/pgo-profile`; (5) `llvm-bolt
+  -instrument` on the cdylib (self-recording, no `perf` required);
+  (6) BOLT training run with the lighter `(20, 2000)` workload; (7)
+  `llvm-bolt -reorder-blocks=ext-tsp` post-link reorder; (8) install
+  the bolted cdylib at the canonical FFI load path
+  `rust/target/release/libmcts_rust.so`.
+- `MCTS.FFI.Rust.withRustSearchGame` exposes the full visit-vector
+  ABI (`mcts_rust_search_move`) so the Haskell dispatcher *can* route
+  `--backend rust` through the real FFI engine. The dispatcher keeps
+  the Rust slot on the in-process logical UCT until the Corridors
+  gameplay port (Sprint 6.3 ledger row) lands, because the placeholder
+  game in the Rust engine emits action IDs that do not correspond to
+  legal Corridors moves.
+
 ### Remaining Work
 
-- Baseline landed and validated: `mcts build rust --dry-run` renders a typed plan,
-  the apply path delegates to `cargo build --release`, the logical driver can run
-  `--backend rust`, and `src/MCTS/FFI/Rust.hs` declares `withRustBoard` /
-  `withRustGame` routed through `MCTS.FFI.Common.liftFFI` / `withDynamicGame`
-  with the doctrine-required `mcts_rust_new_board`, `mcts_rust_is_terminal`, and
-  `mcts_rust_select_uct_move` symbol names. `src/MCTS/Driver/Rust.hs` can run a
-  bounded chosen-move smoke game through that ABI; `mcts-integration` validates the
-  path when the Rust `cdylib` is present.
-- Replace the stand-in handle type with `foreign import ccall` pointers and add
-  the cabal `extra-libraries` directives once the cdylib build step is wired in.
-  The `libmcts-rust-built`, `rust-pgo-profile`, and `lld-linker` prerequisite nodes
-  are present in `prerequisiteRegistry`.
-- Replace the smoke build with the rustc PGO+BOLT+`mimalloc` pipeline.
-- Route operator-facing transcript output through the real Rust engine once the C ABI
-  exposes sorted visit-vector instrumentation, then add cross-backend smoke tests
-  against the real Rust engine.
+- Switch `MCTS.Driver.Dispatch.runBatchDispatch` to route `--backend
+  rust` through `MCTS.Driver.Rust` over `runForeignSearchGame` once
+  the Rust Corridors port from Sprint 6.3's ledger row lands and
+  emits legal-in-Corridors action IDs.
 
 ## Sprint 6.5: Backends (iii) and (iv) Engine Envelope and Foreign-Engine Recompute ⏸️
 
