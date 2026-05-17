@@ -11,6 +11,7 @@
 #include "xoshiro256pp.hpp"
 
 #include <cstdint>
+#include <limits>
 #include <random>
 #include <utility>
 #include <variant>
@@ -25,6 +26,17 @@ namespace mcts_functional {
 struct ChildIdx { uint32_t value; };
 struct NoChild {};
 using SelectOutcome = std::variant<ChildIdx, NoChild>;
+
+// Sprint 6.1 (data-flow style): the descent loop is expressed as a
+// state-transition function returning one of three step variants.
+// The lowering still uses the same arena machinery as backend (ii);
+// the source-level shape differs — descent is a sequence of
+// `DescentStep` transitions rather than a fall-through `while (true)`
+// with `break`/`continue` control flow.
+struct StepDescend { uint32_t to_idx; };
+struct StepExpand { uint32_t at_idx; };
+struct StepLeaf { uint32_t idx; };
+using DescentStep = std::variant<StepDescend, StepExpand, StepLeaf>;
 
 struct RngBackend {
     enum Kind : uint8_t { Mt19937 = 0, Xoshiro = 1 };
@@ -44,6 +56,10 @@ struct RngBackend {
 struct SearchOutput {
     std::vector<std::pair<uint8_t, uint32_t>> visits;
     uint8_t chosen_action_id = 0;
+    // Sprint 6.5: parent-perspective equity of the chosen child
+    // computed as `-child.q_sum / child.visit_count`. NaN if the
+    // chosen child has zero visits (impossible for sims >= 1).
+    double chosen_equity = std::numeric_limits<double>::quiet_NaN();
     bool ok = true;
 };
 

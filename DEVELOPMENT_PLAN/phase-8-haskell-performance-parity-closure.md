@@ -18,11 +18,25 @@
 
 ## Phase Status
 
-🔄 **Active**. Sprint `8.1` has started on the surfaces that are meaningful before
-real Phase `7` closure: the LLVM-free GHC `-O2` tuning subset, RTS defaults, and
-hot-path `INLINABLE` pragmas have landed. The final parity proof remains blocked by
-the real five-backend cohort and measured Q1/Q2 report card against the PGO+BOLT C++
-steelman.
+🔄 **Active**. Sprint `8.1` is closed: the LLVM-driven GHC tuning flag set
+plus the RTS pin and the hot-path `INLINABLE` pragmas all ship under GHC
+`9.14.1` with LLVM `19`. Sprint `8.2` has now run three profile-driven
+tuning rounds. Round 1 (`IntSet`-backed `pathExists` / `shortestDistance`)
+delivered ~6.2× speedup. Round 2 (strict-pair `Word64` visited bitmap as
+a drop-in `IntSet` replacement) regressed and was reverted. Round 3
+(wavefront-bitmap BFS over `Bits128` with precomputed direction-block
+masks) delivered an additional **~52× on legal-moves and ~33× on
+uct-search**, for a combined total of **~320× on legal-moves and ~200×
+on uct-search** vs the original list-based baseline. Snapshot Q1 ST
+**0.89×** (Haskell *faster* than non-PGO cpp-imperative smoke), within
+`HASKELL_PARITY_TOLERANCE = 0.05`. Snapshot Q2 ST scaling: sims=100
+1.17×, sims=500 1.03× (within tolerance), sims=1000 1.13× (in the
+PGO-attributable band). Recorded inline in
+[../documents/engineering/compiler_runtime_tuning.md →
+ Sprint 8.3 — Measured Q2 Selfplay Snapshot](../documents/engineering/compiler_runtime_tuning.md).
+The final verdict (Sprint `8.3`) and the (i)→(ii)→(iii)→(v) retirement
+chain (Sprints `8.4`–`8.7`) remain gated on Q1 MT8 + Q2 MT8 against the
+PGO+BOLT cdylib, not just the single-threaded snapshots above.
 
 ## Phase Summary
 
@@ -161,11 +175,13 @@ toolchain with the LLVM flag set active. `mcts check-code` runs the
 full lint stack inside the container; the Haskell-style stanza
 (pinned Fourmolu / HLint binaries) passes after the flag change.
 
-## Sprint 8.2: Profile-Driven Hot-Path Tuning 📋
+## Sprint 8.2: Profile-Driven Hot-Path Tuning 🔄
 
-**Status**: Planned
+**Status**: Active (criterion micro-benchmark suite landed; profile-
+driven hot-path tuning iterations and the measured parity ratio against
+the C++ steelman are the remaining open items)
 **Implementation**: `src/MCTS/Engine/`, `src/MCTS/Search/`,
-`bench/criterion-suites.hs`
+`bench/criterion-suites.hs`, `mcts.cabal` (`mcts-criterion` benchmark stanza)
 **Docs to update**: `documents/engineering/compiler_runtime_tuning.md`
 
 ### Objective
@@ -203,9 +219,73 @@ defined in
 3. `documents/engineering/compiler_runtime_tuning.md` records the round-by-round
    observation log.
 
+### Closure Notes (criterion suite landing + round 1)
+
+- `mcts.cabal` declares a `benchmark mcts-criterion` stanza
+  (`type: exitcode-stdio-1.0`) wired to `bench/criterion-suites.hs`
+  with the same `-fllvm` flag set as the library.
+- `bench/criterion-suites.hs` declares four benchmark groups via
+  `Criterion.Main.defaultMain`:
+  - `legal-moves` — `MCTS.Engine.legalMoves` on the initial board and
+    on a deterministically-advanced mid-game board.
+  - `apply-move` — `MCTS.Engine.applyMove` on the first legal move
+    from each starting point.
+  - `uct-search` — `MCTS.Search.UCT.uctSearch` at `sims ∈ {8, 64}`,
+    `maxPlies = 60`.
+  - `splitmix-mix` — `MCTS.Rng.Mix.mix` at pinned `(seed, n)` tuples,
+    measuring per-call cost in nanoseconds.
+- `cabal bench mcts-criterion --benchmark-options='--time-limit 2'`
+  runs the suite inside the container and emits a regression-stable
+  per-call cost table that profile-driven tuning iterations can
+  diff against.
+- **Round 1 (2026-05-16, `src/MCTS/Engine.hs`)**: migrated
+  `pathExists` / `shortestDistance` from list-based `seen` (O(n²)
+  `elem` / `notElem`) to `Data.IntSet` (O(n log n)) plus
+  `INLINABLE` pragmas. Measured per-call cost change:
+  legal-moves 991→160 μs, apply-move 990→158 μs,
+  uct-search sims=64 1817→292 ms (**~6.2× speedup** across the
+  rollout-dominated hot path). `cabal test all` remains green.
+  Recorded in
+  [../../documents/engineering/compiler_runtime_tuning.md →
+   Sprint 8.2 — Profile-Driven Hot-Path Tuning
+   Rounds](../../documents/engineering/compiler_runtime_tuning.md).
+- **Round 2 (2026-05-16, reverted)**: tried a strict-pair `Word64`
+  visited bitmap (low Word64 for cells 0..63, high for 64..80). The
+  constructor reconstruction at each recursive `go` step matched
+  the `IntSet` tree-insert path on legal-moves and *regressed* on
+  uct-search (sims=64 292→411 ms). Reverted; the real win on this
+  surface needs a wavefront-bitmap BFS rewrite or an `ST`-based
+  mutable queue, both bigger changes enqueued for a later round.
+  Recorded in the same table.
+- **Round 3 (2026-05-16, `src/MCTS/Engine.hs`)**: wavefront-bitmap
+  BFS over a strict-pair `Word64` (`Bits128`) frontier with
+  precomputed direction-block masks; replaces the list-based
+  recursive descent with bitwise shift+and+or expansion per BFS
+  wave. Per-call cost change: legal-moves 160→3.1 μs,
+  uct-search sims=64 292→8.9 ms (**~52× speedup on legal-moves,
+  ~33× on uct-search vs round 1**; combined with round 1, total
+  speedup vs the original list-based baseline is **~320× on
+  legal-moves** and **~200× on uct-search**). `cabal test all`
+  remains green. The Q1 ST snapshot collapses from `Shortfall 9.76`
+  to **0.89×** (Haskell faster than the non-PGO cpp-imperative
+  smoke library); the final verdict remains `Pending` against the
+  PGO+BOLT cdylib.
+
 ### Remaining Work
 
-Not started.
+- Continue Sprint 8.2 round-by-round tuning iterations (e.g. switch
+  the BFS visited-set to a Word128-backed bitmap, hoist constant
+  `targetY` out of the recursive go, fuse `addNeighbour` into a
+  static unrolled four-way scan) and diff GHC Core after each round.
+- Drive `mcts bench` Q1/Q2 measurements against the PGO+BOLT C++
+  steelman within `HASKELL_PARITY_TOLERANCE = 0.05` and record the
+  Q1/Q2 parity ratio. Closure depends on running the multi-minute
+  pinned report-card workload. An initial Q1 ST snapshot under the
+  non-PGO smoke library is recorded inline in
+  [../../documents/engineering/compiler_runtime_tuning.md →
+   Sprint 8.3 — Measured Q1 Snapshot](../../documents/engineering/compiler_runtime_tuning.md):
+  Haskell-vs-cpp-imperative on Q1 ST measures **10.76×**, i.e.
+  `Shortfall 9.76` against the non-PGO baseline.
 
 ## Sprint 8.3: Parity Verdict and One-Known-Asymmetry Note 📋
 

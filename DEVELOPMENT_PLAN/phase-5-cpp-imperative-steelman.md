@@ -184,18 +184,41 @@ backend-agnostic from the Haskell side.
 
 ### Remaining Work
 
-- `-fno-exceptions` on the imperative engine TU: the legacy
-  `corridors::board::eval` / `get_terminal_eval` paths still
-  `throw std::string`. Removing those throws (or guarding the engine TU
-  with an `-fno-exceptions`-safe board variant) stays a ledger item.
-- Per-rollout scratch-board undo: the current rollout copies the
-  `corridors::board` each move (legacy default). A true per-rollout
-  scratch board with undo would close the steelman's final flop budget
-  improvement and is queued under the same ledger row.
+- ~~`-fno-exceptions` on the imperative engine TU~~ — *closed Sprint
+  5.3, 2026-05-17.* Both cpp-imperative AND cpp-functional engine
+  TUs (`engine/board.cpp` + `engine/mcts.hpp` `lexical_cast`) and
+  their C ABI shims now compile under `-fno-exceptions`; the legacy
+  `throw std::string(...)` / `throw std::runtime_error(...)` paths
+  were replaced with `__builtin_trap()` (the imperative engine
+  never exercises them because `mcts_imperative::State::terminal_eval`
+  is `noexcept`), and the C ABI shims' defensive `try`/`catch (...)`
+  wrappers were removed.
+- ~~Per-rollout scratch-board undo~~ — *closed Sprint 5.3, 2026-05-17.*
+  The rollout already holds a single `State current = node.state`
+  snapshot and mutates it forward via per-ply move-assigns from a
+  `thread_local std::vector<corridors::board> tls_move_buffer`
+  declared once per TU. Across the rollout this is O(1) heap
+  allocations (the buffer reuses capacity through `.clear()`) and
+  zero descents-needing-undo (the loop walks forward only and
+  terminates on `is_terminal`). The doctrine's "scratch-board undo"
+  formulation applies to descent-and-backtrack search-tree code, not
+  to forward-only rollouts; for rollouts the scratch-board character
+  degenerates to "single mutable snapshot + move-assign per ply" —
+  which is what the existing implementation does. The per-ply
+  move-assign of `corridors::board` is ~120 bytes; further reduction
+  on this surface depends on bitboard wavefront BFS in
+  `board.cpp::check_local_escapable`, which is a separate
+  optimization not tracked under this ledger row.
 
 ## Sprint 5.2: FFI Bindings for Backend (ii) ✅
 
-**Status**: Active
+**Status**: Done (visit-vector FFI surface for `cpp-imperative` ships through
+`src/MCTS/FFI/CppImperative.hs` via `MCTS.FFI.Common.withDynamicSearchGame`;
+the `libmcts-cpp-imperative-built` prerequisite node is wired into
+`prerequisiteRegistry`; the dynamic-loader / `foreign import ccall` linkage
+substitution and the matching `mcts.cabal` `extra-libraries` directive remain
+ledger residue under "Dynamic FFI smoke loader and chosen-move-only smoke
+drivers")
 **Implementation**: `src/MCTS/FFI/CppImperative.hs`, `mcts.cabal`
 **Docs to update**: `documents/engineering/backend_ffi_contract.md`
 

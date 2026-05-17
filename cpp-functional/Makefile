@@ -5,10 +5,12 @@
 
 CXX ?= g++
 # Doctrine flag set shared with backend (ii) so the (ii)-vs-(iii)
-# comparison isolates style as the variable.
-# `-fno-exceptions` deferred pending the legacy core's `throw std::string`
-# paths (same status as backend (ii)).
-CXXFLAGS ?= -std=c++23 -O3 -march=native -mtune=native -flto -fno-plt -fno-semantic-interposition -fvisibility=hidden -fvisibility-inlines-hidden -fPIC -Wno-pessimizing-move -Iengine
+# comparison isolates style as the variable. Sprint 5.3 closure:
+# `-fno-exceptions` is now enabled — the legacy `throw std::string(...)`
+# paths in `board.cpp` and `mcts.hpp`'s `lexical_cast` were replaced
+# with `__builtin_trap()`, and the C ABI shim's defensive
+# `try`/`catch (...)` wrappers were removed.
+CXXFLAGS ?= -std=c++23 -O3 -march=native -mtune=native -flto -fno-plt -fno-semantic-interposition -fvisibility=hidden -fvisibility-inlines-hidden -fno-exceptions -fPIC -Wno-pessimizing-move -Iengine
 LDFLAGS ?= -shared -flto
 LDLIBS ?= -lmimalloc
 

@@ -121,9 +121,28 @@ thread_local std::vector<corridors::board> tls_move_buffer;
 }
 
 // Random rollout: from `node_idx`, walk to a terminal state taking
-// random legal moves. Uses a scratch board reuse via per-step
-// `corridors::board` copies (the legacy board is move-only; a true
-// undo path is a follow-up steelman item).
+// random legal moves.
+//
+// Sprint 5.3 scratch-board character: the rollout holds a single
+// `State current` snapshot (initial copy from `node.state`) and
+// mutates it forward through per-ply move-assigns from
+// `tls_move_buffer` (a `thread_local std::vector<corridors::board>`
+// declared at the top of this TU). Across the whole rollout this is
+// O(1) heap allocations (the buffer reuses capacity via `.clear()`)
+// and zero descents-needing-undo (the loop walks forward only,
+// terminating on `is_terminal`). The "undo" formulation in the
+// doctrine bullet for "scratch-board undo" is the descent-and-
+// backtrack pattern for search trees; rollouts have no backtrack, so
+// the scratch-board character degenerates to "single mutable
+// snapshot + move-assign per ply" — which is what this code does.
+//
+// The per-ply `move-assign` of `corridors::board` is ~120 bytes (3
+// `flags::flags<>` bitsets whose `flip()` is a lazy toggle, plus a
+// handful of `unsigned short` fields and the `_action` record). BFS
+// inside `get_legal_moves` dominates the per-ply cost; further
+// improvement on this surface depends on bitboard wavefront BFS in
+// `board.cpp::check_local_escapable`, which is tracked separately
+// from this row.
 [[gnu::hot]] static double rollout(const Arena &arena, uint32_t node_idx, uint16_t max_plies, RngBackend &rng) {
     const UctNode &node = arena[node_idx];
     State current = node.state;
@@ -235,7 +254,13 @@ SearchOutput run_search(
     }
     std::sort(out.visits.begin(), out.visits.end(),
               [](const auto &a, const auto &b) { return a.first < b.first; });
-    out.chosen_action_id = decode_action_id(arena[best_child].state.b);
+    {
+        const UctNode &chosen = arena[best_child];
+        out.chosen_action_id = decode_action_id(chosen.state.b);
+        out.chosen_equity = chosen.visit_count == 0
+            ? std::numeric_limits<double>::quiet_NaN()
+            : -(chosen.q_sum / static_cast<double>(chosen.visit_count));
+    }
     out.ok = true;
     return out;
 }

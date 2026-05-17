@@ -1,11 +1,9 @@
 // Arena MCTS tree with flat children per Sprint 6.3.
-// Layout matches the C++ steelman (Sprint 5.1):
+// Layout matches the C++ steelman:
 //   * `Vec<Node>` arena indexed by `u32`.
+//   * `Vec<S>` parallel array carrying per-node board state.
 //   * Each parent records `first_child : u32` and `child_count : u16`.
 //   * No per-node `Vec`; children live in a contiguous arena range.
-//   * `#[repr(C)]` + `#[repr(align(64))]` to align with C++'s
-//     `alignas(64)` arena base when sharing layout assumptions across
-//     the FFI is meaningful (the Haskell side never inspects this).
 
 pub const NO_INDEX: u32 = u32::MAX;
 
@@ -40,16 +38,19 @@ impl Node {
     }
 }
 
-pub struct Tree {
+pub struct Tree<S: Clone> {
     nodes: Vec<Node>,
+    states: Vec<S>,
 }
 
-impl Tree {
+impl<S: Clone> Tree<S> {
     #[inline(always)]
-    pub fn with_capacity(capacity: usize) -> Self {
+    pub fn with_capacity_state(capacity: usize, root_state: S) -> Self {
         let mut nodes = Vec::with_capacity(capacity);
+        let mut states = Vec::with_capacity(capacity);
         nodes.push(Node::root());
-        Self { nodes }
+        states.push(root_state);
+        Self { nodes, states }
     }
 
     #[inline(always)]
@@ -57,6 +58,7 @@ impl Tree {
         0
     }
 
+    #[allow(dead_code)]
     #[inline(always)]
     pub fn len(&self) -> usize {
         self.nodes.len()
@@ -72,21 +74,35 @@ impl Tree {
         &mut self.nodes[idx as usize]
     }
 
-    #[inline]
-    pub fn reserve_children(&mut self, count: usize, parent: u32, child_ply: u16) -> u32 {
+    #[inline(always)]
+    pub fn state(&self, idx: u32) -> &S {
+        &self.states[idx as usize]
+    }
+
+    /// Reserve `count` consecutive child slots for `parent`. The
+    /// builder closure produces `(action_id, state)` for each child
+    /// index in [0, count). Returns the arena index of the first
+    /// child.
+    pub fn reserve_children_with<F>(&mut self, count: usize, parent: u32, mut build: F) -> u32
+    where
+        F: FnMut(usize) -> (u8, S),
+    {
         let start = self.nodes.len() as u32;
+        let parent_ply = self.nodes[parent as usize].ply_count;
         for i in 0..count {
+            let (action_id, state) = build(i);
             self.nodes.push(Node {
                 parent,
                 first_child: NO_INDEX,
                 child_count: 0,
-                action_id: i as u8,
+                action_id,
                 expanded: 0,
                 terminal: 0,
                 visits: 0,
                 q_sum: 0.0,
-                ply_count: child_ply,
+                ply_count: parent_ply.saturating_add(1),
             });
+            self.states.push(state);
         }
         start
     }

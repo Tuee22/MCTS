@@ -10,6 +10,7 @@ module MCTS.FFI.CppImperative
     , withCppImperativeBoard
     , withCppImperativeGame
     , withCppImperativeSearchGame
+    , withCppImperativeRecomputeGame
     , loadCppImperativeEnvelope
     , cppImperativeLibraryPath
     ) where
@@ -18,11 +19,13 @@ import Foreign.Ptr (Ptr)
 import MCTS.Error (AppError)
 import MCTS.FFI.Common
     ( DynamicGame
+    , DynamicRecomputeGame
     , DynamicSearchGame
     , EngineEnvelope
     , loadDynamicEnvelope
     , withDynamicBoard
     , withDynamicGame
+    , withDynamicRecomputeGame
     , withDynamicSearchGame
     )
 import MCTS.Types (Backend (CppImperative))
@@ -47,6 +50,11 @@ withCppImperativeSearchGame
     :: (DynamicSearchGame -> IO a) -> IO (Either AppError a)
 withCppImperativeSearchGame =
     withDynamicSearchGame CppImperative cppImperativeLibraryPath "mcts_imperative"
+
+withCppImperativeRecomputeGame
+    :: (DynamicRecomputeGame -> IO a) -> IO (Either AppError a)
+withCppImperativeRecomputeGame =
+    withDynamicRecomputeGame CppImperative cppImperativeLibraryPath "mcts_imperative"
 
 loadCppImperativeEnvelope :: IO (Either AppError EngineEnvelope)
 loadCppImperativeEnvelope =

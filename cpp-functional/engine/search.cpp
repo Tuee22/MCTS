@@ -103,6 +103,10 @@ thread_local std::vector<corridors::board> tls_move_buffer;
     return SelectOutcome{ChildIdx{best_idx}};
 }
 
+// See cpp-imperative/engine/search.cpp::rollout for the Sprint 5.3
+// scratch-board character notes; (iii) shares the same shape because
+// (ii)/(iii) memory layout is byte-comparable per Sprint 6.1's
+// "style isolation, not memory representation" rule.
 [[gnu::hot]] static double rollout(const Arena &arena, uint32_t node_idx, uint16_t max_plies, RngBackend &rng) {
     const UctNode &node = arena[node_idx];
     State current = node.state;
@@ -153,37 +157,59 @@ SearchOutput run_search(
         out.ok = false;
         return out;
     }
+    // Sprint 6.1 functional-style descent: each iteration computes a
+    // `DescentStep` variant (Descend → keep walking; Expand → grow
+    // the tree and re-evaluate; Leaf → rollout from `idx`). The
+    // imperative cohort's equivalent uses a fall-through `while
+    // (true)` with `break`/`continue`; this `std::visit` lowering is
+    // the same machine code under -O3 (LLVM/GCC fuses the variant
+    // switch into a jump table) but the source expresses descent as
+    // a sequence of typed transitions.
+    auto descent_step =
+        [&arena, max_plies, exploration_c](uint32_t idx) -> DescentStep {
+        UctNode &node = arena[idx];
+        if (node.terminal) [[unlikely]] return DescentStep{StepLeaf{idx}};
+        if (!node.expanded) return DescentStep{StepExpand{idx}};
+        const UctNode &n_ref = arena[idx];
+        for (uint16_t i = 0; i < n_ref.n_children; ++i) {
+            if (arena[n_ref.first_child_idx + i].visit_count == 0) {
+                return DescentStep{StepLeaf{n_ref.first_child_idx + i}};
+            }
+        }
+        SelectOutcome outcome = select_best_ucb(arena, idx, exploration_c);
+        if (std::holds_alternative<NoChild>(outcome)) {
+            return DescentStep{StepLeaf{idx}};
+        }
+        return DescentStep{StepDescend{std::get<ChildIdx>(outcome).value}};
+    };
+
     for (uint32_t s = 0; s < sims; ++s) {
         uint32_t idx = root_idx;
-        while (true) {
-            UctNode &node = arena[idx];
-            if (node.terminal) [[unlikely]] break;
-            if (!node.expanded) {
-                expand(arena, idx, max_plies);
-                if (arena[idx].terminal || arena[idx].n_children == 0) break;
-            }
-            const UctNode &n_ref = arena[idx];
-            uint32_t chosen = n_ref.first_child_idx;
-            bool found_unvisited = false;
-            for (uint16_t i = 0; i < n_ref.n_children; ++i) {
-                if (arena[n_ref.first_child_idx + i].visit_count == 0) {
-                    chosen = n_ref.first_child_idx + i;
-                    found_unvisited = true;
-                    break;
-                }
-            }
-            if (!found_unvisited) {
-                SelectOutcome outcome = select_best_ucb(arena, idx, exploration_c);
-                if (std::holds_alternative<NoChild>(outcome)) break;
-                chosen = std::get<ChildIdx>(outcome).value;
-            } else {
-                idx = chosen;
-                break;
-            }
-            idx = chosen;
+        uint32_t leaf_idx = idx;
+        bool reached_leaf = false;
+        while (!reached_leaf) {
+            DescentStep step = descent_step(idx);
+            std::visit(
+                [&](auto &&payload) {
+                    using T = std::decay_t<decltype(payload)>;
+                    if constexpr (std::is_same_v<T, StepDescend>) {
+                        idx = payload.to_idx;
+                    } else if constexpr (std::is_same_v<T, StepExpand>) {
+                        expand(arena, payload.at_idx, max_plies);
+                        if (arena[payload.at_idx].terminal ||
+                            arena[payload.at_idx].n_children == 0) {
+                            leaf_idx = payload.at_idx;
+                            reached_leaf = true;
+                        }
+                    } else if constexpr (std::is_same_v<T, StepLeaf>) {
+                        leaf_idx = payload.idx;
+                        reached_leaf = true;
+                    }
+                },
+                step);
         }
-        const double value = rollout(arena, idx, max_plies, rng);
-        backprop(arena, idx, value);
+        const double value = rollout(arena, leaf_idx, max_plies, rng);
+        backprop(arena, leaf_idx, value);
     }
     const UctNode &root = arena[root_idx];
     out.visits.reserve(root.n_children);
@@ -199,7 +225,13 @@ SearchOutput run_search(
     }
     std::sort(out.visits.begin(), out.visits.end(),
               [](const auto &a, const auto &b) { return a.first < b.first; });
-    out.chosen_action_id = decode_action_id(arena[best_child].state.b);
+    {
+        const UctNode &chosen = arena[best_child];
+        out.chosen_action_id = decode_action_id(chosen.state.b);
+        out.chosen_equity = chosen.visit_count == 0
+            ? std::numeric_limits<double>::quiet_NaN()
+            : -(chosen.q_sum / static_cast<double>(chosen.visit_count));
+    }
     out.ok = true;
     return out;
 }

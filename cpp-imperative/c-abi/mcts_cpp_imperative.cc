@@ -93,22 +93,24 @@ extern "C" int mcts_imperative_is_terminal(const mcts_imperative_board *board) {
     return board->state.is_terminal(kDefaultMaxPlies) ? 1 : 0;
 }
 
+// Sprint 5.3: the engine and C ABI shim both compile under
+// `-fno-exceptions` per the doctrine. The legacy `corridors::board`
+// throws were replaced with `__builtin_trap()` in `board.cpp` /
+// `mcts.hpp`, so no exception can propagate to the C ABI boundary.
+// The previous `try`/`catch (...)` defensive wrappers are removed.
+
 extern "C" uint8_t mcts_imperative_select_uct_move(mcts_imperative_board *board,
                                                    uint64_t seed, uint32_t sims) {
     if (!board || board->state.is_terminal(kDefaultMaxPlies)) return 0;
-    try {
-        auto result = mcts_imperative::run_search(
-            board->state,
-            sims,
-            kDefaultMaxPlies,
-            mcts_imperative::RngBackend::Mt19937,
-            seed);
-        if (!result.ok) return 0;
-        if (apply_action_id(board->state, result.chosen_action_id) != 0) return 0;
-        return result.chosen_action_id;
-    } catch (...) {
-        return 0;
-    }
+    auto result = mcts_imperative::run_search(
+        board->state,
+        sims,
+        kDefaultMaxPlies,
+        mcts_imperative::RngBackend::Mt19937,
+        seed);
+    if (!result.ok) return 0;
+    if (apply_action_id(board->state, result.chosen_action_id) != 0) return 0;
+    return result.chosen_action_id;
 }
 
 extern "C" int32_t mcts_imperative_search_move(
@@ -116,44 +118,50 @@ extern "C" int32_t mcts_imperative_search_move(
     uint8_t *out_action_ids, uint32_t *out_visits, uint8_t *out_chosen) {
     if (!board || !out_action_ids || !out_visits || !out_chosen) return -1;
     if (board->state.is_terminal(kDefaultMaxPlies)) return -1;
-    try {
-        auto result = mcts_imperative::run_search(
-            board->state,
-            sims,
-            kDefaultMaxPlies,
-            mcts_imperative::RngBackend::Mt19937,
-            seed);
-        if (!result.ok) return -1;
-        if (apply_action_id(board->state, result.chosen_action_id) != 0) return -1;
-        const int32_t count = static_cast<int32_t>(result.visits.size());
-        board->last_visits = result.visits;
-        board->last_chosen = result.chosen_action_id;
-        for (int32_t i = 0; i < count; ++i) {
-            out_action_ids[i] = result.visits[i].first;
-            out_visits[i] = result.visits[i].second;
-        }
-        *out_chosen = result.chosen_action_id;
-        return count;
-    } catch (...) {
-        return -1;
+    auto result = mcts_imperative::run_search(
+        board->state,
+        sims,
+        kDefaultMaxPlies,
+        mcts_imperative::RngBackend::Mt19937,
+        seed);
+    if (!result.ok) return -1;
+    if (apply_action_id(board->state, result.chosen_action_id) != 0) return -1;
+    const int32_t count = static_cast<int32_t>(result.visits.size());
+    board->last_visits = result.visits;
+    board->last_chosen = result.chosen_action_id;
+    for (int32_t i = 0; i < count; ++i) {
+        out_action_ids[i] = result.visits[i].first;
+        out_visits[i] = result.visits[i].second;
     }
+    *out_chosen = result.chosen_action_id;
+    return count;
 }
 
 extern "C" int32_t mcts_imperative_recompute_move(
     mcts_imperative_board *board, uint64_t seed, uint32_t sims,
     uint8_t *out_action_ids, uint32_t *out_visits, uint8_t *out_chosen,
     double *out_equity) {
-    if (!out_equity) return -1;
-    *out_equity = std::numeric_limits<double>::quiet_NaN();
-    int32_t count = mcts_imperative_search_move(
-        board, seed, sims, out_action_ids, out_visits, out_chosen);
-    if (count < 0) return count;
-    // The arena search returns the hero-perspective Q at the chosen
-    // child via the last `q_sum / visit_count`; we expose the
-    // negated-parent-perspective equity for the chosen child, matching
-    // the cpp-legacy convention. The shim does not retain the child's
-    // Q across the make-move step, so this remains NaN until the
-    // foreign-engine recompute wires `eq_stream` end-to-end.
+    if (!board || !out_action_ids || !out_visits || !out_chosen || !out_equity) {
+        return -1;
+    }
+    if (board->state.is_terminal(kDefaultMaxPlies)) return -1;
+    auto result = mcts_imperative::run_search(
+        board->state,
+        sims,
+        kDefaultMaxPlies,
+        mcts_imperative::RngBackend::Mt19937,
+        seed);
+    if (!result.ok) return -1;
+    if (apply_action_id(board->state, result.chosen_action_id) != 0) return -1;
+    const int32_t count = static_cast<int32_t>(result.visits.size());
+    board->last_visits = result.visits;
+    board->last_chosen = result.chosen_action_id;
+    for (int32_t i = 0; i < count; ++i) {
+        out_action_ids[i] = result.visits[i].first;
+        out_visits[i] = result.visits[i].second;
+    }
+    *out_chosen = result.chosen_action_id;
+    *out_equity = result.chosen_equity;
     return count;
 }
 
@@ -223,6 +231,27 @@ static uint8_t probe_fp_env(void) {
     return value;
 }
 
+// Sprint 6.5: detect the runtime libm at compile time. Same shape as
+// cpp-functional's helper; kept inline here so the cpp-imperative
+// TU does not need to share a header with cpp-functional.
+static void fill_libm_id(mcts_imperative_envelope *env) {
+    const char *id =
+#if defined(__GLIBC__)
+        "glibc"
+#elif defined(__MUSL__)
+        "musl"
+#elif defined(__APPLE__)
+        "libsystem"
+#else
+        "unknown"
+#endif
+        ;
+    size_t len = std::strlen(id);
+    if (len > sizeof(env->libm_id)) len = sizeof(env->libm_id);
+    std::memcpy(env->libm_id, id, len);
+    env->libm_id_len = static_cast<uint8_t>(len);
+}
+
 static void fill_envelope_once(void) {
     if (g_envelope_ready) return;
     std::memset(&g_envelope, 0, sizeof(g_envelope));
@@ -246,6 +275,7 @@ static void fill_envelope_once(void) {
     std::memcpy(g_envelope.engine_build_id, g_engine_build_id, 32);
     g_envelope.cpu_features = probe_cpu_features();
     g_envelope.fp_env = probe_fp_env();
+    fill_libm_id(&g_envelope);
     g_envelope_ready = 1;
 }
 

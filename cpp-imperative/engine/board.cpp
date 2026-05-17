@@ -220,9 +220,16 @@ unsigned short board::get_heros_shortest_distance() const
 
 // function signature for eval includes the most general case where we have an eval function that returns
 // both a Q value and a policy consisting of a vector of probs corresponding with probs of children
+// Sprint 5.3: replaced `throw std::string(...)` with `__builtin_trap()` so the
+// translation unit compiles under `-fno-exceptions`. The imperative
+// engine never invokes this entry — it routes through
+// `mcts_imperative::run_search`'s arena search, not the legacy
+// `uct_node::eval` ANN-prior path — so the trap is dead code on the
+// supported path.
 void board::eval(const std::vector<board_node_ptr> & children, double & eval_Q, std::vector<double> & eval_probs) const
 {
-    throw std::string("eval not implemented");
+    (void)children; (void)eval_Q; (void)eval_probs;
+    __builtin_trap();
 }
 
 // hash caching with lazy evaluation
@@ -249,14 +256,19 @@ bool board::is_terminal() const
     return hero_wins() || villain_wins();
 }
 
+// Sprint 5.3: replaced the non-terminal-state `throw std::string(...)`
+// with `__builtin_trap()` so this TU compiles under `-fno-exceptions`.
+// The imperative engine never calls this entry — it uses
+// `mcts_imperative::State::terminal_eval` (which is `noexcept` and
+// returns `0.0` on the ply-cap branch) for every rollout — so the
+// trap path is dead code on the supported path.
 double board::get_terminal_eval() const
 {
     if (hero_wins())
         return 1.0;
-    else if (villain_wins())
+    if (villain_wins())
         return -1.0;
-    else
-        throw std::string("Error: can only get eval for board states that are terminal.");
+    __builtin_trap();
 }
 
 std::string board::get_action_text(const bool flip) const

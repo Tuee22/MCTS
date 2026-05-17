@@ -24,7 +24,9 @@ module MCTS.FFI.Common
     , withDynamicBoard
     , withDynamicGame
     , withDynamicSearchGame
+    , withDynamicRecomputeGame
     , DynamicSearchGame (..)
+    , DynamicRecomputeGame (..)
     , loadDynamicEnvelope
     , liftFFI
     ) where
@@ -94,6 +96,22 @@ data DynamicSearchGame = DynamicSearchGame
         :: !(Word64 -> Word32 -> IO (Either AppError (Word8, [(Word8, Word32)])))
     }
 
+-- | Sprint 6.5: dynamically-loaded backend exposing the
+-- `mcts_<backend>_recompute_move(board, seed, sims, out_action_ids,
+-- out_visits, out_chosen, out_equity)` ABI on top of the search
+-- triplet. Returns sorted `(action_id, visits)` records, the chosen
+-- action id, and the parent-perspective `chosen_equity` recovered
+-- from the search tree's chosen child. The Haskell driver layered
+-- on top walks a transcript move-by-move and emits an `EqStream`
+-- usable by `inspect divergence` and the report-card divergence
+-- matrix.
+data DynamicRecomputeGame = DynamicRecomputeGame
+    { recomputeGameBoard :: !(Ptr ())
+    , recomputeGameIsTerminal :: !(IO Bool)
+    , recomputeGameRecomputeMove
+        :: !(Word64 -> Word32 -> IO (Either AppError (Word8, [(Word8, Word32)], Double)))
+    }
+
 -- | `bracket`-style RAII for foreign board handles. The acquirer
 -- allocates via the per-backend `mcts_<backend>_new_board`; the
 -- releaser frees via `mcts_<backend>_free_board`. The body is run only
@@ -156,6 +174,26 @@ foreign import ccall "dynamic"
         -> Ptr Word8
         -> Ptr Word32
         -> Ptr Word8
+        -> IO Int32
+foreign import ccall "dynamic"
+    mkDynamicRecomputeMove
+        :: FunPtr
+            ( Ptr ()
+              -> Word64
+              -> Word32
+              -> Ptr Word8
+              -> Ptr Word32
+              -> Ptr Word8
+              -> Ptr Double
+              -> IO Int32
+            )
+        -> Ptr ()
+        -> Word64
+        -> Word32
+        -> Ptr Word8
+        -> Ptr Word32
+        -> Ptr Word8
+        -> Ptr Double
         -> IO Int32
 foreign import ccall "dynamic" mkDynamicEnvelope :: FunPtr (IO (Ptr ())) -> IO (Ptr ())
 
@@ -257,6 +295,75 @@ withDynamicSearchGame backend libraryPath symbolPrefix body =
                                                     visits <- peekArray count visitsBuf
                                                     chosen <- peek chosenBuf
                                                     pure $ Right (chosen, zip actionIds visits)
+                            }
+            )
+  where
+    actionCount = 209
+
+-- | Sprint 6.5: open a dynamic backend exposing the
+-- `mcts_<backend>_recompute_move` ABI. The body sees a
+-- `DynamicRecomputeGame` whose `recomputeGameRecomputeMove` peeks
+-- the per-move visit vector, chosen action id, and chosen-action
+-- parent-perspective equity out of the foreign engine. Symbol set
+-- is `<prefix>_new_board`, `<prefix>_free_board`,
+-- `<prefix>_is_terminal`, `<prefix>_recompute_move`.
+withDynamicRecomputeGame
+    :: Backend
+    -> FilePath
+    -> String
+    -> (DynamicRecomputeGame -> IO a)
+    -> IO (Either AppError a)
+withDynamicRecomputeGame backend libraryPath symbolPrefix body =
+    liftFFI backend (symbolPrefix <> "_recompute_move") $
+        bracket
+            (DL.dlopen libraryPath [DL.RTLD_NOW])
+            DL.dlclose
+            ( \library -> do
+                newFun <- DL.dlsym library (symbolPrefix <> "_new_board")
+                freeFun <- DL.dlsym library (symbolPrefix <> "_free_board")
+                isTerminalFun <- DL.dlsym library (symbolPrefix <> "_is_terminal")
+                recomputeFun <- DL.dlsym library (symbolPrefix <> "_recompute_move")
+                let isTerminal board' = (/= 0) <$> mkDynamicIsTerminal isTerminalFun board'
+                    recompute' = mkDynamicRecomputeMove recomputeFun
+                bracket (mkBoardNew newFun) (mkBoardFree freeFun) $ \board ->
+                    body
+                        DynamicRecomputeGame
+                            { recomputeGameBoard = board
+                            , recomputeGameIsTerminal = isTerminal board
+                            , recomputeGameRecomputeMove = \seed sims ->
+                                allocaArray actionCount $ \actionIdsBuf ->
+                                    allocaArray actionCount $ \visitsBuf ->
+                                        alloca $ \chosenBuf ->
+                                            alloca $ \equityBuf -> do
+                                                ret <-
+                                                    recompute'
+                                                        board
+                                                        seed
+                                                        sims
+                                                        actionIdsBuf
+                                                        visitsBuf
+                                                        chosenBuf
+                                                        equityBuf
+                                                if ret < 0
+                                                    then
+                                                        pure $
+                                                            Left $
+                                                                FFIFailure
+                                                                    backend
+                                                                    (symbolPrefix <> "_recompute_move")
+                                                                    ("recompute returned " <> show ret)
+                                                    else do
+                                                        let count = fromIntegral ret
+                                                        actionIds <- peekArray count actionIdsBuf
+                                                        visits <- peekArray count visitsBuf
+                                                        chosen <- peek chosenBuf
+                                                        equity <- peek equityBuf
+                                                        pure $
+                                                            Right
+                                                                ( chosen
+                                                                , zip actionIds visits
+                                                                , equity
+                                                                )
                             }
             )
   where

@@ -268,6 +268,26 @@ static uint8_t probe_fp_env(void) {
     return value;
 }
 
+// Sprint 6.5: detect the runtime libm at compile time. Same shape
+// as the cpp-functional / cpp-imperative shims.
+static void fill_libm_id(mcts_legacy_envelope *env) {
+    const char *id =
+#if defined(__GLIBC__)
+        "glibc"
+#elif defined(__MUSL__)
+        "musl"
+#elif defined(__APPLE__)
+        "libsystem"
+#else
+        "unknown"
+#endif
+        ;
+    size_t len = strlen(id);
+    if (len > sizeof(env->libm_id)) len = sizeof(env->libm_id);
+    memcpy(env->libm_id, id, len);
+    env->libm_id_len = static_cast<uint8_t>(len);
+}
+
 static void fill_envelope_once(void) {
     if (g_envelope_ready) return;
     memset(&g_envelope, 0, sizeof(g_envelope));
@@ -291,6 +311,7 @@ static void fill_envelope_once(void) {
     memcpy(g_envelope.engine_build_id, g_engine_build_id, 32);
     g_envelope.cpu_features = probe_cpu_features();
     g_envelope.fp_env = probe_fp_env();
+    fill_libm_id(&g_envelope);
     g_envelope_ready = 1;
 }
 

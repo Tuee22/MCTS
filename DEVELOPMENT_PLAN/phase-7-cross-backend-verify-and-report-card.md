@@ -17,21 +17,28 @@
 ## Phase Status
 
 🔄 **Active**. All five Cabal test stanzas pass under the pinned
-toolchain with the real FFI-backed engines for backends (i), (ii),
-(iii); the cross-backend and legacy-parity stanzas accept a
-well-formed `VerifyMismatch` outcome until backend (iv) Rust gets a
-real engine (tracked in
-[legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md)).
-Same-backend determinism (Q4), the legacy-parity preflight, the Q6
-golden decode, and the per-backend live envelope checks all pass.
-Remaining Phase `7` closure: the `brick`/`vty` interactive TUIs for
-`mcts play` and `mcts inspect replay` (currently non-interactive
-smoke paths), the doctrine-shaped report-card with measured Q1–Q7
-evidence (currently logical placeholders), and the foreign-engine
-recompute sidecar pipeline that ties Sprint 4.7's
-`mcts_legacy_recompute_move` (and its (ii)/(iii) siblings) into
-`mcts inspect divergence`. All three remain on the legacy tracking
-ledger.
+toolchain with the real FFI-backed engines for all four foreign
+backends (i)/(ii)/(iii)/(iv); the cross-backend and legacy-parity
+stanzas accept a well-formed `VerifyMismatch` outcome (the cohort
+agreement contract is owned by Sprint 7.2's final tightening once
+cross-backend RNG plumbing is symmetric). Same-backend determinism
+(Q4), the legacy-parity preflight, the Q6 golden decode, and the
+per-backend live envelope checks all pass. Sprint 7.5 ships
+`divergenceVsEqStream` + foreign-FFI driver paths and three new
+`mcts-cross-backend` envelope-mismatch tests covering host-arch +
+`shared_rng_build_id` cohort-level hard-fails plus the
+`--allow-stale` downgrade for `BackendSlot` mismatches. Sprint 7.4
+ships the move-input parser, the in-app commands
+`:hint`/`:undo`/`:save`/`:quit`/`:q`, the `runPlay → runInteractivePlay`
+TTY hookup, and `MCTS.CLI.Tui.Replay` with forward/back/home/end
+navigation through a transcript (pure dispatchers unit-tested).
+Remaining Phase `7` closure: wire `mcts inspect replay` to the new
+brick TUI, the multi-backend equity overlay, and the doctrine-
+shaped report-card with measured Q1–Q7 evidence — initial Q1 ST
+snapshot lands at **0.89×** (Haskell faster than non-PGO cpp-imperative
+smoke); Q2 ST at sims=500 lands at **1.03×** (within tolerance) and
+at sims=1000 at **1.13×** (in the PGO-attributable band), per
+`documents/engineering/compiler_runtime_tuning.md`.
 
 ## Phase Summary
 
@@ -236,11 +243,38 @@ constraint at the type level and `LegacyParityBackend` requiring (i) at parse ti
   runners. `cabal test mcts-cross-backend` exercises the four-backend `(ii)..(v)`
   round-robin under `--rng cpp` (single-threaded), and additionally asserts the
   cohort-constraint surface rejects (a) a cohort containing `cpp-legacy` and (b) a
-  single-backend cohort, both with `AppError VerifyCohortTooSmall`.
+  single-backend cohort, both with `AppError VerifyCohortTooSmall`. Three Sprint
+  7.5 envelope-mismatch tests cover `host_arch` + `shared_rng_build_id` cohort-
+  level hard-fails and the `--allow-stale` downgrade for `BackendSlot` mismatches.
   `cabal test mcts-legacy-parity` exercises the full-five-backend cohort under the
   legacy envelope and asserts a cohort missing `cpp-legacy` is rejected.
-- Replace logical in-process comparisons with the real FFI-backed `(ii)..(v)` cohort
-  and real legacy-parity cohort.
+- Sprint 7.2 RNG-salt refinement closure: `MCTS.Rng.Mix.backendNativeSalt` is
+  the single source of truth for the per-backend `--rng native` salt; it is
+  shared across `Driver.uctChooseMove`, `Engine.Recompute.recomputeGame`, and
+  `Engine.ForeignRecompute.recomputeGameMoves`, and is asserted as zero under
+  `--rng cpp` and pairwise distinct under `--rng native` in
+  `mcts-unit::exerciseBackendNativeSalt`.
+- Sprint 7.2 heuristic-drop closure, 2026-05-17: `src/MCTS/Search/UCT.hs::pickByUctIndex`
+  no longer tiebreaks unvisited children by `nonTerminalRank`; the tiebreaker is now
+  `(negate score, actionByte)` matching the C++/Rust first-unvisited-child policy.
+  `finalChoiceKey` also drops the heuristic and equity components, leaving only
+  `(negate visits, actionId)` consistent with `cpp-imperative/engine/search.cpp::run_search`'s
+  `if (child.visit_count > best_visits) { ... }` discipline. `MCTS.Verify.comparable` sorts the
+  visit list by `action_id` and filters zero-visit entries so per-backend
+  child-enumeration shape (e.g. cpp-imperative emitting all 128 wall slots vs. Rust /
+  Haskell capping at 12) does not block the visit-count contract. The
+  `nonTerminalRank` function stays exported for standalone test coverage at
+  `test/unit/Main.hs`. `cabal test all` + `mcts check-code` green; the `mcts-cross-backend`
+  stanza continues to accept a well-formed `VerifyMismatch` because the deeper
+  cross-backend tree-shape gap (wall-enumeration cap divergence, post-move flip
+  orientation conventions) remains owned by the legacy-deletion item below.
+- Cohort tree-shape alignment (residual): cpp-imperative emits every legal wall slot
+  while Rust and Haskell cap at 12 (`take 12 (wallMoves board)` /
+  `if count >= 12 { break; }`), and the post-move flip orientation conventions are
+  not identical across (ii)..(v). The heuristic-drop above closes the
+  selection-policy gap; the remaining `VerifyMismatch` surface on multi-move runs
+  belongs to a future cohort tree-shape alignment item (not part of Sprint 7.2's
+  contract).
 - Enforce the final `VerifyBackend` / `LegacyParityBackend` GADT shapes rather than
   the current ADT + parser checks.
 - Add external legacy fixture coverage for Q6/Q7.
@@ -427,15 +461,30 @@ so the contract is reviewable in one place:
   test mode and separate smoke vs full gates if needed.
 - Add JSON/golden coverage for the final tidy report-card summary.
 
-## Sprint 7.4: `mcts play` and `mcts inspect replay` TUIs ⏸️
+## Sprint 7.4: `mcts play` and `mcts inspect replay` TUIs 🔄
 
-**Status**: Blocked (cabal solver cannot resolve `brick` against GHC
-9.14.1's installed `text 2.1.3` / `containers 0.8` / `base 4.22.0.0`
-triple — every `brick`-eligible `config-ini` version conflicts with
-those bounds). Closure requires an upstream `brick` / `config-ini`
-release with compatible bounds. Tracked in
-[legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md).
-**Blocked by**: upstream `brick` / `config-ini` compatibility with GHC 9.14.1
+**Status**: Active (substantively closed). The TUI surface is:
+`MCTS.CLI.Tui.Board` (9×9 board widget); `MCTS.CLI.Tui.Play` (brick
+`App` with legacy-notation move input + `:hint`/`:undo`/`:save`/
+`:quit`/`:q`); `MCTS.CLI.Tui.Replay` (brick `App` with forward/
+back/home/end navigation, multi-backend equity overlay column
+populated from cached `.eq` sidecars via `currentOverlayRows`,
+and a bounded `Map.Map Int Board` snapshot cache that warms the
+nearest predecessor each navigation step so long-transcript
+forward/back is amortised O(1) on the cache size; the
+`--cache-states N` operator flag overrides the cache bound).
+`MCTS.App.runPlay` dispatches to `runInteractivePlay` when stdin
+is a TTY; `MCTS.CLI.Inspect.inspectReplay` dispatches to
+`runReplayTuiFromState` on a TTY with the operator-configured
+state including loaded cached sidecars. Pure dispatchers
+(`applyUserInput`, `applyReplayKey`, `currentOverlayRows`,
+`boardWithCache`) are unit-tested in `mcts-unit::exerciseTuiPlayInput`,
+`mcts-unit::exerciseTuiReplayNav`, `mcts-unit::exerciseTuiReplayOverlay`.
+Sprint 7.4 is effectively closed at the worktree surface; the
+remaining gates are the multi-minute Q5 / report-card workload and
+the amd64 PGO+BOLT bar (Sprint 7.3, 8.3).
+**Blocked by**: none (upstream `brick` / `config-ini` compatibility
+landed under the `allow-newer` constraint)
 **Implementation**: `src/MCTS/App.hs` (`runPlay` smoke path),
 `src/MCTS/CLI/Inspect.hs` (`inspectReplay` smoke path),
 `src/MCTS/CLI/Spec.hs` (Play and Inspect.Replay subtrees)

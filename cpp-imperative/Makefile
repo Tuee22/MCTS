@@ -7,10 +7,13 @@
 CXX ?= g++
 # Doctrine C++23 base flag set per
 # DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md → Sprint 5.1.
-# `-fno-exceptions` is deferred — the engine reuses the legacy core
-# which throws `std::string` for internal error paths. Tracked in
-# legacy-tracking-for-deletion.md.
-CXXFLAGS ?= -std=c++23 -O3 -march=native -mtune=native -flto -fno-plt -fno-semantic-interposition -fvisibility=hidden -fvisibility-inlines-hidden -fPIC -Wno-pessimizing-move -Iengine
+# Sprint 5.3 closure: `-fno-exceptions` enabled; the legacy
+# `corridors::board::eval` / `get_terminal_eval` and `mcts.hpp`
+# `lexical_cast` throws were replaced with `__builtin_trap()` because
+# the imperative engine never exercises those failure paths. The C ABI
+# shim's defensive `try`/`catch (...)` wrappers were also removed
+# because no exception can propagate from the engine TU.
+CXXFLAGS ?= -std=c++23 -O3 -march=native -mtune=native -flto -fno-plt -fno-semantic-interposition -fvisibility=hidden -fvisibility-inlines-hidden -fno-exceptions -fPIC -Wno-pessimizing-move -Iengine
 LDFLAGS ?= -shared -flto
 LDLIBS ?= -lmimalloc
 

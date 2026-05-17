@@ -15,15 +15,18 @@ import MCTS.CLI.Output
 import MCTS.CLI.Parser (parseCommand)
 import MCTS.CLI.Test (runTestCommand)
 import MCTS.CLI.Tree (renderCommandList, renderCommandTree)
+import qualified MCTS.CLI.Tui.Play as TuiPlay
 import MCTS.CLI.Verify (runVerifyCommand)
 import MCTS.CheckCode (runCheckCode)
 import MCTS.Driver (defaultRunInputs)
 import qualified MCTS.Driver as Driver
 import MCTS.Driver.Dispatch (runBatchDispatch)
 import qualified MCTS.Env as Env
-import MCTS.Types (Backend, RngSource (NativeRng), Workload (Selfplay), backendIdentifier)
+import MCTS.Types (Backend, RngSource (NativeRng), backendIdentifier, simPerMove)
+import qualified MCTS.Types as Types
 import System.Environment (getArgs)
 import System.Exit (ExitCode (..), exitWith)
+import System.IO (hIsTerminalDevice, stdin)
 
 main :: IO ()
 main = do
@@ -73,11 +76,29 @@ runCommand command =
 
 runPlay :: PlayOptions -> Env.App ExitCode
 runPlay options = do
+    interactive <- liftIO (hIsTerminalDevice stdin)
+    if interactive
+        then runPlayInteractive options
+        else runPlayBatch options
+
+-- | Sprint 7.4 hookup: when stdin is a TTY, run the interactive
+-- `brick` event loop in `MCTS.CLI.Tui.Play`. Otherwise fall back to
+-- the non-interactive batch smoke that the harness exercises.
+runPlayInteractive :: PlayOptions -> Env.App ExitCode
+runPlayInteractive options = do
+    let seed = maybe 42 fromIntegral (playSeed options) :: Integer
+        sims = max 1 (simPerMove (playSims options))
+        maxPlies = Types.runMaxPlies mempty
+    _ <- liftIO (TuiPlay.runInteractivePlay (fromIntegral seed) maxPlies sims)
+    pure ExitSuccess
+
+runPlayBatch :: PlayOptions -> Env.App ExitCode
+runPlayBatch options = do
     let seed = maybe 42 fromIntegral (playSeed options)
         inputs =
             defaultRunInputs
                 { Driver.inputBackend = playBackend options
-                , Driver.inputWorkload = Selfplay
+                , Driver.inputWorkload = Types.Selfplay
                 , Driver.inputRng = NativeRng
                 , Driver.inputGames = 1
                 , Driver.inputSeed = fromIntegral (seed :: Integer)

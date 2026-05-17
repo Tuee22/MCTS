@@ -13,7 +13,11 @@
 
 #define MAX_ROLLOUT_ITERS 10000
 
-// Boost replacement lexical_cast
+// Boost replacement lexical_cast. Sprint 5.3: trap on conversion
+// failure instead of throwing so the cpp-imperative engine TU
+// compiles under `-fno-exceptions`. The imperative engine never
+// exercises the failure paths (every caller is
+// arithmetic → string).
 template<typename Target, typename Source>
 Target lexical_cast(const Source& source) {
     if constexpr (std::is_same_v<Target, std::string>) {
@@ -29,7 +33,7 @@ Target lexical_cast(const Source& source) {
             std::istringstream iss(source);
             Target result;
             if (!(iss >> result)) {
-                throw std::runtime_error("lexical_cast conversion failed");
+                __builtin_trap();
             }
             return result;
         }
@@ -41,7 +45,7 @@ Target lexical_cast(const Source& source) {
     std::istringstream iss(oss.str());
     Target result;
     if (!(iss >> result)) {
-        throw std::runtime_error("lexical_cast conversion failed");
+        __builtin_trap();
     }
     return result;
 }

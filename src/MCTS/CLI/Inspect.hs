@@ -1,3 +1,5 @@
+{-# LANGUAGE ScopedTypeVariables #-}
+
 module MCTS.CLI.Inspect
     ( runInspect
     , InspectRow (..)
@@ -5,21 +7,31 @@ module MCTS.CLI.Inspect
     , renderTranscript
     ) where
 
+import Control.Exception.Safe (IOException)
+import qualified Control.Exception.Safe as Catch
 import Control.Monad.IO.Class (liftIO)
+import qualified Data.ByteString as BS
 import Data.List (intercalate, sortOn)
 import MCTS.CLI.Command
 import MCTS.CLI.Output (OutputFormat (..), OutputOptions (..), outputLine, renderErrorString)
+import qualified MCTS.CLI.Tui.Replay as ReplayTui
+import qualified MCTS.Engine.ForeignRecompute as ForeignRecompute
 import qualified MCTS.Engine.Recompute as Recompute
 import qualified MCTS.Env as Env
+import qualified MCTS.Error
+import MCTS.FFI.CppFunctional (cppFunctionalLibraryPath, withCppFunctionalRecomputeGame)
+import MCTS.FFI.CppImperative (cppImperativeLibraryPath, withCppImperativeRecomputeGame)
+import MCTS.FFI.Rust (rustLibraryPath, withRustRecomputeGame)
 import MCTS.Notation (renderMove, renderWinner)
 import MCTS.Plan (Plan (..), PlanOptions (..), renderPlanWith, writePlanFile)
 import MCTS.Transcript
 import MCTS.Transcript.EquitySidecar
 import MCTS.Types
 import MCTS.Verify.Divergence
-import System.Directory (getModificationTime)
+import System.Directory (doesFileExist, getModificationTime)
 import System.Exit (ExitCode (..))
 import System.FilePath (takeBaseName)
+import System.IO (hIsTerminalDevice, stdin)
 
 runInspect :: InspectCommand -> Env.App ExitCode
 runInspect command = do
@@ -262,12 +274,65 @@ inspectReplay output options = do
             case decoded of
                 Left err -> outputLine (renderErrorString output err) >> pure 1
                 Right transcript -> do
-                    let totalMoves = sum (map (length . gameMoves) (transcriptGames transcript))
-                        hashValue = take 8 (takeBaseName path)
-                    outputLine (hashValue <> " | move 0 / " <> show totalMoves <> " | press ? for help")
-                    outputLine
-                        ("top=" <> show (replayTopN options) <> " cache-states=" <> show (replayCacheStates options))
-                    pure 0
+                    interactive <- hIsTerminalDevice stdin
+                    if interactive
+                        then runReplayInteractive options (takeBaseName path) transcript
+                        else runReplayNonInteractive output options path transcript
+
+-- | Sprint 7.4: interactive `brick` TUI for `mcts inspect replay`.
+-- Dispatches to `MCTS.CLI.Tui.Replay.runReplayTuiWithOverlays` so
+-- the operator gets forward/back navigation plus the per-backend
+-- equity overlay column populated from cached `.eq` sidecars. The
+-- `--cache-states` operator flag overrides the default snapshot
+-- cache size on the replay state.
+runReplayInteractive :: ReplayOptions -> String -> Transcript -> IO Int
+runReplayInteractive options hashValue transcript = do
+    overlays <- loadOverlayStreams (replayCacheDir options) hashValue
+    let baseState = ReplayTui.initialReplayStateWithOverlays hashValue transcript overlays
+        configuredState = baseState{ReplayTui.replayCacheStates = max 1 (replayCacheStates options)}
+    _ <- ReplayTui.runReplayTuiFromState configuredState
+    pure 0
+
+-- | Load every cached `EqStream` whose transcript-hash slot matches
+-- `hashValue`. Read failures and decode failures silently drop the
+-- offending sidecar so a corrupt cache slot does not block the TUI.
+loadOverlayStreams :: Maybe FilePath -> String -> IO [EqStream]
+loadOverlayStreams cacheDir hashValue = do
+    entries <-
+        filter ((== hashValue) . sidecarTranscriptHash)
+            <$> listEquitySidecars cacheDir
+    fmap (concatMap pickRight) (mapM readEntry entries)
+  where
+    pickRight x = case x of
+        Right s -> [s]
+        Left () -> []
+
+    readEntry :: SidecarEntry -> IO (Either () EqStream)
+    readEntry entry = do
+        bytes <-
+            ( do
+                content <- BS.readFile (sidecarEqPath entry)
+                pure (Right content)
+            )
+                `Catch.catch` (\(_ :: IOException) -> pure (Left ()))
+        pure $ case bytes of
+            Left _ -> Left ()
+            Right raw -> case decodeEqStream raw of
+                Left _ -> Left ()
+                Right stream -> Right stream
+
+-- | Non-TTY fallback: render the same one-line status that callers
+-- previously consumed when redirecting `mcts inspect replay` into
+-- another process or a fixture.
+runReplayNonInteractive
+    :: OutputOptions -> ReplayOptions -> FilePath -> Transcript -> IO Int
+runReplayNonInteractive _output options path transcript = do
+    let totalMoves = sum (map (length . gameMoves) (transcriptGames transcript))
+        hashValue = take 8 (takeBaseName path)
+    outputLine (hashValue <> " | move 0 / " <> show totalMoves <> " | press ? for help")
+    outputLine
+        ("top=" <> show (replayTopN options) <> " cache-states=" <> show (replayCacheStates options))
+    pure 0
 
 inspectCacheList :: OutputOptions -> Maybe FilePath -> IO Int
 inspectCacheList output cacheDir = do
@@ -384,20 +449,114 @@ inspectDivergence output options = do
             case decoded of
                 Left err -> outputLine (renderErrorString output err) >> pure 1
                 Right transcript -> do
+                    let transcriptHash = takeBaseName path
                     sidecars <-
-                        filter ((== takeBaseName path) . sidecarTranscriptHash)
+                        filter ((== transcriptHash) . sidecarTranscriptHash)
                             <$> listEquitySidecars (divergenceCacheDir options)
                     let origin = backendIdentifier (envelopeBackend (transcriptEnvelope transcript))
-                        labels =
-                            case sidecars of
-                                [] -> [origin <> "/origin"]
-                                entries -> [origin <> "/" <> backendIdentifier (sidecarBackend entry) | entry <- entries]
-                        metrics = divergenceRate transcript transcript
-                    outputLine (renderDivergence output (takeBaseName path) (length sidecars) labels metrics)
+                    sidecarRows <- case sidecars of
+                        [] ->
+                            pure
+                                [
+                                    ( origin <> "/origin"
+                                    , divergenceRate transcript transcript
+                                    )
+                                ]
+                        entries -> mapM (loadSidecarMetrics transcript origin) entries
+                    foreignRows <- foreignRecomputeRows transcriptHash transcript origin
+                    let rows = sidecarRows <> foreignRows
+                    outputLine (renderDivergence output transcriptHash (length sidecars) rows)
                     pure 0
 
-renderDivergence :: OutputOptions -> String -> Int -> [String] -> DivergenceMetrics -> String
-renderDivergence output hashValue sidecarCount labels metrics =
+-- | Sprint 7.5: when a foreign cdylib is present in the worktree,
+-- drive `mcts_<backend>_recompute_move` through it for the current
+-- transcript and add one row per available backend to the divergence
+-- output. The row label is `<origin>/foreign:<backend>` so consumers
+-- can tell sidecar-derived metrics from live-FFI-derived ones.
+foreignRecomputeRows :: String -> Transcript -> String -> IO [(String, DivergenceMetrics)]
+foreignRecomputeRows transcriptHash transcript origin = do
+    rows <-
+        mapM
+            (tryForeignRow transcript origin)
+            [
+                ( CppImperative
+                , cppImperativeLibraryPath
+                , ForeignRecompute.foreignRecomputeEqStream
+                    CppImperative
+                    transcriptHash
+                    "live"
+                    withCppImperativeRecomputeGame
+                    transcript
+                )
+            ,
+                ( CppFunctional
+                , cppFunctionalLibraryPath
+                , ForeignRecompute.foreignRecomputeEqStream
+                    CppFunctional
+                    transcriptHash
+                    "live"
+                    withCppFunctionalRecomputeGame
+                    transcript
+                )
+            ,
+                ( Rust
+                , rustLibraryPath
+                , ForeignRecompute.foreignRecomputeEqStream
+                    Rust
+                    transcriptHash
+                    "live"
+                    withRustRecomputeGame
+                    transcript
+                )
+            ]
+    pure (concat rows)
+
+tryForeignRow
+    :: Transcript
+    -> String
+    -> (Backend, FilePath, IO (Either MCTS.Error.AppError EqStream))
+    -> IO [(String, DivergenceMetrics)]
+tryForeignRow transcript origin (backend, libPath, driver) = do
+    present <- doesFileExist libPath
+    if not present
+        then pure []
+        else do
+            result <-
+                driver
+                    `Catch.catch` ( \(e :: IOException) -> pure (Left (MCTS.Error.FFIFailure backend "foreignRecomputeEqStream" (show e)))
+                                  )
+            case result of
+                Left _ -> pure []
+                Right stream ->
+                    pure
+                        [
+                            ( origin <> "/foreign:" <> backendIdentifier backend
+                            , divergenceVsEqStream transcript stream
+                            )
+                        ]
+
+-- | Sprint 7.5: load a `.eq` sidecar and compute the
+-- transcript-vs-recompute divergence metrics through
+-- `divergenceVsEqStream`. On decode failure, fall back to the
+-- self-pair zero metrics so the CLI still emits a row.
+loadSidecarMetrics :: Transcript -> String -> SidecarEntry -> IO (String, DivergenceMetrics)
+loadSidecarMetrics transcript origin entry = do
+    bytes <-
+        ( do
+            content <- BS.readFile (sidecarEqPath entry)
+            pure (Right content)
+        )
+            `Catch.catch` (\e -> pure (Left (e :: IOException)))
+    case bytes of
+        Left _ -> pure (label, divergenceRate transcript transcript)
+        Right raw -> case decodeEqStream raw of
+            Left _ -> pure (label, divergenceRate transcript transcript)
+            Right stream -> pure (label, divergenceVsEqStream transcript stream)
+  where
+    label = origin <> "/" <> backendIdentifier (sidecarBackend entry)
+
+renderDivergence :: OutputOptions -> String -> Int -> [(String, DivergenceMetrics)] -> String
+renderDivergence output hashValue sidecarCount rows =
     case outputFormat output of
         JsonFormat ->
             "{\"transcript\":\""
@@ -416,7 +575,7 @@ renderDivergence output hashValue sidecarCount labels metrics =
                         <> ",\"equity_l2_drift\":"
                         <> show (equityL2Drift metrics)
                         <> "}"
-                    | label <- labels
+                    | (label, metrics) <- rows
                     ]
                 <> "]}"
         _ ->
@@ -427,7 +586,7 @@ renderDivergence output hashValue sidecarCount labels metrics =
                         <> show sidecarCount
                   )
                     : "backend-pair visit_disagreement_rate move_disagreement_rate equity_l2_drift"
-                    : map (`renderDivergenceMetrics` metrics) labels
+                    : [renderDivergenceMetrics label metrics | (label, metrics) <- rows]
                 )
 
 pad :: Int -> String -> String

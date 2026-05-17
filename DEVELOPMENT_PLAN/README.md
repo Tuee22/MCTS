@@ -35,10 +35,39 @@ Phase `0` is `Done`: Sprint `0.1` (plan-suite bootstrap) closed on initial
 commit and Sprint `0.2` (doctrine-driven scheduling audit) closed on
 2026-05-14 with the audit replay recorded in
 [phase-0-planning-documentation.md](phase-0-planning-documentation.md).
-Phases `1`, `2`, and `3` are `Done`; Phases `4` through `7` are now
+Phases `1`–`5` are `Done`; Phases `6`, `7`, and `8` are now
 `Active` on an implementation baseline that includes: a Cabal package with the
 pinned GHC 9.14.1 / Cabal 3.16.1.0
 toolchain plus the doctrine-standard dependency envelope in `mcts.cabal`;
+Sprint `6.3` closed on 2026-05-16 with the Rust Corridors gameplay port
+(8x8 bitfield walls, iterative BFS escapability, post-move 180-degree flip
+via `u64::reverse_bits`, uniform-random rollout over real legal moves)
+landing in `rust/src/board.rs`, `rust/src/rollout.rs`, and `rust/src/search.rs`,
+plus `MCTS.Driver.Dispatch.runBatchDispatch` routing `--backend rust` through
+`runForeignSearchGame withRustSearchGame` whenever the cdylib is present;
+the cpp-imperative, cpp-functional, and Rust `mcts_*_recompute_move` C ABIs
+now stream real parent-perspective `chosen_equity` from the search tree
+(Sprint `6.5` partial closure); `MCTS.Verify.Divergence.divergenceVsEqStream`
+scores transcripts against sidecar `EqStream`s and `mcts inspect divergence`
+emits per-sidecar metrics (Sprint `7.5` partial closure); `cabal.project`
+relaxes `config-ini`'s `containers`/`base` upper bounds so `brick-2.12` +
+`vty-6.5` resolve under GHC `9.14.1` (Sprint `7.4` unblock) with
+`src/MCTS/CLI/Tui/Board.hs` rendering the 9×9 board widget through
+`brick`; Sprint `8.2` has run three profile-driven rounds. Round 1 (`IntSet`-backed
+BFS) shipped ~6.2× speedup; round 2 (strict-pair `Word64` visited bitmap)
+regressed and was reverted; round 3 (wavefront-bitmap BFS over a strict
+`Bits128` pair with precomputed direction-block masks) shipped a further
+**~52× on legal-moves and ~33× on uct-search** (combined with round 1
+that's **~320× / ~200×** vs the original list-based baseline). The
+updated Q1 ST snapshot collapses Haskell-vs-cpp-imperative from 10.76×
+(`Shortfall 9.76`) to **0.89×** (Haskell *faster* than the non-PGO
+smoke library); the parity verdict against the PGO+BOLT cdylib remains
+`Pending`. The `MCTS.Engine.ForeignRecompute` driver feeds
+`MCTS.Verify.Divergence.divergenceVsEqStream` end-to-end through
+`mcts inspect divergence`. `MCTS.CLI.Tui.Play` ships a brick `App`
+event loop for `mcts play` with legacy-notation move input and the
+in-app `:hint`/`:undo`/`:save`/`:quit` commands (pure
+`applyUserInput` dispatcher unit-tested);
 the thin `app/Main.hs`;
 the `CommandSpec` registry; the `optparse-applicative` parser rendered from
 that registry via `commandParserInfo`; the full v1 transcript codec with the
@@ -56,17 +85,20 @@ driver; deterministic multi-worker game dispatch; the pinned monotonic clock
 (`getMonotonicTimeNSec`) for bench timing with an injectable test hook;
 baseline equity-sidecar cache inspection/pruning with originator markers and Plan/Apply
 pruning; layered envelope verify (cohort-invariant +
-per-backend-slot fields); smoke-buildable foreign-backend placeholder trees
-with doctrine-shaped envelope C ABI accessors under the current symbol prefixes
+per-backend-slot fields); real arena-MCTS foreign-backend engines under
+`cpp-legacy/legacy-core/`, `cpp-imperative/engine/`, `cpp-functional/engine/`,
+and `rust/src/` exposing the doctrine-shaped envelope C ABI accessors
 (`mcts_legacy_get_envelope`, `mcts_imperative_get_envelope`,
-`mcts_functional_get_envelope`, `mcts_rust_get_envelope`); bounded Haskell FFI smoke
-drivers that allocate each foreign backend through its dynamic C ABI, run a smoke
-self-play game, and record chosen-move visit counts when the shared libraries are
-present; dynamic Haskell loaders for each foreign backend's live envelope struct; C++
-backends (ii) and (iii) smoke builds using the doctrine C++23 flag set with
-hidden visibility, default-visible C ABI exports, and `mimalloc`; backend (iv)
-Rust split into the planned module topology with `mimalloc::MiMalloc` as the
-global allocator; split generated-artifact registries in
+`mcts_functional_get_envelope`, `mcts_rust_get_envelope`); full
+visit-vector Haskell FFI drivers that drive backends (i), (ii), and (iii)
+through `withDynamicSearchGame` plus dynamic envelope loaders for all four
+foreign backends; C++ backends (ii) and (iii) compile under the doctrine C++23
+flag set with hidden visibility, default-visible C ABI exports, and `mimalloc`,
+with the `cpp-imperative` 11-step PGO+BOLT pipeline closed under Sprint `5.3`;
+backend (iv) Rust split into the planned module topology with `mimalloc::MiMalloc`
+as the global allocator and the `rustPgoBoltPlan` Plan/Apply harness landed
+(the Corridors gameplay port remains a ledger residue, so the operator-facing
+`--backend rust` path keeps the in-process logical UCT for now); split generated-artifact registries in
 `MCTS.Generated.Paths` and `MCTS.Generated.Sections` with marker-delimited
 `GeneratedSectionRule` support and the governed CLI command matrix generated
 inside `documents/engineering/cli_command_surface.md`; the full
@@ -82,18 +114,22 @@ transcript wire format and the CLI surfaces, and all five Cabal test-suite
 stanzas. The validation gate for this baseline
 remains `cabal test all` under the pinned GHC `9.14.1` toolchain.
 
-This is **not** the final parity-proven architecture. The implemented backend cohort is
-a deterministic logical baseline used to validate the CLI, transcript, cache, and test
-surfaces, with bounded FFI smoke coverage proving that the foreign shared
-libraries can be reached from Haskell. The real sprint-owned remaining work is
-still explicit: full visit-vector foreign-engine drivers and recompute
-sidecars, the C++23 imperative and functional engines beyond their smoke
-libraries, the Rust engine beyond its smoke `cdylib`, the PGO+BOLT and static
-allocator-link pipelines, the tree-persistent / bitboard Haskell performance
-engine, the `brick` / `vty` TUIs, external legacy golden fixtures, and the
-Phase `8` performance-parity proof remain open. Those surfaces stay `Active` /
-`Planned` rather than being marked `Done` until their validation gates pass
-against the real artefacts.
+This is **not** the final parity-proven architecture. All four foreign
+backends — (i) cpp-legacy, (ii) cpp-imperative, (iii) cpp-functional, and
+(iv) rust — now dispatch through real arena-MCTS engines behind the
+visit-vector C ABI when their shared libraries are present. The Rust
+backend, in particular, drives a real Corridors gameplay loop (pawn moves
++ wall placement + BFS escapability) emitting canonical action IDs. The
+real sprint-owned remaining work stays explicit: foreign-engine recompute
+streaming into `MEQ1` sidecars, the backend (iii) functional-style engine
+internals (the functional-style API surface is in place, the engine source
+still re-uses the verbatim legacy core), the `cpp-functional` and `rust`
+PGO+BOLT install closures, the criterion-driven Haskell hot-path tuning,
+the `brick`/`vty` TUIs (Blocked on upstream cabal solver compatibility
+with GHC 9.14.1), and the Phase `8` performance-parity proof against the
+PGO+BOLT C++ steelman. Those surfaces stay `Active` / `Planned` / `Blocked`
+rather than being marked `Done` until their validation gates pass against
+the real artefacts.
 
 ## Document Index
 
@@ -146,10 +182,10 @@ A sprint can move to `Done` only when all of the following are true:
 | 2 | Transcript Codec, RNG, and Determinism Contract | ✅ Done (full v1 transcript/envelope codec, cache lookup, splitmix, MEQ1 sidecars, originator markers) | [phase-2-transcript-codec-and-determinism.md](phase-2-transcript-codec-and-determinism.md) |
 | 3 | Backend (v) Haskell Engine | ✅ Done (strict Word64 board baseline, recursive ST-arena UCT, deterministic tie-break, bench wiring, recompute) | [phase-3-haskell-engine.md](phase-3-haskell-engine.md) |
 | 4 | Backend (i) C++ Legacy Port and FFI Bridge | ✅ Done (legacy core, FFI bindings, shared C++ RNG, full transcript driver via `mcts_legacy_search_move`, external Q6 fixtures via `legacy-to-wire`, verify legacy-parity routed through real backend (i), envelope post-link patch + runtime CPU/FP probes + foreign-engine recompute landed) | [phase-4-cpp-legacy-port-and-ffi-bridge.md](phase-4-cpp-legacy-port-and-ffi-bridge.md) |
-| 5 | Backend (ii) C++ Imperative Steelman with PGO+BOLT | ✅ Done (Sprints 5.1/5.2/5.3/5.4/5.5 closed: arena-MCTS steelman engine — flat children, Word16 ply counter, thread_local move buffer, __builtin_prefetch, alignas(64); 11-step typed Subprocess PGO+BOLT pipeline with BOLT `-instrument` self-recording; idempotence + failure-mode tests; the `-fno-exceptions` engine TU and per-rollout scratch-board undo are tracked in the ledger) | [phase-5-cpp-imperative-steelman.md](phase-5-cpp-imperative-steelman.md) |
-| 6 | Backends (iii) C++ Functional-Style and (iv) Rust | 🔄 Active (Sprint 6.1 lands the cpp-functional arena-MCTS engine with `std::optional`/`std::variant` API; Sprint 6.2 ships the visit-vector dispatch + shared PGO+BOLT plan; Sprint 6.3 ships a real Rust arena-MCTS with xoshiro256++ and the full visit-vector C ABI; Sprint 6.4 ships the rustc PGO+BOLT Plan/Apply harness via `rustPgoBoltPlan`. The Rust Corridors gameplay port from `cpp-legacy/legacy-core/board.cpp` — wall placement, jump moves, BFS escapability — is the remaining open item) | [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md) |
-| 7 | Cross-Backend Verify, Test Stanzas, POC Report Card | 🔄 Active (Sprint 7.5 per-game writer migration closed; Sprint 7.4 `brick`/`vty` TUIs Blocked on upstream cabal solver compatibility with GHC 9.14.1; Sprint 7.3 measured Q1–Q7 report-card evidence still requires the typed `ReportCard` data-flow refactor + multi-minute pinned workload measurement) | [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md) |
-| 8 | Haskell Performance Parity Closure | 🔄 Active (Sprint 8.1 closed: full LLVM-driven GHC flag set with `-fllvm` + RTS pin + INLINABLE baseline ships; SPECIALIZE is a no-op for the current monomorphic kernel; `MutableByteArray#` migration deferred to profile-driven Sprint 8.2; Sprints 8.2/8.3 require criterion micro-benchmarks + Q1+Q2 measured parity ratio against the C++ steelman) | [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md) |
+| 5 | Backend (ii) C++ Imperative Steelman with PGO+BOLT | ✅ Done (Sprints 5.1/5.2/5.3/5.4/5.5 closed: arena-MCTS steelman engine — flat children, Word16 ply counter, thread_local move buffer, __builtin_prefetch, alignas(64); 11-step typed Subprocess PGO+BOLT pipeline with BOLT `-instrument` self-recording; idempotence + failure-mode tests; cpp-imperative + cpp-functional engine TUs and C ABI shims compile under `-fno-exceptions`; per-rollout scratch-board undo is the only remaining ledger item) | [phase-5-cpp-imperative-steelman.md](phase-5-cpp-imperative-steelman.md) |
+| 6 | Backends (iii) C++ Functional-Style and (iv) Rust | 🔄 Active (Sprints 6.3 / 6.5 ✅ Done at the worktree surface: real Rust arena-MCTS + Corridors gameplay port; full foreign-recompute equity output; per-backend live envelope probes including `libm_id` + post-link `engine_build_id` for all four foreign backends. Sprint 6.4 PGO pipeline verified end-to-end (BOLT post-link fails on aarch64). Remaining: backend (iii) functional-style engine internals and the amd64 PGO+BOLT closure) | [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md) |
+| 7 | Cross-Backend Verify, Test Stanzas, POC Report Card | 🔄 Active (Sprint 7.5 closure: `divergenceVsEqStream` + `mcts inspect divergence` per-sidecar + foreign-FFI live-driven divergence rows + three new `mcts-cross-backend` envelope-mismatch tests; Sprint 7.4 substantial closure: `brick`/`vty` unblock, interactive `MCTS.CLI.Tui.Play` with move parser + `:hint`/`:undo`/`:save`/`:quit`, TTY-aware `MCTS.App.runPlay` and `MCTS.CLI.Inspect.inspectReplay` dispatch, `MCTS.CLI.Tui.Replay` forward/back navigator; Sprint 7.3 Q1 ST/MT8 + Q2 ST snapshots recorded — Haskell at parity or faster than non-PGO cpp-imperative smoke (Q1 ST 0.89×, Q1 MT8 0.66-0.87×, Q2 ST sims=500 1.03×); full multi-minute pinned matrix and amd64 PGO+BOLT bar still owed) | [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md) |
+| 8 | Haskell Performance Parity Closure | 🔄 Active (Sprint 8.1 closed; Sprint 8.2 three profile-driven rounds — round 1 `IntSet`, round 2 reverted, round 3 wavefront-bitmap BFS (**~320× combined speedup on legal-moves, ~200× on uct-search**); Sprint 8.3 measured Q1 ST 0.89×, Q1 MT8 0.66-0.87×, Q2 ST sims=500 1.03× — Haskell at parity or faster than non-PGO cpp-imperative smoke. The full PGO+BOLT bar is unreachable on the aarch64 container (BOLT instrument fails on aarch64 stripped cdylibs); the amd64 PGO+BOLT run and 8.4-8.7 retirement chain remain owed) | [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md) |
 
 ## Current Plan Status
 
@@ -195,16 +231,20 @@ Implemented in the worktree:
   capture boundary, the legacy shared-library node checks
   `cpp-legacy/build/libmcts_cpp_legacy.so`, and the unit suite asserts the
   registry is acyclic.
-- Phase 8 GHC tuning flags landed in `mcts.cabal`: `-O2
+- Phase 8 GHC tuning flags landed in `mcts.cabal`: `-O2 -fllvm
   -funbox-strict-fields -fspecialise-aggressively
   -fexpose-all-unfoldings -flate-dmd-anal
   -fmax-simplifier-iterations=20 -fworker-wrapper
   -fstatic-argument-transformation`. The executable adds `-threaded`
-  and the doctrine RTS pin `-A64m -n4m -qg1 -qb -T`. `INLINABLE`
+  and the doctrine RTS pin `-A64m -n4m -qg1 -qb -T`. `INLINEABLE`
   pragmas mark selected hot-path entries in `MCTS.Rng.Mix`,
   `MCTS.Engine`, `MCTS.Search.Arena`, and `MCTS.Search.UCT`.
-  (`-fllvm`, `-optlo-mcpu=native`, and `-optlc-mcpu=native` remain open until
-  Sprint `8.1` validates GHC's LLVM backend against the pinned LLVM 19 image.)
+  `-optlo-mcpu=native` and `-optlc-mcpu=native` are intentionally
+  excluded per Sprint `8.1`'s closure note (LSE-instruction assembler
+  refusal on aarch64); the deferred re-introduction is tracked in
+  [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md).
+  `SPECIALIZE` is a no-op for the current monomorphic kernel and the
+  `MutableByteArray#` migration is a profile-driven Sprint `8.2` decision.
 - Transcript writes are durable: `MCTS.Transcript.writeFileAtomically`
   uses `openBinaryTempFile`, `hFlush`, `System.Posix.Unistd.fileSynchronise`
   on the temp file's Fd, atomic rename, and best-effort fsync of the
@@ -268,13 +308,21 @@ Implemented in the worktree:
   `documents/engineering/cli_command_surface.md`.
 
 Remaining work is the difference between this baseline and the target end state:
-foreign-engine recompute sidecars, the optimized Haskell engine beyond the current
-`INLINABLE` baseline (`SPECIALIZE`, `-fllvm`, and `MutableByteArray#` if profiling
-justifies it) per Phase 8, full foreign C ABI transcript drivers beyond the
-bounded smoke games, PGO+BOLT pipelines, real cross-backend bit-for-bit proof
-against non-logical backends, interactive `brick`/`vty` TUIs for `play` and
-`inspect replay`, external golden fixtures under `test/golden/legacy/`, and
-Phase `8` performance parity closure.
+foreign-engine recompute streaming into `MEQ1` sidecars from
+`mcts_<backend>_recompute_move` for cross-backend equity comparison; backend
+(iii) C++ functional's engine source still re-uses the verbatim legacy core
+(the functional-style API surface is in place, the functional-style engine
+internals are not); the end-to-end `cpp-functional` and `rust` PGO+BOLT install
+closures (the `cpp-imperative` PGO+BOLT pipeline closed under Sprint `5.3`);
+the `mcts inspect divergence` foreign-recompute matrix; Phase 8's
+profile-driven hot-path tuning, the criterion micro-benchmark suite at
+`bench/criterion-suites.hs`, and the measured Q1/Q2 throughput ratio against
+the PGO+BOLT C++ steelman within `HASKELL_PARITY_TOLERANCE = 0.05`;
+measured Q1–Q7 report-card evidence; interactive `brick`/`vty` TUIs for `play`
+and `inspect replay` (blocked on upstream cabal solver compatibility with GHC
+`9.14.1`); the `10000`-sim refresh of the `test/golden/legacy/transcripts/`
+fixture set (the fixtures are committed at `LEGACY_FIXTURE_SIMS=1000`); and
+the retirement protocol's frozen golden anchors under `test/golden/<backend>/`.
 
 The retirement protocol (i)→(ii)→(iii)→(v) named in [00-overview.md](00-overview.md) and
 owned by Phase `8` is the long-running closure mechanism: each retiring backend's

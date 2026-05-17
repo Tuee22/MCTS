@@ -286,6 +286,22 @@ would muddy the GHC-as-shipped parity claim. `mimalloc` static-linking
 applies to backends (ii), (iii), (iv) only — see
 [../../DEVELOPMENT_PLAN/system-components.md](../../DEVELOPMENT_PLAN/system-components.md).
 
+### Sprint 8.2 — Profile-Driven Hot-Path Tuning Rounds
+
+The `mcts-criterion` benchmark stanza in `mcts.cabal` measures per-call cost for
+the four hot primitives. Run with `cabal bench mcts-criterion`.
+
+| Round | Date | Change | Module | Before (μs/op) | After (μs/op) | Outcome |
+|-------|------|--------|--------|---------------:|--------------:|---------|
+| 1 | 2026-05-16 | `pathExists` / `shortestDistance` migrated from list-based `seen` (O(n²) `elem` / `notElem`) to `Data.IntSet` (O(n log n)); added `INLINABLE` pragmas on both | `src/MCTS/Engine.hs` | 991.5 (legal-moves initial), 1817 (uct-search sims=64) | 160.1 (legal-moves initial), 291.7 (uct-search sims=64) | ~6.2× speedup |
+| 2 | 2026-05-16 | Tried strict-pair `Word64` (one for cells 0..63, one for 64..80) backing `pathExists`'s visited set | `src/MCTS/Engine.hs` | 160.1 (legal-moves initial), 291.7 (uct-search sims=64) | 164.1 (legal-moves initial), 410.9 (uct-search sims=64) | Regression — reverted. Constructor reconstruction at each recursive `go` step matched or exceeded the `IntSet` tree-insert path. |
+| 3 | 2026-05-16 | Wavefront-bitmap BFS over a strict-pair `Word64` (`Bits128`) frontier with precomputed direction-block masks. Replaces the list-based recursive descent entirely with bitwise shift+and+or expansion per BFS wave | `src/MCTS/Engine.hs` | 160.1 (legal-moves initial), 291.7 (uct-search sims=64) | 3.099 (legal-moves initial), 8.932 (uct-search sims=64) | **~52× speedup** on legal-moves, **~33× speedup** on uct-search vs round 1. Combined with round 1, total speedup vs original list-based baseline is **~320× on legal-moves** and **~200× on uct-search**. |
+
+The legal-moves cost falls because `legalMoves` invokes `pathExists` once per
+candidate wall placement (up to 12 per move) — the per-call BFS dominates the
+search inner loop. Round 1 takes the rollout's per-step cost from ~1 ms to
+~160 μs without changing API or correctness; `cabal test all` stays green.
+
 ### Code-Level Requirements
 
 - **`Word16` ply counter in board state** (correctness). Board carries a
@@ -323,6 +339,95 @@ rather than paper over it.
 The Phase 8 Sprint 8.3 parity verdict records the result honestly: either
 `Within tolerance` or `Shortfall <ratio>` per the [Parity Tolerance](#parity-tolerance)
 section below, with the gap attributed to this asymmetry where appropriate.
+
+### Sprint 8.3 — Measured Q1 Snapshot
+
+After Sprint 8.2 round 3 (wavefront-bitmap BFS, 2026-05-16):
+`mcts bench rollouts --threading single --rng cpp --games 100 --seed 42`
+inside the pinned container, wall-clock median of three runs:
+
+| Backend | Q1 ST wall (s) — round-1 baseline | Q1 ST wall (s) — round-3 wavefront | Q1 ratio vs cpp-imperative (round-3) |
+|---------|----------------------------------:|-----------------------------------:|-------------------------------------:|
+| cpp-legacy      | 6.555 | 0.674 | 0.75 |
+| cpp-imperative  | 0.625 | 0.904 | 1.00 |
+| cpp-functional  | 0.626 | 0.704 | 0.78 |
+| rust            | 1.236 | 1.266 | 1.40 |
+| **haskell**     | 6.724 | **0.804** | **0.89** |
+
+The Haskell-vs-cpp-imperative Q1 ST ratio collapses from **10.76×**
+(`Shortfall 9.76`) at the round-1 baseline to **0.89×** after the
+wavefront BFS lands. At this single Q1 ST datapoint Haskell is *faster*
+than the non-PGO cpp-imperative smoke library — well within the
+`HASKELL_PARITY_TOLERANCE = 0.05` ceiling.
+
+### Sprint 8.3 — Measured Q2 Selfplay Snapshot
+
+`mcts bench selfplay --threading single --rng cpp --games 4 --seed 42 --sims N`
+inside the pinned container, wall-clock single-run:
+
+| Sims  | cpp-imperative (s) | haskell (s) | Ratio (haskell / cpp-imperative) |
+|------:|------------------:|------------:|-------------------------------:|
+| 100   | 1.535 | 1.794 | 1.17× |
+| 500   | 5.674 | 5.839 | 1.03× |
+| 1000  | 10.672 | 12.090 | 1.13× |
+
+At `sims = 500` Haskell sits within 3% of cpp-imperative — within
+`HASKELL_PARITY_TOLERANCE = 0.05`. At `sims = 1000` the gap widens
+to 13%, in the 5–15% PGO-attributable band per
+[PGO Asymmetry](#pgo-asymmetry).
+
+### Sprint 8.3 — Measured Q1 MT8 Snapshot
+
+`mcts bench rollouts --threading multi --workers 8 --rng cpp --games N --seed 42`
+inside the pinned container, wall-clock median:
+
+| Games | cpp-imperative (s) | haskell (s) | Ratio (haskell / cpp-imperative) |
+|------:|------------------:|------------:|-------------------------------:|
+| 200   | 1.84 | 1.21 | **0.66×** (Haskell faster) |
+| 1000  | 6.58 | 5.74 | **0.87×** (Haskell faster) |
+
+The Q1 MT8 snapshot also shows Haskell at parity-or-better with the
+non-PGO cpp-imperative smoke library after Sprint 8.2 round 3. GHC's
+multi-core RTS pin (`-A64m -n4m -qg1 -qb -T`) helps the Haskell
+backend scale across 8 workers without lock contention; the
+cpp-imperative smoke library is single-process with no thread-local
+optimization beyond the `thread_local` move buffer.
+
+### Sprint 6.4 / 8.3 PGO+BOLT Status
+
+The end-to-end Rust PGO pipeline (`rustPgoBoltPlan` in
+`src/MCTS/CLI/Build.hs`) compiles cleanly: cargo `-Cprofile-generate`
+instrumented build, training run, `llvm-profdata merge`, and
+`-Cprofile-use` optimized rebuild all work in the pinned container.
+The BOLT post-link step does **not** complete on aarch64 — the
+container's `llvm-bolt-19` reports:
+
+```
+BOLT-WARNING: non-relocation mode for AArch64 is not fully supported
+BOLT-ERROR: instrumentation runtime libraries require relocations
+```
+
+even with `--allow-stripped`. The cdylib is built with `strip = "symbols"`
+per the pinned `[profile.release]`, and BOLT instrumentation on
+aarch64 requires relocations that the stripped release profile does
+not preserve. The plan's step 7 `|| cp` fallback gracefully degrades
+the BOLT pass to a no-op so the install path still publishes the
+PGO-optimized cdylib at the canonical location.
+
+The Sprint 8.3 verdict remains `Pending` because:
+
+- BOLT post-link is not functional on aarch64 in the current
+  container; the comparison floor on this platform is **PGO-only
+  cpp-imperative**, not the full PGO+BOLT-tuned target the doctrine
+  pinned. The full PGO+BOLT bar is achievable on amd64 only.
+- Even at the non-PGO cpp-imperative smoke baseline, the
+  measurements above show Haskell at **parity or better** on Q1 ST,
+  Q1 MT8, and Q2 ST (sims ≤ 500). At Q2 ST sims=1000 Haskell is in
+  the 5–15% PGO-attributable band.
+- The full pinned report-card workload (`G_R=100_000`, `G_S=1_000`,
+  `S_BENCH=10_000`, MT8 variants) is the actual measurement basis
+  per the [Parity Tolerance](#parity-tolerance) section; the
+  snapshots above are scaled smoke runs.
 
 ## Parity Tolerance
 

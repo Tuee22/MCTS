@@ -114,10 +114,14 @@ uctSearchWithEquity board seed nSims maxPlies = runST $ do
                 [] -> error "MCTS.Search.UCT: no legal moves and no fallback"
     pure (best, visitsOut, equityOut)
   where
-    finalChoiceKey (action, visits, equity) =
+    -- Sprint 7.2 cohort agreement: the final choice picks the highest
+    -- visit count with action-id tiebreak only. C++/Rust backends do
+    -- the same (`if (child.visit_count > best_visits) { ... }` in
+    -- `cpp-imperative/engine/search.cpp::run_search`); aligning the
+    -- Haskell side here drops the previous `nonTerminalRank`-then-
+    -- equity tiebreak so the algorithm is uniform across (ii)..(v).
+    finalChoiceKey (action, visits, _equity) =
         ( negate (fromIntegral visits :: Int)
-        , negate equity
-        , nonTerminalRank (applyMove action board)
         , actionId action
         )
 
@@ -217,10 +221,20 @@ pickByUctIndex
     -> Int32
     -> Board
     -> ST s Int32
-pickByUctIndex arena firstChild numKids np board = do
+-- Sprint 7.2 cohort agreement: the tiebreaker drops the
+-- `nonTerminalRank` heuristic and falls back to action-id order,
+-- matching the C++/Rust backends' first-emitted-unvisited-child policy.
+-- The `nonTerminalRank` function stays exported for standalone test
+-- coverage; only its use here as a tiebreak is removed. Forward
+-- progress at `sims = 1` now depends on `MCTS.Engine.legalMoves`
+-- emitting pawn moves with smaller-y-bias for the side-to-move (the
+-- canonical action enumeration already orders pawn moves by y*9+x so
+-- the first emitted move at the initial position is `Pawn 3 0`, in
+-- agreement with cpp-imperative/cpp-functional smoke runs).
+pickByUctIndex arena firstChild numKids np _board = do
     scored <- mapM scoreIdx [0 .. numKids - 1]
     case sortOn scoreKey scored of
-        (idx, _, _, _) : _ -> pure idx
+        (idx, _, _) : _ -> pure idx
         [] -> pure 0
   where
     cParam :: Float
@@ -232,20 +246,15 @@ pickByUctIndex arena firstChild numKids np board = do
         n <- Arena.readVisits arena nid
         v <- Arena.readValueSum arena nid
         actionByte <- Arena.readActionId arena nid
-        let action = actionFromId actionByte
-            rank =
-                case action of
-                    Just value -> nonTerminalRank (applyMove value board)
-                    Nothing -> maxBound
-            score
+        let score
                 | n == 0 = 1.0e30
                 | otherwise =
                     let q = v / fromIntegral n
                         u = cParam * sqrt (lnNp / fromIntegral n)
                      in q + u
-        pure (i, score, rank, actionByte)
-    scoreKey (_, score, rank, actionByte) =
-        (negate score, rank, actionByte)
+        pure (i, score, actionByte)
+    scoreKey (_, score, actionByte) =
+        (negate score, actionByte)
 
 -- | Random rollout from `board` to a terminal state or the ply cap.
 {-# INLINEABLE rollout #-}

@@ -1,3 +1,5 @@
+{-# LANGUAGE RankNTypes #-}
+
 module Main where
 
 import qualified Data.ByteString as BS
@@ -8,12 +10,14 @@ import MCTS.Driver.CppFunctional (runGameCppFunctional)
 import MCTS.Driver.CppImperative (runGameCppImperative)
 import MCTS.Driver.CppLegacy (runGameCppLegacy)
 import MCTS.Driver.Rust (runGameRust)
+import MCTS.Engine.ForeignRecompute (foreignRecomputeEqStream)
 import MCTS.Error (AppError)
 import MCTS.FFI.Common (EngineEnvelope (..))
-import MCTS.FFI.CppFunctional (loadCppFunctionalEnvelope)
-import MCTS.FFI.CppImperative (loadCppImperativeEnvelope)
+import qualified MCTS.FFI.Common
+import MCTS.FFI.CppFunctional (loadCppFunctionalEnvelope, withCppFunctionalRecomputeGame)
+import MCTS.FFI.CppImperative (loadCppImperativeEnvelope, withCppImperativeRecomputeGame)
 import MCTS.FFI.CppLegacy (cppLegacyRecomputeMove, loadCppLegacyEnvelope, withCppLegacyGame)
-import MCTS.FFI.Rust (loadRustEnvelope)
+import MCTS.FFI.Rust (loadRustEnvelope, withRustRecomputeGame)
 import MCTS.Transcript
 import MCTS.Transcript.EquitySidecar
 import MCTS.Types
@@ -78,6 +82,30 @@ main =
             , testCase
                 "cpp-legacy envelope reports cpu_features bits and a non-zero engine_build_id"
                 legacyEnvelopeRuntime
+            , testGroup
+                "foreign recompute EqStream"
+                [ testCase
+                    "cpp-imperative"
+                    ( foreignRecomputeSmoke
+                        "cpp-imperative/build/libmcts_cpp_imperative.so"
+                        CppImperative
+                        withCppImperativeRecomputeGame
+                    )
+                , testCase
+                    "cpp-functional"
+                    ( foreignRecomputeSmoke
+                        "cpp-functional/build/libmcts_cpp_functional.so"
+                        CppFunctional
+                        withCppFunctionalRecomputeGame
+                    )
+                , testCase
+                    "rust"
+                    ( foreignRecomputeSmoke
+                        "rust/target/release/libmcts_rust.so"
+                        Rust
+                        withRustRecomputeGame
+                    )
+                ]
             ]
 
 sameBackend :: Backend -> TestTree
@@ -190,6 +218,12 @@ foreignFfiEnvelope libraryPath backend loader = do
                     -- their post-link `.envelope_build_id` ELF section per
                     -- Sprint 4.7 / Sprint 5.5. Backends (iii) and (iv) still
                     -- report the zero-digest sentinel.
+                    -- Sprint 6.5: Rust now exposes a `.envelope_build_id`
+                    -- ELF section that `mcts build rust` patches post-
+                    -- link. A fresh `cargo build --release` leaves the
+                    -- section all-zero; the integration test accepts
+                    -- either state so it remains robust to whichever
+                    -- build was last run.
                     case backend of
                         CppLegacy ->
                             assertBool
@@ -203,6 +237,10 @@ foreignFfiEnvelope libraryPath backend loader = do
                             assertBool
                                 "cpp-functional engine_build_id is patched"
                                 (engineEnvBuildId envelope /= replicate 64 '0')
+                        Rust ->
+                            -- Either zero (smoke cargo build) or
+                            -- patched (post `mcts build rust` install).
+                            pure ()
                         _ -> engineEnvBuildId envelope @?= replicate 64 '0'
                     engineEnvCompilerId envelope @?= expectedCompilerId backend
                     case backend of
@@ -211,6 +249,18 @@ foreignFfiEnvelope libraryPath backend loader = do
                                 "rust envelope carries rustc compiler version"
                                 ("rustc " `prefixOf` engineEnvCompilerVersion envelope)
                         _ -> pure ()
+                    -- Sprint 6.5: every foreign backend now populates a
+                    -- compile-time `libm_id` slot. The pinned container
+                    -- ships glibc; macOS dev shells report `libsystem`;
+                    -- musl containers report `musl`. The integration
+                    -- test accepts the known string set.
+                    assertBool
+                        ( backendIdentifier backend
+                            <> " envelope carries a known libm_id (got `"
+                            <> engineEnvLibmId envelope
+                            <> "`)"
+                        )
+                        (engineEnvLibmId envelope `elem` ["glibc", "musl", "libsystem"])
 
 expectedHostArch :: Word8
 expectedHostArch =
@@ -336,3 +386,53 @@ validateLegacyFixture dir file = do
             assertBool
                 ("legacy fixture " <> file <> " must contain at least one game")
                 (not (null (transcriptGames transcript)))
+
+-- | Sprint 6.5 / 7.5: drive `foreignRecomputeEqStream` against a real
+-- foreign backend cdylib through `MCTS.Engine.ForeignRecompute` and
+-- assert the emitted `EqStream` carries one record per move with a
+-- finite or NaN equity slot. Skip when the cdylib is not built.
+foreignRecomputeSmoke
+    :: FilePath
+    -> Backend
+    -> (forall a. (MCTS.FFI.Common.DynamicRecomputeGame -> IO a) -> IO (Either AppError a))
+    -> IO ()
+foreignRecomputeSmoke libraryPath backend opener = do
+    present <- doesFileExist libraryPath
+    if not present
+        then pure ()
+        else do
+            let inputs =
+                    defaultRunInputs
+                        { inputBackend = backend
+                        , inputWorkload = Selfplay
+                        , inputRng = CppRng
+                        , inputGames = 1
+                        , inputSims = FixedSims 4
+                        , inputMaxPlies = 6
+                        }
+                transcript =
+                    Transcript
+                        (makeRunConfig inputs)
+                        (makeLogicalEnvelope backend CppRng)
+                        [runGame inputs 0]
+                moveCount = sum (map (length . gameMoves) (transcriptGames transcript))
+            result <-
+                foreignRecomputeEqStream
+                    backend
+                    (replicate 64 '0')
+                    "smoke-build"
+                    opener
+                    transcript
+            case result of
+                Left err ->
+                    assertFailure
+                        ( backendIdentifier backend
+                            <> " foreign recompute failed: "
+                            <> show err
+                        )
+                Right stream -> do
+                    eqBackend stream @?= backend
+                    eqBuildId stream @?= "smoke-build"
+                    assertBool
+                        (backendIdentifier backend <> " foreign recompute emitted records")
+                        (length (eqRecords stream) == moveCount)

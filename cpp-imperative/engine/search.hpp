@@ -10,6 +10,7 @@
 #include "xoshiro256pp.hpp"
 
 #include <cstdint>
+#include <limits>
 #include <random>
 #include <utility>
 #include <vector>
@@ -44,6 +45,10 @@ struct RngBackend {
 struct SearchOutput {
     std::vector<std::pair<uint8_t, uint32_t>> visits;  // sorted ascending by action_id
     uint8_t chosen_action_id = 0;
+    // Sprint 5.5 / 6.5: parent-perspective equity of the chosen child
+    // computed as `-child.q_sum / child.visit_count`. NaN if the
+    // chosen child has zero visits.
+    double chosen_equity = std::numeric_limits<double>::quiet_NaN();
     bool ok = true;
 };
 

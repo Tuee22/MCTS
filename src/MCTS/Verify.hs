@@ -7,6 +7,7 @@ module MCTS.Verify
     , legacyParityRunDetailed
     ) where
 
+import Data.List (sortOn)
 import MCTS.Driver
 import MCTS.Driver.Dispatch (runBatchDispatch)
 import MCTS.Error (AppError (..))
@@ -43,7 +44,18 @@ compareTranscripts leftBackend left rightBackend right =
         | comparable l == comparable r = findRecordMismatch rest
         | otherwise = Just (fromIntegral (moveIndex l), l, r)
 
-    comparable record = (moveChosen record, moveVisits record)
+    -- Sprint 7.2: visit lists are conceptually unordered sets of
+    -- `(Action, count)` pairs, and different backends emit different
+    -- enumerations of zero-visit entries (cpp-imperative emits all
+    -- ~209 action_ids, including unused ones; rust emits only root
+    -- children). Cohort agreement is the contract that *visited*
+    -- actions have the same visit counts across backends, not that
+    -- the enumeration shape matches. We filter zero-visit entries
+    -- before sorting so the comparison sees only the meaningful set.
+    comparable record =
+        ( moveChosen record
+        , sortOn fst (filter ((> 0) . snd) (moveVisits record))
+        )
 
 verifyRun :: Workload -> [Backend] -> RunInputs -> IO (Either AppError [BatchResult])
 verifyRun workload backends inputs =

@@ -19,9 +19,11 @@ import qualified MCTS.Driver as Driver
 import MCTS.Driver.CppFunctional (runGameCppFunctional)
 import MCTS.Driver.CppImperative (runGameCppImperative)
 import MCTS.Driver.CppLegacy (runGameCppLegacy)
+import MCTS.Driver.ForeignSearch (runForeignSearchGame)
 import MCTS.Error (AppError, renderError)
 import MCTS.FFI.CppFunctional (cppFunctionalLibraryPath)
 import MCTS.FFI.CppImperative (cppImperativeLibraryPath)
+import MCTS.FFI.Rust (rustLibraryPath, withRustSearchGame)
 import MCTS.Types (Backend (..), GameTranscript)
 import System.Directory (doesFileExist)
 
@@ -45,6 +47,14 @@ runBatchDispatch inputs =
             present <- doesFileExist cppFunctionalLibraryPath
             if present
                 then Driver.runBatchWithGame (runWithRunner runGameCppFunctional inputs) inputs
+                else Driver.runBatch inputs
+        Rust -> do
+            present <- doesFileExist rustLibraryPath
+            if present
+                then
+                    Driver.runBatchWithGame
+                        (runWithRunner (runForeignSearchGame withRustSearchGame) inputs)
+                        inputs
                 else Driver.runBatch inputs
         _ -> Driver.runBatch inputs
 

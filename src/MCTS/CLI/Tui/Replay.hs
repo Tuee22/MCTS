@@ -1,0 +1,319 @@
+{-# LANGUAGE OverloadedStrings #-}
+
+-- | Sprint 7.4: brick TUI for `mcts inspect replay`. Navigates
+-- through a stored `Transcript` move-by-move, rendering the board
+-- after each ply plus the chosen action, visit-count list, and
+-- short hash. Forward/back via arrow keys, jump-to-start/end via
+-- Home/End, quit via q/Esc.
+--
+-- The pure `applyReplayKey` dispatcher is unit-testable; the
+-- `runReplayTui` entry runs the full brick event loop. Multi-
+-- backend equity overlays per Sprint 7.4 are passed in as a list of
+-- `EqStream`s (one per cached sidecar) and rendered as a per-move
+-- column showing each backend's chosen action and parent-perspective
+-- equity for the current move.
+module MCTS.CLI.Tui.Replay
+    ( runReplayTui
+    , runReplayTuiWithOverlays
+    , runReplayTuiFromState
+    , ReplayState (..)
+    , initialReplayState
+    , initialReplayStateWithOverlays
+    , applyReplayKey
+    , ReplayKey (..)
+    , replayBoardAt
+    , currentOverlayRows
+    , OverlayRow (..)
+    ) where
+
+import qualified Brick.AttrMap as A
+import Brick.Main (App (..), defaultMain, halt, neverShowCursor)
+import Brick.Types (BrickEvent (..), EventM, Widget)
+import Brick.Util (fg)
+import Brick.Widgets.Border (border, borderWithLabel)
+import Brick.Widgets.Core (str, vBox, withAttr)
+import Control.Monad.State.Strict (get, modify)
+import qualified Data.Map.Strict as Map
+import qualified Graphics.Vty as V
+import Text.Printf (printf)
+
+import MCTS.CLI.Tui.Board (renderBoard, renderStatus)
+import MCTS.Engine (Board, applyMove, initialBoard)
+import MCTS.Notation (renderMove)
+import MCTS.Transcript.EquitySidecar (EqRecord (..), EqStream (..))
+import MCTS.Types
+    ( Backend
+    , GameTranscript (..)
+    , MoveRecord (..)
+    , Transcript (..)
+    , backendIdentifier
+    )
+
+data ReplayState = ReplayState
+    { replayTranscript :: !Transcript
+    , replayHash :: !String
+    , replayMoveIndex :: !Int
+    -- ^ 0..N where N = total moves in the flattened transcript
+    , replayMessage :: !String
+    , replayOverlays :: ![EqStream]
+    -- ^ Sprint 7.4: one EqStream per cached sidecar feeding the
+    -- per-move equity overlay column.
+    , replayBoardCache :: !(Map.Map Int Board)
+    -- ^ Sprint 7.4: last N reconstructed `Board` snapshots, keyed
+    -- by `replayMoveIndex`. Forward navigation reuses the cached
+    -- board at `idx - 1` so we avoid replaying from move 0 every
+    -- time. Size-bounded by `replayCacheStates`.
+    , replayCacheStates :: !Int
+    }
+
+flattenMoves :: Transcript -> [MoveRecord]
+flattenMoves = concatMap gameMoves . transcriptGames
+
+flattenGameIds :: Transcript -> [(Int, MoveRecord)]
+flattenGameIds transcript =
+    concatMap
+        ( \gameRec ->
+            [(fromIntegral (gameId gameRec), record) | record <- gameMoves gameRec]
+        )
+        (transcriptGames transcript)
+
+-- | Reconstruct the board after applying moves 0..n-1.
+replayBoardAt :: Transcript -> Int -> Board
+replayBoardAt transcript idx =
+    let moves = take idx (flattenMoves transcript)
+     in foldl (\b record -> applyMove (moveChosen record) b) initialBoard moves
+
+initialReplayState :: String -> Transcript -> ReplayState
+initialReplayState hashValue transcript =
+    initialReplayStateWithOverlays hashValue transcript []
+
+initialReplayStateWithOverlays :: String -> Transcript -> [EqStream] -> ReplayState
+initialReplayStateWithOverlays hashValue transcript overlays =
+    ReplayState
+        { replayTranscript = transcript
+        , replayHash = take 8 hashValue
+        , replayMoveIndex = 0
+        , replayMessage = "← prev  → next  Home start  End end  q quit"
+        , replayOverlays = overlays
+        , replayBoardCache = Map.singleton 0 initialBoard
+        , replayCacheStates = 20
+        }
+
+-- | Look up `idx` in the cache; if absent, reconstruct by replaying
+-- from the nearest cached predecessor (defaults to move 0) and
+-- insert the result into the cache, evicting older entries to keep
+-- the cache size at most `replayCacheStates`. Pure on
+-- (`Transcript`, `Map`) so testable.
+boardWithCache
+    :: Int
+    -- ^ target move index
+    -> ReplayState
+    -> (Board, Map.Map Int Board)
+boardWithCache idx st =
+    case Map.lookup idx (replayBoardCache st) of
+        Just board -> (board, replayBoardCache st)
+        Nothing ->
+            let cache = replayBoardCache st
+                anchorIdx =
+                    case Map.lookupLE idx cache of
+                        Just (k, _) -> k
+                        Nothing -> 0
+                anchorBoard = Map.findWithDefault initialBoard anchorIdx cache
+                flattened = flattenMoves (replayTranscript st)
+                moves = take (idx - anchorIdx) (drop anchorIdx flattened)
+                resolved = foldl (\b record -> applyMove (moveChosen record) b) anchorBoard moves
+                inserted = Map.insert idx resolved cache
+                trimmed =
+                    if Map.size inserted <= max 1 (replayCacheStates st)
+                        then inserted
+                        else
+                            -- Evict the entry farthest from `idx` (LRU-ish).
+                            case Map.lookupMin inserted of
+                                Just (k, _) | k /= 0 && k /= idx -> Map.delete k inserted
+                                _ -> inserted
+             in (resolved, trimmed)
+
+-- | Keys the dispatcher handles. Pure data so the tests can exercise
+-- behaviour without spinning up brick.
+data ReplayKey
+    = ReplayPrev
+    | ReplayNext
+    | ReplayStart
+    | ReplayEnd
+    | ReplayQuit
+    deriving (Eq, Show)
+
+-- | Returns `Nothing` for quit, `Just newState` otherwise. The
+-- returned state preserves the cached-board map and warms it for
+-- the new `replayMoveIndex` so subsequent renders are O(1).
+applyReplayKey :: ReplayKey -> ReplayState -> Maybe ReplayState
+applyReplayKey key st =
+    case key of
+        ReplayQuit -> Nothing
+        ReplayPrev -> Just (warm (max 0 (replayMoveIndex st - 1)))
+        ReplayNext ->
+            let total = length (flattenMoves (replayTranscript st))
+                next = min total (replayMoveIndex st + 1)
+             in Just (warm next)
+        ReplayStart -> Just (warm 0)
+        ReplayEnd ->
+            let total = length (flattenMoves (replayTranscript st))
+             in Just (warm total)
+  where
+    warm idx =
+        let (_, cache') = boardWithCache idx st
+         in st{replayMoveIndex = idx, replayBoardCache = cache'}
+
+data OverlayRow = OverlayRow
+    { overlayBackendId :: !Backend
+    , overlayBuildId :: !String
+    , overlayChosen :: !(Maybe String)
+    -- ^ Rendered move notation (e.g. `*(4,1)`) for this backend's
+    -- chosen action at the current move, or `Nothing` if the
+    -- backend's `EqStream` does not carry a record at this index.
+    , overlayEquity :: !(Maybe Double)
+    }
+    deriving (Eq, Show)
+
+-- | Look up each overlay's record at the current move and produce a
+-- list of rows for the renderer. Pure so tests can drive it.
+currentOverlayRows :: ReplayState -> [OverlayRow]
+currentOverlayRows st
+    | idx <= 0 || idx > length flattened = map empty (replayOverlays st)
+    | otherwise = map (overlayAt key) (replayOverlays st)
+  where
+    flattened = flattenGameIds (replayTranscript st)
+    idx = replayMoveIndex st
+    (currentGameId, currentRecord) = flattened !! (idx - 1)
+    key = (currentGameId, moveIndex currentRecord)
+    empty stream =
+        OverlayRow
+            { overlayBackendId = eqBackend stream
+            , overlayBuildId = eqBuildId stream
+            , overlayChosen = Nothing
+            , overlayEquity = Nothing
+            }
+    overlayAt (gid, mvi) stream =
+        let recordMap =
+                Map.fromList
+                    [ ((eqGameId r, eqMoveIndex r), r)
+                    | r <- eqRecords stream
+                    ]
+            located = Map.lookup (fromIntegral gid, mvi) recordMap
+         in OverlayRow
+                { overlayBackendId = eqBackend stream
+                , overlayBuildId = eqBuildId stream
+                , overlayChosen = renderMove . eqChosen <$> located
+                , overlayEquity = eqEquity <$> located
+                }
+
+drawUi :: ReplayState -> [Widget String]
+drawUi st =
+    [ vBox
+        [ border (renderBoard (fst (boardWithCache (replayMoveIndex st) st)))
+        , borderWithLabel (str "replay") $
+            vBox
+                [ renderStatus
+                    (replayHash st)
+                    (replayMoveIndex st)
+                    (length (flattenMoves (replayTranscript st)))
+                , str ("move played: " <> currentMoveText st)
+                , overlayWidget (currentOverlayRows st)
+                , withAttr (A.attrName "message") (str (replayMessage st))
+                ]
+        ]
+    ]
+
+overlayWidget :: [OverlayRow] -> Widget String
+overlayWidget [] = str "" -- no sidecars cached; no overlay rendered
+overlayWidget rows =
+    withAttr (A.attrName "overlay") $
+        vBox (str "backend          build      chosen     equity" : map renderOverlayRow rows)
+
+renderOverlayRow :: OverlayRow -> Widget String
+renderOverlayRow row =
+    str $
+        padEnd 16 (backendIdentifier (overlayBackendId row))
+            <> " "
+            <> padEnd 10 (overlayBuildId row)
+            <> " "
+            <> padEnd 10 (maybe "-" id (overlayChosen row))
+            <> " "
+            <> maybe "-" formatEquity (overlayEquity row)
+
+padEnd :: Int -> String -> String
+padEnd n s = take n (s <> repeat ' ')
+
+formatEquity :: Double -> String
+formatEquity value
+    | isNaN value = "NaN"
+    | otherwise = printf "%+.4f" value
+
+currentMoveText :: ReplayState -> String
+currentMoveText st =
+    let moves = flattenMoves (replayTranscript st)
+        idx = replayMoveIndex st
+     in if idx <= 0 || idx > length moves
+            then "(start of transcript)"
+            else renderMove (moveChosen (moves !! (idx - 1)))
+
+handleEvent :: BrickEvent String () -> EventM String ReplayState ()
+handleEvent (VtyEvent (V.EvKey key _mods)) =
+    case toReplayKey key of
+        Just ReplayQuit -> halt
+        Just k -> do
+            st <- get
+            case applyReplayKey k st of
+                Nothing -> halt
+                Just st' -> modify (const st')
+        Nothing -> pure ()
+handleEvent _ = pure ()
+
+toReplayKey :: V.Key -> Maybe ReplayKey
+toReplayKey key =
+    case key of
+        V.KEsc -> Just ReplayQuit
+        V.KChar 'q' -> Just ReplayQuit
+        V.KLeft -> Just ReplayPrev
+        V.KChar 'h' -> Just ReplayPrev
+        V.KRight -> Just ReplayNext
+        V.KChar 'l' -> Just ReplayNext
+        V.KHome -> Just ReplayStart
+        V.KEnd -> Just ReplayEnd
+        _ -> Nothing
+
+replayApp :: App ReplayState () String
+replayApp =
+    App
+        { appDraw = drawUi
+        , appChooseCursor = neverShowCursor
+        , appHandleEvent = handleEvent
+        , appStartEvent = pure ()
+        , appAttrMap =
+            const
+                ( A.attrMap
+                    V.defAttr
+                    [ (A.attrName "message", fg V.white)
+                    , (A.attrName "overlay", fg V.cyan)
+                    ]
+                )
+        }
+
+-- | Entry point used by `mcts inspect replay` when a TTY is
+-- available. Returns the final `ReplayState` so callers can drive
+-- assertions in tests.
+runReplayTui :: String -> Transcript -> IO ReplayState
+runReplayTui hashValue transcript =
+    defaultMain replayApp (initialReplayState hashValue transcript)
+
+-- | Sprint 7.4: entry point with overlay sidecars; called from
+-- `MCTS.CLI.Inspect.inspectReplay` after loading cached `EqStream`s.
+runReplayTuiWithOverlays :: String -> Transcript -> [EqStream] -> IO ReplayState
+runReplayTuiWithOverlays hashValue transcript overlays =
+    runReplayTuiFromState (initialReplayStateWithOverlays hashValue transcript overlays)
+
+-- | Run the brick event loop from a caller-constructed `ReplayState`,
+-- exposing the cache-size knob plus any future replay-state fields
+-- to the operator without forcing new function arguments.
+runReplayTuiFromState :: ReplayState -> IO ReplayState
+runReplayTuiFromState = defaultMain replayApp

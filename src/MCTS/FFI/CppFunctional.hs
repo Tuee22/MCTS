@@ -9,6 +9,7 @@ module MCTS.FFI.CppFunctional
     , withCppFunctionalBoard
     , withCppFunctionalGame
     , withCppFunctionalSearchGame
+    , withCppFunctionalRecomputeGame
     , loadCppFunctionalEnvelope
     , cppFunctionalLibraryPath
     ) where
@@ -17,11 +18,13 @@ import Foreign.Ptr (Ptr)
 import MCTS.Error (AppError)
 import MCTS.FFI.Common
     ( DynamicGame
+    , DynamicRecomputeGame
     , DynamicSearchGame
     , EngineEnvelope
     , loadDynamicEnvelope
     , withDynamicBoard
     , withDynamicGame
+    , withDynamicRecomputeGame
     , withDynamicSearchGame
     )
 import MCTS.Types (Backend (CppFunctional))
@@ -46,6 +49,11 @@ withCppFunctionalSearchGame
     :: (DynamicSearchGame -> IO a) -> IO (Either AppError a)
 withCppFunctionalSearchGame =
     withDynamicSearchGame CppFunctional cppFunctionalLibraryPath "mcts_functional"
+
+withCppFunctionalRecomputeGame
+    :: (DynamicRecomputeGame -> IO a) -> IO (Either AppError a)
+withCppFunctionalRecomputeGame =
+    withDynamicRecomputeGame CppFunctional cppFunctionalLibraryPath "mcts_functional"
 
 loadCppFunctionalEnvelope :: IO (Either AppError EngineEnvelope)
 loadCppFunctionalEnvelope =

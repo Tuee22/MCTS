@@ -16,7 +16,7 @@ import Data.List (sortOn)
 import Data.Word (Word16, Word32, Word64)
 import MCTS.Engine (Board, applyMove, initialBoard, terminalWinner)
 import MCTS.Engine.Envelope (makeEngineEnvelope)
-import MCTS.Rng.Mix (mix)
+import MCTS.Rng.Mix (backendNativeSalt, mix)
 import qualified MCTS.Search.UCT as UCT
 import MCTS.Transcript (writeTranscript, writeTranscriptPerGame)
 import MCTS.Types
@@ -225,9 +225,7 @@ uctChooseMove
     -> Word16
     -> (Action, [(Action, Word32)])
 uctChooseMove backend rng seed moveNo board budget maxPlies =
-    let backendSalt = case rng of
-            CppRng -> 0
-            NativeRng -> fromIntegral (fromEnum backend + 1) * 0x100000001b3
+    let backendSalt = backendNativeSalt rng backend
         effectiveSeed = seed `xor` backendSalt `xor` fromIntegral (moveNo * 257 + 1)
         sims = max 1 (simPerMove budget)
         -- Rollout cap per simulation. The full game ply cap may be

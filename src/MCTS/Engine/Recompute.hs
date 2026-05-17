@@ -17,7 +17,7 @@ import Data.Bits (xor)
 import Data.Word (Word32, Word64)
 import MCTS.Engine (Board, applyMove, initialBoard)
 import MCTS.Error (AppError (..))
-import MCTS.Rng.Mix (mix)
+import MCTS.Rng.Mix (backendNativeSalt, mix)
 import MCTS.Search.UCT (uctSearchWithEquity)
 import MCTS.Transcript.EquitySidecar (EqRecord (..), EqStream (..))
 import MCTS.Types
@@ -95,9 +95,7 @@ recomputeGame masterSeed rng sims maxPlies game =
     stepRecords :: Word64 -> Board -> Int -> [MoveRecord] -> [EqRecord] -> Either AppError [EqRecord]
     stepRecords _ _ _ [] acc = Right (reverse acc)
     stepRecords seed board moveNo (recorded : rest) acc =
-        let salt = case rng of
-                CppRng -> 0
-                NativeRng -> 0x100000001b3 :: Word64
+        let salt = backendNativeSalt rng Haskell
             effectiveSeed = seed `xor` salt `xor` fromIntegral (moveNo * 257 + 1)
             (_, visitTable, equityTable) = uctSearchWithEquity board effectiveSeed sims maxPlies
             lookupEquity act = lookup act equityTable

@@ -2,6 +2,13 @@ packages: .
 
 with-compiler: ghc-9.14.1
 
+-- Sprint 7.4: relax the upper bounds on `config-ini`'s `containers`
+-- and `base` so `brick` 2.12 + `vty` 6.5 can resolve under
+-- GHC 9.14.1 (which ships `containers 0.8` / `base 4.22`).
+-- Documented in `DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md`
+-- and `DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md`.
+allow-newer: config-ini:containers, config-ini:base
+
 -- Cabal 3.16.1.0 is the pinned project tool.
 -- Report-card knobs:
 -- G_R=100000

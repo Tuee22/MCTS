@@ -112,8 +112,12 @@ cppFunctionalPgoBoltPlan = pgoBoltPlan "cpp-functional"
 -- so the Haskell FFI continues to load it from the pinned path.
 rustPgoBoltPlan :: [Subprocess]
 rustPgoBoltPlan =
-    [ -- 1. Instrumented build: rustc -Cprofile-generate
-      cargoBuild "rust/pgo-profile" "generate"
+    [ -- 1. Instrumented build: rustc -Cprofile-generate. The profile
+      -- directory is `pgo-profile` relative to the cargo working
+      -- directory (`rust/`); rustc resolves it against cargo's cwd
+      -- and writes `.profraw` files there. The merge step uses the
+      -- same project-relative `rust/pgo-profile/` location.
+      cargoBuild "pgo-profile" "generate"
     , -- 2. Training run: same shape as C++ backends
       trainingRunFor "rust" pgoTrainingGames pgoTrainingSims
     , -- 3. Merge LLVM profraw -> profdata (the rustc PGO flow requires
@@ -129,8 +133,10 @@ rustPgoBoltPlan =
         ]
         Nothing
         Nothing
-    , -- 4. Optimized rebuild: rustc -Cprofile-use
-      cargoBuild "rust/pgo-profile" "use"
+    , -- 4. Optimized rebuild: rustc -Cprofile-use (path relative to
+      -- cargo cwd; matches the `pgo-profile/` instrument directory
+      -- so the merge output `pgo-profile/merged.profdata` is found.
+      cargoBuild "pgo-profile/merged.profdata" "use"
     , -- 5. BOLT instrument (writes profile via -instrument)
       Subprocess
         "bash"
@@ -164,6 +170,27 @@ rustPgoBoltPlan =
         "bash"
         [ "-c"
         , "cp rust/target/release/libmcts_rust.bolted.so rust/target/release/libmcts_rust.so"
+        ]
+        Nothing
+        Nothing
+    , -- 9. Post-link engine_build_id patch: hash the installed cdylib
+      -- and overwrite the `.envelope_build_id` section with the
+      -- 32-byte digest so `mcts_rust_get_envelope()` reports a
+      -- non-zero engine_build_id. Mirrors the cpp-imperative
+      -- `envelope-build-id` Makefile target. Uses `python3` to
+      -- decode the hex digest because `xxd` is not in the pinned
+      -- container's base image.
+      Subprocess
+        "bash"
+        [ "-c"
+        , "lib=rust/target/release/libmcts_rust.so; "
+            <> "if command -v objcopy >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then "
+            <> "tmpbin=$(mktemp); "
+            <> "digest=$(sha256sum \"$lib\" | awk '{print $1}'); "
+            <> "python3 -c \"import sys, binascii; sys.stdout.buffer.write(binascii.unhexlify(sys.argv[1]))\" \"$digest\" > \"$tmpbin\"; "
+            <> "objcopy --update-section .envelope_build_id=\"$tmpbin\" \"$lib\" 2>/dev/null || true; "
+            <> "rm -f \"$tmpbin\"; "
+            <> "fi"
         ]
         Nothing
         Nothing

@@ -10,6 +10,7 @@ module MCTS.FFI.Rust
     , withRustBoard
     , withRustGame
     , withRustSearchGame
+    , withRustRecomputeGame
     , loadRustEnvelope
     , rustLibraryPath
     ) where
@@ -18,11 +19,13 @@ import Foreign.Ptr (Ptr)
 import MCTS.Error (AppError)
 import MCTS.FFI.Common
     ( DynamicGame
+    , DynamicRecomputeGame
     , DynamicSearchGame
     , EngineEnvelope
     , loadDynamicEnvelope
     , withDynamicBoard
     , withDynamicGame
+    , withDynamicRecomputeGame
     , withDynamicSearchGame
     )
 import MCTS.Types (Backend (Rust))
@@ -47,6 +50,14 @@ withRustSearchGame
     :: (DynamicSearchGame -> IO a) -> IO (Either AppError a)
 withRustSearchGame =
     withDynamicSearchGame Rust rustLibraryPath "mcts_rust"
+
+-- | Sprint 6.5: recompute opener exposing real parent-perspective
+-- equity from the search tree's chosen child via
+-- `mcts_rust_recompute_move`.
+withRustRecomputeGame
+    :: (DynamicRecomputeGame -> IO a) -> IO (Either AppError a)
+withRustRecomputeGame =
+    withDynamicRecomputeGame Rust rustLibraryPath "mcts_rust"
 
 loadRustEnvelope :: IO (Either AppError EngineEnvelope)
 loadRustEnvelope =

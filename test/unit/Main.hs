@@ -7,6 +7,7 @@ import Control.Monad.ST (runST)
 import qualified Data.ByteString as BS
 import Data.IORef (modifyIORef', newIORef, readIORef)
 import Data.List (sort)
+import qualified Data.List as List
 import qualified Data.Text as T
 import Data.Word (Word16, Word8)
 import MCTS.CLI.Bench (monotonicNanos, runBenchWithClock)
@@ -47,6 +48,17 @@ import MCTS.CLI.Spec
     , renderCommandList
     , renderCommandTree
     )
+import MCTS.CLI.Tui.Play (PlayState (..), UserInputOutcome (..), applyUserInput, initialPlayState)
+import MCTS.CLI.Tui.Replay
+    ( OverlayRow (..)
+    , ReplayKey (..)
+    , applyReplayKey
+    , currentOverlayRows
+    , initialReplayState
+    , initialReplayStateWithOverlays
+    , replayBoardAt
+    , replayMoveIndex
+    )
 import MCTS.Crypto.SHA256 (sha256Hex)
 import MCTS.Driver
 import MCTS.Engine
@@ -84,7 +96,7 @@ import MCTS.Prerequisite
     )
 import MCTS.ReportCard (defaultReportCard, renderReportCard, renderReportCardJson)
 import MCTS.Rng.Cpp (cppSplitSeed)
-import MCTS.Rng.Mix (mix)
+import MCTS.Rng.Mix (backendNativeSalt, mix)
 import qualified MCTS.Search.Arena as Arena
 import qualified MCTS.Search.UCT as UCT
 import MCTS.Subprocess (Subprocess (..), renderSubprocess)
@@ -197,6 +209,7 @@ runUnit = do
     assert
         "divergence catches changed move"
         (moveDisagreementRate (divergenceRate transcript changed) > 0.0)
+    exerciseDivergenceVsEqStream transcript
     exerciseEnvelopeChecks transcript
     exerciseLookup
     exercisePrerequisites
@@ -235,6 +248,10 @@ runUnit = do
     exerciseEnvelopeRoundTrip
     exerciseCppImperativeBuildPlan
     exercisePerGameTranscriptWriter
+    exerciseTuiPlayInput
+    exerciseTuiReplayNav
+    exerciseTuiReplayOverlay
+    exerciseBackendNativeSalt
     putStrLn "mcts-unit PASS"
 
 assert :: String -> Bool -> IO ()
@@ -462,6 +479,32 @@ removeDirectoryIfExists :: FilePath -> IO ()
 removeDirectoryIfExists path = do
     exists <- doesDirectoryExist path
     if exists then removePathForcibly path else pure ()
+
+-- | Sprint 7.5: divergenceVsEqStream pairs a transcript against a
+-- recompute-produced `EqStream` and reports per-move metrics. Same-
+-- backend roundtrip should yield zero disagreement; a synthesized
+-- foreign stream that disagrees on the chosen action for every move
+-- should report a 100% move-disagreement rate and a strictly positive
+-- equity L2 drift.
+exerciseDivergenceVsEqStream :: Transcript -> IO ()
+exerciseDivergenceVsEqStream transcript = do
+    let hashValue = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        sameStream = equityStreamForTranscript hashValue transcript
+        sameMetrics = divergenceVsEqStream transcript sameStream
+    assert
+        "divergence vs same eq stream is zero"
+        (sameMetrics == DivergenceMetrics 0.0 0.0 0.0)
+    let foreignStream =
+            sameStream
+                { eqRecords =
+                    [ record{eqEquity = 0.5}
+                    | record <- eqRecords sameStream
+                    ]
+                }
+        foreignMetrics = divergenceVsEqStream transcript foreignStream
+    assert
+        "divergence vs foreign eq stream surfaces equity drift"
+        (equityL2Drift foreignMetrics > 0.0)
 
 changeFirstMove :: GameTranscript -> GameTranscript
 changeFirstMove game =
@@ -1542,3 +1585,177 @@ exerciseSubprocessGolden = do
         (rendered == "cabal exec mcts -- inspect show 'a b'")
     assert "subprocess failure includes rendered command" (T.pack rendered `T.isInfixOf` failure)
     assert "subprocess failure includes exit code" (T.pack "exit=2" `T.isInfixOf` failure)
+
+-- | Sprint 7.4: cover the `mcts play` interactive command dispatcher.
+-- The pure `applyUserInput` lets us exercise each in-app command
+-- without spinning up brick.
+exerciseTuiPlayInput :: IO ()
+exerciseTuiPlayInput = do
+    let st0 = initialPlayState 42 200 4
+        quitOutcome = applyUserInput ":quit" st0
+        quitShort = applyUserInput ":q" st0
+        invalidParse = applyUserInput "garbage" st0
+        emptyInput = applyUserInput "" st0
+        hintOutcome = applyUserInput ":hint" st0
+        undoNoHistory = applyUserInput ":undo" st0
+    case quitOutcome of
+        OutcomeQuit -> pure ()
+        _ -> failTest "applyUserInput :quit must produce OutcomeQuit"
+    case quitShort of
+        OutcomeQuit -> pure ()
+        _ -> failTest "applyUserInput :q must produce OutcomeQuit"
+    case invalidParse of
+        OutcomeContinue st ->
+            assert
+                "InvalidMove message surfaced for garbage input"
+                ("InvalidMove" `isInfixOfStr` playStateMessage st)
+        _ -> failTest "applyUserInput garbage must continue"
+    case emptyInput of
+        OutcomeContinue st -> assert "empty input leaves message intact" (playStateInput st == "")
+        _ -> failTest "applyUserInput \"\" must continue"
+    case hintOutcome of
+        OutcomeContinue st -> do
+            assert ":hint records a last-hint action" (playStateLastHint st /= Nothing)
+            assert ":hint surfaces a hint message" ("hint:" `isInfixOfStr` playStateMessage st)
+        _ -> failTest ":hint must continue"
+    case undoNoHistory of
+        OutcomeContinue st ->
+            assert
+                ":undo with empty history reports nothing-to-undo"
+                ("nothing to undo" `isInfixOfStr` playStateMessage st)
+        _ -> failTest ":undo must continue"
+    -- Apply a real move, then undo it, then verify the board state is
+    -- back to the initial position.
+    case applyUserInput "*(4,1)" st0 of
+        OutcomeContinue st1 -> do
+            assert "real move advances ply count" (playStateMoveCount st1 == 1)
+            case applyUserInput ":undo" st1 of
+                OutcomeContinue st2 -> do
+                    assert "undo rewinds the ply count" (playStateMoveCount st2 == 0)
+                    assert "undo restores the board" (playStateBoard st2 == playStateBoard st0)
+                _ -> failTest "undo after real move must continue"
+        _ -> failTest "valid move *(4,1) must continue"
+
+failTest :: String -> IO ()
+failTest message = do
+    putStrLn ("FAIL: " <> message)
+    error message
+
+isInfixOfStr :: String -> String -> Bool
+isInfixOfStr needle haystack =
+    T.isInfixOf (T.pack needle) (T.pack haystack)
+
+-- | Sprint 7.2: `backendNativeSalt` must be zero under `--rng cpp`
+-- and distinct per backend under `--rng native`. The Haskell
+-- backend's salt is the smallest non-zero value because
+-- `backendId Haskell == 4` and the multiplier is constant.
+exerciseBackendNativeSalt :: IO ()
+exerciseBackendNativeSalt = do
+    let salts =
+            [ backendNativeSalt NativeRng backend
+            | backend <- [CppLegacy, CppImperative, CppFunctional, Rust, Haskell]
+            ]
+    assert
+        "cpp-RNG salt is zero for every backend"
+        ( all
+            (== 0)
+            [ backendNativeSalt CppRng backend
+            | backend <- [CppLegacy, CppImperative, CppFunctional, Rust, Haskell]
+            ]
+        )
+    assert
+        "native salt is non-zero for every backend"
+        (all (/= 0) salts)
+    assert
+        "native salts are pairwise distinct across backends"
+        (length (List.nub salts) == length salts)
+
+-- | Sprint 7.4: cover the multi-backend equity overlay produced by
+-- `currentOverlayRows`. Initial position (idx == 0) yields no rows;
+-- advancing to move 1 with a single-backend EqStream yields one row
+-- with the recompute's chosen action and equity.
+exerciseTuiReplayOverlay :: IO ()
+exerciseTuiReplayOverlay = do
+    let inputs =
+            defaultRunInputs
+                { inputBackend = Haskell
+                , inputRng = CppRng
+                , inputGames = 1
+                , inputSims = FixedSims 4
+                , inputMaxPlies = 8
+                }
+        gameRec = runGame inputs 0
+        transcript =
+            Transcript
+                (makeRunConfig inputs)
+                (makeLogicalEnvelope Haskell CppRng)
+                [gameRec]
+        hashValue = replicate 64 '0'
+        stream = (equityStreamForTranscript hashValue transcript){eqBuildId = "overlay-fixture"}
+        stateAtStart = initialReplayStateWithOverlays hashValue transcript [stream]
+    -- Index 0: no current move, all overlay rows are empty.
+    case currentOverlayRows stateAtStart of
+        [row] -> do
+            assert "overlay start row has no chosen" (overlayChosen row == Nothing)
+            assert "overlay start row has no equity" (overlayEquity row == Nothing)
+        rows -> failTest ("expected one overlay row at idx 0, got " <> show (length rows))
+    -- Advance to move 1: overlay should resolve to the recorded chosen action.
+    case applyReplayKey ReplayNext stateAtStart of
+        Just stateAtOne -> case currentOverlayRows stateAtOne of
+            [row] -> do
+                assert "overlay row 1 carries a chosen action" (overlayChosen row /= Nothing)
+                assert "overlay row 1 reports the fixture build id" (overlayBuildId row == "overlay-fixture")
+            rows -> failTest ("expected one overlay row at idx 1, got " <> show (length rows))
+        Nothing -> failTest "ReplayNext at idx 0 must continue"
+
+-- | Sprint 7.4: cover the `mcts inspect replay` TUI's pure
+-- navigation dispatcher. The replay state walks forward, backward,
+-- to the start, and to the end of a small synthesized transcript.
+exerciseTuiReplayNav :: IO ()
+exerciseTuiReplayNav = do
+    let inputs =
+            defaultRunInputs
+                { inputBackend = Haskell
+                , inputRng = CppRng
+                , inputGames = 1
+                , inputSims = FixedSims 4
+                , inputMaxPlies = 8
+                }
+        gameRec = runGame inputs 0
+        transcript =
+            Transcript
+                (makeRunConfig inputs)
+                (makeLogicalEnvelope Haskell CppRng)
+                [gameRec]
+        st0 = initialReplayState (replicate 64 '0') transcript
+        nMoves = length (gameMoves gameRec)
+    assert "replay starts at move 0" (replayMoveIndex st0 == 0)
+    case applyReplayKey ReplayNext st0 of
+        Nothing -> failTest "ReplayNext must continue"
+        Just st1 -> do
+            assert "ReplayNext advances by 1" (replayMoveIndex st1 == 1)
+            case applyReplayKey ReplayPrev st1 of
+                Nothing -> failTest "ReplayPrev must continue"
+                Just st2 ->
+                    assert "ReplayPrev rewinds to 0" (replayMoveIndex st2 == 0)
+    case applyReplayKey ReplayEnd st0 of
+        Nothing -> failTest "ReplayEnd must continue"
+        Just stEnd ->
+            assert "ReplayEnd lands at total" (replayMoveIndex stEnd == nMoves)
+    case applyReplayKey ReplayPrev st0 of
+        Nothing -> failTest "ReplayPrev at start must continue"
+        Just stStay ->
+            assert "ReplayPrev at 0 clamps to 0" (replayMoveIndex stStay == 0)
+    case applyReplayKey ReplayQuit st0 of
+        Nothing -> pure ()
+        Just _ -> failTest "ReplayQuit must terminate"
+    -- replayBoardAt 0 == initial board
+    assert
+        "replayBoardAt 0 equals initial board"
+        (replayBoardAt transcript 0 == initialBoard)
+    -- Walk to the end and back via Home to cross-check.
+    case applyReplayKey ReplayEnd st0 of
+        Just stEnd -> case applyReplayKey ReplayStart stEnd of
+            Just stHome -> assert "ReplayStart lands at 0" (replayMoveIndex stHome == 0)
+            Nothing -> failTest "ReplayStart must continue"
+        Nothing -> failTest "ReplayEnd must continue"

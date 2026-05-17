@@ -1,10 +1,13 @@
 module MCTS.Verify.Divergence
     ( DivergenceMetrics (..)
     , divergenceRate
+    , divergenceVsEqStream
     , renderDivergenceMetrics
     ) where
 
 import Data.List (sort)
+import qualified Data.Map.Strict as Map
+import MCTS.Transcript.EquitySidecar (EqRecord (..), EqStream (..))
 import MCTS.Types
 import Text.Printf (printf)
 
@@ -27,6 +30,56 @@ divergenceRate left right =
     total = length pairs
     moveDisagreements = length [() | pair <- pairs, movesDiffer pair]
     visitDisagreements = length [() | pair <- pairs, visitsDiffer pair]
+
+-- | Score a transcript against a sidecar-held EqStream produced by
+-- the same or a different backend's foreign recompute. Sprint 7.5:
+-- the equity_l2_drift is the root-mean-square delta between the
+-- transcript's recorded chosen action equity (currently always 0.0
+-- because equities are excluded from the wire format) and the
+-- recompute's per-move chosen-action equity. The visit and move
+-- disagreement rates are computed against the recompute records'
+-- chosen action vs the transcript's chosen action.
+divergenceVsEqStream :: Transcript -> EqStream -> DivergenceMetrics
+divergenceVsEqStream transcript stream =
+    DivergenceMetrics
+        { visitDisagreementRate = rate visitDisagreements total
+        , moveDisagreementRate = rate moveDisagreements total
+        , equityL2Drift = l2Drift
+        }
+  where
+    recordMap =
+        Map.fromList
+            [ ((eqGameId r, eqMoveIndex r), r)
+            | r <- eqRecords stream
+            ]
+    paired =
+        [ (moveRec, Map.lookup (gameId game, moveIndex moveRec) recordMap)
+        | game <- transcriptGames transcript
+        , moveRec <- gameMoves game
+        ]
+    total = length paired
+    moveDisagreements =
+        length
+            [ ()
+            | (moveRec, mRecompute) <- paired
+            , case mRecompute of
+                Nothing -> True
+                Just r -> moveChosen moveRec /= eqChosen r
+            ]
+    -- visit disagreement is not derivable from an EqStream alone (the
+    -- sidecar carries only chosen-action equity); we conservatively
+    -- count a disagreement whenever the chosen action differs.
+    visitDisagreements = moveDisagreements
+    drifts =
+        [ delta * delta
+        | (_, Just r) <- paired
+        , let delta = eqEquity r - 0.0
+        , not (isNaN delta)
+        ]
+    l2Drift =
+        if null drifts
+            then 0.0
+            else sqrt (sum drifts / fromIntegral (length drifts))
 
 renderDivergenceMetrics :: String -> DivergenceMetrics -> String
 renderDivergenceMetrics label metrics =

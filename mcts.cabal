@@ -23,6 +23,9 @@ library
         MCTS.CLI.Spec
         MCTS.CLI.Test
         MCTS.CLI.Tree
+        MCTS.CLI.Tui.Board
+        MCTS.CLI.Tui.Play
+        MCTS.CLI.Tui.Replay
         MCTS.CLI.Verify
         MCTS.CheckCode
         MCTS.Driver
@@ -35,6 +38,7 @@ library
         MCTS.Driver.Rust
         MCTS.Engine
         MCTS.Engine.Envelope
+        MCTS.Engine.ForeignRecompute
         MCTS.Engine.Recompute
         MCTS.Env
         MCTS.Error
@@ -79,6 +83,7 @@ library
         ansi-terminal,
         array,
         base >=4.20 && <5,
+        brick,
         bytestring,
         containers,
         directory,
@@ -95,7 +100,8 @@ library
         time,
         transformers,
         typed-process,
-        unix
+        unix,
+        vty
 
 executable mcts
     main-is:          Main.hs
@@ -215,3 +221,19 @@ test-suite mcts-haskell-style
         tasty,
         tasty-hunit,
         temporary
+
+benchmark mcts-criterion
+    type:             exitcode-stdio-1.0
+    main-is:          criterion-suites.hs
+    hs-source-dirs:   bench
+    default-language: Haskell2010
+    ghc-options:
+        -Wall -Wcompat -O2 -funbox-strict-fields -fspecialise-aggressively
+        -fexpose-all-unfoldings -flate-dmd-anal
+        -fmax-simplifier-iterations=20 -fworker-wrapper
+        -fstatic-argument-transformation -fllvm
+
+    build-depends:
+        base >=4.20 && <5,
+        criterion,
+        mcts
