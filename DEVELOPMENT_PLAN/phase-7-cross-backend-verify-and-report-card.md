@@ -16,7 +16,7 @@
 
 ## Phase Status
 
-🔄 **Active**. All five Cabal test stanzas pass under the pinned
+🔄 **Active**. `docker compose run --rm mcts mcts test all` passes under the pinned
 toolchain with the real FFI-backed engines for all four foreign
 backends (i)/(ii)/(iii)/(iv); the cross-backend and legacy-parity
 stanzas accept a well-formed `VerifyMismatch` outcome (the cohort
@@ -119,8 +119,8 @@ the real `mcts` binary across the FFI to every backend.
 
 ### Validation
 
-1. `cabal test mcts-unit` passes.
-2. `cabal test mcts-integration` passes with all five backends built (this
+1. `docker compose run --rm mcts mcts test mcts-unit` passes.
+2. `docker compose run --rm mcts mcts test mcts-integration` passes with all five backends built (this
    sprint requires all of Phases 3–6 closure to be meaningful; a partial-backend
    smoke is acceptable interim but Q4/Q6 closure waits for full cohort).
 3. Each test category produces a golden file or a property-test stanza
@@ -130,8 +130,8 @@ the real `mcts` binary across the FFI to every backend.
 
 - Baseline landed: `mcts-unit` and `mcts-integration` Cabal stanzas exist and are
   wired against the logical backend baseline through in-stanza `tasty` runners.
-  `cabal test mcts-integration` validates the logical five-backend same-backend
-  determinism baseline at three seeds per backend, bounded FFI smoke drivers for all
+  `docker compose run --rm mcts mcts test mcts-integration` validates the logical
+  five-backend same-backend determinism baseline at three seeds per backend, bounded FFI smoke drivers for all
   four foreign backends when their container-built shared libraries are present, live
   `mcts_<backend>_get_envelope` loading for those same foreign libraries, and the
   equity-sidecar originator marker integration check. The `mcts-unit` stanza now
@@ -227,10 +227,11 @@ constraint at the type level and `LegacyParityBackend` requiring (i) at parse ti
 
 ### Validation
 
-1. `cabal test mcts-cross-backend` passes: the `(ii)..(v)` cohort agrees on
-   visit counts at `G_V = 50`.
-2. `cabal test mcts-legacy-parity` passes: the 5-backend cohort agrees on
-   visit counts under the legacy parity envelope at `G_LP = 10`.
+1. `docker compose run --rm mcts mcts test mcts-cross-backend` passes: the
+   `(ii)..(v)` cohort agrees on visit counts at `G_V = 50`.
+2. `docker compose run --rm mcts mcts test mcts-legacy-parity` passes: the
+   5-backend cohort agrees on visit counts under the legacy parity envelope at
+   `G_LP = 10`.
 3. A synthetic injected mismatch in one backend produces `AppError
    VerifyMismatch` with the correct payload.
 4. A synthetic `MAX_ROLLOUT_ITERS` overflow in backend (i) produces `AppError
@@ -264,7 +265,8 @@ constraint at the type level and `LegacyParityBackend` requiring (i) at parse ti
   child-enumeration shape (e.g. cpp-imperative emitting all 128 wall slots vs. Rust /
   Haskell capping at 12) does not block the visit-count contract. The
   `nonTerminalRank` function stays exported for standalone test coverage at
-  `test/unit/Main.hs`. `cabal test all` + `mcts check-code` green; the `mcts-cross-backend`
+  `test/unit/Main.hs`. `docker compose run --rm mcts mcts test all` +
+  `docker compose run --rm mcts mcts check-code` green; the `mcts-cross-backend`
   stanza continues to accept a well-formed `VerifyMismatch` because the deeper
   cross-backend tree-shape gap (wall-enumeration cap divergence, post-move flip
   orientation conventions) remains owned by the legacy-deletion item below.
@@ -321,12 +323,12 @@ and emits the tidy summary block answering Q1–Q7 in one screenful.
   6. Run `cabal test mcts-integration`.
   7. Run `cabal test mcts-cross-backend`.
   8. Run `cabal test mcts-legacy-parity`.
-  9. Run the pinned report-card workload — the **seven invocations** below,
-     enumerated verbatim from
-     [../README.md → mcts test all → Report-card workload](../README.md)
-     (README lines 223–246). The `--dry-run` plan must render these seven
-     invocations literally, byte-for-byte against the README block (with the
-     `$G_*` / `$S_*` knobs substituted from `cabal.project`):
+  9. Run the pinned report-card workload — the **seven logical invocations** below,
+     matching the command suffixes documented in
+     [../README.md → mcts test all → Report-card workload](../README.md). The README
+     shows host-runnable `docker compose run --rm mcts mcts ...` examples; the
+     `--dry-run` plan renders the corresponding internal `mcts ...` subprocesses with
+     the `$G_*` / `$S_*` knobs substituted from `cabal.project`:
      1. `mcts bench rollouts --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell --threading single --rng native --games $G_R --seed 42`
      2. `mcts bench rollouts --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell --threading multi --workers 8 --rng native --games $G_R --seed 42`
      3. `mcts bench selfplay --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell --threading single --rng native --games $G_S --seed 42 --sims $S_BENCH`
@@ -415,7 +417,7 @@ so the contract is reviewable in one place:
   [../HASKELL_CLI_TOOL.md → Plan / Apply](../HASKELL_CLI_TOOL.md).
 - **Prerequisites as Typed Effects.** All five backend artefacts present,
   PGO+BOLT profiles populated, `mimalloc` linked, GHC/Cabal pinned versions on
-  `$PATH` are encoded as one `prerequisiteRegistry` per
+  the container `PATH` are encoded as one `prerequisiteRegistry` per
   [../HASKELL_CLI_TOOL.md → Prerequisites as Typed
   Effects](../HASKELL_CLI_TOOL.md). The transitive closure runs before `apply`;
   a single unmet node aborts with `AppError PrerequisiteUnmet` carrying the

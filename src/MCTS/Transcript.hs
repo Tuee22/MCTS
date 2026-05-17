@@ -45,7 +45,6 @@ import System.Directory
     , removeFile
     , renameFile
     )
-import System.Environment (lookupEnv)
 import System.FilePath ((</>))
 import System.IO (Handle, hFlush, openBinaryTempFile)
 import qualified System.Info as Info
@@ -516,12 +515,8 @@ resolveCacheRoot explicit =
     case explicit of
         Just path -> pure path
         Nothing -> do
-            env <- lookupEnv "MCTS_CACHE_DIR"
-            case env of
-                Just path -> pure path
-                Nothing -> do
-                    cwd <- getCurrentDirectory
-                    pure (cwd </> ".mcts-cache")
+            cwd <- getCurrentDirectory
+            pure (cwd </> ".mcts-cache")
 
 hostArch :: String
 hostArch =

@@ -177,11 +177,12 @@ the `.gitignore` entry that keeps the cache out of version control.
   [../documents/engineering/transcript_format.md → Content
   Addressing](../documents/engineering/transcript_format.md); this sprint imports
   the type from there rather than redefining it.
-- `src/MCTS/Transcript/Cache.hs` resolves the cache root in this order, per
+- `src/MCTS/Transcript.hs` resolves the cache root in this order, per
   [00-overview.md → Hard Constraints item 12](00-overview.md):
   1. `--cache-dir <path>` if provided
-  2. `$MCTS_CACHE_DIR` if set
-  3. `./.mcts-cache/` resolved against the current working directory
+  2. `./.mcts-cache/` resolved against the current working directory inside the
+     container
+  The `mcts` binary does not read a cache-root environment variable.
 - On-disk layout under the cache root: `transcripts/<arch>/<sha>.tr`, where
   `<arch>` is `amd64` or `arm64` per [../README.md → Architecture
   envelope](../README.md). The full sha is the hex-encoded `sha256` digest.
@@ -209,8 +210,8 @@ the `.gitignore` entry that keeps the cache out of version control.
   the rename, then fsync's the parent directory (best-effort — fsync on
   a directory may be a no-op on some kernels). The `unix` package is now
   a declared dependency.
-- Cache-root branch coverage for explicit `--cache-dir`, `$MCTS_CACHE_DIR`, and
-  default project-local cache behavior lives in `mcts-unit`.
+- Cache-root branch coverage for explicit `--cache-dir` and default project-local
+  cache behavior lives in `mcts-unit`.
 - Container validation confirmed generated `.mcts-cache/` contents are ignored by git and
   do not appear in `git status --short --ignored`.
 

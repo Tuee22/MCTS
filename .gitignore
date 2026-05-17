@@ -1,6 +1,5 @@
 .mcts-cache/
 dist-newstyle/
-.build/
 cpp-legacy/build/
 cpp-imperative/build/
 cpp-functional/build/

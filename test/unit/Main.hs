@@ -123,7 +123,6 @@ import System.Directory
     , doesFileExist
     , removePathForcibly
     )
-import System.Environment (lookupEnv, setEnv, unsetEnv)
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
 import Test.Tasty (defaultMain, testGroup)
@@ -974,7 +973,8 @@ exerciseCppImperativeBuildPlan = do
 -- a rationale per entry. The pinned set matches
 -- [../HASKELL_CLI_TOOL.md → Forbidden Surfaces](../HASKELL_CLI_TOOL.md):
 -- `.github/workflows/`, `.husky/`, `.githooks/`, `.pre-commit-config.yaml`,
--- `pre-commit-*.yaml`, root `Makefile`, root `justfile`, root `Taskfile.yml`.
+-- `pre-commit-*.yaml`, root `Makefile`, host-level `.build/`, root
+-- `justfile`, and root `Taskfile.yml`.
 exerciseForbiddenPathRegistry :: IO ()
 exerciseForbiddenPathRegistry = do
     let paths = map forbiddenPath forbiddenPathRegistry
@@ -985,6 +985,7 @@ exerciseForbiddenPathRegistry = do
             , ".pre-commit-config.yaml"
             , "pre-commit-*.yaml"
             , "Makefile"
+            , ".build"
             , "justfile"
             , "Taskfile.yml"
             ]
@@ -1313,19 +1314,11 @@ exerciseOptparseParser = do
 
 exerciseCacheRootBranches :: IO ()
 exerciseCacheRootBranches = do
-    original <- lookupEnv "MCTS_CACHE_DIR"
     explicit <- Transcript.resolveCacheRoot (Just ".mcts-cache-explicit")
     assert "cache root explicit branch" (explicit == ".mcts-cache-explicit")
-    setEnv "MCTS_CACHE_DIR" ".mcts-cache-env"
-    fromEnv <- Transcript.resolveCacheRoot Nothing
-    assert "cache root env branch" (fromEnv == ".mcts-cache-env")
-    unsetEnv "MCTS_CACHE_DIR"
     fallback <- Transcript.resolveCacheRoot Nothing
     assert "cache root default branch" (".mcts-cache" `isSuffixOfLocal` fallback)
-    restoreEnv original
   where
-    restoreEnv (Just value) = setEnv "MCTS_CACHE_DIR" value
-    restoreEnv Nothing = unsetEnv "MCTS_CACHE_DIR"
     isSuffixOfLocal suffix value = suffix == drop (length value - length suffix) value
 
 exerciseReportCardGolden :: IO ()
@@ -1542,7 +1535,7 @@ exerciseErrorRenderings = do
     assert "TranscriptNotFound mentions the ref" ("abc" `inText` renderError (TranscriptNotFound "abc"))
     assert
         "DocsCheckDrift mentions the remedy"
-        ("mcts docs generate" `inText` renderError (DocsCheckDrift "x" "y"))
+        ("docker compose run --rm mcts mcts docs generate" `inText` renderError (DocsCheckDrift "x" "y"))
     assert
         "PrerequisiteUnmet mentions the remedy"
         ("install ghcup" `inText` renderError (PrerequisiteUnmet "ghc" "GHC" "install ghcup"))

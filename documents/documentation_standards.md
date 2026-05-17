@@ -183,9 +183,12 @@ Code examples must not use:
 - unsupported toolchains or bridge layers.
 - stale commands that bypass the public `mcts` surface.
 - host-level validation fallbacks. Supported project work, including
-  Fourmolu/HLint execution, happens inside the root-level `compose.yaml`
-  container; examples must not tell contributors to use ambient host
+  Fourmolu/HLint execution, enters through
+  `docker compose run --rm mcts mcts <command>`; examples must not tell
+  contributors to run `docker compose up`, `docker compose exec`, or ambient host
   toolchains as a fallback.
+- application-specific environment-variable configuration for the `mcts` binary.
+  Document CLI flags instead.
 
 ---
 
@@ -314,15 +317,17 @@ currently scheduled registry entries are:
 
 ### How to Regenerate
 
-Run `mcts docs generate` to splice the current renderer output between every marker
-pair declared in the registry. Hand edits between markers are reverted on the next
-regenerate and fail `mcts docs check` until reverted.
+Run `docker compose run --rm mcts mcts docs generate` to splice the current renderer
+output between every marker pair declared in the registry. Hand edits between markers
+are reverted on the next regenerate and fail
+`docker compose run --rm mcts mcts docs check` until reverted.
 
 The check command emits the doctrine's three-element error message on drift:
 
 1. The file path that drifted.
 2. The marker key (so the contributor knows which renderer is responsible).
-3. A literal remedy hint: `` Run `mcts docs generate` to update. ``
+3. A literal remedy hint:
+   `` run `docker compose run --rm mcts mcts docs generate` ``
 
 ### How to Add a New Generated Section
 
@@ -333,8 +338,9 @@ The doctrine's five-step extension protocol:
 2. Add the marker pair to the target file using the conventions above.
 3. Register a new `GeneratedSectionRule` or `TrackedGeneratedPath` entry in the
    in-code registry.
-4. Run `mcts docs generate` to populate the section.
-5. Confirm `mcts docs check` and `cabal test` pass.
+4. Run `docker compose run --rm mcts mcts docs generate` to populate the section.
+5. Confirm `docker compose run --rm mcts mcts docs check` and
+   `docker compose run --rm mcts mcts test all` pass.
 
 ### Fully Generated, Do-Not-Hand-Edit Paths
 

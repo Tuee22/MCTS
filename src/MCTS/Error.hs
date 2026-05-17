@@ -93,7 +93,11 @@ renderError err =
         FFIFailure backend symbol message ->
             "ffi failure: " <> backendIdentifier backend <> " " <> symbol <> ": " <> message
         DocsCheckDrift path key ->
-            "generated docs drift: " <> path <> " marker=" <> key <> "; run `mcts docs generate`"
+            "generated docs drift: "
+                <> path
+                <> " marker="
+                <> key
+                <> "; run `docker compose run --rm mcts mcts docs generate`"
         UnknownCommand command ->
             "unknown command: " <> command
         InvalidMove raw ->

@@ -38,6 +38,8 @@ The full operator-facing surface. Generated artefacts under
 completion scripts under `share/completion/` all derive from the same `CommandSpec`
 registry that drives this table. Phase-owned per
 [../../DEVELOPMENT_PLAN/system-components.md](../../DEVELOPMENT_PLAN/system-components.md).
+From the host, run any listed logical command as
+`docker compose run --rm mcts mcts <command>`.
 
 <!-- mcts:command-matrix:start -->
 | Command | Purpose |
@@ -120,7 +122,7 @@ command also live in
 | `--cache-states N` | `inspect replay` | `20` | In-memory MCTS-state LRU cache for back-navigation. |
 | `--allow-stale` | `verify rollouts`, `verify selfplay`, `verify legacy-parity` | off | Downgrade per-backend-slot `EngineEnvelopeMismatch` from hard fail to a warning; verify proceeds on visit counts only. Cohort-level mismatches (`host_arch`, `shared_rng_build_id`, `cohort_config_hash`) remain hard fails. Forensic use only. |
 | `--keep-current` | `inspect cache prune` | off | In the Phase 2 baseline, only deletes sidecar slots whose build id does not match the logical `<backend>-logical` current slot; live-envelope matching lands with the backend FFI envelope work. |
-| `--cache-dir <path>` | every cache-touching command | `$MCTS_CACHE_DIR` else `./.mcts-cache/` | Resolves before the env-var fallback. |
+| `--cache-dir <path>` | every cache-touching command | `./.mcts-cache/` when omitted | The `mcts` binary does not read cache-root environment variables. |
 | `--format json\|table\|plain` | every non-TUI command | `table` on TTY, `plain` otherwise | Per [HASKELL_CLI_TOOL.md → Output Rules](../../HASKELL_CLI_TOOL.md). TUI commands (`play`, `inspect replay`) ignore the flag. |
 | `--color auto\|always\|never`, `--no-color` | every non-TUI command | `auto` | TUI commands ignore the flag. |
 | `--dry-run` | every Plan/Apply command (`test all`, `build <backend>`, `inspect cache prune`) | off | Renders the typed `Plan` and exits 0. |

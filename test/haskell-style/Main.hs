@@ -1,18 +1,17 @@
 -- | Manual `mcts-haskell-style` stanza. The supported path runs inside the
--- project container and requires pinned Fourmolu / HLint binaries from
--- `MCTS_STYLE_TOOLS_DIR`. Host-level fallback is deliberately unsupported.
+-- project container and requires pinned Fourmolu / HLint binaries under
+-- `/opt/mcts-style-tools/bin`. Host-level fallback is deliberately unsupported.
 module Main where
 
 import Data.List (isInfixOf, isPrefixOf, isSuffixOf)
 import System.Directory
-    ( createDirectoryIfMissing
-    , doesDirectoryExist
+    ( doesDirectoryExist
     , doesFileExist
     , listDirectory
     )
-import System.Environment (lookupEnv)
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
+import System.IO.Temp (withSystemTempDirectory)
 import qualified System.Process as Process
 
 main :: IO ()
@@ -58,8 +57,7 @@ hardHlintFailure out err =
 
 styleToolPath :: String -> IO FilePath
 styleToolPath tool = do
-    toolsDir <- maybe "/opt/mcts-style-tools/bin" id <$> lookupEnv "MCTS_STYLE_TOOLS_DIR"
-    let pinned = toolsDir </> tool
+    let pinned = "/opt/mcts-style-tools/bin" </> tool
     pinnedExists <- doesFileExist pinned
     if pinnedExists
         then pure pinned
@@ -67,18 +65,18 @@ styleToolPath tool = do
             error
                 ( "required pinned style tool is missing: "
                     <> pinned
-                    <> "\nRun validation inside the project container via root compose.yaml; host PATH fallback is not supported."
+                    <> "\nRun validation via `docker compose run --rm mcts mcts check-code`; host PATH fallback is not supported."
                 )
 
 runCabalFormatRoundTrip :: IO ()
-runCabalFormatRoundTrip = do
-    createDirectoryIfMissing True ".build/mcts-style"
+runCabalFormatRoundTrip = withSystemTempDirectory "mcts-style" $ \tmpDir -> do
     original <- readFile "mcts.cabal"
-    writeFile ".build/mcts-style/mcts.cabal" original
-    code <- runProcess "cabal" ["format", ".build/mcts-style/mcts.cabal"]
+    let cabalCopy = tmpDir </> "mcts.cabal"
+    writeFile cabalCopy original
+    code <- runProcess "cabal" ["format", cabalCopy]
     case code of
         ExitSuccess -> do
-            formatted <- readFile ".build/mcts-style/mcts.cabal"
+            formatted <- readFile cabalCopy
             if formatted == original
                 then pure ()
                 else error "cabal format drift: mcts.cabal does not round-trip byte-equally"

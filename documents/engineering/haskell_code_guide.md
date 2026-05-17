@@ -60,6 +60,9 @@ The MCTS commands that consume the `Plan / Apply` pattern are:
 - `mcts docs generate` — internally Plan/Apply over the rendered marker
   substitutions and the `trackingGeneratedPaths` writes (Phase 1 Sprint 1.3).
 
+Host invocations wrap these logical commands as
+`docker compose run --rm mcts mcts <command>`.
+
 `mcts bench` and `mcts verify` are not Plan/Apply commands — they do not mutate
 external state (only the transcript cache, which they own), so the
 `--dry-run` flag does not apply. They do, however, consume the

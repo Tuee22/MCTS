@@ -20,8 +20,8 @@
 ✅ **Done**. A Cabal package, thin `app/Main.hs`, `src/MCTS/` library layout,
 manual `CommandSpec` registry, parser, output/error boundary, typed `Subprocess`
 wrapper, Plan/Apply helpers, prerequisite skeleton, lint/docs commands, and
-`mcts-haskell-style` stanza exist; `cabal test all` is the baseline validation gate
-under the pinned toolchain. Phase `1` closure is scoped to the CLI scaffold,
+`mcts-haskell-style` stanza exist; `docker compose run --rm mcts mcts test all` is
+the baseline host validation gate under the pinned toolchain. Phase `1` closure is scoped to the CLI scaffold,
 generated artefact machinery, container-owned lint stack, typed subprocess and
 Plan/Apply boundaries, prerequisite registry, shared `Env`, and output/error
 discipline; backend logic and transcript semantics remain owned by later phases.
@@ -95,16 +95,17 @@ the reproducible Docker development environment that every later sprint builds o
   isolated from the main project compiler and does not change
   `with-compiler: ghc-9.14.1`. Host-level fallback to ambient Fourmolu, HLint,
   Cabal, GHC, or backend toolchains is unsupported. Root-level `compose.yaml`
-  exposes the canonical
-  `docker compose up -d` + `docker compose exec mcts bash` entrypoint declared in
-  the project [README](../README.md).
-- `cabal build all` succeeds inside the container with no warnings under the pinned
-  toolchain.
+  exposes the canonical `docker compose run --rm mcts mcts <command>` entrypoint
+  declared in the project [README](../README.md); there is no long-running daemon
+  container, bind mount, Compose environment-variable block, or `sleep infinity`
+  command.
+- `docker compose run --rm mcts mcts check-code` succeeds with no warnings under
+  the pinned toolchain.
 
 ### Validation
 
-1. `cabal build all` succeeds inside the container, producing the placeholder `mcts`
-   binary that prints a stub help message.
+1. `docker compose run --rm mcts mcts check-code` succeeds, proving the container
+   image carries the installed `mcts` binary and the warning-clean build gate.
 2. `cabal --version` reports `Cabal 3.16.1.0`; `ghc --version` reports `9.14.1`.
 3. `app/Main.hs` is ≤ 5 lines of business logic; `src/MCTS/App.hs` carries
    `App.main`.
@@ -129,10 +130,10 @@ the reproducible Docker development environment that every later sprint builds o
   it to install `fourmolu-0.19.0.1` plus `hlint-3.10` into
   `/opt/mcts-style-tools/bin/`; root-level `compose.yaml` is the only supported
   Compose entrypoint.
-- Validated on 2026-05-15 inside the root Compose container:
+- Validated on 2026-05-15 through the root Compose entrypoint:
   `ghc --numeric-version == 9.14.1`, `cabal --numeric-version == 3.16.1.0`,
-  `docker compose config`, and `cabal run exe:mcts -- check-code` (including
-  warning-clean `cabal build all`).
+  and `docker compose run --rm mcts mcts check-code` (including warning-clean
+  `cabal build all`).
 
 ## Sprint 1.2: `CommandSpec` Registry and Parser Generation ✅
 
@@ -406,11 +407,13 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
   bench cohort, legacy-parity, `inspect show --with-equity`, and the unhappy
   `verify --rng native` path; byte-stable golden coverage for `mcts commands --json`
   lives in `mcts-unit`.
-- The README's full concrete invocation set is bound into leaf `Example` entries.
-  Validated on 2026-05-15 inside the root Compose container with
-  `cabal test mcts-unit`, `cabal run exe:mcts -- commands --tree`,
-  `cabal run exe:mcts -- commands --json`, `cabal run exe:mcts -- help bench selfplay`,
-  and `cabal run exe:mcts -- check-code`.
+- The README's full concrete invocation set wraps the same leaf `Example` entries in
+  the Compose entrypoint. Validated on 2026-05-15 through the root Compose entrypoint
+  with `docker compose run --rm mcts mcts test mcts-unit`,
+  `docker compose run --rm mcts mcts commands --tree`,
+  `docker compose run --rm mcts mcts commands --json`,
+  `docker compose run --rm mcts mcts help bench selfplay`, and
+  `docker compose run --rm mcts mcts check-code`.
 
 ## Sprint 1.3: Generated Artefacts Registry and Docs Pipeline ✅
 
@@ -444,8 +447,8 @@ text-artefact derived from the `CommandSpec` registry.
 - `src/MCTS/CLI/Docs.hs` owns `mcts docs check` (compare rendered output against
   on-disk markers and tracked paths, fail on drift with the doctrine's
   three-element error message: file path, marker key, literal remedy
-  `` `mcts docs generate` ``) and `mcts docs generate` (splice the renderer output
-  between the marker pair, idempotent).
+  `` `docker compose run --rm mcts mcts docs generate` ``) and `mcts docs generate`
+  (splice the renderer output between the marker pair, idempotent).
 - `mcts docs generate` is a Plan/Apply command per
   [../HASKELL_CLI_TOOL.md → Plan / Apply](../HASKELL_CLI_TOOL.md): the plan
   enumerates the marker substitutions to splice and the `trackingGeneratedPaths`
@@ -490,13 +493,16 @@ text-artefact derived from the `CommandSpec` registry.
   writes fully-generated files and splices each section rule. File reads are
   forced before rewrites so marker regeneration can safely overwrite a file it
   just inspected.
-- Validated on 2026-05-15 inside the root Compose container with
-  `cabal test mcts-unit`, `cabal run exe:mcts -- docs check`,
-  byte-idempotence of two consecutive `cabal run exe:mcts -- docs generate`
-  runs over the generated surfaces, a synthetic marker-region drift rejected by
-  `mcts docs check` with the path/key/remedy message, a synthetic
-  `documents/cli/commands.md` edit rejected by `mcts lint files`, and final
-  green `mcts docs check` plus `mcts lint files`.
+- Validated on 2026-05-15 through the root Compose entrypoint with
+  `docker compose run --rm mcts mcts test mcts-unit`,
+  `docker compose run --rm mcts mcts docs check`, byte-idempotence of two
+  consecutive `docker compose run --rm mcts mcts docs generate` runs over the
+  generated surfaces, a synthetic marker-region drift rejected by
+  `docker compose run --rm mcts mcts docs check` with the path/key/remedy message,
+  a synthetic `documents/cli/commands.md` edit rejected by
+  `docker compose run --rm mcts mcts lint files`, and final green
+  `docker compose run --rm mcts mcts docs check` plus
+  `docker compose run --rm mcts mcts lint files`.
 
 ## Sprint 1.4: Lint Stack, `fourmolu.yaml`, `mcts-haskell-style` Stanza ✅
 
@@ -541,9 +547,10 @@ forbidden-symbol HLint rules behind the `mcts-haskell-style` test stanza plus th
 - `src/MCTS/CLI/Command.hs` gains the `CheckCode` constructor on the top-level
   `Command` ADT and a matching `CommandSpec` leaf in the registry per
   [Sprint 1.2 ownership note](#sprint-12-commandspec-registry-and-parser-generation-).
-  The leaf carries a single `Example` (literal `mcts check-code`) so the
+  The leaf carries a single logical `Example` (`mcts check-code`) so the
   `mcts <subcommand> --help`, `documents/cli/commands.md`, and `mcts commands --json`
-  outputs all reflect the new surface.
+  outputs all reflect the CLI surface; host-runnable docs wrap that logical command in
+  `docker compose run --rm mcts mcts check-code`.
 - `mcts.cabal` declares the `mcts-haskell-style` test-suite with
   `type: exitcode-stdio-1.0`, `main-is: Main.hs`, `hs-source-dirs: test/haskell-style`.
   The suite asserts `fourmolu --mode check` succeeds, `hlint --with-group=default
@@ -555,11 +562,12 @@ forbidden-symbol HLint rules behind the `mcts-haskell-style` test stanza plus th
 
 ### Validation
 
-1. `cabal test mcts-haskell-style` passes.
-2. `mcts lint haskell` exits 0; `mcts lint files` exits 0; `mcts lint all` exits 0.
-3. `mcts check-code` exits 0 on a clean worktree.
+1. `docker compose run --rm mcts mcts lint haskell` passes.
+2. `docker compose run --rm mcts mcts lint files` exits 0;
+   `docker compose run --rm mcts mcts lint all` exits 0.
+3. `docker compose run --rm mcts mcts check-code` exits 0 on a clean worktree.
 4. A synthetic violation (e.g. a `print` call in `src/MCTS/App.hs`) is rejected by
-   `mcts lint haskell` with a clear hlint error.
+   `docker compose run --rm mcts mcts lint haskell` with a clear hlint error.
 
 ### Closure Notes
 
@@ -588,10 +596,11 @@ forbidden-symbol HLint rules behind the `mcts-haskell-style` test stanza plus th
   to GHC `9.14.1` while matching the isolated formatter-tools GHC model.
 - The `check-code` dispatcher now lives in dedicated `src/MCTS/CheckCode.hs`;
   `src/MCTS/App.hs` only routes the top-level constructor to that owner.
-- Validated on 2026-05-15 inside the root Compose container:
-  `cabal test mcts-haskell-style`, `cabal run exe:mcts -- lint all`,
-  `cabal run exe:mcts -- check-code`, plus a temporary synthetic `print` violation
-  rejected by container-pinned HLint with `Error: Use output boundary`.
+- Validated on 2026-05-15 through the root Compose entrypoint:
+  `docker compose run --rm mcts mcts lint haskell`,
+  `docker compose run --rm mcts mcts lint all`,
+  `docker compose run --rm mcts mcts check-code`, plus a temporary synthetic `print`
+  violation rejected by container-pinned HLint with `Error: Use output boundary`.
 
 ## Sprint 1.5: `Plan / Apply` Boundary ✅
 
@@ -638,10 +647,11 @@ for free.
 - `MCTS.CLI.Build` executes backend plans through `applySubprocessWithEnv`, and
   `MCTS.CLI.Test` now uses `applyWithEnv` with a custom `runStep` that preserves
   its explicit `renderError` output on subprocess failure.
-- Validated on 2026-05-15 inside the root Compose container with
-  `cabal test mcts-unit`, `cabal run exe:mcts -- test all --dry-run --plan-file /tmp/mcts-test-plan.txt`,
-  `cabal run exe:mcts -- docs generate --dry-run --plan-file /tmp/mcts-docs-plan.txt`,
-  and `cabal run exe:mcts -- build cpp-imperative --dry-run --plan-file /tmp/mcts-build-plan.txt`.
+- Validated on 2026-05-15 through the root Compose entrypoint with
+  `docker compose run --rm mcts mcts test mcts-unit`,
+  `docker compose run --rm mcts mcts test all --dry-run --plan-file /tmp/mcts-test-plan.txt`,
+  `docker compose run --rm mcts mcts docs generate --dry-run --plan-file /tmp/mcts-docs-plan.txt`,
+  and `docker compose run --rm mcts mcts build cpp-imperative --dry-run --plan-file /tmp/mcts-build-plan.txt`.
 
 ## Sprint 1.6: `Subprocess` ADT and Interpreter ✅
 
@@ -684,9 +694,10 @@ shared-library builds, and every subprocess call site go through one IO boundary
 
 ### Validation
 
-1. `cabal build all` succeeds with the `Subprocess` module compiled.
+1. `docker compose run --rm mcts mcts check-code` succeeds with the `Subprocess`
+   module compiled.
 2. A synthetic violation (e.g. a `callProcess` call in `src/MCTS/Lint.hs`) is
-   rejected by `mcts lint haskell`.
+   rejected by `docker compose run --rm mcts mcts lint haskell`.
 3. A golden test of `renderSubprocess` over a sample value passes.
 
 ### Closure Notes
@@ -703,10 +714,12 @@ shared-library builds, and every subprocess call site go through one IO boundary
 - `test/golden/cli/subprocess.txt` pins `renderSubprocess` shell quoting, and the
   unit suite asserts `AppError SubprocessFailed` includes the rendered command
   and exit code.
-- Validated on 2026-05-15 inside the root Compose container with
-  `cabal build all`, `cabal test mcts-unit`, `cabal test mcts-haskell-style`, and
-  a synthetic `/tmp/HlintTypedSynthetic.hs` using `System.Process.Typed.proc`
-  rejected by the container-pinned HLint as `Error: Use typed subprocess boundary`.
+- Validated on 2026-05-15 through the root Compose entrypoint with
+  `docker compose run --rm mcts mcts check-code`,
+  `docker compose run --rm mcts mcts test mcts-unit`,
+  `docker compose run --rm mcts mcts lint haskell`, and a synthetic
+  `/tmp/HlintTypedSynthetic.hs` using `System.Process.Typed.proc` rejected by the
+  container-pinned HLint as `Error: Use typed subprocess boundary`.
 
 ## Sprint 1.7: `prerequisiteRegistry` ✅
 
@@ -755,8 +768,9 @@ typed boundary and emits structured remedy hints on failure.
 - `mcts build *` checks backend build prerequisites before apply, and
   `mcts test all` / `mcts test <stanza>` check the pinned GHC/Cabal test
   prerequisite closure before applying Cabal-backed test plans.
-- Validated on 2026-05-15 inside the root Compose container with
-  `cabal test mcts-unit` and `cabal run exe:mcts -- test mcts-integration`.
+- Validated on 2026-05-15 through the root Compose entrypoint with
+  `docker compose run --rm mcts mcts test mcts-unit` and
+  `docker compose run --rm mcts mcts test mcts-integration`.
 
 ## Sprint 1.8: `Env` Record and `ReaderT App` ✅
 
@@ -791,7 +805,7 @@ Thread one shared `Env` record through every command runner via `ReaderT Env IO`
 
 ### Validation
 
-1. `cabal build all` succeeds.
+1. `docker compose run --rm mcts mcts check-code` succeeds.
 2. Every command runner module imports `MCTS.Env` and uses `App`.
 
 ### Closure Notes
@@ -810,11 +824,14 @@ Thread one shared `Env` record through every command runner via `ReaderT Env IO`
   the aggregate gate.
 - `runAppIO`, `askEnv`, `withTestClock`, the generated registry fields, and the
   default command spec round-trip through the `mcts-unit` stanza.
-- Validated on 2026-05-15 inside the root Compose container with
-  `cabal build all`, `cabal test mcts-unit`, CLI smoke checks for
-  `commands --tree`, `docs check`, `lint files`, and `build cpp-legacy --dry-run`,
-  plus a container `grep` signature check showing every public command runner
-  returns `Env.App ExitCode`.
+- Validated on 2026-05-15 through the root Compose entrypoint with
+  `docker compose run --rm mcts mcts check-code`,
+  `docker compose run --rm mcts mcts test mcts-unit`,
+  `docker compose run --rm mcts mcts commands --tree`,
+  `docker compose run --rm mcts mcts docs check`,
+  `docker compose run --rm mcts mcts lint files`, and
+  `docker compose run --rm mcts mcts build cpp-legacy --dry-run`, plus a container
+  signature check showing every public command runner returns `Env.App ExitCode`.
 
 ## Sprint 1.9: `AppError`, `renderError`, Output Discipline ✅
 
@@ -895,10 +912,11 @@ Implement the single `AppError` ADT, the `renderError` boundary, and the `--form
 
 1. Golden tests over `renderError` for each `AppError` variant.
 2. A synthetic violation (e.g. a `print` outside `Output.hs`) is rejected by
-   `mcts lint haskell`.
-3. `mcts <subcommand> --format json` emits valid JSON; `mcts <subcommand> --format
-   table` emits a TTY-friendly table; `mcts <subcommand> --format plain` emits
-   newline-delimited output suitable for piping.
+   `docker compose run --rm mcts mcts lint haskell`.
+3. `docker compose run --rm mcts mcts <subcommand> --format json` emits valid JSON;
+   `docker compose run --rm mcts mcts <subcommand> --format table` emits a
+   TTY-friendly table; `docker compose run --rm mcts mcts <subcommand> --format plain`
+   emits newline-delimited output suitable for piping.
 
 ### Closure Notes
 
@@ -914,10 +932,13 @@ Implement the single `AppError` ADT, the `renderError` boundary, and the `--form
   `test/golden/cli/errors.txt`, and asserts the `TranscriptNotFound`,
   `DocsCheckDrift`, and `PrerequisiteUnmet` renderings carry the user-visible
   references (ref, remedy command, remedy hint).
-- Validated on 2026-05-15 inside the root Compose container with
-  `cabal build all`, `cabal test mcts-unit`, `mcts inspect list --format json`,
-  `mcts inspect list --format table`, `mcts commands --format plain`,
-  `mcts --color always verify selfplay --backend cpp-imperative,haskell --rng native`,
+- Validated on 2026-05-15 through the root Compose entrypoint with
+  `docker compose run --rm mcts mcts check-code`,
+  `docker compose run --rm mcts mcts test mcts-unit`,
+  `docker compose run --rm mcts mcts inspect list --format json`,
+  `docker compose run --rm mcts mcts inspect list --format table`,
+  `docker compose run --rm mcts mcts commands --format plain`,
+  `docker compose run --rm mcts mcts --color always verify selfplay --backend cpp-imperative,haskell --rng native`,
   and a synthetic `/tmp/HlintPrintSynthetic.hs` using `print` rejected by the
   container-pinned HLint as `Error: Use output boundary`.
 

@@ -246,8 +246,10 @@ Per
 [../../DEVELOPMENT_PLAN/00-overview.md → Hard Constraints item 12](../../DEVELOPMENT_PLAN/00-overview.md):
 
 1. `--cache-dir <path>` if provided.
-2. `$MCTS_CACHE_DIR` if set.
-3. `./.mcts-cache/` resolved against the current working directory.
+2. `./.mcts-cache/` resolved against the current working directory inside the
+   container.
+
+The `mcts` binary does not read a cache-root environment variable.
 
 On-disk layout under the cache root:
 

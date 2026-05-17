@@ -114,7 +114,7 @@ prerequisiteRegistry =
     , PrerequisiteNode
         "pgo-profiles"
         "Profile directory root for PGO/BOLT builds"
-        "create .build/profiles when running optimized backend builds"
+        "create container-local .build/profiles when running optimized backend builds"
         []
         (doesDirectoryExist ".build/profiles")
     , profileDirectoryNode "cpp-imperative-pgo-profile" "cpp-imperative/pgo-profile"
@@ -125,37 +125,37 @@ prerequisiteRegistry =
     , PrerequisiteNode
         "logical-backends"
         "The logical in-process backend cohort is available"
-        "run cabal build all"
+        "run docker compose run --rm mcts mcts check-code"
         []
         (pure True)
     , PrerequisiteNode
         "legacy-fixtures"
         "Legacy fixture directory exists"
-        "run mcts docs generate"
+        "run docker compose run --rm mcts mcts docs generate"
         []
         (doesFileExist "test/golden/legacy/README.md")
     , PrerequisiteNode
         "libmcts-cpp-legacy-built"
         "cpp-legacy shared library exists for dynamic FFI smoke tests"
-        "run make -C cpp-legacy smoke"
+        "run docker compose run --rm mcts mcts build cpp-legacy"
         ["cxx"]
         (doesFileExist "cpp-legacy/build/libmcts_cpp_legacy.so")
     , PrerequisiteNode
         "libmcts-cpp-imperative-built"
         "cpp-imperative shared library exists for dynamic FFI smoke tests"
-        "run mcts build cpp-imperative"
+        "run docker compose run --rm mcts mcts build cpp-imperative"
         ["cxx"]
         (doesFileExist "cpp-imperative/build/libmcts_cpp_imperative.so")
     , PrerequisiteNode
         "libmcts-cpp-functional-built"
         "cpp-functional shared library exists for dynamic FFI smoke tests"
-        "run mcts build cpp-functional"
+        "run docker compose run --rm mcts mcts build cpp-functional"
         ["cxx"]
         (doesFileExist "cpp-functional/build/libmcts_cpp_functional.so")
     , PrerequisiteNode
         "libmcts-rust-built"
         "Rust cdylib exists for dynamic FFI smoke tests"
-        "run mcts build rust"
+        "run docker compose run --rm mcts mcts build rust"
         ["cargo", "rustc"]
         (doesFileExist "rust/target/release/libmcts_rust.so")
     ]

@@ -253,7 +253,7 @@ Per doctrine §Test Organization, each tier is a separate cabal stanza:
 | `mcts-legacy-parity` | round-robin verify, legacy envelope | `verify legacy-parity` across all five backends with `max_plies = 10000` pinned and a fixture seed; pre-flight guard asserts (i) neither throws nor reaches the cap, see [Draw rule](#draw-rule) |
 | `mcts-haskell-style` | lint | pinned style-tool `fourmolu --mode check`, `hlint --with-group=default --with-group=extra + .hlint.yaml` with only `Error:` findings blocking, `cabal format` round-trip equality |
 
-A single `tasty` tree spanning all tiers is forbidden by doctrine; the stanza split gives Cabal-native parallelism and lets contributors target one tier (`cabal test mcts-unit`).
+A single `tasty` tree spanning all tiers is forbidden by doctrine; the stanza split gives Cabal-native parallelism and lets contributors target one tier (`docker compose run --rm mcts mcts test mcts-unit`).
 
 ### POC headline questions
 
@@ -273,27 +273,33 @@ A fixed, deterministic battery, identical across hosts:
 
 ```bash
 # Q1 — random rollouts
-mcts bench rollouts --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell \
-                    --threading single --rng native --games $G_R --seed 42
-mcts bench rollouts --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell \
-                    --threading multi --workers 8 --rng native --games $G_R --seed 42
+docker compose run --rm mcts mcts bench rollouts \
+    --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell \
+    --threading single --rng native --games $G_R --seed 42
+docker compose run --rm mcts mcts bench rollouts \
+    --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell \
+    --threading multi --workers 8 --rng native --games $G_R --seed 42
 
 # Q2 / Q5 — self-play, with both threading modes feeding Q5's scaling table
-mcts bench selfplay --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell \
-                    --threading single --rng native --games $G_S --seed 42 --sims $S_BENCH
-mcts bench selfplay --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell \
-                    --threading multi --workers 8 --rng native --games $G_S --seed 42 --sims $S_BENCH
+docker compose run --rm mcts mcts bench selfplay \
+    --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell \
+    --threading single --rng native --games $G_S --seed 42 --sims $S_BENCH
+docker compose run --rm mcts mcts bench selfplay \
+    --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell \
+    --threading multi --workers 8 --rng native --games $G_S --seed 42 --sims $S_BENCH
 
 # Q3 — cross-backend determinism, backend (i) excluded by the VerifyBackend type
-mcts verify rollouts --backend cpp-imperative,cpp-functional,rust,haskell \
-                     --threading single --games $G_V --seed 42 --max-plies 200
-mcts verify selfplay --backend cpp-imperative,cpp-functional,rust,haskell \
-                     --threading single --games $G_V --seed 42 --max-plies 200 --sims $S_VERIFY
+docker compose run --rm mcts mcts verify rollouts \
+    --backend cpp-imperative,cpp-functional,rust,haskell \
+    --threading single --games $G_V --seed 42 --max-plies 200
+docker compose run --rm mcts mcts verify selfplay \
+    --backend cpp-imperative,cpp-functional,rust,haskell \
+    --threading single --games $G_V --seed 42 --max-plies 200 --sims $S_VERIFY
 
 # Q7 — legacy parity, all five backends, max_plies and RNG pinned by the subcommand
-mcts verify legacy-parity selfplay \
-            --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell \
-            --games $G_LP --seed $S_LP --sims $S_LP_SIMS
+docker compose run --rm mcts mcts verify legacy-parity selfplay \
+    --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell \
+    --games $G_LP --seed $S_LP --sims $S_LP_SIMS
 ```
 
 Game counts (`$G_R`, `$G_S`, `$G_V`, `$G_LP`), per-move sim budgets (`$S_BENCH`, `$S_VERIFY`, `$S_LP_SIMS`), and the legacy-parity seed (`$S_LP`) are pinned in `cabal.project` so the report card is reproducible across hosts. The pinned values are: `G_R = 100_000`, `G_S = 1_000`, `G_V = 50`, `G_LP = 10`, `S_BENCH = 10_000`, `S_VERIFY = 10_000`, `S_LP_SIMS = 10_000`, `S_LP = 42`. Q4 (same-backend determinism) and Q6 (backend (i) vs `MCTS_legacy` parity) are fully covered by the `mcts-integration` stanza — Q6 specifically as a golden-test cohort comparing `cpp-legacy` transcripts against an out-of-band `MCTS_legacy`-produced fixture set checked into `test/golden/legacy/` — and are re-asserted by the report-card summary rather than re-run. Q7 (5-way legacy-parity round-robin) runs in full both inside the `mcts-legacy-parity` stanza and again here, since its failure modes are configuration-sensitive (fixture seed, sim budget) and worth surfacing in the headline summary.
@@ -329,7 +335,7 @@ The same data is available as `mcts test all --format json` for CI consumption; 
 ### Doctrine compliance
 
 - **Plan / Apply.** `mcts test all` is a Plan/Apply command. `build :: TestInputs -> Either AppError TestPlan` produces the typed list of cabal stanzas + report-card subprocesses (modelled per doctrine §Subprocesses as Typed Values); `apply :: Env -> TestPlan -> IO ExitCode` runs it. `--dry-run` prints the rendered plan and exits 0; `--plan-file <path>` writes the rendered plan for out-of-band review.
-- **Prerequisites.** All five backend artifacts present, PGO+BOLT profiles populated, `mimalloc` linked, GHC/Cabal pinned versions on `$PATH` — encoded as one `prerequisiteRegistry` per doctrine §Prerequisites as Typed Effects. The transitive closure runs before `apply`; a single unmet node aborts with `AppError PrerequisiteUnmet` carrying the failing `nodeId`, description, and remedy hint.
+- **Prerequisites.** All five backend artifacts present, PGO+BOLT profiles populated, `mimalloc` linked, GHC/Cabal pinned versions on the container `PATH` — encoded as one `prerequisiteRegistry` per doctrine §Prerequisites as Typed Effects. The transitive closure runs before `apply`; a single unmet node aborts with `AppError PrerequisiteUnmet` carrying the failing `nodeId`, description, and remedy hint.
 - **Determinism.** The summary block is rendered by a pure function of a typed `ReportCard` value. No timestamps, no locale-dependent ordering, no terminal-width-dependent wrapping. Wall-clock numbers are the only non-deterministic content and are rendered to fixed precision (three significant figures for ratios, one decimal for throughputs in kilogames/s). The block is golden-testable; the live throughputs are replaced by sentinel placeholders in the golden file.
 
 ---
@@ -526,40 +532,44 @@ Concrete invocations:
 
 ```bash
 # (a) Random rollouts, all five backends, single-threaded, native RNG, 100k games
-mcts bench rollouts --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell \
-                    --threading single --rng native --games 100000 --seed 42
+docker compose run --rm mcts mcts bench rollouts \
+    --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell \
+    --threading single --rng native --games 100000 --seed 42
 
 # (b) Self-play, multi-threaded with 8 workers (default), native RNG
-mcts bench selfplay --backend haskell --rng native --games 1000 --seed 42 --sims 10000
+docker compose run --rm mcts mcts bench selfplay \
+    --backend haskell --rng native --games 1000 --seed 42 --sims 10000
 
 # Same as above on 32 workers
-mcts bench selfplay --backend haskell --rng native --workers 32 --games 1000 --seed 42 --sims 10000
+docker compose run --rm mcts mcts bench selfplay \
+    --backend haskell --rng native --workers 32 --games 1000 --seed 42 --sims 10000
 
 # Cross-backend determinism check: same C++ RNG bytes, identical trees expected
-mcts verify selfplay --backend cpp-imperative,rust,haskell \
-                     --threading single --games 50 --seed 42 --max-plies 200 --sims 10000
+docker compose run --rm mcts mcts verify selfplay \
+    --backend cpp-imperative,rust,haskell \
+    --threading single --games 50 --seed 42 --max-plies 200 --sims 10000
 
 # Interactive game: human plays hero against the haskell backend, 10k sims/move
-mcts play --backend haskell --side hero --sims 10000
+docker compose run --rm mcts mcts play --backend haskell --side hero --sims 10000
 
 # Backend-vs-backend spectate (no human input; watch a self-play game render live) — Haskell vs the steelman ceiling
-mcts play --backend haskell --side villain --vs cpp-imperative --sims 10000
+docker compose run --rm mcts mcts play --backend haskell --side villain --vs cpp-imperative --sims 10000
 
 # What's in my local transcript cache?
-mcts inspect list
+docker compose run --rm mcts mcts inspect list
 
 # Dump a stored transcript with equities recomputed (slow; opt-in)
-mcts inspect show 7a2f --top 10 --with-equity
+docker compose run --rm mcts mcts inspect show 7a2f --top 10 --with-equity
 
 # Interactive replay: navigate forward/back through a stored game
-mcts inspect replay 7a2f --top 15
+docker compose run --rm mcts mcts inspect replay 7a2f --top 15
 
 # Doctrine-alignment gate: lint files + docs + haskell, then cabal build all (warning-clean)
-mcts check-code
+docker compose run --rm mcts mcts check-code
 
 # Build a backend's optimised library (Plan/Apply: PGO instrument → train → re-build → BOLT → mimalloc link)
-mcts build cpp-imperative --dry-run     # prints the typed Subprocess sequence and exits 0
-mcts build cpp-imperative               # executes the plan and produces cpp-imperative/libmcts_cpp_imperative.so
+docker compose run --rm mcts mcts build cpp-imperative --dry-run
+docker compose run --rm mcts mcts build cpp-imperative
 ```
 
 The `verify` subtree pins `--rng cpp`, drives every requested backend over the same seed and same move sequence, and round-robin-compares their decoded determinism payloads (see [Cross-backend verification](#cross-backend-verification) above). Same-backend determinism tests live alongside as `tasty` cases under the `mcts-integration` stanza (see [`mcts test all`](#mcts-test-all)).
@@ -571,10 +581,10 @@ The `verify` subtree pins `--rng cpp`, drives every requested backend over the s
 Per doctrine §Progressive Introspection, the CLI exposes:
 
 ```bash
-mcts commands              # flat list of every subcommand
-mcts commands --tree       # tree rendering
-mcts commands --json       # JSON command schema (source of truth for external tooling)
-mcts help <subcommand>     # focused help, equivalent to `<subcommand> --help`
+docker compose run --rm mcts mcts commands
+docker compose run --rm mcts mcts commands --tree
+docker compose run --rm mcts mcts commands --json
+docker compose run --rm mcts mcts help <subcommand>
 ```
 
 `mcts commands --json` is the externally-stable interface; the human-readable forms are derived from the same `CommandSpec` value.
@@ -601,7 +611,7 @@ The `forbiddenPathRegistry` defaults, the per-artifact lint subcommands (`mcts l
 
 **Hash-prefix lookup.** `<hash-prefix>` arguments to `inspect show` and `inspect replay` use git-style resolution: the shortest prefix that uniquely identifies a transcript is accepted, minimum 4 hex chars. On no match: exit non-zero with `AppError TranscriptNotFound`. On multi-match: exit non-zero with `AppError TranscriptAmbiguous` carrying the list of candidate hashes so the operator can re-issue with a longer prefix.
 
-**Cache root.** The transcript cache root resolves to `--cache-dir <path>` if given, else `$MCTS_CACHE_DIR` if set, else `./.mcts-cache/` resolved against the current working directory. The on-disk layout under that root is `transcripts/<arch>/<sha>.tr` (where `<arch>` is `amd64` or `arm64` per [Architecture envelope](#architecture-envelope)); this is the `.mcts-cache/transcripts/<arch>/` directory referenced throughout the rest of this document. The cache root is `.gitignore`'d when it falls inside the project tree.
+**Cache root.** The transcript cache root resolves to `--cache-dir <path>` if given, else `./.mcts-cache/` resolved against the current working directory inside the container. The `mcts` binary does not read a cache-root environment variable. The on-disk layout under that root is `transcripts/<arch>/<sha>.tr` (where `<arch>` is `amd64` or `arm64` per [Architecture envelope](#architecture-envelope)); this is the `.mcts-cache/transcripts/<arch>/` directory referenced throughout the rest of this document.
 
 **`play`** — interactive game against any backend. Left pane shows the Corridors board; the right pane carries whose turn it is, move count, last move played, and (during the AI's turn) a live counter of simulations completed. The human types moves into a prompt at the bottom. The AI side runs MCTS through `playBackend` under `playSims` and the configured RNG. With `--vs <backend>`, `--backend` controls the side named by `--side`, the `--vs` backend controls the opposite side, and the human is a spectator.
 
@@ -654,11 +664,25 @@ Q7 and the `mcts-legacy-parity` test stanza retire alongside (i), since both req
 ## Build and run
 
 The project ships `docker/Dockerfile` and a root-level `compose.yaml`
-(inspired by `MCTS_legacy/docker/`) so the toolchain is reproducible. All
-supported development, validation, formatting, linting, benchmark, and backend
-build work happens inside this container. Ambient host-level toolchain fallback
-is unsupported; in particular, Fourmolu and HLint must never be taken from the
-host `PATH`.
+(inspired by `MCTS_legacy/docker/`) so the toolchain and installed `mcts`
+binary are reproducible. All supported development, validation, formatting,
+linting, benchmark, and backend build work enters through this host command
+shape:
+
+```bash
+docker compose run --rm mcts mcts <command>
+```
+
+There is no long-running project daemon. `docker compose up` is not part of the
+workflow, and the Compose service intentionally has no bind mount, no
+environment-variable block, and no `sleep infinity` placeholder. The first
+`docker compose run --rm` invocation builds the image when it is absent; source
+and build artefacts then live inside that container image and its short-lived
+runtime filesystem. Host-level toolchain fallback is unsupported; in particular,
+Fourmolu and HLint must never be taken from the host `PATH`. A host-level
+`.build/` directory is unsupported residue under this policy. Runtime project
+configuration is expressed with CLI flags, not application-specific environment
+variables read by the `mcts` binary.
 
 - **Base:** `ubuntu:24.04`
 - **C++:** latest stable GCC shipped with 24.04, C++23 enabled (GCC only — Clang is not supported). LLVM/BOLT pinned in the Dockerfile for the post-link reordering step (see [Compiler and runtime tuning](#compiler-and-runtime-tuning)). GHC's `-fllvm` backend (used for the Haskell engine) shares this same pinned LLVM, so the container carries one LLVM version regardless of which language is being compiled — the C++ toolchain itself remains GCC.
@@ -672,13 +696,9 @@ host `PATH`.
   window.
 
 ```bash
-docker compose up -d
-docker compose exec mcts bash
-# inside the container:
-cabal build all
-cabal test all
-cabal run exe:mcts -- check-code
-mcts bench rollouts --backend haskell --threading single --rng native --games 100000 --seed 42
+docker compose run --rm mcts mcts check-code
+docker compose run --rm mcts mcts test all
+docker compose run --rm mcts mcts bench rollouts --backend haskell --threading single --rng native --games 100000 --seed 42
 ```
 
 The Haskell CLI follows the conventions in [`HASKELL_CLI_TOOL.md`](HASKELL_CLI_TOOL.md) where they apply:
@@ -691,7 +711,8 @@ The Haskell CLI follows the conventions in [`HASKELL_CLI_TOOL.md`](HASKELL_CLI_T
   `fourmolu.yaml` committed at repo root; the policy invocation path for
   Fourmolu/HLint is the container-owned `/opt/mcts-style-tools/bin/`, and the
   gate is exposed both as `mcts lint haskell` and as the
-  `mcts-haskell-style` test-suite. Host `PATH` fallback is not supported.
+  `mcts-haskell-style` test-suite. Host `PATH` fallback and environment-variable
+  overrides are not supported.
 - Strict toolchain pinning via `cabal.project` and `tested-with: ghc ==9.14.1`.
 
 See [Doctrine scope](#doctrine-scope) above for the explicit in-scope / out-of-scope split against `HASKELL_CLI_TOOL.md`.

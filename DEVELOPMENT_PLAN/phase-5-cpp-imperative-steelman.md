@@ -178,9 +178,10 @@ backend-agnostic from the Haskell side.
   `_instrumented` artefacts split correctly. The Makefile builds all
   three artefacts (`smoke`, `bench`, `instrumented`) warning-clean
   under the doctrine C++23 flag set.
-- `cabal test all` is green under the pinned GHC `9.14.1` toolchain;
-  `mcts bench rollouts --backend cpp-imperative --rng cpp` rides the
-  arena search end-to-end and writes valid wire-format transcripts.
+- `docker compose run --rm mcts mcts test all` is green under the pinned GHC
+  `9.14.1` toolchain; `docker compose run --rm mcts mcts bench rollouts --backend
+  cpp-imperative --rng cpp` rides the arena search end-to-end and writes valid
+  wire-format transcripts.
 
 ### Remaining Work
 

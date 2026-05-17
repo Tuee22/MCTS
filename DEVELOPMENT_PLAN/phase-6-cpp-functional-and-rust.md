@@ -146,7 +146,8 @@ underneath so the optimisation stack still applies.
   `cpp-functional/Makefile` builds the smoke + bench + instrumented
   artefacts under the shared doctrine C++23 flag set; `nm -D` confirms
   the `mcts_functional_*` symbol surface.
-- `cabal test all` and `mcts check-code` stay green; cross-backend
+- `docker compose run --rm mcts mcts test all` and
+  `docker compose run --rm mcts mcts check-code` stay green; cross-backend
   smoke continues to accept a well-formed `VerifyMismatch` per the
   Phase 7 stanza note.
 
@@ -368,9 +369,9 @@ exposed as a `cdylib` for the Haskell FFI.
 - `MCTS.Driver.Dispatch.runBatchDispatch` routes `--backend rust`
   through `runForeignSearchGame withRustSearchGame` whenever the
   cdylib at `rust/target/release/libmcts_rust.so` is present.
-- `cabal test all` is green (mcts-unit, mcts-integration, mcts-cross-
-  backend, mcts-legacy-parity, mcts-haskell-style) and `mcts check-
-  code` passes inside the container. Cross-backend smoke continues
+- `docker compose run --rm mcts mcts test all` is green (mcts-unit,
+  mcts-integration, mcts-cross-backend, mcts-legacy-parity, mcts-haskell-style) and
+  `docker compose run --rm mcts mcts check-code` passes. Cross-backend smoke continues
   to accept a well-formed `VerifyMismatch` outcome under the Phase 7
   stanza contract.
 

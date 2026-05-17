@@ -8,7 +8,7 @@ EngineEnvelopeMismatch: engine envelope mismatch: CohortLevel field=host_arch ex
 PrerequisiteUnmet: prerequisite unmet: ghc (GHC); remedy: install ghcup
 SubprocessFailed: subprocess failed: cmd exit=1
 FFIFailure: ffi failure: haskell fn: boom
-DocsCheckDrift: generated docs drift: documents/cli/commands.md marker=fully-generated; run `mcts docs generate`
+DocsCheckDrift: generated docs drift: documents/cli/commands.md marker=fully-generated; run `docker compose run --rm mcts mcts docs generate`
 UnknownCommand: unknown command: wat
 InvalidMove: invalid move: ?
 ParseError: parse error: bad

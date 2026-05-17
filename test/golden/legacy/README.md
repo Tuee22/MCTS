@@ -29,29 +29,19 @@ transcript in the Phase 2 wire format (header + envelope + one game block).
 The conversion script lives at
 [`cpp-legacy/tools/legacy-to-wire.cc`](../../../cpp-legacy/tools/legacy-to-wire.cc).
 It links directly against `cpp-legacy/legacy-core/` and writes one
-`<sha>.tr` file per game.
+`<sha>.tr` file per game. Fixture regeneration is not a routine operator
+entrypoint under the current container doctrine: supported host work must enter
+through `docker compose run --rm mcts mcts <command>`. A future fixture refresh
+must add or use a `mcts` subcommand for the regeneration path rather than
+documenting direct `make` or direct tool execution from the host.
 
-```
-docker compose up -d
-docker compose exec mcts make -C cpp-legacy legacy-to-wire
-docker compose exec mcts ./cpp-legacy/build/legacy-to-wire \
-    test/golden/legacy/transcripts
-```
-
-The tool reads three optional environment variables:
-
-| Variable | Default | Spec value |
-|----------|---------|------------|
-| `LEGACY_FIXTURE_SEED` | `42` | `S_LP = 42` |
-| `LEGACY_FIXTURE_GAMES` | `10` | `G_LP = 10` |
-| `LEGACY_FIXTURE_SIMS` | `10000` | `S_LP_SIMS = 10_000` |
-
-The committed fixtures use `LEGACY_FIXTURE_SIMS=1000` so the regenerate
-step fits in routine CI budgets; the full report-card snapshot at
-`S_LP_SIMS=10000` is reserved for the doctrine's actual report-card
-publication and remains a manual run gated by the surrounding cohort
-preparation. The chosen sim count is the same for every fixture in a
-single regenerate, so internal byte-equality holds across runs.
+The historical fixture constants are seed `42`, `10` games, and the spec
+value `S_LP_SIMS = 10000`. The committed arm64 fixtures capture a transitional
+`1000`-simulation snapshot so routine checks stay bounded; the full
+`10000`-simulation refresh is reserved for the doctrine's report-card
+publication and must be exposed as CLI flags on the future `mcts` regeneration
+subcommand. Environment-variable-driven fixture regeneration is not a supported
+operator workflow.
 
 ## When fixtures regenerate
 

@@ -25,6 +25,10 @@ is doctrine-owned; the per-backend tuning stacks are project-specific.
   `mcts build <backend>` commands are Plan/Apply with `--dry-run` and
   `--plan-file <path>`.
 
+From the host, run build commands through
+`docker compose run --rm mcts mcts build <backend>`; direct host toolchain use is
+unsupported.
+
 ## Backend (i) — `cpp-legacy` (Exempt)
 
 Backend (i) is **exempt** from the optimisation stack. (i) is strictly verbatim

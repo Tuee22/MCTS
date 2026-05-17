@@ -75,7 +75,10 @@ identifiers, GHC build IDs) renders as sentinel placeholders in the golden file.
 ## `mcts test all`
 
 The doctrine-mandatory canonical test command. Phase 7 Sprint 7.3 owns the
-implementation. The plan is a typed `[Subprocess]` sequence run via `Plan / Apply`:
+implementation. From the host, run it as
+`docker compose run --rm mcts mcts test all`; the first run builds the image when
+needed. Internally, the plan is a typed `[Subprocess]` sequence run via
+`Plan / Apply`:
 
 1. `mcts lint files` (rendered as `cabal exec mcts -- lint files` in the current
    apply plan; whitespace, final newline, `forbiddenPathRegistry`,

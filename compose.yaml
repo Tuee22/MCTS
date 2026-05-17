@@ -4,8 +4,3 @@ services:
       context: .
       dockerfile: docker/Dockerfile
     working_dir: /workspace/MCTS
-    volumes:
-      - .:/workspace/MCTS
-    environment:
-      MCTS_STYLE_TOOLS_DIR: /opt/mcts-style-tools/bin
-    command: sleep infinity

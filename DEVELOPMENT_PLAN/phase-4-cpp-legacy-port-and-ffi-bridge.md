@@ -17,7 +17,8 @@
 ## Phase Status
 
 ✅ **Done**. All seven sprints have closed under the pinned toolchain
-(`docker compose exec mcts cabal test all` + `mcts check-code` green).
+(`docker compose run --rm mcts mcts test all` +
+`docker compose run --rm mcts mcts check-code` green).
 Backend (i) drives real bench/verify transcripts via the FFI, the Q6
 fixture set is checked in under `test/golden/legacy/transcripts/`, the
 post-link envelope patch fills `engine_build_id`, and the foreign-engine
@@ -338,10 +339,9 @@ backend (i)'s no-draw-rule terminal semantics.
 
 ## Sprint 4.5: `test/golden/legacy/` Q6 Fixture Set ✅
 
-**Status**: Done (committed at `LEGACY_FIXTURE_SIMS=1000`; the
-`S_LP_SIMS = 10000` re-roll is a manual cohort-preparation step gated
-by the surrounding report-card sprint and is documented in
-`test/golden/legacy/README.md`)
+**Status**: Done (committed as a `1000`-simulation transitional fixture set; the
+`S_LP_SIMS = 10000` re-roll is a cohort-preparation step gated by the
+surrounding report-card sprint and must run through a `mcts` entrypoint)
 **Implementation**: `cpp-legacy/tools/legacy-to-wire.cc`,
 `cpp-legacy/Makefile` (legacy-to-wire target),
 `test/golden/legacy/README.md`,
@@ -404,10 +404,10 @@ this anchor (Q6).
   `~/MCTS_legacy/backend/core/`) and emits one `<sha>.tr` file per game in
   the Phase 2 wire format. The pinned envelope is single-threaded,
   `--rng cpp`, `max_plies = 10000`, seed `S_LP = 42`, `G_LP = 10`. The
-  sim count is environment-driven (`LEGACY_FIXTURE_SIMS`); the committed
-  fixtures use `1000` so the regenerate step fits routine CI budgets,
-  and the README documents the full `S_LP_SIMS = 10000` invocation for
-  the report-card publication.
+  committed fixtures use `1000` simulations so routine checks stay bounded;
+  the full `S_LP_SIMS = 10000` refresh is reserved for report-card publication
+  and must be exposed through a `docker compose run --rm mcts mcts <command>`
+  entrypoint rather than direct tool execution.
 - `test/golden/legacy/transcripts/arm64/*.tr` carries the 10-game arm64
   fixture set. amd64 fixtures regenerate per
   [../README.md → Architecture envelope](../README.md) once an amd64

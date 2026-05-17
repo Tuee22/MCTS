@@ -34,16 +34,15 @@ The doctrine-alignment gate. Phase 1 Sprint 1.4 owns the implementation in
 `src/MCTS/CheckCode.hs`.
 
 `mcts check-code` is a container-only gate. Run it through the root-level
-`compose.yaml` environment, for example:
+`compose.yaml` entrypoint, for example:
 
 ```bash
 # Example: canonical code-quality gate
-docker compose up -d
-docker compose exec mcts cabal run exe:mcts -- check-code
+docker compose run --rm mcts mcts check-code
 ```
 
 Ambient host-level tool fallback is unsupported. Fourmolu and HLint must come from
-the container's pinned style-tool install, not from the host `PATH`.
+the short-lived container's pinned style-tool install, not from the host `PATH`.
 
 Running `mcts check-code` dispatches, in order:
 
@@ -166,14 +165,15 @@ defeats the readability proxy). The value `100` is the project's chosen ceiling
 within the doctrine's permitted range.
 
 The `mcts-haskell-style` Cabal stanza in `test/haskell-style/Main.hs` enforces the
-`cabal format` round-trip through a temp file on every run. The project policy is to
+`cabal format` round-trip through a system temp file on every run. The project policy is to
 install `fourmolu-0.19.0.1` and `hlint-3.10` into
 `/opt/mcts-style-tools/bin/` inside the container with a separate pinned
 formatter-tools GHC `9.12.4`; the main project compiler stays on GHC `9.14.1`.
-The style stanza invokes only those pinned container paths. If they are absent,
-the check fails with a remedy pointing at the container workflow; it must not
-skip the tools or fall back to host `PATH`. The existing source walker remains an
-additional guard for tab characters and the conservative forbidden-symbol subset.
+The style stanza invokes only those pinned container paths and does not honour
+environment-variable overrides. If they are absent, the check fails with a remedy
+pointing at `docker compose run --rm mcts mcts check-code`; it must not skip the tools
+or fall back to host `PATH`. The existing source walker remains an additional guard
+for tab characters and the conservative forbidden-symbol subset.
 
 ## Cross-References
 

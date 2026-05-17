@@ -84,6 +84,9 @@ forbiddenPathRegistry =
     , ForbiddenPath
         "Makefile"
         "Top-level Makefile competes with mcts build/test; backends keep their own per-backend Makefile under cpp-*/"
+    , ForbiddenPath
+        ".build"
+        "Host-level .build/ is unsupported; build artefacts live inside the Compose-built container image"
     , ForbiddenPath "justfile" "Justfile duplicates mcts test/lint commands"
     , ForbiddenPath "Taskfile.yml" "Taskfile duplicates mcts test/lint commands"
     ]

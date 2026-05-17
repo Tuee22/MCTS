@@ -112,7 +112,8 @@ compiler remains GHC `9.14.1`. Host-level fallback to ambient toolchains or
 style binaries is never allowed. The baseline also includes byte-level goldens for the
 transcript wire format and the CLI surfaces, and all five Cabal test-suite
 stanzas. The validation gate for this baseline
-remains `cabal test all` under the pinned GHC `9.14.1` toolchain.
+is `docker compose run --rm mcts mcts test all` under the pinned GHC `9.14.1`
+toolchain.
 
 This is **not** the final parity-proven architecture. All four foreign
 backends — (i) cpp-legacy, (ii) cpp-imperative, (iii) cpp-functional, and
@@ -321,7 +322,8 @@ the PGO+BOLT C++ steelman within `HASKELL_PARITY_TOLERANCE = 0.05`;
 measured Q1–Q7 report-card evidence; interactive `brick`/`vty` TUIs for `play`
 and `inspect replay` (blocked on upstream cabal solver compatibility with GHC
 `9.14.1`); the `10000`-sim refresh of the `test/golden/legacy/transcripts/`
-fixture set (the fixtures are committed at `LEGACY_FIXTURE_SIMS=1000`); and
+fixture set (the arm64 fixtures are committed as a `1000`-simulation transitional
+snapshot); and
 the retirement protocol's frozen golden anchors under `test/golden/<backend>/`.
 
 The retirement protocol (i)→(ii)→(iii)→(v) named in [00-overview.md](00-overview.md) and
@@ -444,19 +446,22 @@ This plan is complete only when all of the following are true:
     per-move records of `(action_id, visits)` sorted ascending by action ID, equity
     excluded. The canonical single-byte action enumeration in
     [system-components.md](system-components.md) is authoritative.
-21. The transcript cache root resolves `--cache-dir <path>` → `$MCTS_CACHE_DIR` →
-    `./.mcts-cache/` and is `.gitignore`'d when inside the project tree. Hash-prefix
-    lookup is git-style: shortest unique prefix ≥ 4 hex chars; `AppError
+21. The transcript cache root resolves `--cache-dir <path>` → `./.mcts-cache/`
+    inside the container. The `mcts` binary does not read cache-root environment
+    variables. Hash-prefix lookup is git-style: shortest unique prefix ≥ 4 hex chars; `AppError
     TranscriptNotFound` and `AppError TranscriptAmbiguous` cover the miss and ambiguous
     cases.
 22. Equity is recomputed deterministically by the same backend during `inspect replay`
     and `inspect show --with-equity`; cross-backend equity equality is not asserted, only
     cross-backend visit-count equality.
 23. The Docker development environment provides a single LLVM pinned in
-    `docker/Dockerfile` shared by GHC `-fllvm` and BOLT; root-level
-    `compose.yaml` plus `docker compose up -d` and `docker compose exec mcts bash`
-    is the canonical entrypoint. All supported project work happens inside this
-    container.
+    `docker/Dockerfile` shared by GHC `-fllvm` and BOLT; the canonical host
+    entrypoint is `docker compose run --rm mcts mcts <command>`. There is no
+    long-running daemon container, no bind-mounted workspace, no Compose-level
+    environment-variable block, and no `sleep infinity` placeholder. The first
+    `docker compose run --rm` call builds the image when it is absent. All supported
+    project work happens through this short-lived container entrypoint, and
+    host-level `.build/` artefacts are unsupported.
 24. [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md) contains no
     unresolved cleanup once Phase `8` closes and the retirement protocol completes; the
     `Completed` table preserves the retirement history.

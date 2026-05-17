@@ -69,7 +69,12 @@ runCommand command =
                 >> pure ExitSuccess
         Help (HelpOptions target) ->
             liftIO
-                (outputLine ("help: mcts " <> unwords target <> "\nRun `mcts commands --tree` for the command tree."))
+                ( outputLine
+                    ( "help: mcts "
+                        <> unwords target
+                        <> "\nRun `docker compose run --rm mcts mcts commands --tree` for the command tree."
+                    )
+                )
                 >> pure ExitSuccess
         CheckCode -> runCheckCode
         Play options -> runPlay options

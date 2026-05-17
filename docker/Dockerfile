@@ -30,7 +30,6 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 ENV PATH=/root/.ghcup/bin:/root/.cargo/bin:/usr/local/bin:$PATH
-ENV MCTS_STYLE_TOOLS_DIR=${STYLE_TOOLS_DIR}
 ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
 
@@ -73,3 +72,11 @@ ENV CXX=g++
 ENV RUSTUP_TOOLCHAIN=${RUST_VERSION}
 
 WORKDIR /workspace/MCTS
+
+COPY . /workspace/MCTS
+
+RUN cabal build all \
+    && cabal install exe:mcts \
+        --installdir /usr/local/bin \
+        --install-method=copy \
+        --overwrite-policy=always

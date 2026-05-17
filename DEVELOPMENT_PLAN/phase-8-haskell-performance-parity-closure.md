@@ -116,11 +116,12 @@ report-card numbers move toward parity with backend (ii).
 
 ### Validation
 
-1. `cabal build all` succeeds with the new flag set; no warnings.
-2. `cabal test mcts-haskell-style` passes (the tuning flags do not break the
-   lint stack).
-3. `mcts bench rollouts --backend haskell --threading single --rng native
-   --games 100000 --seed 42` shows a measurable improvement over the Phase 3
+1. `docker compose run --rm mcts mcts check-code` succeeds with the new flag set; no
+   warnings.
+2. `docker compose run --rm mcts mcts lint haskell` passes (the tuning flags do not
+   break the lint stack).
+3. `docker compose run --rm mcts mcts bench rollouts --backend haskell --threading
+   single --rng native --games 100000 --seed 42` shows a measurable improvement over the Phase 3
    baseline (the exact ratio is recorded in
    `documents/engineering/compiler_runtime_tuning.md`).
 4. Same-backend determinism still holds: the tuning is correctness-preserving.
@@ -166,13 +167,13 @@ report-card numbers move toward parity with backend (ii).
   sentinel primitive (`1.0` hero win, `-1.0` villain win, `0.0` draw,
   `nonTerminalOutcome = 2.0`) instead of `Maybe Winner` per the
   doctrine's "no `Maybe`/`Either` in the rollout inner loop" rule.
-  `cabal test mcts-unit` validates the sentinel path.
+  `docker compose run --rm mcts mcts test mcts-unit` validates the sentinel path.
 
 ### Validation State
 
-`cabal build all` and `cabal test all` are green under the pinned
-toolchain with the LLVM flag set active. `mcts check-code` runs the
-full lint stack inside the container; the Haskell-style stanza
+`docker compose run --rm mcts mcts check-code` and
+`docker compose run --rm mcts mcts test all` are green under the pinned
+toolchain with the LLVM flag set active. The Haskell-style stanza
 (pinned Fourmolu / HLint binaries) passes after the flag change.
 
 ## Sprint 8.2: Profile-Driven Hot-Path Tuning 🔄
@@ -244,7 +245,8 @@ defined in
   `INLINABLE` pragmas. Measured per-call cost change:
   legal-moves 991→160 μs, apply-move 990→158 μs,
   uct-search sims=64 1817→292 ms (**~6.2× speedup** across the
-  rollout-dominated hot path). `cabal test all` remains green.
+  rollout-dominated hot path). `docker compose run --rm mcts mcts test all` remains
+  green.
   Recorded in
   [../../documents/engineering/compiler_runtime_tuning.md →
    Sprint 8.2 — Profile-Driven Hot-Path Tuning
@@ -265,8 +267,8 @@ defined in
   uct-search sims=64 292→8.9 ms (**~52× speedup on legal-moves,
   ~33× on uct-search vs round 1**; combined with round 1, total
   speedup vs the original list-based baseline is **~320× on
-  legal-moves** and **~200× on uct-search**). `cabal test all`
-  remains green. The Q1 ST snapshot collapses from `Shortfall 9.76`
+  legal-moves** and **~200× on uct-search**).
+  `docker compose run --rm mcts mcts test all` remains green. The Q1 ST snapshot collapses from `Shortfall 9.76`
   to **0.89×** (Haskell faster than the non-PGO cpp-imperative
   smoke library); the final verdict remains `Pending` against the
   PGO+BOLT cdylib.
@@ -403,9 +405,9 @@ record the retirement in the cleanup ledger.
 
 ### Validation
 
-1. `mcts test all` runs without backend (i) and emits a report card with the
+1. `docker compose run --rm mcts mcts test all` runs without backend (i) and emits a report card with the
    four-backend `(ii)..(v)` cohort.
-2. `cabal test mcts-cross-backend` passes (Q3 still holds).
+2. `docker compose run --rm mcts mcts test mcts-cross-backend` passes (Q3 still holds).
 3. The Q6 question now reads from `test/golden/cpp-legacy/throughput.json`
    rather than from a live backend (i) binary.
 4. `mcts verify legacy-parity` no longer appears in `mcts commands --tree`
@@ -455,9 +457,9 @@ the retirement.
 
 ### Validation
 
-1. `mcts test all` runs with the surviving cohort `(iii), (iv), (v)` plus the
-   frozen (ii) anchor and emits a report card.
-2. `cabal test mcts-cross-backend` passes.
+1. `docker compose run --rm mcts mcts test all` runs with the surviving cohort
+   `(iii), (iv), (v)` plus the frozen (ii) anchor and emits a report card.
+2. `docker compose run --rm mcts mcts test mcts-cross-backend` passes.
 3. The (ii) anchor in `test/golden/cpp-imperative/throughput.json` is
    schema-checked by `mcts-unit`.
 
@@ -501,9 +503,9 @@ Haskell as the target.
 
 ### Validation
 
-1. `mcts test all` runs with the surviving cohort `(rust, haskell)` and emits
-   a report card.
-2. `cabal test mcts-cross-backend` passes (Q3 holds on the two-backend cohort).
+1. `docker compose run --rm mcts mcts test all` runs with the surviving cohort
+   `(rust, haskell)` and emits a report card.
+2. `docker compose run --rm mcts mcts test mcts-cross-backend` passes (Q3 holds on the two-backend cohort).
 
 ### Remaining Work
 
@@ -544,9 +546,9 @@ retirement rows have moved to `Completed`).
    verdict).
 2. `legacy-tracking-for-deletion.md` `Pending Removal` table has only a
    placeholder row (or is empty).
-3. `mcts test all` passes on the surviving cohort `(rust, haskell)` with
-   frozen golden anchors for (i), (ii), (iii) honoured.
-4. `mcts check-code` passes.
+3. `docker compose run --rm mcts mcts test all` passes on the surviving cohort
+   `(rust, haskell)` with frozen golden anchors for (i), (ii), (iii) honoured.
+4. `docker compose run --rm mcts mcts check-code` passes.
 
 ### Remaining Work
 

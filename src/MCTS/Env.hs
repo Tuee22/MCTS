@@ -38,7 +38,7 @@ import System.IO (Handle, stdout)
 --   * `envTrackingGeneratedPaths` — fully-generated path registry
 --   * `envPrerequisites` — the `prerequisiteRegistry` value
 --   * `envCacheDir` — explicit `--cache-dir` override; `Nothing` means resolve
---     via env / project tree
+--     to the project-local cache
 --   * `envLogHandle` — process log/output handle for future output-boundary unification
 --   * `envRawArguments` — parsed invocation context retained for diagnostics
 --   * `envClockMonotonic` — monotonic clock test-hook returning nanoseconds
