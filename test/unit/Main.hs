@@ -974,7 +974,8 @@ exerciseCppImperativeBuildPlan = do
 -- [../HASKELL_CLI_TOOL.md → Forbidden Surfaces](../HASKELL_CLI_TOOL.md):
 -- `.github/workflows/`, `.husky/`, `.githooks/`, `.pre-commit-config.yaml`,
 -- `pre-commit-*.yaml`, root `Makefile`, host-level `.build/`, root
--- `justfile`, and root `Taskfile.yml`.
+-- `bootstrap/`, repository `.sh` wrappers, root `justfile`, and root
+-- `Taskfile.yml`.
 exerciseForbiddenPathRegistry :: IO ()
 exerciseForbiddenPathRegistry = do
     let paths = map forbiddenPath forbiddenPathRegistry
@@ -986,6 +987,8 @@ exerciseForbiddenPathRegistry = do
             , "pre-commit-*.yaml"
             , "Makefile"
             , ".build"
+            , "bootstrap"
+            , "*.sh"
             , "justfile"
             , "Taskfile.yml"
             ]

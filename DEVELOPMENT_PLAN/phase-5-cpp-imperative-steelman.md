@@ -31,10 +31,8 @@ bench / instrumented split lives in the same TU under
 `--backend cpp-imperative` through the real FFI driver. Sprint 5.3
 ships the typed 11-step PGO+BOLT pipeline through `Subprocess` —
 BOLT uses `-instrument` so `perf` is not a closure prerequisite —
-with idempotence + failure-mode coverage in `mcts-unit`. The residual
-steelman optimizations (`-fno-exceptions` on the engine TU,
-per-rollout scratch-board undo) live as ledger items in
-[legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md);
+with idempotence + failure-mode coverage in `mcts-unit`. The former
+`-fno-exceptions` and per-rollout scratch-board residues are closed;
 the measured Q1+Q2 speedup ratio that PGO+BOLT enables ships through
 Phase 7's report-card workflow once the cohort runs against the BOLT
 output.
@@ -55,8 +53,7 @@ cohort (Phase 4).
 ## Sprint 5.1: `cpp-imperative/` Source Tree and Build Flags ✅
 
 **Status**: Done (arena-MCTS engine character landed; `-fno-exceptions` and
-per-rollout undo remain ledger items in
-[legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md))
+per-rollout scratch-board residue are closed)
 **Implementation**: `cpp-imperative/engine/{state.hpp,arena.hpp,xoshiro256pp.hpp,search.hpp,search.cpp}`,
 `cpp-imperative/c-abi/`, `cpp-imperative/Makefile`
 **Docs to update**: `documents/engineering/compiler_runtime_tuning.md`,
@@ -148,8 +145,8 @@ backend-agnostic from the Haskell side.
 
 ### Validation
 
-1. `make -C cpp-imperative` produces the shared library under the pinned
-   toolchain inside the container.
+1. `docker compose run --rm mcts mcts build cpp-imperative` produces the shared
+   library under the pinned toolchain inside the container.
 2. The compiled `.so` exports the same symbol set as backend (i), with the
    `mcts_imperative_*` prefix.
 3. A unit test (after Sprint 5.2 lands the FFI bindings) creates a board, plays
@@ -237,15 +234,17 @@ pattern as backend (i), reusing the `MCTS.FFI.Common` RAII wrappers from Phase 4
   `extra-lib-dirs: cpp-imperative/build` directive.
 - The `prerequisiteRegistry` gains a `libmcts-cpp-imperative-built` node with a
   remedy hint that points at the PGO+BOLT build harness (Sprint 5.3); the
-  no-PGO smoke build for development is `make -C cpp-imperative
-  smoke`.
+  no-PGO smoke target remains an internal backend Makefile target, not a host
+  workflow.
 - A `cpp-imperative/Makefile` `smoke` target builds without PGO/BOLT for
   development; the canonical build through the build harness runs the full
   PGO+BOLT pipeline.
 
 ### Validation
 
-1. `cabal build all` succeeds after `make -C cpp-imperative smoke`.
+1. `docker compose run --rm mcts mcts check-code` reaches its internal
+   `cabal build all` step after the backend shared library is available through
+   the Compose-run build harness.
 2. The same handle round-trip test as Phase 4 Sprint 4.2 passes for backend
    (ii).
 3. Same-backend determinism: `mcts bench rollouts --backend cpp-imperative
@@ -254,18 +253,10 @@ pattern as backend (i), reusing the `MCTS.FFI.Common` RAII wrappers from Phase 4
 
 ### Remaining Work
 
-- Baseline landed: `src/MCTS/FFI/CppImperative.hs` declares
-  `withCppImperativeBoard` and `withCppImperativeGame` routed through
-  `MCTS.FFI.Common.liftFFI` / `withDynamicGame` with the doctrine-required
-  `mcts_imperative_new_board`, `mcts_imperative_is_terminal`, and
-  `mcts_imperative_select_uct_move` symbol names. The `mcts-integration` stanza
-  validates the smoke game path when `cpp-imperative/build/libmcts_cpp_imperative.so`
-  is present.
-- Replace the stand-in handle type with `foreign import ccall` pointers
-  and add the `mcts.cabal` `extra-libraries: mcts_cpp_imperative` and
-  `extra-lib-dirs: cpp-imperative/build` directives once the cdylib
-  build step is wired in. The `libmcts-cpp-imperative-built` prerequisite node
-  is present in `prerequisiteRegistry`.
+None. The sprint-owned FFI surface now has opaque pointer handles, dynamic
+`foreign import ccall "dynamic"` loading, visit-vector search bindings, and the
+`libmcts-cpp-imperative-built` prerequisite node. The dynamic-load compatibility
+policy remains ledger-owned rather than sprint-owned.
 
 ## Sprint 5.3: PGO+BOLT+`mimalloc` Build Harness ✅
 
@@ -505,20 +496,9 @@ that ships at the canonical FFI load path).
 
 ### Remaining Work
 
-- Baseline landed: `cpp-imperative/c-abi/mcts_cpp_imperative.h` and the matching
-  `.cc` declare the `mcts_imperative_envelope` struct and the
-  `mcts_imperative_get_envelope(void)` accessor returning a process-static
-  envelope with the build-time slots filled (`envelope_version`,
-  `rng_source_envelope`, `host_arch_envelope`, `engine_git_commit`,
-  `compiler_id`) and the optimization-dependent slots (`engine_build_id`,
-  `cpu_features`, `fp_flags`, `fp_env`) zero-initialized pending the
-  PGO+BOLT pipeline and post-link patch. `src/MCTS/FFI/CppImperative.hs` exposes
-  `loadCppImperativeEnvelope`, and `mcts-integration` validates the dynamic
-  `mcts_imperative_get_envelope` path when the smoke shared library is present.
-- Extend backend (ii)'s live envelope capture after the real optimized driver exists
-  so the optimization-dependent slots flip on once the build harness lands.
-- Add foreign-engine recompute for backend (ii) equity sidecars.
-- Patch the final post-BOLT shared library with the shipping `engine_build_id`.
+None. Backend (ii)'s recompute ABI, runtime CPU/FP probes, `libm_id`, and
+post-link `engine_build_id` patch are present. Phase 7 owns the remaining verifier
+wiring that compares cached transcripts with live FFI envelopes.
 
 ## Documentation Requirements
 

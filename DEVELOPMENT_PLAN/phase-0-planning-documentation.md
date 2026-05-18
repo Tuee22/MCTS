@@ -218,7 +218,8 @@ rule L.
     `newlines-between-decls`, `haddock-style`, `let-style`, `in-style`, `unicode`),
     `hlint`, `cabal format` temp-file round-trip byte-equality, `forbiddenPathRegistry`
     refusing `.github/workflows/`, `.husky/`, `.githooks/`, root `Makefile` /
-    `justfile` / `Taskfile.yml`.
+    `justfile` / `Taskfile.yml`, host `.build/`, `bootstrap/`, and repository
+    `.sh` wrappers.
   - **Testing Doctrine and Test Organization**: per-tier stanza model,
     `type: exitcode-stdio-1.0`, `tasty`, `execParserPure`, property invariants
     `decode . encode == id`, `render is deterministic`, `parser roundtrips`, golden

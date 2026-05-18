@@ -43,10 +43,12 @@ PGO+BOLT cdylib, not just the single-threaded snapshots above.
 Phase `8` is the project's exit condition. Phases `3` and `7` establish the
 correctness baseline; this phase tunes for speed until pure Haskell (v) matches
 maximally-optimised C++ (ii) on both POC workloads. The tuning levers are the
-doctrine-named GHC flags, the LLVM `-mcpu=native` lowering, RTS `-A64m -n4m -qg1 -qb
--T`, `INLINABLE` and `SPECIALIZE` on the search loop, unboxed strict fields
-everywhere, no `Maybe` / `Either` in the rollout inner loop, the per-rollout scratch
-arena, and the `MutableByteArray#` migration if `MutablePrimArray` profiles cold.
+doctrine-named GHC flags, RTS `-A64m -n4m -qg1 -qb -T`, `INLINABLE` and
+`SPECIALIZE` where polymorphism exists, unboxed strict fields everywhere, no
+`Maybe` / `Either` in the rollout inner loop, the per-rollout scratch arena, and the
+hand-rolled `MutableByteArray#` migration if the current `STUArray` indexing layer
+profiles hot. The LLVM `-mcpu=native` flags remain ledger-deferred on aarch64 because
+the pinned assembler rejects the emitted LSE instructions.
 The one-known-asymmetry PGO note is recorded honestly: GHC 9.14 has no production-
 grade PGO comparable to GCC/Clang `-fprofile-use` or `rustc -Cprofile-use`, so a
 5–15% Haskell-shortfall is *attributable* to that asymmetry rather than papered over
@@ -92,9 +94,9 @@ report-card numbers move toward parity with backend (ii).
   -fstatic-argument-transformation
   ```
 
-  plus `-optlo-mcpu=native` (through to LLVM `opt`) and `-optlc-mcpu=native`
-  (through to `llc`). The pinned LLVM version is the same one BOLT uses, so the
-  Dockerfile carries one LLVM only.
+  The pinned LLVM version is the same one BOLT uses, so the Dockerfile carries
+  one LLVM only. `-optlo-mcpu=native` / `-optlc-mcpu=native` remain excluded on
+  the current aarch64 container and tracked through the Sprint 8.2 ledger item.
 - The executable `mcts.cabal` stanza declares
   `ghc-options: -with-rtsopts=-A64m -n4m -qg1 -qb -T` baked into the binary per
   [00-overview.md → Hard Constraints item 20](00-overview.md).
@@ -108,7 +110,7 @@ report-card numbers move toward parity with backend (ii).
 - No `Maybe` or `Either` in the rollout inner loop — replace with sentinel
   values or unboxed sum representations per
   [00-overview.md → Hard Constraints item 20](00-overview.md).
-- If profiling shows `MutablePrimArray` indexing is suboptimal, migrate to a
+- If profiling shows `STUArray` indexing is suboptimal, migrate to a
   hand-rolled `MutableByteArray#` arena. This is profiling-driven; the sprint
   closure does not require the migration if profiling does not justify it, but
   it does require that the profiling pass has been run and the decision is
@@ -275,19 +277,15 @@ defined in
 
 ### Remaining Work
 
-- Continue Sprint 8.2 round-by-round tuning iterations (e.g. switch
-  the BFS visited-set to a Word128-backed bitmap, hoist constant
-  `targetY` out of the recursive go, fuse `addNeighbour` into a
-  static unrolled four-way scan) and diff GHC Core after each round.
-- Drive `mcts bench` Q1/Q2 measurements against the PGO+BOLT C++
-  steelman within `HASKELL_PARITY_TOLERANCE = 0.05` and record the
-  Q1/Q2 parity ratio. Closure depends on running the multi-minute
-  pinned report-card workload. An initial Q1 ST snapshot under the
-  non-PGO smoke library is recorded inline in
-  [../../documents/engineering/compiler_runtime_tuning.md →
-   Sprint 8.3 — Measured Q1 Snapshot](../../documents/engineering/compiler_runtime_tuning.md):
-  Haskell-vs-cpp-imperative on Q1 ST measures **10.76×**, i.e.
-  `Shortfall 9.76` against the non-PGO baseline.
+- Continue only profile-directed iterations with new evidence. Round 3 already
+  landed the Word128-backed wavefront-bitmap BFS and collapsed the known legal-move
+  hotspot; new tuning work should start from fresh criterion or report-card data.
+- Drive `mcts bench` Q1/Q2 measurements against the PGO+BOLT C++ steelman within
+  `HASKELL_PARITY_TOLERANCE = 0.05` and record the Q1/Q2 parity ratio. Closure
+  depends on running the multi-minute pinned report-card workload. Current
+  non-PGO smoke snapshots are: Q1 ST **0.89×** (Haskell faster), Q1 MT8
+  **0.66-0.87×**, and Q2 ST sims=500 **1.03×** (within tolerance), with
+  sims=1000 **1.13×** in the PGO-attributable band.
 
 ## Sprint 8.3: Parity Verdict and One-Known-Asymmetry Note 📋
 

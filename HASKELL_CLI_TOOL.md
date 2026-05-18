@@ -56,9 +56,10 @@ Cabal 3.16.1.0
 
 These are not floors or recommendations. The `.cabal` file declares
 `tested-with: ghc ==9.14.1`. A `cabal.project` (or equivalent) pins
-`with-compiler: ghc-9.14.1`. CI uses the same versions. The pinned formatter-tools
-GHC under `.build/<project>-style-tools/` is a separate isolated install and is
-managed by the lint stack; the project's main compiler is the version named here.
+`with-compiler: ghc-9.14.1`. The container/CI path uses the same versions. The
+pinned formatter-tools GHC is a separate container-owned install managed by the
+lint stack; the project's main compiler is the version named here. Host-level
+`.build/` tool installs are not part of this repository's supported workflow.
 
 ---
 
@@ -1877,6 +1878,10 @@ Default forbidden patterns every project rejects unless explicitly opted out:
 - Project-level `Makefile`, `justfile`, `Taskfile.yml` that duplicate
   commands the tool already exposes. A wrapper that adds nothing is a drift
   vector.
+- Project-level shell-script workflow wrappers, including `bootstrap/` and
+  repository `.sh` files. Build, run, validation, formatting, linting,
+  documentation-generation, tests, benchmarks, and backend builds belong behind
+  the project CLI; host scripts are another parallel surface.
 
 **Error-message contract.** On a forbidden-path hit, the failure must
 include:
@@ -2299,7 +2304,7 @@ Cabal 3.16.1.0
 + first-class `lint <target>` and `docs {check,generate}` commands
 + paired check/write semantics on every validator
 + a GeneratedSectionRule registry as the single source of truth for both
-+ a forbiddenPathRegistry; parallel-workflow surfaces (custom CI, hook directories) are a lint failure
++ a forbiddenPathRegistry; parallel-workflow surfaces (custom CI, hook directories, host shell wrappers) are a lint failure
 + fourmolu + hlint + cabal format as the standard code-quality stack
 + a committed fourmolu.yaml pinning column-limit and other formatting options
 + tool-bootstrapped formatter binaries pinned to a fixed GHC version

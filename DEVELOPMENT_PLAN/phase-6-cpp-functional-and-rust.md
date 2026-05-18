@@ -32,13 +32,15 @@ dispatcher routes `--backend rust` through the real FFI engine via
 `runForeignSearchGame withRustSearchGame` whenever
 `rust/target/release/libmcts_rust.so` is present. Sprint 6.4 ships
 the `rustPgoBoltPlan` Plan/Apply harness through the typed
-`Subprocess` boundary. The remaining open work is the functional-
-style engine internals for backend (iii) (the engine source still
-re-uses the verbatim legacy core, so the (ii)-vs-(iii) style
-comparison is currently a styled-API isolation rather than an
-internal-data-flow isolation), the final PGO+BOLT install closures
-for `cpp-functional` and `rust`, and Sprint 6.5's foreign-engine
-recompute streaming for backends (iii) and (iv).
+`Subprocess` boundary. Sprint 6.5 ships live envelope probes and
+foreign recompute for the C-ABI backends. The remaining open work is
+the final canonical PGO+BOLT install closure for `cpp-functional` and
+`rust`; on aarch64 the PGO portion runs, but LLVM-BOLT post-link falls
+back to a no-op per the ledger, so the full PGO+BOLT verdict requires
+an amd64 run. Rust's `mcts_rust_read_visits` symbol now uses the same
+per-board last-search visit-cache shape as the C++ shims; the active
+visit-vector and recompute paths remain
+`mcts_rust_search_move` / `mcts_rust_recompute_move`.
 
 ## Phase Summary
 
@@ -54,8 +56,9 @@ settings from the project README.
 
 ## Sprint 6.1: `cpp-functional/` Functional-Style C++ Engine ✅
 
-**Status**: Done (arena-MCTS engine with functional-style API surface
-landed; `-fno-exceptions` and per-rollout undo remain ledger items)
+**Status**: Done (arena-MCTS engine with functional-style API surface and
+functional-style descent/data-flow internals landed; `-fno-exceptions` and
+per-rollout scratch-board residue are closed)
 **Implementation**: `cpp-functional/engine/{state.hpp,arena.hpp,xoshiro256pp.hpp,search.hpp,search.cpp}`,
 `cpp-functional/c-abi/`, `cpp-functional/Makefile`
 **Docs to update**: `documents/engineering/compiler_runtime_tuning.md`,
@@ -120,8 +123,8 @@ underneath so the optimisation stack still applies.
 
 ### Validation
 
-1. `make -C cpp-functional smoke` produces the non-PGO/BOLT shared library
-   inside the container.
+1. `docker compose run --rm mcts mcts build cpp-functional` produces the
+   non-PGO/BOLT shared library inside the container.
 2. The compiled `.so` exports the same symbol set as backends (i) and (ii) with
    the `mcts_functional_*` prefix.
 3. The same brute-force legal-move agreement test from Phase 5 Sprint 5.1 passes
@@ -206,7 +209,8 @@ variant.
   with a matching `CommandSpec` leaf and an `Example`
   (`mcts build cpp-functional --dry-run`) wired into the registry.
 - `src/MCTS/CLI/Bench.hs` dispatch table adds `--backend cpp-functional`.
-- `src/MCTS/CLI/Verify.hs` `VerifyBackend` GADT gains `VCppFunctional`.
+- `src/MCTS/CLI/Verify.hs` accepts `cpp-functional` in the parser-backed verify
+  cohort; the final `VerifyBackend` GADT constructor remains Phase 7 work.
 - The `prerequisiteRegistry` gains `libmcts-cpp-functional-built` plus the
   `cpp-functional/pgo-profile/` and `cpp-functional/bolt-profile/` directory
   nodes.
@@ -241,8 +245,8 @@ variant.
 ## Sprint 6.3: `rust/` Rust Engine and `cdylib` ✅
 
 **Status**: Done (real arena MCTS algorithm + xoshiro256++ + full
-`mcts_rust_search_move` / `mcts_rust_recompute_move` /
-`mcts_rust_read_visits` C ABI + the Corridors gameplay port from
+`mcts_rust_search_move` / `mcts_rust_recompute_move` C ABI,
+per-board cached `mcts_rust_read_visits` paired-target hook, and the Corridors gameplay port from
 `cpp-legacy/legacy-core/board.cpp` — 8x8 bitfield walls, iterative
 BFS escapability, post-move 180-degree flip via `u64::reverse_bits`
 — now all ship in the cdylib; the final rustc PGO+BOLT install
@@ -302,8 +306,9 @@ exposed as a `cdylib` for the Haskell FFI.
   instrumentation](../README.md). The crate declares a Cargo feature
   `instrumentation` (default off). The self-play driver in
   `rust/src/driver.rs` uses `#[cfg(feature = "instrumentation")]` to splice in
-  the transcript writer and the `read_visits` C export. The Cargo build runs
-  twice: `cargo build --release` produces `libmcts_rust_bench.so` (feature off,
+  the transcript writer and the `read_visits` C export. The Compose-run
+  `mcts build rust` plan drives Cargo twice inside the container:
+  `cargo build --release` produces `libmcts_rust_bench.so` (feature off,
   no `read_visits` symbol) and `cargo build --release --features
   instrumentation` produces `libmcts_rust_instrumented.so`. The engine modules
   (`board.rs`, `tree.rs`, `search.rs`, `rollout.rs`) compile once and are
@@ -312,8 +317,9 @@ exposed as a `cdylib` for the Haskell FFI.
 
 ### Validation
 
-1. `cargo build --release` produces `rust/target/release/libmcts_rust.so` with
-   the pinned profile settings inside the container.
+1. `docker compose run --rm mcts mcts build rust` produces
+   `rust/target/release/libmcts_rust.so` with the pinned profile settings inside
+   the container.
 2. The compiled `cdylib` exports exactly the symbols declared in the C ABI.
 3. The same brute-force legal-move agreement test from Phase 5 Sprint 5.1
    passes for backend (iv) once Sprint 6.4 lands the FFI bindings.
@@ -334,9 +340,11 @@ exposed as a `cdylib` for the Haskell FFI.
   comparison isolates engine implementation as the variable.
 - Full C ABI surface: `mcts_rust_search_move(board, seed, sims,
   out_action_ids, out_visits, out_chosen)` and
-  `mcts_rust_recompute_move(..., out_equity)` ship with the cdylib;
-  `mcts_rust_read_visits` ships as the bench/instrumented split hook.
-  `nm -D` on the smoke cdylib lists all 8 `mcts_rust_*` symbols.
+  `mcts_rust_recompute_move(..., out_equity)` ship with the cdylib.
+  `mcts_rust_read_visits` is exported for the bench/instrumented split hook
+  and reads the last exposed visit vector from a per-board cache in
+  `rust/src/c_abi.rs`. `nm -D` on the smoke cdylib lists all 8
+  `mcts_rust_*` symbols.
 
 ### Closure Notes (Corridors gameplay port)
 
@@ -377,14 +385,9 @@ exposed as a `cdylib` for the Haskell FFI.
 
 ### Remaining Work
 
-- Final rustc PGO+BOLT pipeline closure (Sprint 6.4) wires `mcts
-  build rust` through the same Plan/Apply harness as backends
-  (ii)/(iii); the pipeline shape (instrument → train → optimize →
-  BOLT → install) is identical except for the Cargo toolchain. The
-  `rustPgoBoltPlan` harness ships under Sprint 6.4; what remains is
-  exercising the full pipeline end-to-end against the bolted cdylib
-  and tightening the cross-backend cohort agreement once cpp/Rust
-  RNG-source plumbing is symmetric.
+None for Sprint 6.3's search/gameplay/recompute/instrumentation surface. The
+remaining Rust work is the Sprint 6.4 PGO/BOLT install/verdict surface and the
+Phase 7 cohort agreement gap.
 
 ## Sprint 6.4: FFI Bindings, PGO+BOLT Build Harness, Driver for Backend (iv) 🔄
 
@@ -400,7 +403,10 @@ step does **not** complete on aarch64 — `llvm-bolt-19` errors with
 `instrumentation runtime libraries require relocations` even with
 `--allow-stripped`. The plan's `|| cp` fallback at step 7 makes the
 install degrade to a PGO-only cdylib on aarch64; the full PGO+BOLT
-target is achievable on amd64 only. Tracked in
+target is achievable on amd64 only. The Rust `instrumentation` feature and
+`mcts_rust_read_visits` export now retain and read the last exposed visit vector
+through a per-board cache in `rust/src/c_abi.rs`; the remaining Sprint 6.4
+surface is PGO/BOLT install validation and the amd64 verdict. Tracked in
 [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md))
 **Implementation**: `rust/Cargo.toml`, `rust/src/lib.rs`, `mcts.cabal`,
 `src/MCTS/CLI/Build.hs::rustPgoBoltPlan`, `src/MCTS/FFI/Rust.hs::withRustSearchGame`,
@@ -447,9 +453,9 @@ dispatch, and the verify dispatch.
      `rust/target/release/libmcts_rust.so` per
      [../README.md → Repository layout (target)](../README.md).
 - `src/MCTS/CLI/Bench.hs` dispatch table adds `--backend rust`.
-- `src/MCTS/CLI/Verify.hs` `VerifyBackend` GADT gains `VRust`. The full
-  four-backend `(ii)..(v)` cohort is now parseable; Phase 7 wires the
-  cross-backend `verify` test stanzas.
+- `src/MCTS/CLI/Verify.hs` accepts `rust` in the parser-backed verify cohort.
+  The full four-backend `(ii)..(v)` cohort is parseable; the final
+  `VerifyBackend` GADT constructor remains Phase 7 work.
 - `src/MCTS/CLI/Command.hs` gains the `BuildRust` constructor on the
   `BuildCommand` family per
   [phase-1-haskell-cli-surface.md → Sprint 1.2 ownership note](phase-1-haskell-cli-surface.md),
@@ -463,16 +469,17 @@ dispatch, and the verify dispatch.
 
 1. `mcts build rust --dry-run` renders the typed `Subprocess` sequence and
    exits 0.
-2. `mcts build rust` runs the full pipeline and produces the bolted `.so`
-   strictly faster than the smoke `cargo build --release` build on `mcts bench
-   selfplay --backend rust --games 100`.
-3. `mcts bench rollouts --backend rust --threading single --rng cpp --games 8
-   --seed 42` runs to completion.
+2. `docker compose run --rm mcts mcts build rust` runs the full pipeline and
+   produces the bolted `.so` strictly faster than the smoke Cargo build on
+   `docker compose run --rm mcts mcts bench selfplay --backend rust --games 100`.
+3. `docker compose run --rm mcts mcts bench rollouts --backend rust --threading
+   single --rng cpp --games 8 --seed 42` runs to completion.
 4. Same-backend determinism: two runs produce identical determinism payload sets.
-5. `mcts verify rollouts --backend cpp-imperative,cpp-functional,rust,haskell
-   --threading single --games 1 --seed 42 --max-plies 200 --sims 10` runs to
-   completion. Bit-equality success or failure at this stage is informational
-   — Phase 7 enforces — but the cohort is wired.
+5. `docker compose run --rm mcts mcts verify rollouts --backend
+   cpp-imperative,cpp-functional,rust,haskell --threading single --games 1
+   --seed 42 --max-plies 200 --sims 10` runs to completion. Bit-equality
+   success or failure at this stage is informational — Phase 7 enforces — but
+   the cohort is wired.
 
 ### Closure Notes
 
@@ -480,7 +487,7 @@ dispatch, and the verify dispatch.
   through the typed `Subprocess` boundary. Steps: (1) `cargo build
   --release` with `RUSTFLAGS=-C target-cpu=native -C
   profile-generate=rust/pgo-profile`; (2) PGO training run via
-  `cabal exec mcts -- bench selfplay --backend rust --rng cpp --games
+  the internal `cabal exec mcts -- bench selfplay --backend rust --rng cpp --games
   100 --seed 42 --sims 10000`; (3) `llvm-profdata merge` of the
   `.profraw` files into a single `.profdata`; (4) `cargo build
   --release` with `-C profile-use=rust/pgo-profile`; (5) `llvm-bolt
@@ -490,27 +497,23 @@ dispatch, and the verify dispatch.
   the bolted cdylib at the canonical FFI load path
   `rust/target/release/libmcts_rust.so`.
 - `MCTS.FFI.Rust.withRustSearchGame` exposes the full visit-vector
-  ABI (`mcts_rust_search_move`) so the Haskell dispatcher *can* route
-  `--backend rust` through the real FFI engine. The dispatcher keeps
-  the Rust slot on the in-process logical UCT until the Corridors
-  gameplay port (Sprint 6.3 ledger row) lands, because the placeholder
-  game in the Rust engine emits action IDs that do not correspond to
-  legal Corridors moves.
+  ABI (`mcts_rust_search_move`) and `MCTS.Driver.Dispatch.runBatchDispatch`
+  routes `--backend rust` through the real FFI engine whenever
+  `rust/target/release/libmcts_rust.so` is present. The Rust engine now
+  emits canonical Corridors action IDs through the Sprint 6.3 gameplay port.
 
 ### Remaining Work
 
-- Exercise the full `rustPgoBoltPlan` end-to-end against the real
-  cdylib (cargo PGO instrument → training run → optimized rebuild →
-  llvm-bolt instrument → BOLT training → bolted install) and publish
-  the resulting `.so` under the canonical install path. The smoke
-  cdylib produced by `cargo build --release` is already wired into
-  `--backend rust` dispatch via `MCTS.Driver.Dispatch`; what remains
-  is the PGO-tuned binary as the operator-facing artefact.
+- Publish and validate the PGO-tuned Rust cdylib under the canonical install
+  path. The cargo PGO instrument → training run → optimized rebuild sequence
+  has been exercised; LLVM-BOLT post-link still needs either an amd64 run or
+  an explicit aarch64 PGO-only doctrine decision because the pinned
+  `llvm-bolt-19` rejects instrumented aarch64 cdylibs.
 
 ## Sprint 6.5: Backends (iii) and (iv) Engine Envelope and Foreign-Engine Recompute ✅
 
-**Status**: Done at the worktree surface. Foreign-engine recompute
-equity output ships on all three C-ABI backends:
+**Status**: Done
+Foreign-engine recompute equity output ships on the non-legacy FFI backends:
 `mcts_imperative_recompute_move`, `mcts_functional_recompute_move`,
 and `mcts_rust_recompute_move` stream `chosen_equity` computed as
 `-child.q_sum / child.visit_count` from the search tree's chosen
@@ -605,25 +608,10 @@ fields.
 
 ### Remaining Work
 
-- Baseline landed: backend (iii)'s `cpp-functional/c-abi/mcts_cpp_functional.h` and
-  backend (iv)'s `rust/src/lib.rs` declare the `mcts_functional_envelope` /
-  `MctsRustEnvelope` structs and their `mcts_functional_get_envelope()` /
-  `mcts_rust_get_envelope()` accessors. The Rust accessor returns a `const`
-  static envelope filled at compile time from
-  `option_env!("MCTS_GIT_COMMIT")`, the target arch, and the compiler tag
-  (`compiler_id = 2 = rustc`). `rust/build.rs` captures `rustc --version` inside
-  the container and exports it as `MCTS_RUSTC_VERSION`, so the Rust envelope's
-  `compiler_version` slot is live even in the smoke cdylib. The C++ accessor
-  mirrors the (i)/(ii) shape with optimization-dependent slots zero-initialized
-  pending the PGO+BOLT pipeline.
-  `src/MCTS/FFI/CppFunctional.hs` and `src/MCTS/FFI/Rust.hs` expose
-  `loadCppFunctionalEnvelope` and `loadRustEnvelope`, and `mcts-integration`
-  validates both live envelope paths when their smoke shared libraries are present.
-- Extend live envelope capture for backends (iii) and (iv) after their real drivers
-  and final build surfaces exist (in particular the `engine_build_id` post-link
-  patch and the `cpu_features` / `fp_env` runtime probes).
-- Add foreign-engine recompute for both backends' equity sidecars.
-- Add envelope-mismatch and cross-backend recompute integration coverage.
+None. The Sprint 6.5 worktree surface is closed: live envelope probes,
+post-link build-id slots, foreign recompute `EqStream` generation, and
+integration coverage are present. Phase 7 owns the remaining verifier/report-card
+wiring that consumes those surfaces.
 
 ## Documentation Requirements
 

@@ -1,8 +1,34 @@
 use crate::board::{MctsRustBoard, flip_action_id};
 use crate::envelope::{MctsRustEnvelope, envelope_ptr};
 use crate::search::{run_search, select_uct_move};
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
 
 const DEFAULT_MAX_PLIES: u16 = 10000;
+
+type VisitVector = Vec<(u8, u32)>;
+
+static LAST_VISITS: OnceLock<Mutex<HashMap<usize, VisitVector>>> = OnceLock::new();
+
+fn last_visits_cache() -> &'static Mutex<HashMap<usize, VisitVector>> {
+    LAST_VISITS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn board_key(board: *const MctsRustBoard) -> usize {
+    board as usize
+}
+
+fn store_last_visits(board: *const MctsRustBoard, visits: VisitVector) {
+    if let Ok(mut cache) = last_visits_cache().lock() {
+        cache.insert(board_key(board), visits);
+    }
+}
+
+fn clear_last_visits(board: *const MctsRustBoard) {
+    if let Ok(mut cache) = last_visits_cache().lock() {
+        cache.remove(&board_key(board));
+    }
+}
 
 #[unsafe(no_mangle)]
 pub extern "C" fn mcts_rust_new_board() -> *mut MctsRustBoard {
@@ -12,6 +38,7 @@ pub extern "C" fn mcts_rust_new_board() -> *mut MctsRustBoard {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn mcts_rust_free_board(board: *mut MctsRustBoard) {
     if !board.is_null() {
+        clear_last_visits(board);
         drop(unsafe { Box::from_raw(board) });
     }
 }
@@ -38,9 +65,8 @@ pub unsafe extern "C" fn mcts_rust_select_uct_move(
 
 /// Full visit-vector search ABI per
 /// `documents/engineering/backend_ffi_contract.md → C ABI Shape`. The
-/// search is driven by the arena MCTS in `search.rs` over the
-/// placeholder game from `rollout.rs`; the real Corridors port is a
-/// ledger row (Sprint 6.3 remaining work).
+/// search is driven by the arena MCTS in `search.rs` over the real
+/// Corridors board and rollout implementation.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn mcts_rust_search_move(
     board: *mut MctsRustBoard,
@@ -74,6 +100,7 @@ pub unsafe extern "C" fn mcts_rust_search_move(
         .iter()
         .map(|(aid, n)| (flip_action_id(*aid), *n))
         .collect();
+    store_last_visits(board_ref as *const MctsRustBoard, flipped.clone());
     let count = flipped.len();
     for (i, (aid, visits)) in flipped.iter().enumerate() {
         unsafe {
@@ -124,6 +151,7 @@ pub unsafe extern "C" fn mcts_rust_recompute_move(
         .iter()
         .map(|(aid, n)| (flip_action_id(*aid), *n))
         .collect();
+    store_last_visits(board_ref as *const MctsRustBoard, flipped.clone());
     let count = flipped.len();
     for (i, (aid, visits)) in flipped.iter().enumerate() {
         unsafe {
@@ -139,17 +167,26 @@ pub unsafe extern "C" fn mcts_rust_recompute_move(
 }
 
 /// Instrumentation hook for the paired bench/instrumented split per
-/// the Cargo feature `instrumentation`. The bench artefact returns 0;
-/// the instrumented artefact would look up the visit count for
-/// `action_id` from the last search. The current implementation
-/// always returns 0 because the search output is not retained across
-/// the C ABI boundary; storing it requires a per-board last-search
-/// cache (parallel to the C++ shims).
+/// the Cargo feature `instrumentation`. Looks up `action_id` in the
+/// last exposed visit vector for this board handle, matching the C++
+/// shims' per-board last-search cache.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn mcts_rust_read_visits(
-    _board: *const MctsRustBoard,
-    _action_id: u8,
+    board: *const MctsRustBoard,
+    action_id: u8,
 ) -> u32 {
+    if board.is_null() {
+        return 0;
+    }
+    if let Ok(cache) = last_visits_cache().lock() {
+        if let Some(visits) = cache.get(&board_key(board)) {
+            for (aid, n) in visits {
+                if *aid == action_id {
+                    return *n;
+                }
+            }
+        }
+    }
     0
 }
 

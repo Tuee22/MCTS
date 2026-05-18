@@ -61,9 +61,9 @@ the reproducible Docker development environment that every later sprint builds o
   `optparse-applicative`, `text`, `bytestring`, `aeson`, `prettyprinter`,
   `prettyprinter-ansi-terminal`, `ansi-terminal`, `path`, `path-io`, `typed-process`,
   `safe-exceptions`, `tasty`, `tasty-hunit`, `tasty-quickcheck`, `tasty-golden`,
-  `temporary`. The two recorded deviations from doctrine are the deferred `brick` +
-  `vty` dependencies (owned by Sprint `7.4` and gated to the TUI command modules only)
-  and the absence of `dhall` per
+  `temporary`, plus the documented `brick` + `vty` TUI deviation now used by
+  `MCTS.CLI.Tui.{Board,Play,Replay}`. The other recorded deviation is the absence
+  of `dhall` per
   [00-overview.md → Doctrine Scope → Stack deviations from doctrine](00-overview.md):
   the doctrine prescribes `dhall` for daemon configuration, daemon configuration
   is itself out of scope (the CLI is short-running only), so the dependency does
@@ -122,8 +122,8 @@ the reproducible Docker development environment that every later sprint builds o
   `prettyprinter-ansi-terminal`, `ansi-terminal`, `path`, `path-io`,
   `typed-process`, `safe-exceptions`, `tasty`, `tasty-hunit`,
   `tasty-quickcheck`, `tasty-golden`, `temporary`). The recorded `brick` /
-  `vty` TUI exception remains documentation-only until Sprint `7.4` adds the real
-  TUI modules and dependencies.
+  `vty` TUI exception is active and limited to `MCTS.CLI.Tui.Board`,
+  `MCTS.CLI.Tui.Play`, and `MCTS.CLI.Tui.Replay`.
 - Docker toolchain pinning is now encoded in `docker/Dockerfile` for GHC `9.14.1`,
   Cabal `3.16.1.0`, LLVM/BOLT `19`, GCC/G++, Rust `1.95.0`, and `mimalloc`;
   the image also installs the isolated style-tool compiler GHC `9.12.4` and uses
@@ -407,6 +407,10 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
   bench cohort, legacy-parity, `inspect show --with-equity`, and the unhappy
   `verify --rng native` path; byte-stable golden coverage for `mcts commands --json`
   lives in `mcts-unit`.
+- Current implementation note: the concrete `VerifyCommand` constructors still
+  carry `[Backend]` with parser/runtime checks rather than the final
+  `VerifyBackend` / `LegacyParityBackend` GADT split. Phase 7 Sprint 7.2 owns
+  that tightening; the Phase 1 registry/parser surface is otherwise closed.
 - The README's full concrete invocation set wraps the same leaf `Example` entries in
   the Compose entrypoint. Validated on 2026-05-15 through the root Compose entrypoint
   with `docker compose run --rm mcts mcts test mcts-unit`,
@@ -504,9 +508,9 @@ text-artefact derived from the `CommandSpec` registry.
   `docker compose run --rm mcts mcts docs check` plus
   `docker compose run --rm mcts mcts lint files`.
 
-## Sprint 1.4: Lint Stack, `fourmolu.yaml`, `mcts-haskell-style` Stanza ✅
+## Sprint 1.4: Lint Stack, `fourmolu.yaml`, `mcts-haskell-style` Stanza 🔄
 
-**Status**: Done
+**Status**: Active
 **Implementation**: `fourmolu.yaml`, `.hlint.yaml`, `src/MCTS/CLI/Lint.hs`,
 `src/MCTS/App.hs` (`CheckCode` branch), `test/haskell-style/Main.hs`, `mcts.cabal`
 **Docs to update**: `documents/engineering/code_quality.md`,
@@ -537,7 +541,8 @@ forbidden-symbol HLint rules behind the `mcts-haskell-style` test stanza plus th
 - `src/MCTS/CLI/Lint.hs` owns the current `mcts lint files|docs|haskell|all` runners.
   `mcts lint files` enforces the `forbiddenPathRegistry` (`.github/workflows/`,
   `.husky/`, `.githooks/`, `.pre-commit-config.yaml`, `pre-commit-*.yaml`, root
-  `Makefile`, root `justfile`, root `Taskfile.yml`) plus the
+  `Makefile`, host-level `.build/`, `bootstrap/`, repository `.sh` wrappers,
+  root `justfile`, root `Taskfile.yml`) plus the
   `trackingGeneratedPaths` no-hand-edit check, per
   [../HASKELL_CLI_TOOL.md → Forbidden Surfaces](../HASKELL_CLI_TOOL.md).
 - `src/MCTS/CheckCode.hs` owns the `check-code` dispatcher. `src/MCTS/App.hs` routes the
@@ -601,6 +606,22 @@ forbidden-symbol HLint rules behind the `mcts-haskell-style` test stanza plus th
   `docker compose run --rm mcts mcts lint all`,
   `docker compose run --rm mcts mcts check-code`, plus a temporary synthetic `print`
   violation rejected by container-pinned HLint with `Error: Use output boundary`.
+- Reopened on 2026-05-18 for the Compose-only operator-surface doctrine update:
+  `bootstrap/` and repository `.sh` workflow wrappers are now forbidden surfaces,
+  the obsolete bootstrap script was removed, and the unit registry expectation was
+  updated. Validation has not yet closed: `docker compose run --rm mcts mcts test
+  mcts-unit` was stopped at operator request during Docker image build, while
+  installing the pinned formatter-tool dependency set, before the `mcts` command
+  or test stanza ran.
+
+### Remaining Work
+
+- Rerun `docker compose run --rm mcts mcts test mcts-unit` through completion to
+  validate the updated forbidden-path registry.
+- Rerun the Sprint 1.4 validation gate (`docker compose run --rm mcts mcts
+  lint files`, `docker compose run --rm mcts mcts lint all`, and
+  `docker compose run --rm mcts mcts check-code`) through the canonical Compose
+  entrypoint.
 
 ## Sprint 1.5: `Plan / Apply` Boundary ✅
 
@@ -689,7 +710,7 @@ shared-library builds, and every subprocess call site go through one IO boundary
   `System.Process.createProcess`, `System.Process.proc`, `System.Process.shell`, and
   `typed-process` smart constructors per
   [../HASKELL_CLI_TOOL.md → Architecture → Subprocesses as Typed Values
-  → Forbidden patterns](../HASKELL_CLI_TOOL.md). The current source-walker bootstrap
+  → Forbidden patterns](../HASKELL_CLI_TOOL.md). The current source-walker guard
   enforces owner-module exceptions for the direct textual subset it can check safely.
 
 ### Validation
@@ -710,7 +731,7 @@ shared-library builds, and every subprocess call site go through one IO boundary
 - The external container-pinned HLint path rejects emitted `Error:` findings for
   direct `System.Process.*` and `System.Process.Typed.*` smart constructors
   outside `src/MCTS/Subprocess.hs`. The source walker remains as an additional
-  bootstrap guard for the conservative textual subset.
+  source-walker guard for the conservative textual subset.
 - `test/golden/cli/subprocess.txt` pins `renderSubprocess` shell quoting, and the
   unit suite asserts `AppError SubprocessFailed` includes the rendered command
   and exit code.
@@ -904,7 +925,7 @@ Implement the single `AppError` ADT, the `renderError` boundary, and the `--form
   `mcts inspect replay`) own their own rendering and ignore both flag families.
 - `.hlint.yaml` rules name `print`, `exitFailure`, `Text.IO.putStrLn`,
   `Text.IO.hPutStrLn`, and direct terminal-formatting calls. The source-walker
-  bootstrap currently enforces owner-module exceptions for
+  source-walker currently enforces owner-module exceptions for
   `exitFailure` / `Data.Text.IO.*PutStrLn`; complete module-scoped external HLint
   parity remains open.
 

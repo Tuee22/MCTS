@@ -87,6 +87,12 @@ forbiddenPathRegistry =
     , ForbiddenPath
         ".build"
         "Host-level .build/ is unsupported; build artefacts live inside the Compose-built container image"
+    , ForbiddenPath
+        "bootstrap"
+        "Bootstrap directories invite host-side orchestration; project work enters through docker compose run --rm mcts mcts <command>"
+    , ForbiddenPath
+        "*.sh"
+        "Shell-script wrappers duplicate the mcts command surface and bypass the Compose-only doctrine"
     , ForbiddenPath "justfile" "Justfile duplicates mcts test/lint commands"
     , ForbiddenPath "Taskfile.yml" "Taskfile duplicates mcts test/lint commands"
     ]
@@ -111,13 +117,36 @@ globMatches patternText =
     case break (== '*') patternText of
         (_, "") -> pure []
         (prefix, _ : suffix) -> do
-            names <- listDirectory "."
+            names <- allPaths "."
             pure
                 [ name
                 | name <- names
                 , prefix `isPrefixOf` name
                 , suffix `isSuffixOf` name
                 ]
+
+allPaths :: FilePath -> IO [FilePath]
+allPaths root = do
+    names <- listDirectory root
+    fmap concat $
+        mapM
+            ( \name -> do
+                let path = root </> name
+                    rendered = dropDotSlash path
+                isDir <- doesDirectoryExist path
+                isFile <- doesFileExist path
+                if ignored path
+                    then pure []
+                    else
+                        if isDir
+                            then (rendered :) <$> allPaths path
+                            else pure [rendered | isFile]
+            )
+            names
+
+dropDotSlash :: FilePath -> FilePath
+dropDotSlash ('.' : '/' : rest) = rest
+dropDotSlash path = path
 
 walk :: FilePath -> IO [FilePath]
 walk root = do

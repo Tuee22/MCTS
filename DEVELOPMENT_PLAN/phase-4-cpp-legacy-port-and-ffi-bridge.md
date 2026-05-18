@@ -35,8 +35,9 @@ minimum changes required to expose a C ABI. The legacy keeps its
 `std::shared_ptr<uct_node>` trees, `std::mt19937_64` RNG, single-threaded design, and
 its no-draw-rule terminal semantics (`is_terminal()` ↔ `hero_wins() ||
 villain_wins()`); the legacy is a strictly verbatim regression-sanity port, not a
-performance ceiling, and the `VerifyBackend` GADT excludes it from the default
-cross-backend `verify` cohort. Phase 4 also lands the `--rng cpp` C++ generator the
+performance ceiling, and the default cross-backend `verify` cohort excludes it
+through parser/runtime guards today. The final `VerifyBackend` GADT remains Phase
+7 work. Phase 4 also lands the `--rng cpp` C++ generator the
 other backends will draw from in Phase 5+, the Q6 golden fixture set from
 out-of-band `MCTS_legacy` runs, and the `mcts verify legacy-parity` cohort logic
 that pins `max_plies = 10000` so all five backends agree under the envelope.
@@ -95,8 +96,9 @@ add a C ABI shim layer (`cpp-legacy/c-abi/`); rename the build product to
 
 ### Validation
 
-1. `make -C cpp-legacy` produces `cpp-legacy/build/libmcts_cpp_legacy.so` under
-   the pinned toolchain.
+1. `docker compose run --rm mcts mcts build cpp-legacy` produces
+   `cpp-legacy/build/libmcts_cpp_legacy.so` through the internal
+   `make -C cpp-legacy` typed subprocess under the pinned toolchain.
 2. A line-level diff `diff -ruw ~/MCTS_legacy/backend/core/ cpp-legacy/legacy-core/`
    produces only documentation, comment, or whitespace differences (every
    structural difference is forbidden and would block the sprint).
@@ -110,10 +112,11 @@ add a C ABI shim layer (`cpp-legacy/c-abi/`); rename the build product to
   sources, and `cpp-legacy/c-abi/mcts_cpp_legacy.cc` delegates board allocation,
   terminal checks, and UCT move selection to the legacy `corridors::board` /
   `mcts::uct_node` types.
-- The Makefile builds `cpp-legacy/build/libmcts_cpp_legacy.so` with the legacy
+- The `mcts build cpp-legacy` plan delegates to the backend Makefile to build
+  `cpp-legacy/build/libmcts_cpp_legacy.so` with the legacy
   `-std=c++17 -O3 -fPIC -Wall` shape plus a narrow `-Wno-pessimizing-move`
-  compatibility suppression for the verbatim legacy return statement; `make -C
-  cpp-legacy clean smoke` is warning-clean on the container compiler.
+  compatibility suppression for the verbatim legacy return statement; the smoke
+  target is warning-clean on the container compiler.
 - Keep all future non-FFI changes out of the port and record any unavoidable
   compatibility residue in `legacy-tracking-for-deletion.md`.
 
@@ -148,14 +151,16 @@ wrappers that make every call safe (no leaked handles, no double-free).
   final static per-symbol `foreign import ccall` bindings and Cabal
   `extra-libraries` linkage are owned by the real transcript-driver closure.
 - `mcts.cabal` remains independent of the foreign smoke shared-library path, so
-  `cabal build all` does not require a prebuilt `libmcts_cpp_legacy.so`.
+  the `cabal build all` step inside `docker compose run --rm mcts mcts
+  check-code` does not require a prebuilt `libmcts_cpp_legacy.so`.
 - The `prerequisiteRegistry` gains a `libmcts-cpp-legacy-built` node that
   validates `cpp-legacy/build/libmcts_cpp_legacy.so` exists; the remedy hint is
-  `make -C cpp-legacy`.
+  `docker compose run --rm mcts mcts build cpp-legacy`.
 
 ### Validation
 
-1. `cabal build all` succeeds without requiring the foreign smoke library to be
+1. `docker compose run --rm mcts mcts check-code` reaches its internal
+   `cabal build all` step without requiring the foreign smoke library to be
    linked into the Haskell binary.
 2. When `cpp-legacy/build/libmcts_cpp_legacy.so` is present, the unit/integration
    smoke acquires and frees a board handle through the dynamic C ABI.
@@ -450,10 +455,10 @@ the legacy parity envelope (`max_plies = 10000`, fixture seed pinned, `--rng cpp
 
 - `src/MCTS/CLI/Spec.hs` adds the `Verify VerifyCommand` subtree carrying
   `VerifyLegacyParity LegacyParityOptions` per the project [README → CLI command
-  topology](../README.md). `LegacyParityBackend` is a GADT-indexed type that
-  requires `LpCppLegacy` at parse time per
-  [00-overview.md → Hard Constraints item 8](00-overview.md); cohorts without
-  `cpp-legacy` fail with `AppError VerifyCohortTooSmall`.
+  topology](../README.md). The current worktree carries the cohort as a parsed
+  `[Backend]` and rejects cohorts without `cpp-legacy` in the verify runner with
+  `AppError VerifyCohortTooSmall`; the final `LegacyParityBackend` GADT /
+  parse-time shape remains Phase 7 Sprint 7.2 work.
 - `LegacyParityOptions` pins `RngSource = CppRng`, `Threading = SingleThreaded`,
   `max_plies = MAX_ROLLOUT_ITERS = 10000` non-user-overridable. The
   `lpSeed :: Word64` field defaults to the report-card knob `S_LP = 42`. The
@@ -495,7 +500,8 @@ the legacy parity envelope (`max_plies = 10000`, fixture seed pinned, `--rng cpp
   `MCTS.Driver.Dispatch.runBatchDispatch`. When the cpp-legacy shared
   library is present, backend (i) executes through the real FFI driver
   established in Sprint 4.4; otherwise it falls back to the logical
-  in-process engine so `cabal test all` stays self-contained.
+  in-process engine so `docker compose run --rm mcts mcts test all`
+  stays self-contained.
 - `test/integration/Main.hs`'s `legacy parity pre-flight` test runs a
   single backend (i) game at `S_LP = 42`, `max_plies = 10000`, and
   `--rng cpp`, asserting that `MCTS.Driver.CppLegacy.runGameCppLegacy`
@@ -517,8 +523,8 @@ the legacy parity envelope (`max_plies = 10000`, fixture seed pinned, `--rng cpp
 
 **Status**: Done (post-link envelope patch idempotent within a build;
 runtime CPU/FP probes populate `cpu_features` / `fp_env`; recompute
-ABI exposed and bound to Haskell; foreign-engine recompute streamed
-into `.eq` sidecars stays Phase 7 cohort work)
+ABI exposed and bound to Haskell; Phase 7 consumes the recompute ABI for
+sidecars, divergence rows, and verification helpers)
 **Implementation**: `cpp-legacy/c-abi/mcts_cpp_legacy.{h,cc}` (envelope
 runtime probes + `mcts_legacy_recompute_move`), `cpp-legacy/Makefile`
 (post-link `envelope-build-id` target), `src/MCTS/FFI/CppLegacy.hs`
@@ -621,8 +627,10 @@ Envelope Surface](../documents/engineering/backend_ffi_contract.md).
   `cpp-legacy recompute symbol returns visits and equity`,
   `cpp-legacy envelope reports cpu_features bits and a non-zero
   engine_build_id`, and (updated) the existing live-envelope group now
-  expects the patched `engine_build_id` on backend (i) while keeping
-  the zero-digest expectation for the other backends.
+  expects patched, non-zero `engine_build_id` values for
+  `cpp-legacy`, `cpp-imperative`, and `cpp-functional`; Rust is accepted
+  in either smoke-build zero-digest form or post-`mcts build rust`
+  patched form.
 - Routing the live envelope into the layered verifier's
   `BackendSlot CppLegacy` slot is Phase 7 cross-backend cohort work;
   Sprint 4.7 closes the per-backend envelope and recompute surfaces.

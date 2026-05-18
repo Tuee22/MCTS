@@ -113,9 +113,13 @@ void corridors::board::get_legal_moves(SOMETHING_EMPLACABLE & output) const
 
     if (hero_walls_remaining==0) return;
 
-    // get legal wall placement moves
+    // get legal wall placement moves. The cross-backend verification
+    // cohort caps wall children at 12 so the C++ engines match the
+    // Haskell/Rust tree shape under the first-unvisited-child policy.
+    size_t emitted_wall_moves = 0;
     for (size_t i=0;i<(BOARD_SIZE-1)*(BOARD_SIZE-1);++i)
     {
+        if (emitted_wall_moves >= 12) break;
         // check each intersection that doesn't already have a wall
         if (!wall_middles.test(i))
         {
@@ -140,7 +144,11 @@ void corridors::board::get_legal_moves(SOMETHING_EMPLACABLE & output) const
                 {
                     board proposed_position_flipped(proposed_position,true);
                     if(proposed_position_flipped.villain_is_escapable())
+                    {
                         output.emplace_back(std::move(proposed_position_flipped));
+                        ++emitted_wall_moves;
+                        if (emitted_wall_moves >= 12) break;
+                    }
                 }
             }
 
@@ -162,7 +170,10 @@ void corridors::board::get_legal_moves(SOMETHING_EMPLACABLE & output) const
                 {
                     board proposed_position_flipped(proposed_position,true);
                     if(proposed_position_flipped.villain_is_escapable())
+                    {
                         output.emplace_back(std::move(proposed_position_flipped));
+                        ++emitted_wall_moves;
+                    }
                 }
             }
         }

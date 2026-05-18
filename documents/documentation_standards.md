@@ -186,7 +186,8 @@ Code examples must not use:
   Fourmolu/HLint execution, enters through
   `docker compose run --rm mcts mcts <command>`; examples must not tell
   contributors to run `docker compose up`, `docker compose exec`, or ambient host
-  toolchains as a fallback.
+  toolchains as a fallback, and must not route project work through `.sh`
+  scripts or `bootstrap/` helpers.
 - application-specific environment-variable configuration for the `mcts` binary.
   Document CLI flags instead.
 

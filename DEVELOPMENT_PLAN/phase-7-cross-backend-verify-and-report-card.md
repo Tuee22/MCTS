@@ -16,12 +16,20 @@
 
 ## Phase Status
 
-🔄 **Active**. `docker compose run --rm mcts mcts test all` passes under the pinned
-toolchain with the real FFI-backed engines for all four foreign
-backends (i)/(ii)/(iii)/(iv); the cross-backend and legacy-parity
-stanzas accept a well-formed `VerifyMismatch` outcome (the cohort
-agreement contract is owned by Sprint 7.2's final tightening once
-cross-backend RNG plumbing is symmetric). Same-backend determinism
+🔄 **Active**. `docker compose run --rm mcts mcts test all` is the phase validation
+gate under the pinned toolchain; when the foreign cdylibs are present, the
+integration, cross-backend, and legacy-parity paths exercise the real
+FFI-backed engines for backends (i)/(ii)/(iii)/(iv). The latest completed
+focused validation before the Compose-entrypoint doctrine edit was
+`docker compose run --rm mcts mcts test mcts-unit` after rebuilding the Compose
+image; the doctrine edit itself remains unvalidated because the follow-up
+Compose run was stopped during Docker image build before the requested `mcts`
+command ran. Full lifecycle validation remains pending through the canonical
+`docker compose run --rm mcts mcts <command>` entrypoint.
+The cross-backend and legacy-parity stanzas accept a well-formed `VerifyMismatch`
+outcome while the cohort
+agreement gap (post-move flip conventions)
+remains open. Same-backend determinism
 (Q4), the legacy-parity preflight, the Q6 golden decode, and the
 per-backend live envelope checks all pass. Sprint 7.5 ships
 `divergenceVsEqStream` + foreign-FFI driver paths and three new
@@ -29,12 +37,18 @@ per-backend live envelope checks all pass. Sprint 7.5 ships
 `shared_rng_build_id` cohort-level hard-fails plus the
 `--allow-stale` downgrade for `BackendSlot` mismatches. Sprint 7.4
 ships the move-input parser, the in-app commands
-`:hint`/`:undo`/`:save`/`:quit`/`:q`, the `runPlay → runInteractivePlay`
-TTY hookup, and `MCTS.CLI.Tui.Replay` with forward/back/home/end
-navigation through a transcript (pure dispatchers unit-tested).
-Remaining Phase `7` closure: wire `mcts inspect replay` to the new
-brick TUI, the multi-backend equity overlay, and the doctrine-
-shaped report-card with measured Q1–Q7 evidence — initial Q1 ST
+`:hint`/`:undo`/`:quit`/`:q` plus a `:save` placeholder, the
+`runPlay → runInteractivePlay` TTY hookup, and `MCTS.CLI.Tui.Replay`
+with forward/back/home/end navigation, cached board snapshots, and
+cached sidecar overlays (pure dispatchers unit-tested). The shared board
+widget renders the 9×9 pawn grid with horizontal and vertical wall overlays.
+Remaining
+Phase `7` closure: finish the replay recompute/visit-check path,
+replace the `:save` placeholder with a transcript write, route
+interactive AI through the selected backend instead of the in-process
+Haskell engine only, add stable TUI layout goldens, tighten the final GADT shapes, close the
+post-move-orientation/Q6 fixture gaps, and publish the doctrine-shaped
+report-card with measured Q1–Q7 evidence — initial Q1 ST
 snapshot lands at **0.89×** (Haskell faster than non-PGO cpp-imperative
 smoke); Q2 ST at sims=500 lands at **1.03×** (within tolerance) and
 at sims=1000 at **1.13×** (in the PGO-attributable band), per
@@ -44,9 +58,11 @@ at sims=1000 at **1.13×** (in the PGO-attributable band), per
 
 Phase `7` is where the determinism contract becomes enforceable end-to-end. With all
 five backends live, the `mcts-cross-backend` stanza runs the four-backend `(ii)..(v)`
-round-robin under `--rng cpp` and asserts bit-equal visit counts. The
-`mcts-legacy-parity` stanza runs the 5-backend round-robin under the legacy parity
-envelope (`max_plies = 10000`, fixture seed `S_LP = 42`). The `mcts-integration`
+round-robin under `--rng cpp`; it currently accepts a well-formed `VerifyMismatch`
+while the residual post-move orientation gap remains open, and the target closure flips that to
+bit-equal visit-count enforcement. The `mcts-legacy-parity` stanza runs the
+5-backend round-robin under the legacy parity envelope (`max_plies = 10000`, fixture
+seed `S_LP = 42`) with the same active/target split. The `mcts-integration`
 stanza covers same-backend determinism (Q4) across all five backends at three seeds
 each, plus the Q6 golden-fixture comparison for backend (i) against
 `test/golden/legacy/`. The `mcts-unit` stanza covers pure logic, parser tests via
@@ -240,15 +256,19 @@ constraint at the type level and `LegacyParityBackend` requiring (i) at parse ti
 ### Remaining Work
 
 - Baseline landed: `mcts-cross-backend` and `mcts-legacy-parity` Cabal stanzas exist
-  and are wired against the logical five-backend cohort through in-stanza `tasty`
-  runners. `cabal test mcts-cross-backend` exercises the four-backend `(ii)..(v)`
-  round-robin under `--rng cpp` (single-threaded), and additionally asserts the
+  and are wired through `MCTS.Driver.Dispatch.runBatchDispatch`, so they exercise
+  the real FFI drivers when matching shared libraries are present and otherwise
+  stay self-contained through the logical fallback.
+  `docker compose run --rm mcts mcts test mcts-cross-backend` exercises the
+  four-backend `(ii)..(v)` round-robin under `--rng cpp` (single-threaded),
+  and additionally asserts the
   cohort-constraint surface rejects (a) a cohort containing `cpp-legacy` and (b) a
   single-backend cohort, both with `AppError VerifyCohortTooSmall`. Three Sprint
   7.5 envelope-mismatch tests cover `host_arch` + `shared_rng_build_id` cohort-
   level hard-fails and the `--allow-stale` downgrade for `BackendSlot` mismatches.
-  `cabal test mcts-legacy-parity` exercises the full-five-backend cohort under the
-  legacy envelope and asserts a cohort missing `cpp-legacy` is rejected.
+  `docker compose run --rm mcts mcts test mcts-legacy-parity` exercises the
+  full-five-backend cohort under the legacy envelope and asserts a cohort
+  missing `cpp-legacy` is rejected.
 - Sprint 7.2 RNG-salt refinement closure: `MCTS.Rng.Mix.backendNativeSalt` is
   the single source of truth for the per-backend `--rng native` salt; it is
   shared across `Driver.uctChooseMove`, `Engine.Recompute.recomputeGame`, and
@@ -262,21 +282,17 @@ constraint at the type level and `LegacyParityBackend` requiring (i) at parse ti
   `(negate visits, actionId)` consistent with `cpp-imperative/engine/search.cpp::run_search`'s
   `if (child.visit_count > best_visits) { ... }` discipline. `MCTS.Verify.comparable` sorts the
   visit list by `action_id` and filters zero-visit entries so per-backend
-  child-enumeration shape (e.g. cpp-imperative emitting all 128 wall slots vs. Rust /
-  Haskell capping at 12) does not block the visit-count contract. The
+  child-enumeration shape does not block the visit-count contract. The
   `nonTerminalRank` function stays exported for standalone test coverage at
   `test/unit/Main.hs`. `docker compose run --rm mcts mcts test all` +
   `docker compose run --rm mcts mcts check-code` green; the `mcts-cross-backend`
   stanza continues to accept a well-formed `VerifyMismatch` because the deeper
-  cross-backend tree-shape gap (wall-enumeration cap divergence, post-move flip
-  orientation conventions) remains owned by the legacy-deletion item below.
-- Cohort tree-shape alignment (residual): cpp-imperative emits every legal wall slot
-  while Rust and Haskell cap at 12 (`take 12 (wallMoves board)` /
-  `if count >= 12 { break; }`), and the post-move flip orientation conventions are
-  not identical across (ii)..(v). The heuristic-drop above closes the
-  selection-policy gap; the remaining `VerifyMismatch` surface on multi-move runs
-  belongs to a future cohort tree-shape alignment item (not part of Sprint 7.2's
-  contract).
+  cross-backend orientation gap remains owned by the legacy-deletion item below.
+- Cohort agreement alignment (residual): `cpp-imperative` and `cpp-functional`
+  now cap wall children at 12 to match Haskell's `take 12 (wallMoves board)` and
+  Rust's `if count >= 12 { break; }` path. The remaining
+  `VerifyMismatch` surface on multi-move runs traces to post-move 180-degree flip
+  orientation conventions that are still not byte-identical across (ii)..(v).
 - Enforce the final `VerifyBackend` / `LegacyParityBackend` GADT shapes rather than
   the current ADT + parser checks.
 - Add external legacy fixture coverage for Q6/Q7.
@@ -313,16 +329,16 @@ and emits the tidy summary block answering Q1–Q7 in one screenful.
   2. Run `mcts lint docs` (generated-section drift on the `GeneratedSectionRule`
      registry) per
      [phase-1-haskell-cli-surface.md → Sprint 1.3](phase-1-haskell-cli-surface.md).
-  3. Run `cabal build all` warning-clean under the pinned toolchain. (`mcts lint
-     haskell` is exercised inside the `mcts-haskell-style` Cabal stanza in step 4;
-     it does not need its own plan step here.)
-  4. Run `cabal test mcts-haskell-style` (pinned style-tool `fourmolu --mode check`
-     + `hlint --with-group=default --with-group=extra` with only `Error:` findings
-     blocking + `cabal format` round-trip).
-  5. Run `cabal test mcts-unit`.
-  6. Run `cabal test mcts-integration`.
-  7. Run `cabal test mcts-cross-backend`.
-  8. Run `cabal test mcts-legacy-parity`.
+  3. Inside the container, run `cabal build all` warning-clean under the pinned
+     toolchain. (`mcts lint haskell` is exercised inside the `mcts-haskell-style`
+     Cabal stanza in step 4; it does not need its own plan step here.)
+  4. Inside the container, run `cabal test mcts-haskell-style` (pinned style-tool
+     `fourmolu --mode check` + `hlint --with-group=default --with-group=extra`
+     with only `Error:` findings blocking + `cabal format` round-trip).
+  5. Inside the container, run `cabal test mcts-unit`.
+  6. Inside the container, run `cabal test mcts-integration`.
+  7. Inside the container, run `cabal test mcts-cross-backend`.
+  8. Inside the container, run `cabal test mcts-legacy-parity`.
   9. Run the pinned report-card workload — the **seven logical invocations** below,
      matching the command suffixes documented in
      [../README.md → mcts test all → Report-card workload](../README.md). The README
@@ -465,16 +481,18 @@ so the contract is reviewable in one place:
 
 ## Sprint 7.4: `mcts play` and `mcts inspect replay` TUIs 🔄
 
-**Status**: Active (substantively closed). The TUI surface is:
+**Status**: Active. The current TUI surface is:
 `MCTS.CLI.Tui.Board` (9×9 board widget); `MCTS.CLI.Tui.Play` (brick
-`App` with legacy-notation move input + `:hint`/`:undo`/`:save`/
-`:quit`/`:q`); `MCTS.CLI.Tui.Replay` (brick `App` with forward/
+`App` with legacy-notation move input + `:hint`/`:undo`/`:quit`/
+`:q` plus a `:save` placeholder); `MCTS.CLI.Tui.Replay` (brick `App` with forward/
 back/home/end navigation, multi-backend equity overlay column
 populated from cached `.eq` sidecars via `currentOverlayRows`,
 and a bounded `Map.Map Int Board` snapshot cache that warms the
 nearest predecessor each navigation step so long-transcript
 forward/back is amortised O(1) on the cache size; the
-`--cache-states N` operator flag overrides the cache bound).
+`--cache-states N` operator flag overrides the cache bound). The current
+`MCTS.CLI.Tui.Board.renderBoard` draws the pawn grid, status line, and
+horizontal/vertical wall overlays.
 `MCTS.App.runPlay` dispatches to `runInteractivePlay` when stdin
 is a TTY; `MCTS.CLI.Inspect.inspectReplay` dispatches to
 `runReplayTuiFromState` on a TTY with the operator-configured
@@ -482,13 +500,14 @@ state including loaded cached sidecars. Pure dispatchers
 (`applyUserInput`, `applyReplayKey`, `currentOverlayRows`,
 `boardWithCache`) are unit-tested in `mcts-unit::exerciseTuiPlayInput`,
 `mcts-unit::exerciseTuiReplayNav`, `mcts-unit::exerciseTuiReplayOverlay`.
-Sprint 7.4 is effectively closed at the worktree surface; the
-remaining gates are the multi-minute Q5 / report-card workload and
-the amd64 PGO+BOLT bar (Sprint 7.3, 8.3).
+Sprint-owned work remains for `:save`, selected-backend AI dispatch,
+replay cache-miss recompute/visit checking, and a stable renderer/layout
+validation path.
 **Blocked by**: none (upstream `brick` / `config-ini` compatibility
 landed under the `allow-newer` constraint)
-**Implementation**: `src/MCTS/App.hs` (`runPlay` smoke path),
-`src/MCTS/CLI/Inspect.hs` (`inspectReplay` smoke path),
+**Implementation**: `src/MCTS/App.hs` (`runPlay` TTY/fallback dispatch),
+`src/MCTS/CLI/Inspect.hs` (`inspectReplay` TTY/fallback dispatch),
+`src/MCTS/CLI/Tui/{Board,Play,Replay}.hs`,
 `src/MCTS/CLI/Spec.hs` (Play and Inspect.Replay subtrees)
 **Docs to update**: `documents/engineering/cli_command_surface.md`,
 `documents/engineering/haskell_code_guide.md`
@@ -506,10 +525,11 @@ a stored transcript with equity recomputed on the fly.
   [00-overview.md → Doctrine Scope → Stack deviations](00-overview.md); no other
   module imports either library. The dependency check in Sprint 1.1's
   standardized library audit accepts these two as the documented exception.
-- `src/MCTS/CLI/Tui/Board.hs` renders the 9×9 Corridors board, walls, and pawn
-  positions using `brick`/`vty` widgets. `src/MCTS/CLI/Tui/Prompt.hs` carries
-  the input prompt and the legacy move-notation parser.
-- `src/MCTS/CLI/Play.hs` owns `mcts play` per the project
+- `src/MCTS/CLI/Tui/Board.hs` renders the 9×9 Corridors board and pawn positions
+  using `brick`/`vty` widgets; wall-segment overlays remain sprint-owned active
+  work. `MCTS.CLI.Tui.Play` carries the input
+  prompt and uses `MCTS.Notation.parseMove` for legacy move notation.
+- `src/MCTS/CLI/Tui/Play.hs` owns the interactive `mcts play` TTY path per the project
   [README → Interactive modes](../README.md):
   - Left pane: Corridors board.
   - Right pane: whose turn, move count, last move, live simulation counter
@@ -532,7 +552,7 @@ a stored transcript with equity recomputed on the fly.
     actual seed, not a sentinel — replaying the transcript with
     `mcts inspect replay` reproduces the same game per
     [../README.md → CLI command topology](../README.md).
-- `src/MCTS/CLI/Replay.hs` owns `mcts inspect replay <hash-prefix>` per the
+- `src/MCTS/CLI/Tui/Replay.hs` owns `mcts inspect replay <hash-prefix>` per the
   project README:
   - Layout: board on the left; on the right, current move index, move actually
     played, top-N legal-move list (visits, equity, action).
@@ -576,19 +596,23 @@ a stored transcript with equity recomputed on the fly.
    game and accepts move input.
 2. `mcts inspect replay <prefix>` opens the navigator on a known transcript and
    the determinism check passes on every navigation.
-3. A `cabal test mcts-unit` golden covers the TUI layout via a pinned
-   `brick`-rendered string buffer.
+3. A `docker compose run --rm mcts mcts test mcts-unit` golden covers the TUI
+   layout via a pinned `brick`-rendered string buffer.
 4. `mcts lint haskell` rejects any `print` / `exitFailure` / non-`brick` terminal
    output in either TUI module.
 
 ### Remaining Work
 
-- Baseline landed: `mcts play` runs a non-interactive logical game smoke path, and
-  `mcts inspect replay <prefix>` opens a non-interactive transcript replay summary.
-- Add the real `brick` / `vty` TUI modules, dependency gates, and rendering tests.
-- Implement in-app `:hint`, `:undo`, `:save`, and `:quit` for `play`.
-- Implement replay navigation, cached-state backtracking, multi-backend equity columns,
-  and recompute-triggered sidecar writes.
+- Replace the `:save` placeholder in `MCTS.CLI.Tui.Play.applyUserInput` with the
+  transcript write described by the sprint objective.
+- Route interactive AI turns through the selected backend when a foreign backend
+  is requested; the current `runInteractivePlay` path always advances with the
+  in-process Haskell `uctSearch`.
+- Add replay-side recompute/visit-count checking on navigation and sidecar writes
+  for cache misses. The current replay TUI navigates with cached board snapshots
+  and renders cached `.eq` overlays, but it does not recompute missing columns.
+- Cover the wall-aware `MCTS.CLI.Tui.Board` and replay buffers with a stable TUI
+  layout golden or equivalent renderer check.
 - Preserve the TUI exception to global `--format` / `--color` flags in command docs.
 
 ## Sprint 7.5: Layered Envelope Verify and Divergence Matrix 🔄
@@ -613,12 +637,15 @@ Smell](../documents/engineering/determinism_contract.md).
 
 ### Current Validation State
 
-`src/MCTS/Verify/Divergence.hs` now exposes a baseline transcript-pair metric for
-`visit_disagreement_rate`, `move_disagreement_rate`, and `equity_l2_drift`.
-`mcts inspect divergence <hash-prefix>` resolves and decodes the requested transcript,
-discovers cached sidecar columns for the transcript hash, and renders metrics through
-the shared helper instead of a fixed placeholder. `mcts-unit` covers the zero-divergence
-case and a changed-move nonzero case.
+`src/MCTS/Verify/Divergence.hs` exposes both the transcript-pair baseline metric and
+`divergenceVsEqStream`, which scores a transcript against a recomputed or cached
+`EqStream` for `visit_disagreement_rate`, `move_disagreement_rate`, and
+`equity_l2_drift`. `mcts inspect divergence <hash-prefix>` resolves and decodes the
+requested transcript, discovers cached sidecar columns for the transcript hash, and
+adds one live foreign-recompute row per available cpp-imperative, cpp-functional, or
+Rust cdylib. `mcts-unit` covers zero-divergence and changed-equity cases; the
+integration stanza exercises the foreign recompute `EqStream` path when cdylibs are
+present.
 
 `src/MCTS/Verify/Envelope.hs` also enforces the full logical v1 layered envelope fields
 that exist today: cohort-level `host_arch`, envelope-version, `rng_source`,
@@ -713,18 +740,16 @@ instead of collapsing it to self-play.
 
 ### Remaining Work
 
-- Extend layered envelope verification beyond the baseline fields to the full live
-  backend envelope captured through per-backend FFI (`compiler_id`, `compiler_version`,
-  `fp_flags`, `libm_id`, `cpu_features`, `fp_env`, and shared RNG build id).
+- Extend layered envelope verification beyond the current logical expected envelope to
+  compare cached transcripts with live `mcts_<backend>_get_envelope()` FFI values,
+  including `compiler_version`, `libm_id`, and shared RNG build id.
 - Route `--allow-stale` warnings through richer structured JSON output once the final
   output renderer lands.
-- Change `divergenceRate` from the baseline transcript-pair metric to the final
-  `Transcript -> EqStream -> DivergenceMetrics` foreign-recompute scoring once
-  per-backend recompute FFI lands.
-- Calibrated threshold constants are present in `cabal.project`; add report-card
-  divergence matrix rendering and keep the engineering-doc threshold table aligned.
-- Add stale-cache, REPL overlay, and report-card integration tests against real backend
-  envelopes and recompute sidecars.
+- Add report-card divergence matrix rendering and keep the engineering-doc threshold
+  table aligned with the calibrated constants already present in `cabal.project`.
+- Add stale-cache and report-card integration tests against real backend envelopes and
+  recompute sidecars. The foreign recompute `EqStream` path itself is already covered
+  by the integration stanza when cdylibs are present.
 
 ## Documentation Requirements
 

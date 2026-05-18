@@ -50,7 +50,9 @@ management summaries.
   contradict the supported architecture or command surface.
 - Host-runnable command examples must use the root Compose entrypoint
   `docker compose run --rm mcts mcts <command>`. Bare `mcts <command>` may be used only
-  when naming the CLI surface rather than giving a host command to run.
+  when naming the CLI surface rather than giving a host command to run. Do not
+  document `.sh` scripts, `bootstrap/` helpers, or other host-side wrappers as
+  supported project workflows.
 - Backend identifiers are `cpp-legacy`, `cpp-imperative`, `cpp-functional`, `rust`,
   `haskell` on the CLI and the Roman numerals `(i)`, `(ii)`, `(iii)`, `(iv)`, `(v)` in
   prose.

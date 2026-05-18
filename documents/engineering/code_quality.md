@@ -19,7 +19,8 @@
 - [../../HASKELL_CLI_TOOL.md → Forbidden Surfaces (Negative-Space
   Lint)](../../HASKELL_CLI_TOOL.md) — the `forbiddenPathRegistry` refusing parallel
   workflow surfaces (`.github/workflows/`, `.husky/`, `.githooks/`, root `Makefile`
-  / `justfile` / `Taskfile.yml`).
+  / `justfile` / `Taskfile.yml`, host `.build/`, `bootstrap/`, and repository
+  `.sh` wrappers).
 - [../../HASKELL_CLI_TOOL.md → Generated Artifacts](../../HASKELL_CLI_TOOL.md) — the
   `GeneratedSectionRule` registry, the `trackingGeneratedPaths` registry, the
   paired `mcts docs check` / `mcts docs generate` commands, the determinism
@@ -43,6 +44,8 @@ docker compose run --rm mcts mcts check-code
 
 Ambient host-level tool fallback is unsupported. Fourmolu and HLint must come from
 the short-lived container's pinned style-tool install, not from the host `PATH`.
+Repository shell-script wrappers are unsupported for the same reason: project
+work must enter through `docker compose run --rm mcts mcts <command>`.
 
 Running `mcts check-code` dispatches, in order:
 
@@ -51,7 +54,8 @@ Running `mcts check-code` dispatches, in order:
 2. `mcts lint docs` — `mcts docs check` (marker drift detection).
 3. `mcts lint haskell` — `fourmolu --mode check` + `hlint` + `cabal format`
    temp-file round-trip byte-equality.
-4. `cabal build all` warning-clean under the pinned toolchain.
+4. Inside the container, `cabal build all` warning-clean under the pinned
+   toolchain.
 
 Failure of any step exits non-zero with the failing stage's `AppError` rendered
 through the single `renderError :: AppError -> Text` boundary.
@@ -78,6 +82,11 @@ one canonical `mcts` operator surface:
   refused. Per-backend Makefiles under `cpp-legacy/`, `cpp-imperative/`,
   `cpp-functional/`, and per-backend `Cargo.toml` under `rust/` are allowed and
   expected.
+- Host-level `.build/` — build artefacts belong inside the Compose-built image or
+  short-lived container filesystem.
+- `bootstrap/` and repository `.sh` scripts — shell-script wrappers are refused
+  because the single supported host entrypoint is
+  `docker compose run --rm mcts mcts <command>`.
 
 ### Generated Sections
 

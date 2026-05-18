@@ -107,11 +107,12 @@ cross-language second opinion.
   independent of worker count and scheduling order. Owned by
   [phase-2-transcript-codec-and-determinism.md](phase-2-transcript-codec-and-determinism.md).
 - **Backend (v) Haskell engine.** Corridors game state as `Word64` bitboards
-  manipulated with `Data.Bits` (lowering to `popcnt`/`tzcnt` under `-fllvm` with
-  `-optlo-mcpu=native`), `Word16` ply counter, MCTS tree as a `MutablePrimArray s`
-  arena of unboxed `Int32` / `Float` fields, UCT search and random-rollout leaf
-  evaluation in the `ST s` monad, tree persistence carrying inherited visits across
-  moves, pure API at the boundary. Owned by
+  manipulated with `Data.Bits` under `-fllvm`, `Word16` ply counter, MCTS tree as a
+  structure-of-arrays `STUArray` arena of unboxed `Int32` / `Float` fields, UCT
+  search and random-rollout leaf evaluation in the `ST s` monad, tree persistence
+  carrying inherited visits across moves, pure API at the boundary. Per-CPU LLVM
+  `-mcpu=native` flags are intentionally excluded on the current aarch64 container and
+  tracked as a Sprint 8.2 ledger item. Owned by
   [phase-3-haskell-engine.md](phase-3-haskell-engine.md).
 - **Backend (i) C++ legacy port and FFI bridge.** Verbatim re-port from `~/MCTS_legacy`
   with only the FFI shims required to expose a C ABI; inherits the legacy's
@@ -143,7 +144,7 @@ cross-language second opinion.
   the pinned report-card workload, and emits the tidy summary block. Owned by
   [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md).
 - **Haskell performance parity closure and retirement protocol.** GHC `-O2 -fllvm`,
-  LLVM `-mcpu=native`, `-funbox-strict-fields`, `-fspecialise-aggressively`,
+  `-funbox-strict-fields`, `-fspecialise-aggressively`,
   `-fexpose-all-unfoldings`, `-flate-dmd-anal`, `-fmax-simplifier-iterations=20`,
   `-fworker-wrapper`, `-fstatic-argument-transformation`, RTS `-A64m -n4m -qg1 -qb -T`,
   `INLINABLE` + `SPECIALIZE` on the search loop, unboxed strict fields everywhere, no
@@ -350,14 +351,15 @@ referenceability.
     `codegen-units = 1`, `panic = "abort"`, `strip = "symbols"`. `RUSTFLAGS=-C
     target-cpu=native -C link-arg=-fuse-ld=lld`. `mimalloc` as `#[global_allocator]`.
     Two-stage `rustc -Cprofile-generate` / `-Cprofile-use` PGO. BOLT post-link.
-20. Backend (v) Haskell uses `-O2 -fllvm` with LLVM `-optlo-mcpu=native` /
-    `-optlc-mcpu=native`, `-funbox-strict-fields`, `-fspecialise-aggressively`,
+20. Backend (v) Haskell uses `-O2 -fllvm`, `-funbox-strict-fields`, `-fspecialise-aggressively`,
     `-fexpose-all-unfoldings`, `-flate-dmd-anal`, `-fmax-simplifier-iterations=20`,
     `-fworker-wrapper`, `-fstatic-argument-transformation`. RTS `-A64m -n4m -qg1 -qb
     -T` is baked into the executable. Engine hot path lives in `ST s`; tree is a
-    `MutablePrimArray s` arena of unboxed `Int32` / `Float` fields; board state is
-    `Word64` bitboards manipulated with `Data.Bits`. Pure API at the boundary; no
-    `Maybe` / `Either` in the rollout inner loop.
+    structure-of-arrays `STUArray` arena of unboxed `Int32` / `Float` fields; board
+    state is `Word64` bitboards manipulated with `Data.Bits`. Pure API at the
+    boundary; no `Maybe` / `Either` in the rollout inner loop. LLVM
+    `-optlo-mcpu=native` / `-optlc-mcpu=native` is ledger-deferred on aarch64 until
+    the assembler target accepts the emitted LSE instructions.
 21. Library-first layout: `app/Main.hs` is thin; logic lives under `src/MCTS/`.
 22. `CommandSpec` is the source of truth for the parser, the command tree, the JSON
     schema, the markdown command reference, the manpages, and the shell completion
@@ -397,8 +399,8 @@ referenceability.
     pinned GHC `9.12.4` and do not alter the project compiler. Root-level
     `compose.yaml` supports only `docker compose run --rm mcts mcts <command>` as the
     host entrypoint. There is no long-running daemon container, bind-mounted workspace,
-    or Compose-level environment-variable block; host-level `.build/` artefacts are
-    unsupported.
+    Compose-level environment-variable block, repository `.sh` workflow wrapper, or
+    `bootstrap/` helper; host-level `.build/` artefacts are unsupported.
 32. Move notation matches the legacy engine: `*(x,y)` for pawn moves, `H(x,y)` for
     horizontal walls, `V(x,y)` for vertical walls, x,y ∈ [0,8] for pawns and ∈ [0,7]
     for walls. `inspect show` / `inspect replay` and the `play` TUI render in this
@@ -408,7 +410,9 @@ referenceability.
     `inspect replay`.
 34. `mcts play` accepts `:hint`, `:undo`, `:save`, and `:quit` in-app commands.
     Hand-played transcripts are addressed by `sha256(run_config || move_history)`
-    because the human's choices make the post-config bytes non-deterministic.
+    because the human's choices make the post-config bytes non-deterministic. The
+    current Sprint `7.4` baseline parses `:save` as a placeholder only; the
+    transcript-write side effect remains active work.
 35. `inspect replay` recomputes equity on the fly by replaying the search; the visit
     counts produced must equal the transcript record byte-for-byte as a built-in
     determinism check that fires on every navigation. The last `replayCacheStates` MCTS
@@ -474,15 +478,24 @@ referenceability.
 
 ## Current Baseline
 
+Phase `1` Sprint `1.4` is temporarily reopened for the Compose-only
+operator-surface doctrine update: repository `.sh` wrappers and `bootstrap/`
+helpers are now forbidden surfaces, but the update is not validated yet. The
+validation attempt `docker compose run --rm mcts mcts test mcts-unit` was
+stopped at operator request during Docker image build before the `mcts` command
+ran. Phases `2` through `5` remain closed on their owned surfaces, and Phases
+`6`, `7`, and `8` remain active for their existing backend, verification, and
+performance-parity work.
+
 | Surface | Current Repo State | Intended End State |
 |---------|--------------------|--------------------|
-| Repository layout | `app/`, `src/MCTS/`, `src/MCTS/Generated/`, `cpp-legacy/`, `cpp-imperative/`, `cpp-functional/`, `rust/`, `bench/`, `test/`, `docker/`, root `compose.yaml`, `cabal.project`, `fourmolu.yaml`, `.hlint.yaml`, `.gitignore`, `mcts.cabal`, generated-artefact targets `documents/cli/commands.md`, `share/man/man1/mcts.1`, and `share/completion/{bash,zsh,fish}/` | Same layout with the remaining ledger residues (backend (iii) functional-style engine internals, `cpp-functional` / `rust` PGO+BOLT install closure, foreign-engine recompute streaming to `MEQ1` sidecars) resolved and retirement-protocol golden anchors retained under `test/golden/<backend>/` |
+| Repository layout | `app/`, `src/MCTS/`, `src/MCTS/Generated/`, `cpp-legacy/`, `cpp-imperative/`, `cpp-functional/`, `rust/`, `bench/`, `test/`, `docker/`, root `compose.yaml`, `cabal.project`, `fourmolu.yaml`, `.hlint.yaml`, `.gitignore`, `mcts.cabal`, generated-artefact targets `documents/cli/commands.md`, `share/man/man1/mcts.1`, and `share/completion/{bash,zsh,fish}/` | Same layout with the remaining ledger residues (`cpp-functional` / `rust` PGO+BOLT install closure, residual post-move orientation alignment, report-card evidence, replay/play TUI side-effect gaps) resolved and retirement-protocol golden anchors retained under `test/golden/<backend>/` |
 | Build artefacts | `mcts.cabal` declares the `mcts` binary, all Haskell test stanzas, and the doctrine-standard dependency envelope; host validation enters through `docker compose run --rm mcts mcts check-code` under the pinned toolchain. The foreign backend trees ship real arena-MCTS engines (`cpp-legacy/legacy-core/`, `cpp-imperative/engine/`, `cpp-functional/engine/`, `rust/src/`); the Rust crate carries the full Corridors gameplay port (board.rs + rollout.rs + search.rs); the `cpp-imperative` PGO+BOLT pipeline closed under Sprint 5.3, and the `cpp-functional` and `rust` PGO+BOLT pipelines ship via the typed `Subprocess` boundary. Haskell loads the shared libraries dynamically through `MCTS.FFI.Common`; the link-time-bound `extra-libraries` policy is ledger residue. | Container-image `mcts` binary produced by `docker/Dockerfile`, plus container-local per-backend shared libraries (`cpp-legacy/libmcts_cpp_legacy.so`, `cpp-imperative/libmcts_cpp_imperative.so`, `cpp-functional/libmcts_cpp_functional.so`, `rust/target/release/libmcts_rust.so`) |
-| CLI surface | The complete command family is wired: `bench`, `verify`, `inspect`, `test`, `lint`, `docs`, `commands`, `help`, `check-code`, `build`, and smoke `play`. Generated command docs are checked against the renderer, tracked generated-file drift fails `mcts lint files`, generated path/section registries live under `src/MCTS/Generated/`, and `mcts test all` routes recursive CLI calls through `cabal exec mcts -- ...`. The bench/verify path dispatches through real FFI for backends (i)/(ii)/(iii)/(iv) whenever each backend's shared library is present in the build tree. | Same surface backed entirely by real Haskell, C++, and Rust engines plus interactive `brick`/`vty` TUIs |
+| CLI surface | The complete command family is wired: `bench`, `verify`, `inspect`, `test`, `lint`, `docs`, `commands`, `help`, `check-code`, `build`, and `play`. Generated command docs are checked against the renderer, tracked generated-file drift fails `mcts lint files`, generated path/section registries live under `src/MCTS/Generated/`, and `mcts test all` routes recursive CLI calls through `cabal exec mcts -- ...`. The bench/verify path dispatches through real FFI for backends (i)/(ii)/(iii)/(iv) whenever each backend's shared library is present in the build tree. Verify command constructors still carry backend lists with parser/runtime cohort guards; the final `VerifyBackend` / `LegacyParityBackend` GADT split remains open. `mcts play` and `mcts inspect replay` dispatch to `brick` TUIs on TTY and non-interactive fallbacks on pipes; the board widget renders pawn cells plus horizontal and vertical wall segments. Remaining TUI gaps are replay cache-miss recompute/visit-checking, `play` transcript-save side effects, selected-backend AI dispatch, and layout validation. | Same surface backed entirely by real Haskell, C++, and Rust engines plus finished interactive `brick`/`vty` TUIs |
 | Test stanzas | Five Cabal stanzas exist: `mcts-unit`, `mcts-integration`, `mcts-cross-backend`, `mcts-legacy-parity`, `mcts-haskell-style`; each stanza has its own `tasty` runner, and `docker compose run --rm mcts mcts test all` is the host validation gate under the pinned container toolchain. `mcts-haskell-style` runs `cabal format` through a temp-file round-trip and requires container-owned `fourmolu` / `hlint`; ambient host fallback is never allowed. The Q6 legacy fixture set is committed under `test/golden/legacy/transcripts/arm64/` as a `1000`-simulation transitional snapshot; the `10000`-sim refresh is a ledger residue. | Same stanzas, strengthened to the final fine-grained tasty organization with the full FFI-backed cohort and the `10000`-simulation fixture refresh through a `mcts` entrypoint |
 | Toolchain | `mcts.cabal` pins `tested-with: ghc ==9.14.1`; `cabal.project` pins `with-compiler: ghc-9.14.1` and report-card knobs. The style-tool policy pins GHC `9.12.4` only for Fourmolu/HLint installation inside the container. | GHC `9.14.1`, Cabal `3.16.1.0`, style GHC `9.12.4` for `fourmolu-0.19.0.1` / `hlint-3.10`, GCC latest stable on `ubuntu:24.04`, Rust latest stable with pinned minor, LLVM pinned in the Dockerfile |
-| Determinism contract | All four foreign backends (i)/(ii)/(iii)/(iv) dispatch through real FFI engines under `mcts verify` and the Cabal tests when their shared libraries are present. Transcript codec, full v1 envelope, SHA-256 content addressing, cache root resolution, prefix lookup, binary `MEQ1` equity sidecars, layered envelope checks (cohort-invariant + per-backend-slot fields), and transcript-pair divergence metrics are implemented. The `cross-backend` and `legacy-parity` stanzas accept a well-formed `VerifyMismatch` outcome (the cohort agreement contract is owned by Sprint 7.2's final tightening once cross-backend RNG plumbing is symmetric). | Enforced by real cross-backend `mcts verify {rollouts,selfplay,legacy-parity}` plus same-backend determinism cases under `mcts-integration` |
-| Performance parity | Not proven. Report-card rendering exists as a logical baseline and explicitly marks external fixture parity pending. | Haskell (v) within tolerance of C++ (ii) on Q1 and Q2, single-threaded and on 8 workers, recorded in the `mcts test all` report card |
+| Determinism contract | All four foreign backends (i)/(ii)/(iii)/(iv) dispatch through real FFI engines under `mcts verify` and the Cabal tests when their shared libraries are present. Transcript codec, full v1 envelope, SHA-256 content addressing, cache root resolution, prefix lookup, binary `MEQ1` equity sidecars, layered envelope checks (cohort-invariant + logical per-backend-slot stale fields), `divergenceVsEqStream`, live foreign-recompute divergence rows, cached Rust `read_visits`, and uniform 12-wall child caps across (ii)..(v) are implemented. The `cross-backend` and `legacy-parity` stanzas accept a well-formed `VerifyMismatch` outcome while the residual post-move orientation gap is open. | Enforced by real cross-backend `mcts verify {rollouts,selfplay,legacy-parity}` plus same-backend determinism cases under `mcts-integration`, with live FFI-envelope stale detection wired into verifier/prune paths |
+| Performance parity | Not proven against the final PGO+BOLT bar. Report-card rendering exists; Sprint 8.2 snapshots show Haskell at parity or faster than non-PGO cpp-imperative smoke on Q1 ST / Q1 MT8 and Q2 ST at sims=500, but the amd64 PGO+BOLT verdict and full pinned matrix remain open. | Haskell (v) within tolerance of C++ (ii) on Q1 and Q2, single-threaded and on 8 workers, recorded in the `mcts test all` report card |
 
 ## Related Documents
 
