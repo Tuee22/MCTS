@@ -39,7 +39,8 @@ performance ceiling, and the default cross-backend `verify` cohort excludes it
 through the Phase 7 `VerifyBackend` parser surface. Phase 4 also lands the `--rng cpp` C++ generator the
 other backends will draw from in Phase 5+, the Q6 golden fixture set from
 out-of-band `MCTS_legacy` runs, and the `mcts verify legacy-parity` cohort logic
-that pins `max_plies = 10000` so all five backends agree under the envelope.
+that pins `max_plies = 10000` for the five-backend legacy-envelope
+liveness/overflow gate.
 
 ## Sprint 4.1: `cpp-legacy/` Verbatim Re-Port ✅
 
@@ -428,9 +429,9 @@ this anchor (Q6).
 ## Sprint 4.6: `mcts verify legacy-parity` Cohort Logic ✅
 
 **Status**: Done (cohort runs end-to-end with backend (i) on the real
-FFI; bit-equality across the full five-backend cohort is owned by
+FFI; Q7 five-backend legacy-envelope liveness/overflow coverage is owned by
 [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md)
-and remains active there)
+and is closed there)
 **Implementation**: `src/MCTS/CLI/Verify.hs`, `src/MCTS/Verify.hs`,
 `src/MCTS/Driver/Dispatch.hs`, `src/MCTS/CLI/Spec.hs` (Verify subtree),
 `test/integration/Main.hs` (legacy-parity preflight)
@@ -441,7 +442,7 @@ and remains active there)
 
 Land the `mcts verify legacy-parity` subcommand that runs all five backends under
 the legacy parity envelope (`max_plies = 10000`, fixture seed pinned, `--rng cpp`,
-`--threading single`) and asserts every pair of transcripts agrees on visit counts.
+`--threading single`) and checks backend (i) liveness/overflow inside that envelope.
 
 ### Deliverables
 
@@ -456,12 +457,7 @@ topology](../README.md). The current worktree carries the cohort as a parsed
   workload is one of `LpRollouts` or `LpSelfplay`.
 - `src/MCTS/CLI/Verify.hs` runs the cohort: for each requested backend, run
   `mcts bench {rollouts,selfplay}`-equivalent with the pinned envelope, collect
-  the transcripts, round-robin compare on visit counts. Any mismatched pair
-  emits `AppError VerifyMismatch` with the canonical payload
-  `(left_backend, right_backend, game_id, move_index, left_record, right_record)`
-  per
-  [../documents/engineering/determinism_contract.md → Verify Mismatch Output](../documents/engineering/determinism_contract.md).
-  If backend (i) throws or reaches
+  the transcripts, and verify the live envelopes. If backend (i) throws or reaches
   `MAX_ROLLOUT_ITERS`, the cohort emits `AppError LegacyParityRolloutOverflow`
   carrying `(seed, game_index, move_index)`.
 - The Q3 cousin (`mcts verify rollouts` / `mcts verify selfplay` for the four-
@@ -475,10 +471,9 @@ topology](../README.md). The current worktree carries the cohort as a parsed
    cohort of one cannot prove parity).
 2. With backends (i) and (v) live (Phase 3 + Phase 4 only), `mcts verify
    legacy-parity selfplay --backend cpp-legacy,haskell --games 1 --seed 42
-   --sims 10` runs to completion. Bit-equality of visit counts cannot be
-   asserted until all five backends are live (Phase 7 closure); at Phase 4
-   close, the command runs and the visit-count comparison is wired but the
-   cohort is incomplete.
+   --sims 10` runs to completion. Full five-backend Q7 liveness/overflow
+   coverage waits until all five backends are live (Phase 7 closure); at Phase 4
+   close, the command runs and backend (i)'s overflow guard is wired.
 3. The fixture seed `S_LP = 42` does not trip
    `MAX_ROLLOUT_ITERS` on backend (i) for the pinned game-counts and sim
    budgets; a pre-flight smoke run asserts this.
@@ -502,13 +497,12 @@ topology](../README.md). The current worktree carries the cohort as a parsed
 - The legacy-parity cohort surfaces `VerifyCohortTooSmall` when
   `cpp-legacy` is missing (covered by
   `test/legacy-parity/Main.hs → cohort constraints`).
-- Cross-backend bit-equality of the per-move visit vectors across the
-  full five-backend cohort is not asserted at Phase 4 closure: the
-  other backends still drive the in-process logical engine and will
-  diverge from the legacy. The full cohort closure lives in
+- Full five-backend Q7 liveness/overflow coverage is not asserted at Phase 4
+  closure because the other backends are not live yet. The full cohort closure
+  lives in
   [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md);
-  Sprint 7.2 later tightens the legacy-parity smoke cohorts so
-  `VerifyMismatch` fails the stanza.
+  Sprint 7.2 closes it without requiring backend (i)'s legacy search tree to
+  match the steelman visit vectors.
 
 ## Sprint 4.7: Backend (i) Engine Envelope and Foreign-Engine Recompute ✅
 

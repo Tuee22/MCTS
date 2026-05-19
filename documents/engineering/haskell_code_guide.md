@@ -145,7 +145,7 @@ alongside the user-facing variants:
   `libm_id`, `cpu_features`, `fp_env`) disagrees between a cached
   transcript and the live binary for the same backend slot. Foreign transcripts
   produced through `MCTS.Driver.Dispatch` carry the live C ABI envelope when the
-  cdylib is present; absent cdylibs use the logical fallback. Carries
+  cdylib is present; absent cdylibs use the in-process fallback. Carries
   an `EnvelopeMismatchScope` discriminator (`CohortLevel | BackendSlot
   Backend`) plus `(field, expected, got)`. Cohort-level mismatches are
   unconditionally hard fails; per-backend-slot mismatches are
@@ -297,7 +297,7 @@ Two recorded deviations from
   `mcts play :save` records move state in `MCTS.CLI.Tui.Play` but writes through
   `MCTS.Transcript.writePlayTranscript`; AI turns call
   `MCTS.Driver.ForeignSearch.foreignSearchMove` when a selected foreign backend's
-  shared library is present and use the logical fallback otherwise; `mcts inspect
+  shared library is present and use the in-process fallback otherwise; `mcts inspect
   replay` prepares originator cache-miss overlays and on-demand backend-column
   loaders in `MCTS.CLI.Inspect` before passing pure `EqStream`s and loader callbacks
   into `MCTS.CLI.Tui.Replay`; terminal output stays inside the `brick` renderer.

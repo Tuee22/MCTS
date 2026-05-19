@@ -242,7 +242,7 @@ per-move record sequence, including the chosen action and any visit-count vector
 captured for AI moves. When `mcts play` uses a selected foreign backend and the
 matching cdylib is present, that visit vector comes from the backend's
 `search_move` ABI after the current history has been replayed through
-`apply_action`; otherwise it comes from the logical fallback. `MCTS.Transcript.writePlayTranscript`
+`apply_action`; otherwise it comes from the in-process fallback. `MCTS.Transcript.writePlayTranscript`
 is the writer for this address shape; batch benchmark and verify transcripts continue
 to use the per-game `sha256(run_config)` writer.
 

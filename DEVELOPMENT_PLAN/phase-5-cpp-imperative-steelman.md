@@ -502,7 +502,7 @@ that ships at the canonical FFI load path).
 ### Remaining Work
 
 None. Backend (ii)'s recompute ABI, runtime CPU/FP probes, `libm_id`, and
-post-link `engine_build_id` patch are present. Phase 7 owns the remaining verifier
+post-link `engine_build_id` patch are present. Phase 7 closes the verifier
 wiring that compares cached transcripts with live FFI envelopes.
 
 ## Documentation Requirements

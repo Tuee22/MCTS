@@ -44,7 +44,8 @@ struct mcts_imperative_board {
 
 namespace {
 
-constexpr uint16_t kDefaultMaxPlies = 200;
+constexpr uint16_t kGameMaxPlies = 10000;
+constexpr uint16_t kSearchMaxPlies = 60;
 
 [[gnu::hot]] static int apply_action_id(mcts_imperative::State &state, uint8_t action_id) {
     std::vector<corridors::board> moves;
@@ -90,7 +91,7 @@ extern "C" void mcts_imperative_free_board(mcts_imperative_board *board) {
 
 extern "C" int mcts_imperative_is_terminal(const mcts_imperative_board *board) {
     if (!board) return 1;
-    return board->state.is_terminal(kDefaultMaxPlies) ? 1 : 0;
+    return board->state.is_terminal(kGameMaxPlies) ? 1 : 0;
 }
 
 extern "C" int mcts_imperative_apply_action(mcts_imperative_board *board, uint8_t action_id) {
@@ -111,11 +112,11 @@ extern "C" int mcts_imperative_apply_action(mcts_imperative_board *board, uint8_
 
 extern "C" uint8_t mcts_imperative_select_uct_move(mcts_imperative_board *board,
                                                    uint64_t seed, uint32_t sims) {
-    if (!board || board->state.is_terminal(kDefaultMaxPlies)) return 0;
+    if (!board || board->state.is_terminal(kGameMaxPlies)) return 0;
     auto result = mcts_imperative::run_search(
         board->state,
         sims,
-        kDefaultMaxPlies,
+        kSearchMaxPlies,
         mcts_imperative::RngBackend::Mt19937,
         seed);
     if (!result.ok) return 0;
@@ -127,11 +128,11 @@ extern "C" int32_t mcts_imperative_search_move(
     mcts_imperative_board *board, uint64_t seed, uint32_t sims,
     uint8_t *out_action_ids, uint32_t *out_visits, uint8_t *out_chosen) {
     if (!board || !out_action_ids || !out_visits || !out_chosen) return -1;
-    if (board->state.is_terminal(kDefaultMaxPlies)) return -1;
+    if (board->state.is_terminal(kGameMaxPlies)) return -1;
     auto result = mcts_imperative::run_search(
         board->state,
         sims,
-        kDefaultMaxPlies,
+        kSearchMaxPlies,
         mcts_imperative::RngBackend::Mt19937,
         seed);
     if (!result.ok) return -1;
@@ -154,11 +155,11 @@ extern "C" int32_t mcts_imperative_recompute_move(
     if (!board || !out_action_ids || !out_visits || !out_chosen || !out_equity) {
         return -1;
     }
-    if (board->state.is_terminal(kDefaultMaxPlies)) return -1;
+    if (board->state.is_terminal(kGameMaxPlies)) return -1;
     auto result = mcts_imperative::run_search(
         board->state,
         sims,
-        kDefaultMaxPlies,
+        kSearchMaxPlies,
         mcts_imperative::RngBackend::Mt19937,
         seed);
     if (!result.ok) return -1;

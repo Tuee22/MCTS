@@ -24,6 +24,7 @@ module MCTS.CLI.Tui.Replay
     , ReplayOverlayLoadResult (..)
     , nextOverlayBackend
     , applyOverlayLoadResult
+    , renderOverlayRowsText
     , replayBoardAt
     , currentOverlayRows
     , OverlayRow (..)
@@ -253,18 +254,22 @@ overlayWidget :: [OverlayRow] -> Widget String
 overlayWidget [] = str "" -- no sidecars cached; no overlay rendered
 overlayWidget rows =
     withAttr (A.attrName "overlay") $
-        vBox (str "backend          build      chosen     equity" : map renderOverlayRow rows)
+        vBox (map str (renderOverlayRowsText rows))
 
-renderOverlayRow :: OverlayRow -> Widget String
-renderOverlayRow row =
-    str $
-        padEnd 16 (backendIdentifier (overlayBackendId row))
-            <> " "
-            <> padEnd 10 (overlayBuildId row)
-            <> " "
-            <> padEnd 10 (maybe "-" id (overlayChosen row))
-            <> " "
-            <> maybe "-" formatEquity (overlayEquity row)
+renderOverlayRowsText :: [OverlayRow] -> [String]
+renderOverlayRowsText [] = []
+renderOverlayRowsText rows =
+    "backend          build      chosen     equity" : map renderOverlayRowText rows
+
+renderOverlayRowText :: OverlayRow -> String
+renderOverlayRowText row =
+    padEnd 16 (backendIdentifier (overlayBackendId row))
+        <> " "
+        <> padEnd 10 (overlayBuildId row)
+        <> " "
+        <> padEnd 10 (maybe "-" id (overlayChosen row))
+        <> " "
+        <> maybe "-" formatEquity (overlayEquity row)
 
 padEnd :: Int -> String -> String
 padEnd n s = take n (s <> repeat ' ')

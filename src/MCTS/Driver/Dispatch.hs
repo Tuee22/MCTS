@@ -4,8 +4,11 @@
 -- When a foreign backend's shared library is present, `--backend X`
 -- routes through the per-backend FFI driver so the transcript carries
 -- both the engine's real per-move `(action_id, visits)` records and the
--- live `mcts_<backend>_get_envelope()` payload. When the library is
--- absent the logical in-process driver is used so `cabal test all` stays
+-- live `mcts_<backend>_get_envelope()` payload. The C++/Rust search ABI
+-- currently has a fixed 60-ply search horizon, matching the Haskell
+-- rollout cap; runs with lower `max_plies` use the in-process fallback
+-- until that ABI grows an explicit per-run search cap. When a library is
+-- absent the in-process driver is also used so `cabal test all` stays
 -- self-contained.
 module MCTS.Driver.Dispatch
     ( runBatchDispatch
@@ -42,19 +45,19 @@ runBatchDispatch inputs =
                 else Driver.runBatch inputs
         CppImperative -> do
             present <- doesFileExist cppImperativeLibraryPath
-            if present
+            if present && canUseCappedForeignSearch inputs
                 then
                     runWithLiveEnvelope loadCppImperativeEnvelope (runWithRunner runGameCppImperative inputs) inputs
                 else Driver.runBatch inputs
         CppFunctional -> do
             present <- doesFileExist cppFunctionalLibraryPath
-            if present
+            if present && canUseCappedForeignSearch inputs
                 then
                     runWithLiveEnvelope loadCppFunctionalEnvelope (runWithRunner runGameCppFunctional inputs) inputs
                 else Driver.runBatch inputs
         Rust -> do
-            present <- doesFileExist rustLibraryPath
-            if present
+            present <- (&&) <$> doesFileExist rustLibraryPath <*> doesFileExist cppImperativeLibraryPath
+            if present && canUseCappedForeignSearch inputs
                 then
                     runWithLiveEnvelope
                         loadRustEnvelope
@@ -73,23 +76,27 @@ runBatchNoWriteDispatch inputs =
                 else Driver.runBatchNoWrite inputs
         CppImperative -> do
             present <- doesFileExist cppImperativeLibraryPath
-            if present
+            if present && canUseCappedForeignSearch inputs
                 then Driver.runBatchNoWriteWithGame (runWithRunner runGameCppImperative inputs) inputs
                 else Driver.runBatchNoWrite inputs
         CppFunctional -> do
             present <- doesFileExist cppFunctionalLibraryPath
-            if present
+            if present && canUseCappedForeignSearch inputs
                 then Driver.runBatchNoWriteWithGame (runWithRunner runGameCppFunctional inputs) inputs
                 else Driver.runBatchNoWrite inputs
         Rust -> do
-            present <- doesFileExist rustLibraryPath
-            if present
+            present <- (&&) <$> doesFileExist rustLibraryPath <*> doesFileExist cppImperativeLibraryPath
+            if present && canUseCappedForeignSearch inputs
                 then
                     Driver.runBatchNoWriteWithGame
                         (runWithRunner (runForeignSearchGame withRustSearchGame) inputs)
                         inputs
                 else Driver.runBatchNoWrite inputs
         _ -> Driver.runBatchNoWrite inputs
+
+canUseCappedForeignSearch :: Driver.RunInputs -> Bool
+canUseCappedForeignSearch inputs =
+    Driver.inputMaxPlies inputs >= 60
 
 runWithLiveEnvelope
     :: IO (Either AppError EngineEnvelope)

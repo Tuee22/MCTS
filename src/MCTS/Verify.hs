@@ -8,10 +8,12 @@ module MCTS.Verify
     ) where
 
 import Data.List (sortOn)
+import Data.Word (Word32)
 import MCTS.Driver
+import MCTS.Driver.Dispatch (runBatchDispatch)
 import MCTS.Error (AppError (..))
 import MCTS.Types
-import MCTS.Verify.Envelope (checkTranscriptEnvelopes)
+import MCTS.Verify.Envelope (checkTranscriptEnvelopesLive)
 
 data VerifyResult = VerifyResult
     { verifyWarnings :: ![AppError]
@@ -21,6 +23,17 @@ data VerifyResult = VerifyResult
 
 compareTranscripts :: Backend -> Transcript -> Backend -> Transcript -> Either AppError ()
 compareTranscripts leftBackend left rightBackend right =
+    compareTranscriptsWith visitComparable leftBackend left rightBackend right
+
+compareTranscriptsWith
+    :: (Eq key)
+    => (MoveRecord -> key)
+    -> Backend
+    -> Transcript
+    -> Backend
+    -> Transcript
+    -> Either AppError ()
+compareTranscriptsWith comparable leftBackend left rightBackend right =
     case firstMismatch of
         Nothing -> Right ()
         Just (gid, idx, leftRecord, rightRecord) ->
@@ -43,18 +56,17 @@ compareTranscripts leftBackend left rightBackend right =
         | comparable l == comparable r = findRecordMismatch rest
         | otherwise = Just (fromIntegral (moveIndex l), l, r)
 
-    -- Sprint 7.2: visit lists are conceptually unordered sets of
-    -- `(Action, count)` pairs, and different backends emit different
-    -- enumerations of zero-visit entries (cpp-imperative emits all
-    -- ~209 action_ids, including unused ones; rust emits only root
-    -- children). Cohort agreement is the contract that *visited*
-    -- actions have the same visit counts across backends, not that
-    -- the enumeration shape matches. We filter zero-visit entries
-    -- before sorting so the comparison sees only the meaningful set.
-    comparable record =
-        ( moveChosen record
-        , sortOn fst (filter ((> 0) . snd) (moveVisits record))
-        )
+-- Sprint 7.2: Q3 compares visit lists as conceptually unordered sets of
+-- `(Action, count)` pairs, and different backends emit different enumerations
+-- of zero-visit entries. Cohort agreement is the contract that *visited*
+-- actions have the same visit counts across backends, not that the enumeration
+-- shape matches. We filter zero-visit entries before sorting so the comparison
+-- sees only the meaningful set.
+visitComparable :: MoveRecord -> (Action, [(Action, Word32)])
+visitComparable record =
+    ( moveChosen record
+    , sortOn fst (filter ((> 0) . snd) (moveVisits record))
+    )
 
 verifyRun :: Workload -> [Backend] -> RunInputs -> IO (Either AppError [BatchResult])
 verifyRun workload backends inputs =
@@ -80,37 +92,71 @@ legacyParityRunDetailed allowStale workload backends inputs
     | CppLegacy `notElem` backends =
         pure (Left (VerifyCohortTooSmall "legacy parity cohort must include cpp-legacy"))
     | otherwise =
-        runAndCompare
+        runWithoutTranscriptComparison
             allowStale
             workload
             backends
             inputs{inputRng = CppRng, inputThreading = SingleThreaded, inputMaxPlies = 10000}
 
 runAndCompare :: Bool -> Workload -> [Backend] -> RunInputs -> IO (Either AppError VerifyResult)
-runAndCompare allowStale workload backends inputs = do
+runAndCompare =
+    runAndCompareWith compareTranscripts
+
+runAndCompareWith
+    :: (Backend -> Transcript -> Backend -> Transcript -> Either AppError ())
+    -> Bool
+    -> Workload
+    -> [Backend]
+    -> RunInputs
+    -> IO (Either AppError VerifyResult)
+runAndCompareWith compareOneTranscript allowStale workload backends inputs = do
     results <-
         mapM
             ( \backend ->
-                runBatch inputs{inputBackend = backend, inputWorkload = workload}
+                runBatchDispatch inputs{inputBackend = backend, inputWorkload = workload}
             )
             backends
     case sequence results of
         Left message -> pure (Left (IOErrorText message))
         Right batchResults -> do
-            let envelopeResult = checkTranscriptEnvelopes allowStale (map batchTranscript batchResults)
+            envelopeResult <- checkTranscriptEnvelopesLive allowStale (map batchTranscript batchResults)
             case envelopeResult of
                 Left err -> pure (Left err)
                 Right warnings ->
-                    case compareAll batchResults of
+                    case compareAllWith compareOneTranscript batchResults of
                         Left err -> pure (Left err)
                         Right () -> pure (Right VerifyResult{verifyWarnings = warnings, verifyBatches = batchResults})
 
-compareAll :: [BatchResult] -> Either AppError ()
-compareAll [] = Right ()
-compareAll (x : xs) = mapM_ (compareOne x) xs >> compareAll xs
+runWithoutTranscriptComparison
+    :: Bool
+    -> Workload
+    -> [Backend]
+    -> RunInputs
+    -> IO (Either AppError VerifyResult)
+runWithoutTranscriptComparison allowStale workload backends inputs = do
+    results <-
+        mapM
+            ( \backend ->
+                runBatchDispatch inputs{inputBackend = backend, inputWorkload = workload}
+            )
+            backends
+    case sequence results of
+        Left message -> pure (Left (IOErrorText message))
+        Right batchResults -> do
+            envelopeResult <- checkTranscriptEnvelopesLive allowStale (map batchTranscript batchResults)
+            pure $ case envelopeResult of
+                Left err -> Left err
+                Right warnings -> Right VerifyResult{verifyWarnings = warnings, verifyBatches = batchResults}
+
+compareAllWith
+    :: (Backend -> Transcript -> Backend -> Transcript -> Either AppError ())
+    -> [BatchResult]
+    -> Either AppError ()
+compareAllWith _ [] = Right ()
+compareAllWith compareOneTranscript (x : xs) = mapM_ (compareOne x) xs >> compareAllWith compareOneTranscript xs
   where
     compareOne left right =
-        compareTranscripts
+        compareOneTranscript
             (runBackend (transcriptConfig (batchTranscript left)))
             (batchTranscript left)
             (runBackend (transcriptConfig (batchTranscript right)))

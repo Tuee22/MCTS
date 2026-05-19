@@ -9,11 +9,13 @@ import qualified Data.Aeson.Key as AesonKey
 import qualified Data.Aeson.KeyMap as AesonKeyMap
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC
+import qualified Data.ByteString.Lazy as LBS
 import Data.Foldable (toList)
 import Data.IORef (modifyIORef', newIORef, readIORef)
 import Data.List (sort)
 import qualified Data.List as List
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
 import Data.Word (Word16, Word8)
 import MCTS.CLI.Bench (monotonicNanos, runBenchWithClock)
 import MCTS.CLI.Build
@@ -81,6 +83,7 @@ import MCTS.CLI.Tui.Replay
     , initialReplayState
     , initialReplayStateWithOverlays
     , nextOverlayBackend
+    , renderOverlayRowsText
     , replayBoardAt
     )
 import MCTS.CLI.Verify (renderVerifyJson)
@@ -161,7 +164,9 @@ import System.Directory
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
 import Test.Tasty (TestTree, defaultMain, testGroup)
+import qualified Test.Tasty.Golden as Golden
 import Test.Tasty.HUnit (testCase)
+import qualified Test.Tasty.QuickCheck as QC
 
 main :: IO ()
 main =
@@ -179,6 +184,9 @@ unitTests =
         [ testCase "transcript codec invariants" exerciseTranscriptCodecSurface
         , testCase "transcript goldens and cache lookup" exerciseTranscriptGoldenSurface
         , testCase "per-game transcript writer" exercisePerGameTranscriptWriter
+        , QC.testProperty
+            "transcript decode . encode == id (quickcheck)"
+            (QC.withNumTests 20 propTranscriptRoundtrip)
         ]
     , testGroup
         "engine and rng"
@@ -208,7 +216,9 @@ unitTests =
         "renderers and TUI dispatch"
         [ testCase "error and inspect render goldens" exerciseRendererGoldenSurface
         , testCase "report-card golden" exerciseReportCardGolden
+        , testGroup "tasty-golden providers" providerGoldenTests
         , testCase "TUI board layout golden" exerciseTuiBoardGolden
+        , testCase "TUI replay layout golden" exerciseTuiReplayGolden
         , testCase "TUI play input dispatcher" exerciseTuiPlayInput
         , testCase "TUI replay navigation" exerciseTuiReplayNav
         , testCase "TUI replay overlays" exerciseTuiReplayOverlay
@@ -225,6 +235,30 @@ sampleTranscript =
         (makeRunConfig sampleInputs)
         (makeLogicalEnvelope Haskell NativeRng)
         [runGame sampleInputs 0, runGame sampleInputs 1]
+
+propTranscriptRoundtrip :: QC.NonNegative Int -> QC.NonNegative Int -> QC.Property
+propTranscriptRoundtrip (QC.NonNegative seedN) (QC.NonNegative simsN) =
+    let games = 1 + seedN `mod` 2
+        inputs =
+            defaultRunInputs
+                { inputBackend = Haskell
+                , inputRng = CppRng
+                , inputThreading = SingleThreaded
+                , inputGames = games
+                , inputSeed = fromIntegral (seedN `mod` 4096)
+                , inputSims = FixedSims (fromIntegral (1 + simsN `mod` 6))
+                , inputMaxPlies = 8
+                }
+        transcript =
+            Transcript
+                (makeRunConfig inputs)
+                (makeLogicalEnvelope Haskell CppRng)
+                [ runGame inputs gid
+                | gid <- [0 .. fromIntegral (games - 1)]
+                ]
+     in QC.counterexample
+            ("seed=" <> show (inputSeed inputs) <> " games=" <> show games)
+            (decodeTranscript (encodeTranscript transcript) QC.=== Right transcript)
 
 exerciseCommandParserSurface :: IO ()
 exerciseCommandParserSurface = do
@@ -1611,6 +1645,21 @@ exerciseCommandGoldens = do
     assert "commands --tree is deterministic" (renderCommandTree == renderCommandTree)
     assert "commands --json is deterministic" (renderCommandJson == renderCommandJson)
 
+providerGoldenTests :: [TestTree]
+providerGoldenTests =
+    [ Golden.goldenVsString
+        "commands --tree"
+        "test/golden/cli/commands-tree.txt"
+        (pure (lazyUtf8 renderCommandTree))
+    , Golden.goldenVsString
+        "report card"
+        "test/golden/cli/report-card.txt"
+        (pure (lazyUtf8 (renderReportCard defaultReportCard)))
+    ]
+
+lazyUtf8 :: String -> LBS.ByteString
+lazyUtf8 = LBS.fromStrict . TE.encodeUtf8 . T.pack
+
 exerciseOptparseParser :: IO ()
 exerciseOptparseParser = do
     case OA.execParserPure
@@ -1835,7 +1884,7 @@ exerciseEngineProperties = do
 
 exerciseKnownPositionGolden :: IO ()
 exerciseKnownPositionGolden = do
-    let moves = [Pawn 4 1, Pawn 4 7, WallH 0 0, WallH 1 0, Pawn 4 2]
+    let moves = [Pawn 4 1, Pawn 4 7, WallH 0 0, WallH 2 0, Pawn 4 2]
         board = foldl applyLegal initialBoard moves
         rendered =
             unlines
@@ -2042,6 +2091,41 @@ exerciseTuiBoardGolden :: IO ()
 exerciseTuiBoardGolden =
     goldenCompare "test/golden/cli/tui-board.txt" $
         renderBoardText initialBoard <> renderStatusText "00000000" 0 0 <> "\n"
+
+exerciseTuiReplayGolden :: IO ()
+exerciseTuiReplayGolden = do
+    let inputs =
+            defaultRunInputs
+                { inputBackend = Haskell
+                , inputRng = CppRng
+                , inputGames = 1
+                , inputSims = FixedSims 4
+                , inputMaxPlies = 8
+                , inputThreading = SingleThreaded
+                }
+        record = MoveRecord 0 (Pawn 4 1) [(Pawn 4 1, 4)]
+        transcript =
+            Transcript
+                (makeRunConfig inputs)
+                (makeLogicalEnvelope Haskell CppRng)
+                [GameTranscript 0 [record] HeroWin]
+        stream =
+            EqStream
+                { eqTranscriptHash = replicate 64 'a'
+                , eqBackend = Haskell
+                , eqBuildId = "overlay-fixture"
+                , eqRecords = [EqRecord 0 0 (Pawn 4 1) 0.25]
+                }
+        stateAtStart = initialReplayStateWithOverlays (replicate 64 'a') transcript [stream]
+    case applyReplayKey ReplayNext stateAtStart of
+        Nothing -> failTest "ReplayNext in replay golden must continue"
+        Just stateAtOne ->
+            goldenCompare "test/golden/cli/tui-replay.txt" $
+                unlines $
+                    [ renderStatusText "aaaaaaaa" (replayMoveIndex stateAtOne) 1
+                    , "move played: " <> renderMove (moveChosen record)
+                    ]
+                        <> renderOverlayRowsText (currentOverlayRows stateAtOne)
 
 -- | Sprint 7.4: cover the `mcts play` interactive command dispatcher.
 -- The pure `applyUserInput` lets us exercise each in-app command

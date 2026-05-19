@@ -93,8 +93,16 @@ wallsRemaining board =
 wallExists :: Board -> Action -> Bool
 wallExists board action =
     case action of
-        WallH x y -> wallBitSet (boardWallsH board) x y
-        WallV x y -> wallBitSet (boardWallsV board) x y
+        WallH x y ->
+            wallBitSet (boardWallsH board) x y
+                || wallBitSet (boardWallsH board) (x - 1) y
+                || wallBitSet (boardWallsH board) (x + 1) y
+                || wallBitSet (boardWallsV board) x y
+        WallV x y ->
+            wallBitSet (boardWallsV board) x y
+                || wallBitSet (boardWallsV board) x (y - 1)
+                || wallBitSet (boardWallsV board) x (y + 1)
+                || wallBitSet (boardWallsH board) x y
         Pawn _ _ -> False
 
 applyWallOnly :: Action -> Board -> Board

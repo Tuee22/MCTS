@@ -36,17 +36,20 @@ runWithOutput output command =
         VerifyRollouts allowStale backends inputs ->
             run
                 "verify rollouts"
+                "agree on visit counts"
                 (verifyRunDetailed allowStale Rollouts (verifyBackendsToBackends backends) inputs)
         VerifySelfplay allowStale backends inputs ->
             run
                 "verify selfplay"
+                "agree on visit counts"
                 (verifyRunDetailed allowStale Selfplay (verifyBackendsToBackends backends) inputs)
         VerifyLegacyParity workload allowStale backends inputs ->
             run
                 ("verify legacy-parity " <> workloadName workload)
+                "complete the legacy envelope"
                 (legacyParityRunDetailed allowStale workload (legacyParityBackendsToBackends backends) inputs)
   where
-    run label action = do
+    run label agreement action = do
         result <- liftIO action
         case result of
             Left err -> liftIO (outputLine (renderErrorString output err)) >> pure (ExitFailure 1)
@@ -62,7 +65,9 @@ runWithOutput output command =
                                 label
                                     <> " PASS ("
                                     <> show (length batches)
-                                    <> " backends agree on visit counts)"
+                                    <> " backends "
+                                    <> agreement
+                                    <> ")"
                 pure ExitSuccess
 
 renderVerifyJson :: String -> VerifyResult -> String

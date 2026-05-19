@@ -65,7 +65,7 @@ identical rollout sequences for the same seed and move history. Backend (i) is
 excluded from the default `verify` cohort because its terminal-state semantics
 differ from (ii)–(v) (see [Ply-Cap Draw Rule](#ply-cap-draw-rule) below); it
 rejoins the cohort under `mcts verify legacy-parity`, which pins
-`max_plies = 10000` so the divergence collapses.
+`max_plies = 10000` for the Q7 liveness/overflow gate.
 
 ### Flag Default on `verify`
 
@@ -132,14 +132,17 @@ RNG source, same logical game inputs → same set of game determinism payloads. 
 
 ## Cross-Backend Determinism (Q3)
 
-Under `--rng cpp`, the logical verification cohort for backend slots (ii),
-(iii), (iv), (v) must produce identical visit counts and chosen moves for the
-same seed and move history. The `mcts-cross-backend` stanza asserts this via
-the `mcts verify rollouts` and `mcts verify selfplay` round-robin commands at
-the report-card knob `G_V = 4` games and `S_VERIFY = 500` sims per move.
-Live foreign shared libraries are not used as Q3 evidence; they are exercised
-by `mcts-integration`, `mcts bench`, `mcts play`, and `mcts inspect
-divergence`.
+Under `--rng cpp`, the verification cohort for backend slots (ii), (iii),
+(iv), (v) must produce identical visit counts and chosen moves for the same
+seed and move history. The `mcts-cross-backend` stanza asserts this via the
+`mcts verify rollouts` and `mcts verify selfplay` round-robin commands at the
+report-card knob `G_V = 4` games and `S_VERIFY = 500` sims per move. Those
+commands dispatch through `runBatchDispatch`, so they use live foreign shared
+libraries when present and the in-process fallback only when the cdylib is
+absent. Foreign batch search currently has a fixed 60-ply search horizon;
+`runBatchDispatch` therefore uses live foreign search only when the requested
+`max_plies >= 60`, and uses the in-process fallback for lower caps until the
+C/Rust ABI grows an explicit per-run search-cap argument.
 
 The `VerifyBackend` GADT excludes `cpp-legacy` at the type level:
 
@@ -157,8 +160,11 @@ A cohort of one fails parse-time with `AppError VerifyCohortTooSmall`. Any pair
 mismatch fails with `AppError VerifyMismatch` carrying
 `(left_backend, right_backend, game_id, move_index, left_record, right_record)`
 per [Verify Mismatch Output](#verify-mismatch-output) below.
-The `mcts-cross-backend` and `mcts-legacy-parity` Cabal stanzas assert successful
-focused rollout and self-play cohorts; a `VerifyMismatch` is a failing outcome.
+The `mcts-cross-backend` Cabal stanza asserts successful focused rollout and
+self-play cohorts; a `VerifyMismatch` is a failing outcome for Q3. The
+`mcts-legacy-parity` stanza uses the same dispatch and envelope-checking path
+as a Q7 liveness/overflow gate rather than comparing backend (i)'s visit vectors
+or chosen moves against the steelman engines.
 
 ## Ply-Cap Draw Rule
 
@@ -187,6 +193,13 @@ Run-configuration parameter, default `200`, exposed on the CLI as
 determinism contract: two backends (ii)–(v) with the same `max_plies`, same seed,
 and same chosen sequence must produce identical determinism payloads.
 
+UCT search uses a deterministic search horizon of `min 60 max_plies` for leaf
+rollouts and tree terminal checks. The game transcript still records and obeys
+the run-level `max_plies`; the 60-ply limit is a search-budget horizon, not a
+replacement for the game draw rule. The current foreign C ABI bakes that search
+horizon into the compiled engine, which is why sub-60 batch runs fall back to the
+in-process path as described in [Cross-Backend Determinism](#cross-backend-determinism-q3).
+
 ### `winner` Enum
 
 The transcript wire format's `winner u8` field is a 3-value enum:
@@ -196,9 +209,12 @@ move notation otherwise occupies.
 
 ## Legacy Parity Envelope
 
-Setting `max_plies = MAX_ROLLOUT_ITERS = 10000` collapses the (i)-vs-(ii)–(v)
-divergence: in this envelope all five backends terminate every rollout the same
-way (on a positional win), so decoded determinism payloads must be bit-equal.
+Setting `max_plies = MAX_ROLLOUT_ITERS = 10000` creates the legacy parity
+envelope: backend (i) can be driven at its native no-draw horizon while
+backends (ii)–(v) retain a transcript-visible cap. The envelope is required for
+Q6 byte-for-byte legacy fixtures and for Q7's five-backend liveness/overflow
+gate. It is not a claim that backend (i)'s legacy tree search chooses the same
+root action or produces the same visit distribution as the steelman engines.
 
 `mcts verify legacy-parity` drives this cohort with `max_plies` and `--rng cpp`
 pinned. The fixture seed `S_LP = 42` is chosen so that (i) never trips
@@ -223,8 +239,9 @@ data LegacyParityBackend where
 Cohorts without `cpp-legacy` fail parse-time with `AppError VerifyCohortTooSmall`.
 
 This complements Q6 (does (i) reproduce `MCTS_legacy`?): Q7 asks whether all five
-backends agree within the envelope. Composed with Q6, they give a transitive
-parity chain `MCTS_legacy ≡ (i) ≡ (ii)..(v)`.
+backend slots complete the legacy envelope without backend (i) overflow or
+envelope failure. Q3 supplies the `(ii)..(v)` visit-vector equality proof, and
+Q6 supplies the byte-for-byte legacy anchor for backend (i).
 
 ## Visit-Count vs Equity Asymmetry
 
@@ -244,21 +261,23 @@ through libm calls; SIMD reductions can reassociate. Equity values produced by
 different backends typically agree to many digits but can differ at the last few
 ULPs.
 
-The wire format **excludes** equity. Visit counts (integer) form the determinism
-contract; equities (float) are not, and requiring float bit-equality would force
-every backend to fix a canonical summation order and a canonical libm — a much
-bigger contract.
+The wire format **excludes** equity. Visit counts (integer) form the Q3
+determinism contract for `(ii)..(v)`; equities (float) are not, and requiring
+float bit-equality would force every backend to fix a canonical summation order
+and a canonical libm — a much bigger contract.
 
 ### Cross-Backend Equity Tolerance
 
-Implicit. The verify subcommands do not compare equities directly. The contract is
-that equity differences across backends must never be large enough to swap a
-tie-break in `(equity desc, non_terminal_rank asc)`. This is enforced
-transitively: any equity drift that swaps a chosen action surfaces as a
-visit-count mismatch on the next move (because subsequent searches diverge from
-that point onward), and visit counts are what `verify` compares. Backends that
-drift further than this implicit tolerance fail verify on visits, not on
-equities.
+Implicit for Q3. The `verify rollouts` and `verify selfplay` subcommands do not
+compare equities directly. The contract is that float differences across
+backends `(ii)..(v)` must never be large enough to change the UCT child selected
+during search or the final highest-visit root action. This is enforced
+transitively: any equity drift that changes a chosen action surfaces as a
+visit-count mismatch on the next move, and visit counts are what Q3 `verify`
+compares. Backends that drift further than this implicit tolerance fail verify
+on visits, not on equities. Q7 legacy parity is outside this equity-tolerance
+contract because it is a liveness/overflow gate for backend (i)'s legacy
+envelope.
 
 ### Equity Recomputation on Replay
 
@@ -298,9 +317,10 @@ differ at the last few ULPs. This asymmetry is why the wire format excludes
 equity: requiring float bit-equality would force every backend to fix a
 canonical summation order and a canonical libm — a much bigger contract.
 
-The cross-backend tolerance for equity drift is itself implicit: any drift large
-enough to swap a tie-break surfaces as a visit-count mismatch on the next move,
-and visit counts are what `verify` compares (see
+The cross-backend tolerance for equity drift is itself implicit for Q3: any
+drift large enough to change UCT child selection or the final root action
+surfaces as a visit-count mismatch on the next move, and visit counts are what
+Q3 `verify` compares (see
 [Cross-Backend Equity Tolerance](#cross-backend-equity-tolerance) above).
 
 ## Byte-Consumption Contract
@@ -310,8 +330,10 @@ Byte-consumption order is itself part of the determinism contract per
 contract](../../README.md). Every backend must:
 
 - Draw the **same number** of `u64` values from its RNG per rollout.
-- Use `draw % n` for legal-move selection. No rejection sampling, unless every
-  backend rejects identically (i.e., rejection is part of the contract).
+- Use Haskell's signed-machine-`Int` modulo semantics for legal-move selection:
+  reinterpret the consumed `u64` as a signed 64-bit value, compute `draw % n`,
+  and add `n` when the remainder is negative. No rejection sampling, unless
+  every backend rejects identically (i.e., rejection is part of the contract).
 - Consume RNG bits at the **same logical points** in the search: child
   expansion, rollout move selection, tie-break tiebreakers if any.
 
@@ -334,15 +356,25 @@ contract](../../README.md). All backends must:
 Equity is excluded from the wire format, but transient intermediate visit counts
 at non-leaf nodes are observed by the comparator: they must agree.
 
-## Tie-Breaking Contract
+## Move-Shape and Tie-Breaking Contract
 
-Move selection follows the legacy's `(equity desc, non_terminal_rank asc)`
-ordering, applied uniformly across all five backends per
-[../../README.md → Cross-backend verification → Tie-breaking as
-contract](../../README.md). There is no separate multi-threaded tie-breaker:
-within a single game (always single-threaded internally) nothing has to be
-aggregated across threads, and across games each game's RNG stream is an
-independent universe.
+The `(ii)..(v)` verifier cohort uses a simplified Corridors move set:
+
+- Pawn moves are one-square orthogonal moves to an adjacent unoccupied square.
+  Quoridor-style jumps and diagonal jump fallbacks are not part of the search
+  contract.
+- Wall placements cannot overlap an existing same-orientation segment, extend
+  a same-orientation wall into the same two-edge slot, cross the opposite
+  orientation at the same midpoint, or block all paths for either player.
+- Legal moves are sorted by canonical action ID. Search expands all legal pawn
+  moves plus the first 12 legal wall moves after canonicalization.
+
+UCT child selection uses the highest UCB score, treating unvisited children as
+the largest score and breaking equal scores by canonical action ID. Final root
+move selection uses highest visit count, with action ID as the stable tie-break.
+There is no separate multi-threaded tie-breaker: within a single game (always
+single-threaded internally) nothing has to be aggregated across threads, and
+across games each game's RNG stream is its own independent universe.
 
 ### `non_terminal_rank` Operational Definition
 
@@ -354,26 +386,21 @@ that value in `cpp-legacy/legacy-core/mcts.hpp:258`-`266` for the domain-specifi
 non-terminal shortcut, and in `cpp-legacy/legacy-core/mcts.hpp:400`-`421` as the
 secondary display/order key after equity.
 
-Operationally, every backend computes the shortest path length from each pawn to
-its goal row under the current wall set, then ranks the child by:
+Operationally, the legacy reference computes the shortest path length from each
+pawn to its goal row under the current wall set, then ranks the child by:
 
 ```text
 non_terminal_rank = villain_shortest_distance - hero_shortest_distance
 ```
 
-The full sort key is `(equity desc, non_terminal_rank asc)`: equity (a `Float`)
-descending as the primary key, `non_terminal_rank` ascending as the deterministic
-tiebreaker, and canonical action ID ascending as the final stable fallback. Because
-these keys derive from the same visit/value state and the same wall graph across all
-five backends, every backend produces the same ordering for every node — modulo
-equity drift, which is bounded by the
-[Cross-Backend Equity Tolerance](#cross-backend-equity-tolerance) above.
+The value remains exposed for legacy fixture inspection and standalone engine
+coverage, but it is not a verifier-cohort tie-break in the current `(ii)..(v)`
+UCT search path.
 
 ## Verify Mismatch Output
 
-When `mcts verify rollouts`, `mcts verify selfplay`, or `mcts verify
-legacy-parity` finds a disagreement between two backends in the cohort, the
-output protocol is two-phase per
+When `mcts verify rollouts` or `mcts verify selfplay` finds a disagreement
+between two backends in the Q3 cohort, the output protocol is two-phase per
 [../../README.md → Cross-backend verification → Typical transcript sizes](../../README.md):
 
 1. **Determinism-payload digest first.** Decode each backend-specific
@@ -586,11 +613,12 @@ contract.
 
 1. **Cohort-level**: every transcript in the cohort must agree on
    `host_arch`, `rng_source`, `cohort_config_hash`, and `shared_rng_build_id`.
-2. **Per backend slot**: logical verify compares each transcript against the
-   logical envelope for that slot. FFI-produced transcripts are stamped with
-   `mcts_<backend>_get_envelope()` when the matching cdylib is present, and
-   `mcts-integration` exercises the live stale-cache hard-fail /
-   `--allow-stale` warning behavior through `checkTranscriptEnvelopesLive`.
+2. **Per backend slot**: verify compares each transcript against the live
+   envelope for that backend slot when the matching cdylib is present, and
+   against the in-process fallback envelope when it is absent. FFI-produced
+   transcripts are stamped with `mcts_<backend>_get_envelope()` when possible,
+   and `checkTranscriptEnvelopesLive` exercises the stale-cache hard-fail /
+   `--allow-stale` warning behavior.
 3. **Cross-backend differences** in per-backend-slot fields are silent
    by design.
 
@@ -636,15 +664,14 @@ foreign / unknown markers, and `inspect cache prune --keep-current` retains
 `<backend>-logical` build ids through a Plan/Apply deletion plan. Live-envelope
 stamping and verify-time comparison are implemented for present cdylibs.
 `mcts-integration` also writes a recomputed `.eq` sidecar and consumes it through
-the real `mcts inspect divergence` subprocess. The remaining Sprint `7.5`
-report-card work is the full canonical workload publication/calibration, not the
-bounded sidecar path.
+the real `mcts inspect divergence` subprocess. Sprint `7.5` also publishes the
+bounded report-card divergence matrix through `mcts test all`.
 
 Baseline layered envelope verification exists in `MCTS.Verify.Envelope`: verify
 cohorts check `host_arch`, envelope version, `rng_source`,
 `shared_rng_build_id`, and `cohort_config_hash` at cohort level, compare each
 transcript's backend-slot fields against either the live
-`mcts_<backend>_get_envelope()` payload or the logical fallback, and honor
+`mcts_<backend>_get_envelope()` payload or the in-process fallback, and honor
 `--allow-stale` only for backend-slot mismatches. The CLI parser stores default
 verify cohorts as `[VerifyBackend]` and legacy parity cohorts as
 `[LegacyParityBackend]`, so `cpp-legacy` exclusion and `LpCppLegacy` membership
@@ -668,6 +695,16 @@ being violated in a way verify's cohort failed to catch.
 The Divergence Smell metric quantifies "how much" so the REPL and the
 report card can surface it.
 
+The report-card-sized legacy-parity Q7 command is an allowed liveness/overflow
+surface, not a backend (i)-vs-steelman transcript comparison surface. On
+2026-05-19 the live investigation showed backend (i)'s legacy tree search can
+diverge from the steelman engines at the report-card budget: visit-count
+comparison failed at game 0, move 10 even when `cpp-legacy` and
+`cpp-imperative` chose the same move, and chosen-move comparison failed at game
+0, move 0. That divergence is expected under the Q7 contract and should be
+inspected through divergence/report metrics if it matters; it is not an active
+Phase 7 blocker.
+
 Current implementation baseline: `MCTS.Verify.Divergence.divergenceRate`
 computes visit and chosen-move disagreement rates for two decoded transcripts,
 and `MCTS.Verify.Divergence.divergenceVsEqStream` scores a transcript against a
@@ -677,9 +714,9 @@ form from typed rows; `mcts test all` populates those rows from the measured
 `G_V = 4` self-play verify cohort after the Plan/Apply subprocess sequence
 succeeds. `mcts-integration` exercises the same measured builder at smoke scale
 and validates cached recompute-sidecar consumption through `mcts inspect
-divergence`. The 2026-05-18 bounded canonical report-card run recorded a
-zero `visit/move` divergence matrix across `(ii)..(v)` under `--rng cpp`, so
-the existing thresholds remain unchanged.
+divergence`. The 2026-05-19 canonical report-card run recorded a zero
+`visit/move` divergence matrix across `(ii)..(v)` under `--rng cpp`, so
+the existing Q3 thresholds remain unchanged.
 
 ### Metrics
 
@@ -724,7 +761,7 @@ measurement runs to calibrate them.
   per-backend-pair divergence matrix. Under `--rng cpp` every
   off-diagonal element reads `0.0% / 0.0%`; anything else is a smell
   to investigate. The default renderer and JSON payload are golden-tested with
-  the logical zero matrix for deterministic unit coverage, while the live
+  a static zero matrix for deterministic unit coverage, while the live
   `mcts test all` report-card path derives its matrix from the measured
   `G_V` workload.
 - **`mcts inspect divergence <hash>`**: emits the divergence matrix for
@@ -740,28 +777,25 @@ bit-for-bit determinism. The set is the authoritative reference: any new
 divergence must land an entry here with its gating envelope, or the
 divergence fails review. The Phase 7 cross-backend `verify` cohort and the
 `mcts-cross-backend` Cabal stanza assume exactly the divergences listed
-below. Live FFI transcript drift outside the logical verification cohort is
-reported through the divergence tooling and tracked in the plan ledger rather
-than treated as Q3/Q7 proof.
+below.
 
 | # | Backend(s) | Divergence | Reason | Gating envelope / scope |
 |---|------------|------------|--------|--------------------------|
-| 1 | (i) `cpp-legacy` vs (ii)–(v) | Terminal-state semantics: (i) has no game-level ply cap; (ii)–(v) treat `ply_count >= max_plies` as a draw with eval `0.0` | (i) is a verbatim port and inherits the legacy's behaviour; the ply-cap draw rule is a behavioural improvement adopted only by the steelman backends | (i) is excluded from the default `verify` cohort by the `VerifyBackend` GADT; rejoins under `mcts verify legacy-parity` with `max_plies = MAX_ROLLOUT_ITERS = 10000` pinned, where the divergence collapses |
+| 1 | (i) `cpp-legacy` vs (ii)–(v) | Terminal-state and search-kernel semantics: (i) has no game-level ply cap and retains the legacy search tree; (ii)–(v) treat `ply_count >= max_plies` as a draw with eval `0.0` and use the steelman search contract | (i) is a verbatim port and inherits the legacy's behaviour; the ply-cap draw rule and steelman search shape are behavioural improvements adopted only by backends (ii)–(v) | (i) is excluded from the default `verify` cohort by the `VerifyBackend` GADT. It rejoins under `mcts verify legacy-parity` with `max_plies = MAX_ROLLOUT_ITERS = 10000` pinned only for Q7 liveness/overflow checks; backend (i) visit-count and chosen-move equality with `(ii)..(v)` is not contractual. |
 | 2 | (i) | RNG: always `std::mt19937_64`; no `--rng native` axis | Verbatim port of the legacy's RNG choice; the legacy ships only `std::mt19937_64` | `--rng native` is silently ignored for (i) when it appears in a mixed cohort; `mcts verify` cohorts under `--rng cpp` are unaffected |
-| 3 | Live FFI engines under `--rng native` | RNG: backend-native generators rather than the logical C++-RNG schedule | Smaller state and faster `next_u64` for benchmark throughput; statistical quality adequate for rollout selection. See [compiler_runtime_tuning.md → Native-RNG item](./compiler_runtime_tuning.md) and [../../README.md → Compiler and runtime tuning](../../README.md) item 15 | Bench-only divergence: visit-count bit-equality is not asserted under `--rng native`; Q3/Q7 use logical verification transcripts |
-| 4 | Live FFI engines vs logical verify | Search order, RNG implementation, and terminal/envelope details can differ from the logical transcript generator | The live engines are performance and FFI smoke targets; the logical generator is the stable Q3/Q7 oracle until a future sprint aligns every compiled backend byte-for-byte | Live drift is surfaced by `mcts inspect divergence` and integration smoke tests. `mcts verify` remains the logical Q3/Q7 gate |
-| 5 | (i) under any `max_plies != MAX_ROLLOUT_ITERS` | Q1 / Q2 / Q5 throughput basis: (i)'s games run to a positional win and are on average longer than the ply-capped games of (ii)–(v) | (i) has no ply cap (#1), so games/sec for (i) is not on the same engine-budget basis as (ii)–(v) | Throughput **is published** with a `backendBasisFootnotes` warning per [unit_testing_policy.md → Backend (i) basis caveat](./unit_testing_policy.md) and [../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md → Sprint 7.3](../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md); the load-bearing Q1 / Q2 comparison is Haskell (v) vs C++ (ii). |
-| 6 | All backends, amd64 ↔ arm64 | Full determinism evidence, especially equity float bits | `libm`, FMA, denormal handling, SIMD reduction, and runtime dispatch can differ across arches | Cross-arch cohorts are rejected by layered envelope verification with `AppError ArchEnvelopeMismatch`; per-arch cache partitioning makes accidental cross-arch comparison unlikely. No cross-arch bit-equality result is treated as contractual evidence. |
-| 7 | Same backend across different build envelopes | Equity float bits and (under `--rng native`) potentially visit counts | A rebuild changes `engine_build_id`, often `libm_id`/`compiler_version`, and may change `fp_flags`/`cpu_features`. Equity drift is unavoidable; visit drift can occur if FP differences swap a tie-break upstream of a subsequent rollout under `--rng native` | `checkTranscriptEnvelopesLive` hard-fails with `AppError EngineEnvelopeMismatch (BackendSlot b)` unless `--allow-stale` is passed. `mcts inspect replay` shows a persistent yellow banner `envelope: BUILD MISMATCH - recomputed locally; equities may drift at ULP from origin`; multi-build sidecar cache (one `.eq` per `(backend, build_prefix16)`) lets the user compare across builds. Visit drift under cross-build `--rng cpp` is still expected to be zero in the logical cohort but is not a live-FFI contract |
+| 3 | Live FFI engines under `--rng native` | RNG: backend-native generators rather than the canonical C++-RNG schedule | Smaller state and faster `next_u64` for benchmark throughput; statistical quality adequate for rollout selection. See [compiler_runtime_tuning.md → Native-RNG item](./compiler_runtime_tuning.md) and [../../README.md → Compiler and runtime tuning](../../README.md) item 15 | Bench-only divergence: visit-count bit-equality is not asserted under `--rng native`; Q3 uses `--rng cpp` verification transcripts and Q7 uses `--rng cpp` for the legacy-envelope liveness/overflow gate |
+| 4 | (i) under any `max_plies != MAX_ROLLOUT_ITERS` | Q1 / Q2 / Q5 throughput basis: (i)'s games run to a positional win and are on average longer than the ply-capped games of (ii)–(v) | (i) has no ply cap (#1), so games/sec for (i) is not on the same engine-budget basis as (ii)–(v) | Throughput **is published** with a `backendBasisFootnotes` warning per [unit_testing_policy.md → Backend (i) basis caveat](./unit_testing_policy.md) and [../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md → Sprint 7.3](../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md); the load-bearing Q1 / Q2 comparison is Haskell (v) vs C++ (ii). |
+| 5 | All backends, amd64 ↔ arm64 | Full determinism evidence, especially equity float bits | `libm`, FMA, denormal handling, SIMD reduction, and runtime dispatch can differ across arches | Cross-arch cohorts are rejected by layered envelope verification with `AppError ArchEnvelopeMismatch`; per-arch cache partitioning makes accidental cross-arch comparison unlikely. No cross-arch bit-equality result is treated as contractual evidence. |
+| 6 | Same backend across different build envelopes | Equity float bits and (under `--rng native`) potentially visit counts | A rebuild changes `engine_build_id`, often `libm_id`/`compiler_version`, and may change `fp_flags`/`cpu_features`. Equity drift is unavoidable; visit drift can occur if FP differences swap a tie-break upstream of a subsequent rollout under `--rng native` | `checkTranscriptEnvelopesLive` hard-fails with `AppError EngineEnvelopeMismatch (BackendSlot b)` unless `--allow-stale` is passed. `mcts inspect replay` shows a persistent yellow banner `envelope: BUILD MISMATCH - recomputed locally; equities may drift at ULP from origin`; multi-build sidecar cache (one `.eq` per `(backend, build_prefix16)`) lets the user compare across builds. Visit drift under cross-build `--rng cpp` is expected to be zero; stale backend-slot envelopes must be explicitly acknowledged with `--allow-stale` before visits are compared |
 
 The set is closed in the literal sense: review rejects any PR that
 introduces behaviour incompatible with the cohort assertions above unless
 this table grows a new entry that names the new divergence, its reason,
-and its gating envelope. The `mcts-cross-backend` and `mcts-legacy-parity`
-stanzas are the empirical check for the logical Q3/Q7 cohorts; live FFI
-drift belongs in the divergence/report-card evidence and the development
-plan ledger until every compiled backend is deliberately promoted into the
-verify cohort.
+and its gating envelope. The `mcts-cross-backend` stanza is the empirical check
+for Q3 visit-vector equality, and the `mcts-legacy-parity` stanza is the
+empirical check for Q7 legacy-envelope liveness/overflow. Both use live FFI
+engines when their cdylibs are present and the in-process fallback only when
+needed for self-contained local validation.
 
 ## Cross-References
 

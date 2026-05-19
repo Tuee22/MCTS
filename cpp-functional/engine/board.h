@@ -113,13 +113,12 @@ void corridors::board::get_legal_moves(SOMETHING_EMPLACABLE & output) const
 
     if (hero_walls_remaining==0) return;
 
-    // get legal wall placement moves. The cross-backend verification
-    // cohort caps wall children at 12 so the C++ engines match the
-    // Haskell/Rust tree shape under the first-unvisited-child policy.
-    size_t emitted_wall_moves = 0;
+    // Get legal wall placement moves. Search applies the canonical
+    // Haskell wall cap after translating each child back to the
+    // absolute action-id perspective; the board generator therefore
+    // emits the complete legal wall set.
     for (size_t i=0;i<(BOARD_SIZE-1)*(BOARD_SIZE-1);++i)
     {
-        if (emitted_wall_moves >= 12) break;
         // check each intersection that doesn't already have a wall
         if (!wall_middles.test(i))
         {
@@ -146,8 +145,6 @@ void corridors::board::get_legal_moves(SOMETHING_EMPLACABLE & output) const
                     if(proposed_position_flipped.villain_is_escapable())
                     {
                         output.emplace_back(std::move(proposed_position_flipped));
-                        ++emitted_wall_moves;
-                        if (emitted_wall_moves >= 12) break;
                     }
                 }
             }
@@ -172,7 +169,6 @@ void corridors::board::get_legal_moves(SOMETHING_EMPLACABLE & output) const
                     if(proposed_position_flipped.villain_is_escapable())
                     {
                         output.emplace_back(std::move(proposed_position_flipped));
-                        ++emitted_wall_moves;
                     }
                 }
             }
@@ -195,33 +191,13 @@ bool corridors::board::get_positional_move(const short x_diff, const short y_dif
     proposed_position._action.is_positional=true;
     proposed_position._action.token_position=proposed_position.hero_y*BOARD_SIZE + proposed_position.hero_x;
 
-    // check whether villain is in this square
+    // The cross-backend verifier's Corridors rules do not include
+    // Quoridor jump moves. A pawn may move to an adjacent unoccupied
+    // square only; candidate moves onto the opponent are rejected.
     if (proposed_position.hero_x==proposed_position.villain_x
         && proposed_position.hero_y==proposed_position.villain_y)
     {
-        // see if it's a legal move to keep going in the same direction
-        if (proposed_position.get_positional_move(x_diff, y_diff, output))
-            return true;
-
-        // if we reached this point, continuing in the same direction wasn't
-        // legal-- so we check orthogonal moves. Note: what we return in this
-        // case doesn't really matter, as we'll never handle it-- but we
-        // still compute it for consistentcy (return true as long as at least
-        // one legal move was found).
-        bool move1, move2;
-        if (x_diff!=0)
-        {
-            // horizontal move-- check vertical moves
-            move1 = proposed_position.get_positional_move(0, 1, output);
-            move2 = proposed_position.get_positional_move(0, -1, output);
-        }
-        else
-        {
-            // vertical move-- check horizontal moves
-            move1 = proposed_position.get_positional_move(1, 0, output);
-            move2 = proposed_position.get_positional_move(-1, 0, output);
-        }
-        return move1 || move2;
+        return false;
     }
     else
     {

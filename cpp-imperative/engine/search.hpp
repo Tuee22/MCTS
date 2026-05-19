@@ -1,7 +1,8 @@
 // Imperative UCT search loop driving the flat arena. Returns the
-// sorted `(action_id, visits)` vector for the root after `sims`
-// simulations, plus the chosen action (the highest-visit child with
-// deterministic index-based tie-break).
+// sorted raw `(action_id, visits)` vector for the root after `sims`
+// simulations, plus the chosen action. The search internally uses the
+// same absolute action ordering, splitmix seed schedule, and
+// hero-perspective value propagation as the Haskell verifier.
 
 #pragma once
 
@@ -45,9 +46,8 @@ struct RngBackend {
 struct SearchOutput {
     std::vector<std::pair<uint8_t, uint32_t>> visits;  // sorted ascending by action_id
     uint8_t chosen_action_id = 0;
-    // Sprint 5.5 / 6.5: parent-perspective equity of the chosen child
-    // computed as `-child.q_sum / child.visit_count`. NaN if the
-    // chosen child has zero visits.
+    // Hero-perspective equity of the chosen child (`q_sum / visits`),
+    // matching `MCTS.Search.UCT.uctSearchWithEquity`.
     double chosen_equity = std::numeric_limits<double>::quiet_NaN();
     bool ok = true;
 };
@@ -60,6 +60,6 @@ SearchOutput run_search(
     uint16_t max_plies,
     RngBackend::Kind rng_kind,
     uint64_t seed,
-    double exploration_c = 1.4);
+    double exploration_c = 1.41421356);
 
 }  // namespace mcts_imperative

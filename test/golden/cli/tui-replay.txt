@@ -1,0 +1,4 @@
+aaaaaaaa | move 1 / 1 | press ? for help
+move played: *(4,1)
+backend          build      chosen     equity
+haskell          overlay-fi *(4,1)     +0.2500

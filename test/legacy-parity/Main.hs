@@ -19,8 +19,10 @@ main =
 
 -- The legacy-parity cohort is all five backends under the legacy envelope:
 -- `max_plies = MAX_ROLLOUT_ITERS = 10000`, `--rng cpp`, single-threaded,
--- fixture seed `S_LP = 42`. The Sprint 7.2 deliverable pins these knobs.
---
+-- fixture seed `S_LP = 42`. Q6 owns byte-for-byte legacy visit parity and Q3
+-- owns visit-count agreement across the steelman backends; this stanza checks
+-- that the full five-backend legacy-envelope liveness path runs without
+-- overflow or envelope errors at a low budget.
 fullCohortCheck :: IO ()
 fullCohortCheck = do
     let inputs =

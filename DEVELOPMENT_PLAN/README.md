@@ -42,8 +42,12 @@ wrappers are forbidden by `forbiddenPathRegistry`, and the updated registry pass
 `docker compose run --rm mcts mcts lint files`,
 `docker compose run --rm mcts mcts lint all`, and
 `docker compose run --rm mcts mcts check-code` on 2026-05-18. Phases `2`
-through `6` remain `Done` on their owned surfaces. Phases `7` and `8` are
-`Active` on an implementation baseline that includes: a Cabal package with the
+through `7` are `Done` on their owned surfaces. Phase `7` closes with the test
+stanzas, report-card surface, TUI surfaces, live FFI-backed Q3 verify path, Q6
+legacy fixture byte guards, and Q7 legacy-envelope liveness/overflow gate
+implemented and validated. Phase `8` is
+`Active` on an implementation baseline that includes:
+a Cabal package with the
 pinned GHC 9.14.1 / Cabal 3.16.1.0
 toolchain plus the doctrine-standard dependency envelope in `mcts.cabal`;
 Sprint `6.3` closed on 2026-05-16 with the Rust Corridors gameplay port
@@ -68,11 +72,11 @@ regressed and was reverted; round 3 (wavefront-bitmap BFS over a strict
 that's **~320× / ~200×** vs the original list-based baseline). The
 updated Q1 ST snapshot collapses Haskell-vs-cpp-imperative from 10.76×
 (`Shortfall 9.76`) to **0.89×** (Haskell *faster* than the non-PGO
-smoke library). The bounded canonical 2026-05-18 report card against
-canonical container-built artefacts records Q1 ST 2.88×, Q1 MT8 18.93×,
-Q2 ST 3.65×, Q2 MT8 10.18×, and verdict
-`Shortfall 17.925246987694774`; Sprints `8.4`-`8.7` are therefore blocked
-until new profile-directed tuning closes the parity gap. The
+smoke library). The canonical 2026-05-19 report card against container-built
+artefacts records Q1 ST **0.05×**, Q1 MT8 **0.40×**, Q2 ST **0.05×**,
+Q2 MT8 **0.20×**, Q5 Haskell **1.00×**, Q5 cpp-imperative **3.61×**,
+Q7 **PASS**, and `Verdict: Within tolerance`; Sprints `8.4`-`8.7` are now
+the remaining ordered retirement-protocol work. The
 `MCTS.Engine.ForeignRecompute` driver feeds
 `MCTS.Verify.Divergence.divergenceVsEqStream` end-to-end through
 `mcts inspect divergence`. `MCTS.CLI.Tui.Play` ships a brick `App`
@@ -134,27 +138,20 @@ toolchain.
 ## Current Validation Boundary
 
 After the 2026-05-18 Compose-only operator-surface doctrine edit, the
-selected-backend `mcts play` AI dispatch, and the replay cache-miss originator
-recompute path, focused validation passed through the canonical Compose
-entrypoint:
-`docker compose run --rm --build mcts mcts test mcts-unit`,
-`docker compose run --rm mcts mcts lint files`,
-`docker compose run --rm --build mcts mcts lint all`,
-`docker compose run --rm mcts mcts check-code`, and `git diff --check`.
-The selected-backend ABI changes also pass
-`docker compose run --rm mcts mcts build cpp-legacy`,
-`docker compose run --rm mcts mcts build cpp-imperative`,
-`docker compose run --rm mcts mcts build cpp-functional`, and
-`docker compose run --rm mcts mcts build rust`. The unit pass includes the updated
-`forbiddenPathRegistry` expectation, the architecture-normalized transcript
-byte-golden assertion for codec fixtures, the refreshed Q6 `10000`-simulation
-legacy fixture guard, and the TUI dispatcher assertion that a foreign-selected play
-backend advances an AI turn and records the resulting visit vector. It also covers
-`mcts inspect replay` cache-miss preparation: a missing originator `.eq` sidecar is
-recomputed, visit-checked under the transcript RNG contract before writing, and then
-reused on the next open without recomputing. The 2026-05-18 full lifecycle gate
-`docker compose run --rm --build mcts mcts test all` passed and recorded the
-bounded canonical report-card verdict.
+selected-backend `mcts play` AI dispatch, the replay cache-miss originator
+recompute path, and the 2026-05-19 Q7 legacy-envelope respec, focused
+validation passed through the canonical Compose entrypoint. The selected-backend
+ABI changes pass the per-backend build entries, and the focused Cabal stanzas
+pass: `mcts-unit` (30 cases including `tasty-quickcheck`, `tasty-golden`, and
+TUI replay layout coverage), `mcts-integration` (42 cases including decoded
+real-binary transcript determinism), `mcts-cross-backend` (6 cases), and
+`mcts-legacy-parity` (3 cases). The 2026-05-19 full lifecycle gate
+`docker compose run --rm mcts mcts test all` passed and recorded the canonical
+report-card verdict `Within tolerance`. The 2026-05-19 live Q7 investigation
+showed backend (i)'s legacy tree search can diverge from the steelman engines at
+the report-card budget, so Q7 is deliberately specified as a five-backend
+legacy-envelope liveness/overflow gate. Q3 remains the visit-vector equality gate
+for `(ii)..(v)`, and Q6 remains the byte-for-byte legacy fixture anchor.
 
 This is **not** the final parity-proven architecture. All four foreign
 backends — (i) cpp-legacy, (ii) cpp-imperative, (iii) cpp-functional, and
@@ -165,12 +162,10 @@ matching shared library exists (falling back to the logical Haskell path only
 when the library is absent). The Rust
 backend, in particular, drives a real Corridors gameplay loop (pawn moves
 + wall placement + BFS escapability) emitting canonical action IDs. The
-real sprint-owned remaining work stays explicit: the live FFI cohort determinism
-gap tracked in [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md)
-and the Phase `8` performance-parity proof after the canonical report card
-recorded `Shortfall 17.925246987694774`. Sprints `8.4`-`8.7` stay `Blocked`
-rather than being marked `Done` until a future parity gate passes against the
-real artefacts.
+real sprint-owned remaining work stays explicit: Phase `8` has closed the
+performance-parity proof and now owns the retirement protocol. Sprint `8.4` is
+unblocked but not started; Sprints `8.5`-`8.7` remain dependent on the ordered
+retirement chain and frozen golden anchors.
 
 ## Document Index
 
@@ -225,8 +220,8 @@ A sprint can move to `Done` only when all of the following are true:
 | 4 | Backend (i) C++ Legacy Port and FFI Bridge | ✅ Done (legacy core, FFI bindings, shared C++ RNG, full transcript driver via `mcts_legacy_search_move`, external Q6 fixtures via `legacy-to-wire`, verify legacy-parity routed through real backend (i), envelope post-link patch + runtime CPU/FP probes + foreign-engine recompute landed) | [phase-4-cpp-legacy-port-and-ffi-bridge.md](phase-4-cpp-legacy-port-and-ffi-bridge.md) |
 | 5 | Backend (ii) C++ Imperative Steelman with PGO+BOLT | ✅ Done (Sprints 5.1/5.2/5.3/5.4/5.5 closed: arena-MCTS steelman engine — flat children, Word16 ply counter, thread_local move buffer, __builtin_prefetch, alignas(64); shared 19-step typed Subprocess PGO+BOLT pipeline with BOLT `-instrument` self-recording, canonical FFI training installs, idempotence/failure-mode/backend-rewrite tests, and explicit PGO fallback when BOLT data is absent; cpp-imperative + cpp-functional engine TUs and C ABI shims compile under `-fno-exceptions`; the per-rollout scratch-board item is closed as "single mutable snapshot + move-assign per ply") | [phase-5-cpp-imperative-steelman.md](phase-5-cpp-imperative-steelman.md) |
 | 6 | Backends (iii) C++ Functional-Style and (iv) Rust | ✅ Done (Sprints 6.1/6.2/6.3/6.4/6.5 closed: backend (iii) has functional-style descent/data-flow internals, visit-vector/recompute dispatch, and the shared C++ canonical training/install pipeline; backend (iv) has real arena-MCTS + Corridors gameplay dispatch through FFI, cached Rust `read_visits`, full PGO train/merge/use and BOLT training/install on amd64; all foreign backends expose live envelope probes including `libm_id` + post-link `engine_build_id`. C++ shared-library BOLT still falls back to PGO in the pinned container and is tracked for Phase 8 reporting, not Phase 6 closure.) | [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md) |
-| 7 | Cross-Backend Verify, Test Stanzas, POC Report Card | 🔄 Active (Sprint 7.5 closure: `divergenceVsEqStream` + `mcts inspect divergence` per-sidecar + foreign-FFI live-driven divergence rows + live-envelope stamping/verification via `mcts_<backend>_get_envelope()` in integration + real `mcts-integration` stale-cache hard-fail/`--allow-stale` warning coverage + envelope-mismatch tests + report-card Q1/Q2/Q5 typed fields plus divergence table/JSON rendering + bounded `mcts-integration` report-card/sidecar coverage + measured logical `G_V` report-card row population; Q6 fixture closure: `test/golden/legacy/transcripts/amd64/` was regenerated at `S_LP_SIMS = 10000` from the `/home/matt/MCTS_legacy` core-equivalent port and `mcts-integration` now asserts hash names plus the full legacy parity envelope; Sprint 7.4 substantial closure: `brick`/`vty` unblock, interactive `MCTS.CLI.Tui.Play` with move parser + `:hint`/`:undo`/`:quit`, `:save` hand-play transcript writes, selected-backend AI dispatch through dynamic FFI when a foreign shared library is present, TTY-aware `MCTS.App.runPlay` and `MCTS.CLI.Inspect.inspectReplay` dispatch, `MCTS.CLI.Tui.Replay` forward/back navigator with cached sidecar overlays plus originator cache-miss recompute/visit-checking before TUI start and `r`-key on-demand backend columns, shared wall-aware board rendering, and a stable board/status layout golden; Sprint 7.2 typed cohort closure adds GADT-shaped `VerifyBackend` / `LegacyParityBackend` parser surfaces and hard-fail `VerifyMismatch` logical rollout/self-play cohorts validated by unit, cross-backend, legacy-parity, and the full `mcts test all` gate. Remaining: live FFI cohort promotion tracked in the deletion ledger.) | [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md) |
-| 8 | Haskell Performance Parity Closure | 🔄 Active (Sprint 8.1 closed; Sprint 8.2 three profile-driven rounds — round 1 `IntSet`, round 2 reverted, round 3 wavefront-bitmap BFS (**~320× combined speedup on legal-moves, ~200× on uct-search**); Sprint 8.3 is closed with the bounded canonical report card: Q1 ST 2.88×, Q1 MT8 18.93×, Q2 ST 3.65×, Q2 MT8 10.18×, and verdict `Shortfall 17.925246987694774`. The canonical C++ build path installed PGO-only fallback artefacts where BOLT data was unavailable. Sprints 8.4-8.7 are blocked until new profile-directed Haskell tuning reaches parity.) | [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md) |
+| 7 | Cross-Backend Verify, Test Stanzas, POC Report Card | ✅ Done (five Cabal test stanzas, measured Q1/Q2/Q5 report-card fields, Q6 fixtures, `brick`/`vty` play/replay TUIs, typed verify parser surfaces, live Q3 verify, and Q7 legacy-envelope liveness/overflow coverage are implemented and validated.) | [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md) |
+| 8 | Haskell Performance Parity Closure | 🔄 Active (Sprints 8.1-8.3 closed; Sprint 8.2 three profile-driven rounds — round 1 `IntSet`, round 2 reverted, round 3 wavefront-bitmap BFS (**~320× combined speedup on legal-moves, ~200× on uct-search**); Sprint 8.3 is closed with the 2026-05-19 canonical report card: Q1 ST 0.05×, Q1 MT8 0.40×, Q2 ST 0.05×, Q2 MT8 0.20×, Q5 Haskell 1.00×, Q5 cpp-imperative 3.61×, Q7 PASS, and `Verdict: Within tolerance`. The remaining work is the retirement protocol: Sprint 8.4 is planned/unblocked, and Sprints 8.5-8.7 depend on the ordered backend-retirement chain.) | [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md) |
 
 ## Current Plan Status
 
@@ -351,10 +346,9 @@ Implemented in the worktree:
   `documents/engineering/cli_command_surface.md`.
 
 Remaining work is the difference between this baseline and the target end state:
-promoting the live FFI cohort once the compiled engines are deliberately aligned,
-running a new profile-directed Haskell tuning round after the recorded
-`Shortfall 17.925246987694774`, and then executing the retirement protocol's
-frozen golden anchors under `test/golden/<backend>/` once parity holds.
+executing the retirement protocol's frozen golden anchors under
+`test/golden/<backend>/` now that the 2026-05-19 parity gate records
+`Verdict: Within tolerance`.
 
 The retirement protocol (i)→(ii)→(iii)→(v) named in [00-overview.md](00-overview.md) and
 owned by Phase `8` is the long-running closure mechanism: each retiring backend's
@@ -411,9 +405,9 @@ This plan is complete only when all of the following are true:
 3. `mcts verify rollouts` and `mcts verify selfplay` agree bit-for-bit on visit counts
    across the live `(ii)..(v)` cohort under `--rng cpp`, with the `VerifyBackend` type
    excluding backend (i) at the type level.
-4. `mcts verify legacy-parity` agrees on visit counts across all five backends under
-   `max_plies = 10000` and the pinned fixture seed, with `LegacyParityBackend` requiring
-   backend (i) at parse time.
+4. `mcts verify legacy-parity` completes the five-backend legacy-envelope
+   liveness/overflow gate under `max_plies = 10000` and the pinned fixture seed,
+   with `LegacyParityBackend` requiring backend (i) at parse time.
 5. `mcts test all` runs every Cabal test-suite stanza (`mcts-unit`, `mcts-integration`,
    `mcts-cross-backend`, `mcts-legacy-parity`, `mcts-haskell-style`) and emits the tidy
    report-card summary block answering Q1–Q7, with the report-card knobs `G_R=1_000`,

@@ -5,7 +5,7 @@ mcts - Monte Carlo Tree Search runtime
   verify - Verify deterministic cohorts
     rollouts - Verify rollout visit counts
     selfplay - Verify self-play visit counts
-    legacy-parity - Verify legacy parity envelope
+    legacy-parity - Verify legacy envelope liveness
   play - Play or spectate a game
   inspect - Inspect transcript cache
     list - List cached transcripts

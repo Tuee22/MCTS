@@ -32,7 +32,7 @@ rolloutsCheck = do
                 { inputGames = 2
                 , inputSeed = 42
                 , inputSims = FixedSims 16
-                , inputMaxPlies = 40
+                , inputMaxPlies = 60
                 }
     detailed <-
         verifyRunDetailed
@@ -51,7 +51,7 @@ selfplayCheck = do
                 { inputGames = 1
                 , inputSeed = 42
                 , inputSims = FixedSims 16
-                , inputMaxPlies = 8
+                , inputMaxPlies = 60
                 }
     detailed <-
         verifyRunDetailed

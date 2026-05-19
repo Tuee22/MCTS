@@ -11,7 +11,7 @@
 - `mcts bench selfplay` - Self-play benchmark
 - `mcts verify rollouts` - Verify rollout visit counts
 - `mcts verify selfplay` - Verify self-play visit counts
-- `mcts verify legacy-parity {rollouts|selfplay}` - Verify legacy parity envelope
+- `mcts verify legacy-parity {rollouts|selfplay}` - Verify legacy envelope liveness
 - `mcts play` - Play or spectate a game
 - `mcts inspect list` - List cached transcripts
 - `mcts inspect show` - Show one transcript

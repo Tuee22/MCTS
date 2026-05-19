@@ -381,8 +381,8 @@ exposed as a `cdylib` for the Haskell FFI.
 ### Remaining Work
 
 None for Sprint 6.3's search/gameplay/recompute/instrumentation surface. Sprint
-6.4 closed the Rust PGO/BOLT install/verdict surface; Phase 7 owns the remaining
-cohort agreement gap.
+6.4 closed the Rust PGO/BOLT install/verdict surface; Phase 7 closes the
+cohort-agreement and legacy-envelope verification gates.
 
 ## Sprint 6.4: FFI Bindings, PGO+BOLT Build Harness, Driver for Backend (iv) ✅
 
@@ -607,7 +607,7 @@ fields.
 
 None. The Sprint 6.5 worktree surface is closed: live envelope probes,
 post-link build-id slots, foreign recompute `EqStream` generation, and
-integration coverage are present. Phase 7 owns the remaining verifier/report-card
+integration coverage are present. Phase 7 closes the verifier/report-card
 wiring that consumes those surfaces.
 
 ## Documentation Requirements

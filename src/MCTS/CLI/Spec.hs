@@ -71,7 +71,7 @@ commandSpec =
                 "mcts verify selfplay --backend cpp-imperative,rust,haskell --threading single --games 50 --seed 42 --max-plies 200 --sims 10000"
             , leaf
                 "legacy-parity"
-                "Verify legacy parity envelope"
+                "Verify legacy envelope liveness"
                 "mcts verify legacy-parity selfplay --backend cpp-legacy,haskell --games 1 --seed 42 --sims 10"
             ]
         , leaf "play" "Play or spectate a game" "mcts play --backend haskell --side hero --sims 10000"

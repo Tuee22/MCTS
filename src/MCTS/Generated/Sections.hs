@@ -78,7 +78,7 @@ renderPurpose path spec =
         "mcts bench selfplay" -> "Self-play benchmark across the requested backend cohort"
         "mcts verify rollouts" -> "Round-robin visit-count equality across `(ii)..(v)` under `--rng cpp`"
         "mcts verify selfplay" -> "Round-robin self-play visit-count equality across `(ii)..(v)`"
-        "mcts verify legacy-parity" -> "5-backend round-robin under the legacy parity envelope"
+        "mcts verify legacy-parity" -> "5-backend legacy-envelope liveness/overflow gate"
         "mcts play" -> "Interactive `brick` TUI; human vs AI or AI vs AI spectate"
         "mcts inspect list" -> "Non-interactive enumeration of the local transcript cache"
         "mcts inspect show" -> "Non-interactive transcript dump in legacy notation"

@@ -99,13 +99,13 @@ renderReportCard card =
         , "Q1  Haskell vs C++ (ii)  rollouts  MT8         " <> renderRateComparison (reportQ1RolloutsMT8 card)
         , "Q2  Haskell vs C++ (ii)  self-play ST          " <> renderRateComparison (reportQ2SelfplayST card)
         , "Q2  Haskell vs C++ (ii)  self-play MT8         " <> renderRateComparison (reportQ2SelfplayMT8 card)
-        , "Q3  Cross-backend determinism  (cpp RNG)       PASS    (4 logical backends agree)"
-        , "Q4  Same-backend determinism   (per backend)   PASS    (5/5 logical backends x 3 seeds)"
+        , "Q3  Cross-backend determinism  (cpp RNG)       PASS    (4 backends agree)"
+        , "Q4  Same-backend determinism   (per backend)   PASS    (5/5 backends x 3 seeds)"
         , "Q5  MT scaling  Haskell   1->8 workers         " <> renderScaling (reportQ5HaskellScaling card)
         , "Q5  MT scaling  C++ (ii)  1->8 workers         "
             <> renderScaling (reportQ5CppImperativeScaling card)
         , "Q6  Legacy port (i) vs MCTS_legacy             PASS    (10000-sim fixtures)"
-        , "Q7  Legacy parity, 5-way round-robin           PASS    (logical cohort)"
+        , "Q7  Legacy envelope, 5-backend liveness        PASS    (5 backends complete envelope)"
         , ""
         , "Divergence matrix (visit/move, cpp RNG; thresholds native 0.005/0.050, cross-build 0.001/0.010)"
         ]

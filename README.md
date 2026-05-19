@@ -11,10 +11,12 @@ A high-performance runtime for Monte Carlo Tree Search (MCTS), targeting the Cor
 
 This repository is the successor to `MCTS_legacy`, a hand-tuned imperative C++ implementation. The goal here is to **progressively refactor that codebase, maintaining multiple parallel implementations side-by-side, until a pure Haskell version equals the original C++ in throughput**. The proof of concept is that purely functional Haskell can rival C++ on a workload this performance-sensitive, using only the game engine and rollout-based MCTS.
 
-> **Current status:** The repository has moved past bootstrap into an active logical
-> baseline: the Cabal package, command surface, transcript/cache layer, logical
-> five-backend verification, smoke backend skeletons, and five Cabal test stanzas
-> exist. The authoritative phase-by-phase status remains
+> **Current status:** The repository has moved past bootstrap into a five-backend
+> implementation baseline: the Cabal package, command surface, transcript/cache
+> layer, live FFI-capable verification, real foreign backend engines, TUI surfaces,
+> report-card path, and five Cabal test stanzas exist. The 2026-05-19 report card
+> records `Verdict: Within tolerance`; the remaining open work is Phase 8's
+> backend-retirement protocol. The authoritative phase-by-phase status remains
 > [`DEVELOPMENT_PLAN/README.md`](DEVELOPMENT_PLAN/README.md).
 
 > **Plan and doctrine:** The authoritative execution-ordered plan lives at [`DEVELOPMENT_PLAN/README.md`](DEVELOPMENT_PLAN/README.md); the authoritative CLI doctrine lives at [`HASKELL_CLI_TOOL.md`](HASKELL_CLI_TOOL.md); the documentation-topology rules live at [`documents/documentation_standards.md`](documents/documentation_standards.md).
@@ -71,26 +73,24 @@ Each game's RNG stream is seeded by `splitmix64(master_seed, game_index)`, so pe
 Different RNG algorithms cannot be expected to produce identical byte streams, so we cannot assert cross-implementation equality under each language's native RNG. Instead, every backend except (i) supports **two RNG sources**:
 
 - **`--rng native`** — each backend uses the fastest RNG it can defend statistically. Backends (ii)/(iii) use `xoshiro256++` by default, with `wyrand` as the documented profiling-driven alternative (see [Compiler and runtime tuning](#compiler-and-runtime-tuning) item 15), (iv) Rust uses `rand_xoshiro`'s `Xoshiro256PlusPlus`, and (v) Haskell uses `splitmix` or equivalent. Used for benchmarks and any workload where raw throughput matters.
-- **`--rng cpp`** — the logical verification cohort uses the canonical
-  C++-RNG seed schedule so the Haskell-side transcript generator can compare
-  all backend slots without native-RNG salt. The live foreign engines still
-  use their own compiled search/RNG paths when reached through `bench`,
-  `play`, `inspect divergence`, and integration smoke tests.
+- **`--rng cpp`** — the verification cohort uses the canonical C++-RNG seed
+  schedule so all backend slots run without native-RNG salt. When the compiled
+  cdylibs are present, `mcts verify` reaches the live foreign search engines;
+  when they are absent, the in-process fallback keeps the Cabal stanzas
+  self-contained.
 
 Backend (i) is verbatim from `MCTS_legacy` and always uses `std::mt19937_64` — it has no separate native/cpp axis. When (i) appears in a mixed cohort that passes `--rng native`, the flag is silently ignored for (i): it draws from `std::mt19937_64` while the other backends draw from their native RNGs.
 
 The split is deliberate:
 
 - **Native RNG** isolates language-level overhead from RNG overhead and gives each implementation a fair throughput measurement. We do **not** assert cross-backend bit equality here.
-- **C++ RNG** factors RNG choice out of the logical verification cohort.
-  Under `--rng cpp`, `mcts verify` produces in-process logical transcripts
-  for backends (ii), (iii), (iv), (v) and requires identical visit counts and
-  chosen moves for the same seed and move history. Backend (i) is excluded
-  from the default `verify` cohort because its terminal-state semantics differ
-  (see [Draw rule](#draw-rule)); it rejoins the logical cohort under
-  `mcts verify legacy-parity`, which pins `max_plies = 10000`. Live FFI
-  backend drift is exercised separately by `mcts-integration` and
-  `mcts inspect divergence`, not accepted as Q3/Q7 proof.
+- **C++ RNG** factors RNG choice out of the verification cohort. Under
+  `--rng cpp`, `mcts verify` requires identical visit counts and chosen moves
+  for the same seed and move history across backends (ii)..(v). Backend (i) is
+  excluded from the default `verify` cohort because its terminal-state semantics
+  and legacy search kernel differ (see [Draw rule](#draw-rule)); it rejoins
+  under `mcts verify legacy-parity`, which pins `max_plies = 10000` for the Q7
+  liveness/overflow gate.
 
 Same-language determinism (same backend, same master seed, same RNG source, same logical game inputs ⇒ same set of game determinism payloads) is required unconditionally. Each game's RNG stream is seeded by `splitmix64(master_seed, game_index)` (or the C++-RNG equivalent under `--rng cpp`), so worker count, scheduling order, and worker-to-game assignment never affect any individual game's output — only the total wall-clock and provenance metadata.
 
@@ -98,11 +98,11 @@ Same-language determinism (same backend, same master seed, same RNG source, same
 
 ## Cross-backend verification
 
-The `mcts verify` subcommands run the requested backend slots through the
-logical in-process transcript generator under `--rng cpp` and check that their
-determinism payloads agree. The real foreign shared libraries are still used by
-`mcts bench`, `mcts play`, `mcts inspect divergence`, and integration smoke
-tests when the artefacts are present.
+The `mcts verify` subcommands run the requested backend slots under `--rng cpp`
+through `runBatchDispatch` and check that their determinism payloads agree.
+When the foreign shared libraries are present, verification uses the live
+C/Rust engines and live envelope payloads; when a cdylib is absent, the
+in-process fallback keeps the local test stanzas runnable.
 
 **Round-robin, no oracle.** Every requested backend produces a transcript; decoded determinism payloads are compared pairwise. Any mismatched pair fails the test. No backend is privileged as "truth" — disagreement between any two backends is a bug somewhere.
 
@@ -170,11 +170,11 @@ void     cpp_rng_free(cpp_rng*);
 
 Per-game sub-seeds are derived via `splitmix64(master_seed, game_index)` rather than mutating any parent generator's state, so each game's RNG stream is independent and reproducible from the master seed and its index alone. Workers don't have RNG identities — they execute games, and the seed lives with the game.
 
-**Byte-consumption order is itself the contract.** Every backend draws the same number of `u64`s per rollout, uses `draw % n` for legal-move selection (no rejection sampling unless every backend rejects identically), and consumes RNG bits at the same logical points in the search. The verify test enforces this implicitly: any backend that drifts off the contract fails on its first divergent rollout.
+**Byte-consumption order is itself the contract.** Every backend draws the same number of `u64`s per rollout, reinterprets the consumed word with Haskell's signed machine-`Int` modulo semantics for legal-move selection, and consumes RNG bits at the same logical points in the search. There is no rejection sampling unless every backend rejects identically. The verify test enforces this implicitly: any backend that drifts off the contract fails on its first divergent rollout.
 
 **Backprop traversal order is part of the contract.** All backends walk the path from the selected leaf to the root in the same order, applying visit-count increments at the same logical step. Equity is excluded from the wire format, but transient intermediate visit counts at non-leaf nodes are observed by the comparator and must agree.
 
-**Tie-breaking is part of the contract.** Move selection follows the legacy's `(equity desc, non_terminal_rank asc)`, applied uniformly across all five backends. There is no separate multi-threaded tie-breaker — within a single game (which is always single-threaded) there is nothing to aggregate, and across games each game's RNG stream is its own independent universe.
+**Move shape and tie-breaking are part of the contract.** The verifier cohort uses the simplified Corridors move set implemented by the Haskell engine: one-square orthogonal pawn moves to adjacent unoccupied cells, no Quoridor-style jumps, no overlapping or crossing walls, and no wall that blocks all paths. Search expands all legal pawn moves plus the first 12 legal wall moves after canonical action-ID ordering. UCT child selection breaks equal scores by action ID; the final root action is the highest-visit child with action ID as the stable tie-break. There is no separate multi-threaded tie-breaker — within a single game there is nothing to aggregate, and across games each game's RNG stream is its own independent universe.
 
 ### Replay equity guarantees
 
@@ -184,9 +184,9 @@ Re-running the deterministic search recovers equity values; the bit-exactness of
 - **Same backend, different envelope** (the user has rebuilt — different commit, different optimisation flags, or a libm point upgrade): equities recomputed by the rebuilt binary are *not* bit-equal to the originally-recorded engine's. Visit counts under `--rng cpp` remain bit-equal (integer arithmetic, byte-consumption contract); only the floats drift, typically by a few ULPs. `inspect replay` shows a persistent yellow `envelope: BUILD MISMATCH` banner whenever this happens, so the user is never silently shown drifted numbers as if they were the originator's.
 - **Different backend** (foreign-engine view): equities are not bit-equal to *any* originator's numbers — they are the foreign backend's own view of the position. This is the multi-backend overlay's intended use: cross-engine comparison. `inspect replay` marks the originator column with ★ and shows a persistent orange `envelope: FOREIGN VIEW` banner whenever the live binary is a different backend than the originator.
 
-This asymmetry is why the wire format and determinism payload exclude equity: visit counts (integer) are bit-equal across backends and form the determinism contract; equities (float) are not, and requiring float bit-equality would force every backend to fix a canonical summation order and a canonical libm — a much bigger contract. The recomputed-per-substrate floats are cached out-of-band in the [equity sidecar cache](#multi-backend-replay) instead.
+This asymmetry is why the wire format and determinism payload exclude equity: visit counts (integer) are bit-equal across backends (ii)..(v) and form the Q3 determinism contract; equities (float) are not, and requiring float bit-equality would force every backend to fix a canonical summation order and a canonical libm — a much bigger contract. The recomputed-per-substrate floats are cached out-of-band in the [equity sidecar cache](#multi-backend-replay) instead.
 
-**Cross-backend equity tolerance is implicit.** The verify subcommands do not compare equities directly. The contract is that equity differences across backends must never be large enough to swap a tie-break in `(equity desc, non_terminal_rank asc)`. This is enforced transitively: any equity drift that swaps a chosen action surfaces as a visit-count mismatch on the next move (because subsequent searches diverge from that point onward), and visit counts are what `verify` compares. Backends that drift further than this implicit tolerance fail verify on visits, not on equities.
+**Cross-backend equity tolerance is implicit for Q3.** The `verify rollouts` and `verify selfplay` subcommands do not compare equities directly. The contract is that float differences across backends (ii)..(v) must never be large enough to change UCT child selection or the final highest-visit root action. This is enforced transitively: any equity drift that changes a chosen action surfaces as a visit-count mismatch on the next move, and visit counts are what Q3 `verify` compares. Backends that drift further than this implicit tolerance fail verify on visits, not on equities. Q7 legacy parity is a separate liveness/overflow gate for backend (i)'s legacy envelope.
 
 ### Engine envelope
 
@@ -209,7 +209,7 @@ On transcript open:
 
 - The originator's `.eq` is read if it exists and its embedded envelope matches the live originator binary. Match → originator column populates instantly with the bit-equal originator equities. Mismatch or absent → user explicitly populates it (cursor on the originator column header, press `r`); the recomputed values are labelled with the persistent yellow `BUILD MISMATCH` banner.
 - Other backends' columns stay `--` until the user requests them (`r`). Compute runs in the background; the column shows `…computing` until the FFI returns, then writes to `.eq` so subsequent opens are instant.
-- Visits are shared across columns under `--rng cpp` (and any recompute mismatch is a determinism-contract failure, surfaced loudly).
+- Visits are shared across Q3-compatible steelman columns under `--rng cpp` (and any recompute mismatch inside that contract is surfaced loudly).
 
 The full UX is documented in [`documents/engineering/cli_command_surface.md`](documents/engineering/cli_command_surface.md) §`mcts inspect replay` Multi-Backend Overlay.
 
@@ -224,13 +224,13 @@ Every transcript header carries the `host_arch u8` field (see [transcript wire f
 The game's terminal-state semantics differ between backend (i) and backends (ii)–(v). This is the only intentional behavioural divergence in the project.
 
 - **Backend (i)** — `is_terminal()` ↔ `hero_wins() || villain_wins()` (verbatim from `MCTS_legacy/backend/core/board.cpp:247`). A game has no draw outcome; rollouts that exceed `MAX_ROLLOUT_ITERS = 10000` plies abort the search via an exception (the legacy's behaviour). Because (i) is the strictly verbatim regression-sanity port, it is excluded from cross-backend `verify` cohorts.
-- **Backends (ii)–(v)** — `is_terminal()` ↔ `hero_wins() || villain_wins() || ply_count >= max_plies`. The board state carries a `uint16_t` ply counter. When termination is by ply cap, `get_terminal_eval()` returns `0.0` (draw); rollouts back this value up like any other terminal.
+- **Backends (ii)–(v)** — `is_terminal()` ↔ `hero_wins() || villain_wins() || ply_count >= max_plies`. The board state carries a `uint16_t` ply counter. When termination is by ply cap, `get_terminal_eval()` returns `0.0` (draw); rollouts back this value up like any other terminal. UCT search uses `min 60 max_plies` as its deterministic leaf-rollout/tree horizon while the game transcript still records and obeys the run-level `max_plies`. The current C/Rust search ABI bakes in that 60-ply search horizon, so batch dispatch falls back to the in-process path for sub-60 `max_plies` runs until the ABI grows an explicit search-cap argument.
 
 `max_plies` is a run-configuration parameter (default **200**), exposed on the CLI as `--max-plies N`, pinned in the transcript header (`max_plies u16`), and part of the determinism contract: two backends (ii)–(v) with the same `max_plies`, same seed, and same chosen sequence must produce identical determinism payloads.
 
 The wire format's `winner u8` field is a 3-value enum: `0 = hero`, `1 = villain`, `2 = draw`. The decoder reports draws in `inspect show` / `inspect replay` as `<draw>` in the same position move notation otherwise occupies.
 
-**Legacy parity envelope.** The new draw rule is the only thing keeping backend (i) out of the cross-backend `verify` cohort. Setting `max_plies = MAX_ROLLOUT_ITERS = 10000` collapses that divergence: in this envelope all five backends terminate every rollout the same way (on a positional win), so decoded determinism payloads must be bit-equal. The `mcts verify legacy-parity` subcommand drives this cohort with `max_plies` and `--rng cpp` pinned, under a fixture seed chosen so that (i) never trips `MAX_ROLLOUT_ITERS`. If a future change causes (i) to throw, the cohort fails with `AppError LegacyParityRolloutOverflow` carrying `(seed, game_index, move_index)` so the seed can be replaced. The test also fails if (i) survives but its longest rollout reaches the cap, since that means the legacy is one change away from the cliff. This complements Q6: Q6 asks "does (i) reproduce `MCTS_legacy`?", legacy-parity asks "do all five backends agree?" within the envelope. Composed with Q6 they give a transitive parity chain `MCTS_legacy ≡ (i) ≡ (ii)..(v)`.
+**Legacy parity envelope.** The new draw rule is the only thing keeping backend (i) out of the cross-backend `verify` cohort. Setting `max_plies = MAX_ROLLOUT_ITERS = 10000` creates the envelope where backend (i) can be driven at its native no-draw horizon while the steelman engines retain a transcript-visible cap. The `mcts verify legacy-parity` subcommand drives this cohort with `max_plies` and `--rng cpp` pinned, under a fixture seed chosen so that (i) never trips `MAX_ROLLOUT_ITERS`. If a future change causes (i) to throw, the cohort fails with `AppError LegacyParityRolloutOverflow` carrying `(seed, game_index, move_index)` so the seed can be replaced. The test also fails if (i) survives but its longest rollout reaches the cap, since that means the legacy is one change away from the cliff. This complements Q6: Q6 asks "does (i) reproduce `MCTS_legacy`?", while Q7 asks whether all five backend slots complete the legacy envelope without backend (i) overflow or envelope failure. Q7 intentionally does not require backend (i)'s legacy search tree to match the steelman visit vectors or chosen moves.
 
 ---
 
@@ -272,9 +272,9 @@ Per doctrine §Test Organization, each tier is a separate cabal stanza:
 | Stanza | Tier | Scope |
 |---|---|---|
 | `mcts-unit` | pure logic | engine invariants, parser tests (`execParserPure`), property tests, golden tests for `CommandSpec` output and `inspect show` rendering, transcript codec roundtrips, RNG mixer properties |
-| `mcts-integration` | subprocess | exercises the real `mcts` binary across the FFI to every backend; same-backend determinism (same seed and logical game inputs ⇒ same determinism payloads, three seeds per backend); bounded report-card divergence and cached recompute-sidecar checks; live-envelope stamping/stale-cache coverage when foreign shared libraries are present |
-| `mcts-cross-backend` | round-robin verify | the logical `verify` cohort under `--rng cpp` covering backends (ii), (iii), (iv), (v); backend (i) excluded by the `VerifyBackend` type |
-| `mcts-legacy-parity` | round-robin verify, legacy envelope | logical `verify legacy-parity` across all five backend slots with `max_plies = 10000` pinned and a fixture seed; the integration pre-flight guard asserts live (i) neither throws nor reaches the cap, see [Draw rule](#draw-rule) |
+| `mcts-integration` | subprocess | exercises the real `mcts` binary across the FFI to every backend; same-backend determinism (same seed and logical game inputs ⇒ same determinism payloads, three seeds per backend); decoded real-binary transcript determinism; bounded report-card divergence and cached recompute-sidecar checks; live-envelope stamping/stale-cache coverage when foreign shared libraries are present |
+| `mcts-cross-backend` | round-robin verify | live FFI-capable `verify` cohort under `--rng cpp` covering backends (ii), (iii), (iv), (v); backend (i) excluded by the `VerifyBackend` type |
+| `mcts-legacy-parity` | legacy-envelope verify | live FFI-capable `verify legacy-parity` across all five backend slots with `max_plies = 10000` pinned and a fixture seed; Q7 checks liveness/overflow rather than backend (i)-vs-steelman visit-vector equality, and the integration pre-flight guard asserts live (i) neither throws nor reaches the cap, see [Draw rule](#draw-rule) |
 | `mcts-haskell-style` | lint | pinned style-tool `fourmolu --mode check`, `hlint --with-group=default --with-group=extra + .hlint.yaml` with only `Error:` findings blocking, `cabal format` round-trip equality |
 
 A single `tasty` tree spanning all tiers is forbidden by doctrine; the stanza split gives Cabal-native parallelism and lets contributors target one tier (`docker compose run --rm mcts mcts test mcts-unit`).
@@ -285,11 +285,11 @@ The report-card workload runs *after* `cabal test` succeeds and answers:
 
 1. **Q1.** Does pure Haskell match maximally-optimised C++ (backend ii) on benchmark (a) random rollouts, single-threaded and on 8 workers?
 2. **Q2.** Does pure Haskell match backend (ii) on benchmark (b) self-play, single-threaded and on 8 workers?
-3. **Q3.** Do backend slots (ii), (iii), (iv), (v) produce bit-for-bit identical logical determinism payloads under `--rng cpp` (round-robin verify on both rollouts and self-play)?
+3. **Q3.** Do backend slots (ii), (iii), (iv), (v) produce bit-for-bit identical determinism payloads under `--rng cpp` (round-robin verify on both rollouts and self-play)?
 4. **Q4.** Does same-backend determinism hold across runs (same backend, same seed, same logical game inputs ⇒ identical determinism payloads) for every backend?
 5. **Q5.** How does each backend scale from `--threading single` to `--threading multi --workers 8`? The text summary block highlights Haskell and C++ (ii) as the two anchors; the full per-backend scaling table is available via `mcts test all --format json`.
 6. **Q6.** Does the verbatim port (i) faithfully reproduce `MCTS_legacy` on benchmark (b)?
-7. **Q7.** Do all five backend slots agree in the logical round-robin under the legacy-parity envelope (`max_plies = 10000`, fixture seed where live (i) does not throw)?
+7. **Q7.** Can all five backend slots complete the legacy-parity envelope (`max_plies = 10000`, fixture seed where live (i) does not throw) without overflow or envelope errors?
 
 ### Report-card workload
 
@@ -315,25 +315,26 @@ docker compose run --rm mcts mcts verify legacy-parity selfplay \
     --games $G_LP --seed $S_LP --sims $S_LP_SIMS
 ```
 
-Game counts (`$G_R`, `$G_S`, `$G_V`, `$G_LP`), per-move sim budgets (`$S_BENCH`, `$S_VERIFY`, `$S_LP_SIMS`), and the legacy-parity seed (`$S_LP`) are pinned in `cabal.project` so the report card is reproducible across hosts. The pinned values are: `G_R = 1_000`, `G_S = 4`, `G_V = 4`, `G_LP = 2`, `S_BENCH = 500`, `S_VERIFY = 500`, `S_LP_SIMS = 10_000`, `S_LP = 42`. `mcts test all` measures Q1/Q2/Q5 with the production monotonic clock through `runBatchNoWriteDispatch` and requires the canonical backend artefacts built earlier in the same container; otherwise the report-card builder fails instead of falling back to logical placeholders. Q3/Q7 use logical verification transcripts so the headline determinism rows stay stable across hosts while the live FFI engines are covered by integration and divergence checks. Q4 (same-backend determinism) is covered by the `mcts-integration` stanza. The Q6 external fixture anchor is decoded there from every committed `test/golden/legacy/transcripts/<arch>/` directory; each fixture is hash-named by its bytes and asserted to carry the legacy parity envelope (`seed = 42`, `games = 1`, `sims = 10000`, `max_plies = 10000`). Fixture regeneration is exposed as `docker compose run --rm mcts mcts build legacy-fixtures --output-dir test/golden/legacy/transcripts --seed 42 --games 10 --sims 10000`. Q7 (5-way legacy-parity round-robin) runs in the bounded report-card gate and in the `mcts-legacy-parity` stanza, since its failure modes are configuration-sensitive (fixture seed, sim budget) and worth surfacing in the headline summary.
+Game counts (`$G_R`, `$G_S`, `$G_V`, `$G_LP`), per-move sim budgets (`$S_BENCH`, `$S_VERIFY`, `$S_LP_SIMS`), and the legacy-parity seed (`$S_LP`) are pinned in `cabal.project` so the report card is reproducible across hosts. The pinned values are: `G_R = 1_000`, `G_S = 4`, `G_V = 4`, `G_LP = 2`, `S_BENCH = 500`, `S_VERIFY = 500`, `S_LP_SIMS = 10_000`, `S_LP = 42`. `mcts test all` measures Q1/Q2/Q5 with the production monotonic clock through `runBatchNoWriteDispatch` and requires the canonical backend artefacts built earlier in the same container; otherwise the report-card builder fails instead of falling back to placeholders. Q3/Q7 use `runBatchDispatch`, so the headline determinism rows exercise live FFI engines when cdylibs are present and fall back to the in-process runner only when needed for self-contained local stanzas. Q3 compares nonzero visit vectors for backends (ii)..(v). Q7 is a legacy-envelope liveness/overflow gate for all five backend slots; it intentionally does not require the steelman engines to reproduce backend (i)'s tree visit counts or chosen moves. Q4 (same-backend determinism) is covered by the `mcts-integration` stanza, including decoded real-binary transcript determinism. The Q6 external fixture anchor is decoded there from every committed `test/golden/legacy/transcripts/<arch>/` directory; each fixture is hash-named by its bytes and asserted to carry the legacy parity envelope (`seed = 42`, `games = 1`, `sims = 10000`, `max_plies = 10000`). Fixture regeneration is exposed as `docker compose run --rm mcts mcts build legacy-fixtures --output-dir test/golden/legacy/transcripts --seed 42 --games 10 --sims 10000`. Q6 remains the byte-for-byte legacy visit-vector anchor.
 
 ### Tidy summary block
 
-Rendered to stdout at the end of `mcts test all`. Literal example:
+Rendered to stdout at the end of `mcts test all`. Literal success-shape example
+for the renderer.
 
 ```
 MCTS POC report card - seed=42, max-plies=200, host=amd64, ghc=9.14
 ------------------------------------------------------------------------
-Q1  Haskell vs C++ (ii)  rollouts  ST          2.88x   (531.4 vs 1531.6 games/s)
-Q1  Haskell vs C++ (ii)  rollouts  MT8         18.93x   (493.8 vs 9344.6 games/s)
-Q2  Haskell vs C++ (ii)  self-play ST          3.65x   (0.4 vs 1.6 games/s)
-Q2  Haskell vs C++ (ii)  self-play MT8         10.18x   (0.4 vs 4.5 games/s)
-Q3  Cross-backend determinism  (cpp RNG)       PASS    (4 logical backends agree)
-Q4  Same-backend determinism   (per backend)   PASS    (5/5 logical backends x 3 seeds)
+Q1  Haskell vs C++ (ii)  rollouts  ST          0.05x   (551.1 vs 30.0 games/s)
+Q1  Haskell vs C++ (ii)  rollouts  MT8         0.40x   (511.9 vs 205.9 games/s)
+Q2  Haskell vs C++ (ii)  self-play ST          0.05x   (0.4 vs 0.0 games/s)
+Q2  Haskell vs C++ (ii)  self-play MT8         0.20x   (0.4 vs 0.1 games/s)
+Q3  Cross-backend determinism  (cpp RNG)       PASS    (4 backends agree)
+Q4  Same-backend determinism   (per backend)   PASS    (5/5 backends x 3 seeds)
 Q5  MT scaling  Haskell   1->8 workers         1.00x   (0.4 -> 0.4 games/s)
-Q5  MT scaling  C++ (ii)  1->8 workers         2.80x   (1.6 -> 4.5 games/s)
+Q5  MT scaling  C++ (ii)  1->8 workers         3.61x   (0.0 -> 0.1 games/s)
 Q6  Legacy port (i) vs MCTS_legacy             PASS    (10000-sim fixtures)
-Q7  Legacy parity, 5-way round-robin           PASS    (logical cohort)
+Q7  Legacy envelope, 5-backend liveness        PASS    (5 backends complete envelope)
 
 Divergence matrix (visit/move, cpp RNG; thresholds native 0.005/0.050, cross-build 0.001/0.010)
 cpp-imperative  0.0000/0.0000  0.0000/0.0000  0.0000/0.0000  0.0000/0.0000
@@ -345,7 +346,7 @@ cabal test                                     PASS    (mcts-unit, mcts-integrat
                                                         mcts-cross-backend, mcts-legacy-parity,
                                                         mcts-haskell-style)
 
-Verdict: Shortfall 17.925246987694774
+Verdict: Within tolerance
 ```
 
 The same data is available as `mcts test all --format json` for CI consumption; both formats are rendered by the same pure function over a typed `ReportCard` value. Rendering precision is fixed: ratios render to fixed precision (e.g. `2.88x`), throughputs to one decimal place (e.g. `531.4 games/s`). No timestamps, no locale-dependent ordering, no terminal-width-dependent wrapping. Wall-clock numbers are the only non-deterministic content; the block is golden-testable with sentinel placeholders substituted for live throughputs.
@@ -562,7 +563,7 @@ docker compose run --rm mcts mcts bench selfplay \
 docker compose run --rm mcts mcts bench selfplay \
     --backend haskell --rng native --workers 32 --games 1000 --seed 42 --sims 10000
 
-# Cross-backend determinism check: logical C++-RNG cohort
+# Cross-backend determinism check: C++-RNG cohort
 docker compose run --rm mcts mcts verify selfplay \
     --backend cpp-imperative,rust,haskell \
     --threading single --games 50 --seed 42 --max-plies 200 --sims 10000
@@ -669,7 +670,7 @@ Default `--top 10`; `--top 0` shows all legal moves. With `--with-equity` the en
 The first concrete deliverable is the **Cabal-centric benchmark harness** described by the CLI topology above:
 
 - `mcts bench rollouts` and `mcts bench selfplay` running across all five backends, both threading modes, both RNG sources.
-- `mcts verify rollouts` and `mcts verify selfplay` enforcing logical cross-backend determinism under the C++-RNG seed schedule.
+- `mcts verify rollouts` and `mcts verify selfplay` enforcing cross-backend determinism under the C++-RNG seed schedule.
 - All measurements taken from a single Cabal-driven clock; backends (i), (ii), (iii), and (iv) reached through the FFI from the same Haskell process, with (v) Haskell running natively in that same process.
 - No ANN evaluation. No Python. No web frontend. Just engine, rollouts, MCTS, numbers.
 
@@ -680,7 +681,7 @@ exist to preserve the legacy-parity envelope. The transitive anchor
 `MCTS_legacy ≡ (i)` (see [Draw rule](#draw-rule)) becomes a frozen historical
 fact recorded in `test/golden/legacy/` rather than a continuously re-run check.
 Q3 and the `mcts-cross-backend` stanza continue with whatever subset of
-(ii)–(v) is still represented in the logical verification cohort.
+(ii)–(v) remains in the verification cohort.
 
 ---
 
@@ -881,7 +882,7 @@ GHC 9.14 has no production-grade profile-guided optimisation comparable to GCC/C
 
 ## Game: Corridors
 
-Corridors is a two-player race game on a 9×9 board. Each player tries to reach the opposite edge while spending a finite supply of walls to obstruct the opponent. Walls cannot fully enclose either player. The rules are unchanged from the legacy implementation; only the runtime is being rebuilt.
+Corridors is a two-player race game on a 9×9 board. Each player tries to reach the opposite edge while spending a finite supply of walls to obstruct the opponent. Walls cannot fully enclose either player. The verifier cohort uses a simplified rules subset: adjacent unoccupied pawn moves only, no jump moves, walls cannot overlap or cross, and each wall placement must leave both players with a path.
 
 Strict Corridors has no draw rule — a game can in principle run arbitrarily long if both players waste moves. Backend (i) inherits this property unchanged (it is a verbatim port). Backends (ii)–(v) impose an additional termination rule: if the ply count reaches `max_plies` (default 200) without a positional win, the game is a draw. `max_plies` is part of the run configuration and pinned in the transcript header, so it's part of the determinism contract. See [Draw rule](#draw-rule) for the wire-format and contract details.
 

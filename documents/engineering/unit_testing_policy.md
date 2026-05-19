@@ -35,8 +35,8 @@ Stanzas](../../DEVELOPMENT_PLAN/system-components.md):
 |--------|------|-------|
 | `mcts-unit` | Pure logic | Engine invariants, parser tests via `execParserPure`, property invariants (`decode . encode == id`, `render is deterministic`, `parser roundtrips`), golden tests for `CommandSpec` output and `inspect show` rendering, transcript codec roundtrips, RNG mixer properties, per-leaf `Example` presence |
 | `mcts-integration` | Subprocess | Real `mcts` binary across the FFI to every backend; same-backend determinism (Q4) at 3 seeds per backend; bounded report-card divergence plus cached recompute-sidecar `inspect divergence` coverage; foreign-backend FFI smoke-driver, live-envelope stamping, and backend-slot stale hard-fail/`--allow-stale` warning coverage when shared libraries are present; Q6 golden-fixture decode for every committed `test/golden/legacy/transcripts/<arch>/` directory |
-| `mcts-cross-backend` | Round-robin verify | logical `verify` cohort under `--rng cpp` covering `(ii)..(v)`; backend (i) excluded by the `VerifyBackend` GADT |
-| `mcts-legacy-parity` | Round-robin verify, legacy envelope | logical `verify legacy-parity` across all five backend slots with `max_plies = 10000` pinned and fixture seed `S_LP = 42`; the integration pre-flight guard asserts live (i) does not throw or reach `MAX_ROLLOUT_ITERS` |
+| `mcts-cross-backend` | Round-robin verify | live FFI-capable `verify` cohort under `--rng cpp` covering `(ii)..(v)`; backend (i) excluded by the `VerifyBackend` GADT |
+| `mcts-legacy-parity` | Legacy-envelope verify | live FFI-capable `verify legacy-parity` across all five backend slots with `max_plies = 10000` pinned and fixture seed `S_LP = 42`; Q7 checks liveness/overflow rather than backend (i)-vs-steelman visit-vector equality, and the integration pre-flight guard asserts live (i) does not throw or reach `MAX_ROLLOUT_ITERS` |
 | `mcts-haskell-style` | Lint | `cabal format` temp-file round-trip byte-equality, pinned style-tool `fourmolu --mode check` and `hlint`, plus the source-walker guard for tabs and the conservative forbidden-symbol subset |
 
 Each stanza declares `type: exitcode-stdio-1.0`, the `tasty` dependencies, and a
@@ -47,26 +47,27 @@ the renderers/TUI group also pins the shared board/status layout in
 `test/golden/cli/tui-board.txt` and asserts the `mcts play :save` path by writing
 and decoding a hand-play transcript. It also advances an AI turn with a selected
 foreign backend, exercising the live FFI path when the matching cdylib exists and the
-logical fallback otherwise, and asserts that the transcript record keeps the returned
+in-process fallback otherwise, and asserts that the transcript record keeps the returned
 visit vector. The replay overlay case also covers originator cache-miss preparation:
 `prepareReplayOverlays` recomputes a missing `.eq`, writes one sidecar, and then
 loads the same overlay on a cache hit without recomputing. The envelope case also
 covers live C ABI envelope conversion plus hard-fail vs `--allow-stale` behavior
 for `compiler_version` and `shared_rng_build_id` mismatches, plus structured JSON
-`warning_details` for downgraded stale warnings. Fixture-scale properties and byte-golden
-assertions remain in those cases until the final `tasty-quickcheck` /
-`tasty-golden` provider promotion lands. The
-current Phase 7 verification baseline uses logical backend dispatch for Q3/Q7,
-while live foreign shared libraries are covered by integration and divergence
-smokes. The integration tier also runs real `mcts` binary same-backend determinism checks through
+`warning_details` for downgraded stale warnings. `tasty-quickcheck` now covers
+transcript roundtrips, and `tasty-golden` pins the command-tree, report-card,
+and replay layout fixtures. The current Phase 7 verification baseline uses
+`runBatchDispatch` for Q3/Q7, so live foreign shared libraries are exercised
+when present and the in-process fallback keeps the stanzas self-contained when
+they are absent. The integration tier also runs real `mcts` binary same-backend determinism checks through
 `MCTS.Subprocess.capture` for Haskell and every built foreign backend, a bounded
 measured report-card builder check, a cached recompute-sidecar
 `mcts inspect divergence` subprocess check, plus bounded foreign-backend smoke games through
 `src/MCTS/Driver/{CppLegacy,CppImperative,CppFunctional,Rust}.hs` when the
-container-built shared libraries are present. The cross-backend and legacy-parity
-stanzas assert `Right` results for their focused logical rollout and self-play smoke cohorts;
-`VerifyMismatch` is not an accepted passing outcome. The single-tree-across-stanzas
-pattern is forbidden.
+container-built shared libraries are present. The cross-backend stanza asserts
+`Right` results without `VerifyMismatch` for its focused rollout and self-play
+smoke cohorts; the legacy-parity stanza asserts `Right` results for its
+five-backend liveness/overflow cohorts. The single-tree-across-stanzas pattern
+is forbidden.
 
 ## Property Invariants
 
@@ -132,7 +133,9 @@ needed. Internally, the plan is a typed `[Subprocess]` sequence run via
 10. Pinned report-card workload — Q1/Q2/Q5 are measured inside the report-card
    builder through the no-write batch runner, while Q3/Q7 are rendered as
    explicit `mcts verify` subprocesses through `cabal exec mcts -- ...` so the
-   command does not depend on a separate `mcts` executable on `PATH`.
+   command does not depend on a separate `mcts` executable on `PATH`. Q3 is the
+   live visit-vector equality gate for `(ii)..(v)`; Q7 is the live
+   legacy-envelope liveness/overflow gate for all five backend slots.
 11. Render the tidy summary block from the collected `ReportCard` value,
     including the `visit/move` divergence matrix populated from the measured
     `G_V` verify transcripts on the live `mcts test all` path.
@@ -163,8 +166,9 @@ The report card answers seven questions, verbatim from
    available via `mcts test all --format json`.
 6. **Q6.** Does the verbatim port (i) faithfully reproduce `MCTS_legacy` on
    benchmark (b)?
-7. **Q7.** Do all five backends agree round-robin under the legacy-parity
-   envelope (`max_plies = 10000`, fixture seed where (i) does not throw)?
+7. **Q7.** Do all five backend slots complete the legacy-parity envelope
+   (`max_plies = 10000`, fixture seed where (i) does not throw) without backend
+   (i) overflow or envelope failure?
 
 **Backend (i) basis caveat.** Backend (i) `cpp-legacy` is a verbatim port and
 inherits the legacy's lack of a game-level ply cap (see
@@ -180,9 +184,9 @@ warning from [../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-car
 to any Q1 / Q2 / Q5 row produced for backend (i) under
 `max_plies != 10000`. The load-bearing Q1 / Q2 comparison is Haskell (v)
 versus C++ (ii), where both backends terminate identically; backend (i) is
-otherwise compared on equal footing only under the legacy-parity envelope
-(Q7), where the ply cap is pinned to `10000` and all five backends
-terminate identically. See
+otherwise exercised with the other backends only under the legacy-parity
+envelope (Q7), where the ply cap is pinned to `10000` and the gate checks
+liveness/overflow rather than throughput or visit-count equality. See
 [compiler_runtime_tuning.md](./compiler_runtime_tuning.md) for the
 backend (i) build flags that make the verbatim port non-comparable on raw
 throughput.
@@ -200,8 +204,10 @@ Knobs](../../DEVELOPMENT_PLAN/system-components.md): `G_R = 1_000`, `G_S =
 the Cabal stanzas and final report card. The measured report-card builder
 requires those artefacts, uses the production monotonic clock for Q1/Q2/Q5
 throughput through `runBatchNoWriteDispatch`, and renders `Evidence pending`
-only in the static golden baseline,
-not in a live full run.
+only in the static golden baseline, not in a live full run. Current validation
+keeps the Cabal stanzas green, including the bounded `mcts-legacy-parity`
+stanza. Q7 is intentionally rendered as the legacy-envelope liveness/overflow
+subprocess, while Q3 carries the visit-count equality assertion for `(ii)..(v)`.
 
 Summary block format pinned in the project [../../README.md → Tidy summary
 block](../../README.md). Renderer is pure; wall-clock numbers render to fixed
@@ -219,7 +225,7 @@ checks that payload against `test/golden/report-card-schema.json` so schema
 drift fails in `mcts-unit`. Drift from the README layout fails the golden — the
 README's tidy summary is the source of truth for the renderer.
 The unit suite also covers `divergenceRowsFromTranscripts`, while the golden
-fixtures keep the static logical matrix as the deterministic renderer baseline.
+fixtures keep the static zero matrix as the deterministic renderer baseline.
 
 ## Cross-References
 

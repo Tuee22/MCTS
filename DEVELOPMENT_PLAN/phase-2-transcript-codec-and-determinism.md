@@ -398,7 +398,7 @@ consumer is wired in Phase 4 once the FFI bridge exists.
 ### Closure Notes
 
 - Baseline landed: `splitmix64`, `mix`, `RngSource`, `--rng native|cpp` parsing, and
-  verification paths that force the logical cohort to `CppRng`.
+  verification paths that force the cohort to `CppRng`.
 - Baseline unit coverage now pins `mix(42, 0) == 2949826092126892291` and
   `mix(42, 1) == 5139283748462763858`, and the `mcts-unit` stanza adds a
   bounded bijection check (`mix 42 i` is unique for `i ∈ [0, 1023]`). The
@@ -626,12 +626,14 @@ and `castWord64ToDouble` round-trips.
   contract; the legacy parity envelope (`max_plies = MAX_ROLLOUT_ITERS = 10000`,
   fixture seed `S_LP = 42`, `AppError LegacyParityRolloutOverflow`); the
   visit-count vs equity asymmetry and the cross-backend equity tolerance
-  implicit through tie-break swap; the byte-consumption contract (same `u64`s
-  per rollout, `draw % n` for legal-move selection, no rejection sampling unless
-  identical); the backprop traversal contract (same path order, same logical
-  step for visit-count and value-sum updates); the tie-breaking contract
-  (`(equity desc, non_terminal_rank asc)` applied uniformly across all five
-  backends); the verify mismatch output protocol (digest-equality first, then
+  implicit through search-choice drift; the byte-consumption contract (same
+  `u64`s per rollout, Haskell signed-`Int` modulo legal-move selection, no
+  rejection sampling unless identical); the backprop traversal contract (same
+  path order, same logical step for visit-count and value-sum updates); the
+  move-shape and tie-breaking contract (adjacent unoccupied pawn moves only,
+  no jump moves, no overlapping/crossing walls, first 12 canonical wall moves,
+  UCT score ties by action ID, final root choice by visit count then action
+  ID); the verify mismatch output protocol (digest-equality first, then
   move-by-move scan emitting `AppError VerifyMismatch` with `(left_backend,
   right_backend, game_id, move_index, left_record, right_record)`); tree
   persistence and memory-resident-only trees; and the threading model

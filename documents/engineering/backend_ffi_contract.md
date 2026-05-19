@@ -38,9 +38,13 @@ the board lifecycle, visit-vector search, recompute, read-visits, and envelope
 symbols when the shared libraries are present. Legacy chosen-action smoke helpers
 remain as compatibility residue for Cabal builds without local shared libraries; the
 operator-facing bench/play/divergence paths and integration smokes use the real
-visit-vector and recompute ABIs for the non-legacy foreign backends. Q3/Q7
-`verify` currently uses the logical in-process cohort until the live FFI cohort
-determinism gap is closed.
+visit-vector and recompute ABIs for the non-legacy foreign backends. Q3 `verify`
+uses the live visit-vector ABI for visit-count equality across `(ii)..(v)`, and
+Q7 `verify legacy-parity` uses the same live dispatch path as a five-backend
+legacy-envelope liveness/overflow gate. Both use live cdylibs when the matching
+library is present and the requested batch can use the fixed 60-ply foreign
+search horizon; otherwise they fall back to the in-process runner so Cabal
+stanzas stay self-contained.
 
 The **FFI load name** is the canonical install path matching
 [../../README.md → Repository layout (target)](../../README.md); the Haskell FFI
@@ -126,6 +130,13 @@ void                   mcts_<backend>_backprop(mcts_<backend>_tree *t,
                                                 uint32_t leaf_idx, float value);
 void                   mcts_<backend>_reroot(mcts_<backend>_tree *t, uint8_t chosen_action);
 ```
+
+The current C++ and Rust visit-vector search entry points expose `sim_budget`
+but not an explicit search-horizon argument. Their compiled search horizon is
+60 plies, matching the Haskell `min 60 max_plies` UCT rollout/tree cap used by
+the report-card verify workload. Batch dispatch therefore uses live foreign
+search for `max_plies >= 60` and falls back to the in-process runner for lower
+caps until a future ABI revision adds an explicit per-run search-cap parameter.
 
 ### Instrumentation Surface (Instrumented Build Only)
 
@@ -261,7 +272,7 @@ The recompute reads the transcript's `RunConfig`, replays the search
 from move 0 using the transcript's seed and budget, and emits one record
 per move. Under `--rng cpp` the recompute **hard-asserts** chosen-action and
 visit agreement only when the transcript is a live same-backend originator
-transcript. For logical fallback transcripts, native-RNG transcripts, or a
+transcript. For in-process fallback transcripts, native-RNG transcripts, or a
 foreign backend on another backend's `--rng cpp` transcript, the recompute does
 not abort on disagreement; the disagreement contributes to the divergence-smell
 metric (see
@@ -330,11 +341,11 @@ Per-symbol:
 
 ## `--rng cpp` Plumbing
 
-For the logical Q3/Q7 verification cohort, the `--rng cpp` flag selects the
+For the Q3/Q7 verification cohorts, the `--rng cpp` flag selects the
 canonical C++-RNG seed schedule and suppresses backend-native salt. The legacy
 backend and the C++ FFI engines still use `std::mt19937_64`; Rust and Haskell
-live FFI/logical paths remain tracked separately until live FFI cohort
-promotion. The shared generator lives in
+mirror the same logical seed schedule for live FFI-compatible verification. The
+shared generator lives in
 `cpp-legacy/c-abi/rng.{h,cc}` (because the legacy itself uses it) and exposes
 the canonical symbols required by
 [../../README.md → Cross-backend verification → RNG FFI contract](../../README.md):
@@ -521,7 +532,7 @@ file per backend rather than chasing call sites.
 - [haskell_code_guide.md](./haskell_code_guide.md) — `Subprocess` boundary
   through which the build harness invokes the C/Rust compilers
 - [determinism_contract.md](./determinism_contract.md) — `--rng cpp` semantics
-  and the logical verification cohort
+  and the verification cohort
 - [transcript_format.md](./transcript_format.md) — wire format the instrumented
   build emits
 - [compiler_runtime_tuning.md](./compiler_runtime_tuning.md) — per-backend flag

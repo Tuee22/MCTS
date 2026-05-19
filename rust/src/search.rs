@@ -3,12 +3,13 @@
 // search with first-unvisited-child expansion and UCB1 selection.
 
 use crate::board::MctsRustBoard;
-use crate::rollout::{rollout_value, smoke_rollout_action};
-use crate::tree::{NO_INDEX, Tree};
-use crate::xoshiro256pp::Xoshiro256pp;
+use crate::board::flip_action_id;
+use crate::rollout::smoke_rollout_action;
+use crate::tree::Tree;
 
 const DEFAULT_MAX_PLIES: u16 = 200;
-const EXPLORATION_C: f64 = 1.4;
+const EXPLORATION_C: f64 = 1.41421356;
+const ROLLOUT_CAP: u16 = 60;
 
 pub struct SearchOutput {
     pub visits: Vec<(u8, u32)>,
@@ -55,6 +56,19 @@ pub fn run_search(
         out.ok = false;
         return out;
     }
+    let search_max_plies = max_plies.min(ROLLOUT_CAP);
+    if start.ply >= search_max_plies {
+        let mut buffer: Vec<u8> = Vec::with_capacity(160);
+        start.legal_actions(&mut buffer, max_plies);
+        if buffer.is_empty() {
+            out.ok = false;
+            return out;
+        }
+        out.visits = buffer.into_iter().map(|aid| (aid, 0)).collect();
+        out.chosen_action_id = out.visits[0].0;
+        out.chosen_equity = 0.0;
+        return out;
+    }
     let cap = (sims as usize).saturating_mul(2).max(256);
     let mut tree: Tree<MctsRustBoard> = Tree::with_capacity_state(cap, start.clone());
     let root_idx = tree.root();
@@ -62,47 +76,20 @@ pub fn run_search(
         let node = tree.node_mut(root_idx);
         node.ply_count = start.ply;
     }
-    expand(&mut tree, root_idx, max_plies);
+    expand(&mut tree, root_idx, search_max_plies);
     let root_after = tree.node(root_idx);
     if root_after.terminal == 1 || root_after.child_count == 0 {
         out.ok = false;
         return out;
     }
-    let mut rng = Xoshiro256pp::new(seed);
-    for _ in 0..sims {
-        let mut idx = root_idx;
-        let leaf_idx = loop {
-            let node = tree.node(idx);
-            if node.terminal == 1 {
-                break idx;
-            }
-            if node.expanded == 0 {
-                expand(&mut tree, idx, max_plies);
-                let n = tree.node(idx);
-                if n.terminal == 1 || n.child_count == 0 {
-                    break idx;
-                }
-            }
-            let n = tree.node(idx);
-            let first = n.first_child;
-            let count = n.child_count;
-            let mut chosen = NO_INDEX;
-            for i in 0..count {
-                let child = tree.node(first + i as u32);
-                if child.visits == 0 {
-                    chosen = first + i as u32;
-                    break;
-                }
-            }
-            if chosen != NO_INDEX {
-                idx = chosen;
-                break idx;
-            }
-            idx = select_best_ucb(&tree, idx);
-        };
-        let leaf_state = tree.state(leaf_idx).clone();
-        let value = rollout_value(&leaf_state, max_plies, &mut rng);
-        backprop(&mut tree, leaf_idx, value);
+    {
+        let root = tree.node_mut(root_idx);
+        root.visits = 1;
+    }
+    let mut sim_seed = seed;
+    for i in 0..sims {
+        sim_seed = mix(sim_seed, i as u64);
+        let _ = descend(&mut tree, root_idx, sim_seed, search_max_plies);
     }
     let root = tree.node(root_idx).clone();
     let mut best_visits = 0u32;
@@ -123,7 +110,7 @@ pub fn run_search(
     out.chosen_equity = if chosen_node.visits == 0 {
         f64::NAN
     } else {
-        -(chosen_node.q_sum / chosen_node.visits as f64)
+        chosen_node.q_sum / chosen_node.visits as f64
     };
     out
 }
@@ -163,43 +150,134 @@ fn expand(tree: &mut Tree<MctsRustBoard>, node_idx: u32, max_plies: u16) {
     parent.child_count = n_moves as u16;
 }
 
+fn descend(tree: &mut Tree<MctsRustBoard>, node_idx: u32, seed: u64, max_plies: u16) -> f64 {
+    let state = tree.state(node_idx).clone();
+    if let Some(outcome) = terminal_outcome(&state, max_plies) {
+        add_value(tree, node_idx, outcome);
+        return outcome;
+    }
+    let visits = tree.node(node_idx).visits;
+    if visits == 0 {
+        let outcome = rollout_haskell(&state, seed, max_plies);
+        add_value(tree, node_idx, outcome);
+        return outcome;
+    }
+    if tree.node(node_idx).expanded == 0 {
+        expand(tree, node_idx, max_plies);
+    }
+    let node = tree.node(node_idx);
+    if node.terminal == 1 || node.child_count == 0 {
+        let outcome = 0.0;
+        add_value(tree, node_idx, outcome);
+        return outcome;
+    }
+    let parent_visits_after = visits.saturating_add(1);
+    let child_offset = select_best_ucb_offset(tree, node_idx, parent_visits_after);
+    let child_idx = tree.node(node_idx).first_child + child_offset;
+    let child_seed = mix(seed, child_offset as u64 + 1);
+    let outcome = descend(tree, child_idx, child_seed, max_plies);
+    add_value(tree, node_idx, outcome);
+    outcome
+}
+
 #[inline]
-fn select_best_ucb(tree: &Tree<MctsRustBoard>, parent_idx: u32) -> u32 {
+fn add_value(tree: &mut Tree<MctsRustBoard>, node_idx: u32, value: f64) {
+    let node = tree.node_mut(node_idx);
+    node.visits = node.visits.saturating_add(1);
+    node.q_sum += value;
+}
+
+#[inline]
+fn select_best_ucb_offset(
+    tree: &Tree<MctsRustBoard>,
+    parent_idx: u32,
+    parent_visits_after: u32,
+) -> u32 {
+    let parent_state = tree.state(parent_idx);
     let p = tree.node(parent_idx);
     let first = p.first_child;
     let n = p.child_count;
-    let parent_visits = (p.visits as f64).max(1.0);
-    let log_parent = parent_visits.ln();
+    let log_parent = (parent_visits_after.max(1) as f64).ln();
     let mut best_score = f64::NEG_INFINITY;
-    let mut best = first;
+    let mut best_offset = 0u32;
+    let mut best_key = u8::MAX;
     for i in 0..n {
         let child_idx = first + i as u32;
         let child = tree.node(child_idx);
         let score = if child.visits == 0 {
-            1.0e100 - (i as f64)
+            1.0e30
         } else {
-            let mean = -(child.q_sum / child.visits as f64);
+            let mean = child.q_sum / child.visits as f64;
             let exploration = EXPLORATION_C * (log_parent / child.visits as f64).sqrt();
             mean + exploration
         };
-        if score > best_score {
+        let key = canonical_key(parent_state, child.action_id);
+        if score > best_score || (score == best_score && key < best_key) {
             best_score = score;
-            best = child_idx;
+            best_offset = i as u32;
+            best_key = key;
         }
     }
-    best
+    best_offset
 }
 
 #[inline]
-fn backprop(tree: &mut Tree<MctsRustBoard>, leaf_idx: u32, leaf_value: f64) {
-    let mut idx = leaf_idx;
-    let mut value = leaf_value;
-    while idx != NO_INDEX {
-        let node = tree.node_mut(idx);
-        node.visits = node.visits.saturating_add(1);
-        node.q_sum += value;
-        let parent = node.parent;
-        value = -value;
-        idx = parent;
+fn rollout_haskell(start: &MctsRustBoard, seed: u64, max_plies: u16) -> f64 {
+    let mut board = start.clone();
+    let mut current_seed = seed;
+    let mut buffer: Vec<u8> = Vec::with_capacity(160);
+    for step in 0..max_plies {
+        if let Some(outcome) = terminal_outcome(&board, max_plies) {
+            return outcome;
+        }
+        board.legal_actions(&mut buffer, u16::MAX);
+        if buffer.is_empty() {
+            return 0.0;
+        }
+        let signed_draw = (current_seed ^ step as u64) as i64;
+        let n = buffer.len() as i64;
+        let mut pick = signed_draw % n;
+        if pick < 0 {
+            pick += n;
+        }
+        let action = buffer[pick as usize];
+        let _ = board.apply_action_flip(action);
+        current_seed = mix(current_seed, step as u64);
     }
+    0.0
+}
+
+#[inline]
+fn terminal_outcome(board: &MctsRustBoard, max_plies: u16) -> Option<f64> {
+    if board.hero_wins() {
+        Some(if board.ply % 2 == 0 { 1.0 } else { -1.0 })
+    } else if board.villain_wins() {
+        Some(if board.ply % 2 == 0 { -1.0 } else { 1.0 })
+    } else if board.ply >= max_plies {
+        Some(0.0)
+    } else {
+        None
+    }
+}
+
+#[inline]
+fn canonical_key(board: &MctsRustBoard, action_id: u8) -> u8 {
+    if board.ply % 2 == 0 {
+        action_id
+    } else {
+        flip_action_id(action_id)
+    }
+}
+
+#[inline]
+fn mix(master_seed: u64, index: u64) -> u64 {
+    splitmix64(master_seed.wrapping_add(0x9e3779b97f4a7c15u64.wrapping_mul(index + 1)))
+}
+
+#[inline]
+fn splitmix64(input: u64) -> u64 {
+    let z1 = input.wrapping_add(0x9e3779b97f4a7c15);
+    let z2 = (z1 ^ (z1 >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
+    let z3 = (z2 ^ (z2 >> 27)).wrapping_mul(0x94d049bb133111eb);
+    z3 ^ (z3 >> 31)
 }

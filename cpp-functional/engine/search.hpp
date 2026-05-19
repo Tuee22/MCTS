@@ -2,7 +2,9 @@
 // surface uses `std::variant` for select outcomes and `std::optional`
 // for terminal evaluations (per Sprint 6.1's "functional style at the
 // API and data-flow level"); the implementation lowers to the same
-// arena-MCTS algorithm as backend (ii).
+// arena-MCTS algorithm as backend (ii), with the same absolute action
+// ordering, splitmix seed schedule, and hero-perspective value
+// propagation as the Haskell verifier.
 
 #pragma once
 
@@ -56,9 +58,8 @@ struct RngBackend {
 struct SearchOutput {
     std::vector<std::pair<uint8_t, uint32_t>> visits;
     uint8_t chosen_action_id = 0;
-    // Sprint 6.5: parent-perspective equity of the chosen child
-    // computed as `-child.q_sum / child.visit_count`. NaN if the
-    // chosen child has zero visits (impossible for sims >= 1).
+    // Hero-perspective equity of the chosen child (`q_sum / visits`),
+    // matching `MCTS.Search.UCT.uctSearchWithEquity`.
     double chosen_equity = std::numeric_limits<double>::quiet_NaN();
     bool ok = true;
 };
@@ -69,6 +70,6 @@ SearchOutput run_search(
     uint16_t max_plies,
     RngBackend::Kind rng_kind,
     uint64_t seed,
-    double exploration_c = 1.4);
+    double exploration_c = 1.41421356);
 
 }  // namespace mcts_functional

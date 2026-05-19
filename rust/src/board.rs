@@ -207,15 +207,14 @@ impl MctsRustBoard {
         false
     }
 
-    /// Append every legal action (canonical action IDs from current
-    /// hero's perspective) to `out`. Order matches the legacy
-    /// `corridors::board::get_legal_moves` discipline so the
-    /// first-unvisited-child policy at sims=1 picks "up" (forward
-    /// progress) and game playthroughs terminate: pawn (up, right,
-    /// left, down), then walls iterated `i = y*8 + x` with the
-    /// horizontal slot tried before the vertical slot at each
-    /// intersection. Wall moves are capped at 12 to match
-    /// `MCTS.Engine.legalMoves` `take 12 (wallMoves board)`.
+    /// Append every legal action to `out`. Action IDs are always in
+    /// the current internal hero perspective, but the order is keyed by
+    /// the canonical Haskell/C++ verification perspective for this
+    /// absolute ply. This keeps the first-unvisited-child policy stable
+    /// even on odd plies, where the internal board has been rotated.
+    ///
+    /// Wall moves are capped at 12 to match `MCTS.Engine.legalMoves`
+    /// `take 12 (wallMoves board)`.
     pub fn legal_actions(&self, out: &mut Vec<u8>, max_plies: u16) {
         out.clear();
         if self.is_terminal(max_plies) {
@@ -226,32 +225,23 @@ impl MctsRustBoard {
             return;
         }
         let mut count = 0usize;
-        for i in 0..64u8 {
+        for canonical in 81..=208u8 {
             if count >= 12 {
                 break;
             }
-            let y = i / 8;
-            let x = i % 8;
-            if wall_test(self.walls_h, x, y) || wall_test(self.walls_v, x, y) {
+            let action_id = self.internal_action_for_canonical_order(canonical);
+            if self.wall_action_exists(action_id) {
                 continue;
             }
-            if self.wall_placement_legal(x, y, false) {
-                out.push(81 + y * 8 + x);
-                count += 1;
-                if count >= 12 {
-                    break;
-                }
-            }
-            if self.wall_placement_legal(x, y, true) {
-                out.push(145 + y * 8 + x);
+            if self.wall_action_legal(action_id) {
+                out.push(action_id);
                 count += 1;
             }
         }
     }
 
     fn append_pawn_actions(&self, out: &mut Vec<u8>) {
-        // Match the legacy ordering: up, right, left, down so the
-        // first emitted child is forward progress.
+        let start = out.len();
         let candidates: [(i8, i8); 4] = [(0, 1), (1, 0), (-1, 0), (0, -1)];
         for &(dx, dy) in &candidates {
             let nx = self.hero_x as i8 + dx;
@@ -268,6 +258,61 @@ impl MctsRustBoard {
                 continue;
             }
             out.push(ny_u * 9 + nx_u);
+        }
+        let odd_ply = self.ply % 2 != 0;
+        out[start..].sort_by_key(|aid| {
+            if odd_ply {
+                flip_action_id(*aid)
+            } else {
+                *aid
+            }
+        });
+    }
+
+    #[inline(always)]
+    fn internal_action_for_canonical_order(&self, canonical_action_id: u8) -> u8 {
+        if self.ply % 2 == 0 {
+            canonical_action_id
+        } else {
+            flip_action_id(canonical_action_id)
+        }
+    }
+
+    #[inline(always)]
+    fn wall_action_exists(&self, action_id: u8) -> bool {
+        if action_id <= 144 {
+            let n = action_id - 81;
+            self.horizontal_wall_conflicts(n % 8, n / 8)
+        } else {
+            let n = action_id - 145;
+            self.vertical_wall_conflicts(n % 8, n / 8)
+        }
+    }
+
+    #[inline(always)]
+    fn horizontal_wall_conflicts(&self, x: u8, y: u8) -> bool {
+        wall_test(self.walls_v, x, y)
+            || wall_test(self.walls_h, x, y)
+            || (x > 0 && wall_test(self.walls_h, x - 1, y))
+            || (x < 7 && wall_test(self.walls_h, x + 1, y))
+    }
+
+    #[inline(always)]
+    fn vertical_wall_conflicts(&self, x: u8, y: u8) -> bool {
+        wall_test(self.walls_h, x, y)
+            || wall_test(self.walls_v, x, y)
+            || (y > 0 && wall_test(self.walls_v, x, y - 1))
+            || (y < 7 && wall_test(self.walls_v, x, y + 1))
+    }
+
+    #[inline(always)]
+    fn wall_action_legal(&self, action_id: u8) -> bool {
+        if action_id <= 144 {
+            let n = action_id - 81;
+            self.wall_placement_legal(n % 8, n / 8, false)
+        } else {
+            let n = action_id - 145;
+            self.wall_placement_legal(n % 8, n / 8, true)
         }
     }
 

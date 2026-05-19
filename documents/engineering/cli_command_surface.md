@@ -48,7 +48,7 @@ From the host, run any listed logical command as
 | `mcts bench selfplay [opts]` | Self-play benchmark across the requested backend cohort |
 | `mcts verify rollouts [opts]` | Round-robin visit-count equality across `(ii)..(v)` under `--rng cpp` |
 | `mcts verify selfplay [opts]` | Round-robin self-play visit-count equality across `(ii)..(v)` |
-| `mcts verify legacy-parity {rollouts\|selfplay} [opts]` | 5-backend round-robin under the legacy parity envelope |
+| `mcts verify legacy-parity {rollouts\|selfplay} [opts]` | 5-backend legacy-envelope liveness/overflow gate |
 | `mcts play [opts]` | Interactive `brick` TUI; human vs AI or AI vs AI spectate |
 | `mcts inspect list` | Non-interactive enumeration of the local transcript cache |
 | `mcts inspect show <hash-prefix> [opts]` | Non-interactive transcript dump in legacy notation |
@@ -83,17 +83,17 @@ originator sidecar and renders its stream-backed per-move equity column;
 `inspect cache list` enumerates `.eq` / `.envelope` slots; `inspect cache prune
 --keep-current` retains the logical `<backend>-logical` build id; `inspect show
 --envelope` renders the current envelope fields; and `inspect divergence` renders
-transcript-pair metrics from `MCTS.Verify.Divergence`. Logical `mcts verify ...
---allow-stale` is routed through the logical layered envelope verifier; when a
+transcript-pair metrics from `MCTS.Verify.Divergence`. `mcts verify ...
+--allow-stale` is routed through the layered live-envelope verifier; when a
 foreign cdylib is present, FFI-produced transcripts are stamped with
-`mcts_<backend>_get_envelope()` and integration exercises live envelope
-comparison through `checkTranscriptEnvelopesLive`. JSON verify output includes
+`mcts_<backend>_get_envelope()` and compared through
+`checkTranscriptEnvelopesLive`. JSON verify output includes
 `warning_details` for downgraded `--allow-stale` backend-slot warnings. The report-card renderer now emits
 explicit Q1/Q2/Q5 evidence fields and the cross-backend divergence matrix in
-table and JSON form; the default golden uses the logical baseline, and the live
+table and JSON form; the default golden uses a static zero-matrix baseline, and the live
 `mcts test all` path requires canonical backend artefacts, measures Q1/Q2/Q5
 with the production monotonic clock through the no-write batch runner, and
-populates divergence rows from the measured logical `G_V` verify cohort.
+populates divergence rows from the measured live `G_V` verify cohort.
 `mcts build legacy-fixtures` is the supported Q6
 fixture-regeneration path; it builds `cpp-legacy/build/legacy-to-wire` and
 passes output root, seed, game count, and simulation count as explicit flags.
@@ -132,7 +132,7 @@ command also live in
 | `--with-equity` | `inspect show` | `False` | Re-runs the deterministic search to populate the equity column. Reads the originator's cached `.eq` if envelope-matched (instant); otherwise recomputes locally and writes a fresh sidecar. |
 | `--envelope` | `inspect show` | `False` | Dump the transcript's engine-envelope block as plain text (one field per line) before the per-move output. Useful for scripting (`diff`-friendly) and forensics. |
 | `--cache-states N` | `inspect replay` | `20` | In-memory MCTS-state LRU cache for back-navigation. |
-| `--allow-stale` | `verify rollouts`, `verify selfplay`, `verify legacy-parity` | off | Downgrade per-backend-slot `EngineEnvelopeMismatch` from hard fail to a warning; verify proceeds on visit counts only. `--format json` includes the downgraded warnings under `warning_details`. Cohort-level mismatches (`host_arch`, `shared_rng_build_id`, `cohort_config_hash`) remain hard fails. Forensic use only. |
+| `--allow-stale` | `verify rollouts`, `verify selfplay`, `verify legacy-parity` | off | Downgrade per-backend-slot `EngineEnvelopeMismatch` from hard fail to a warning; Q3 verify proceeds on visit counts, while Q7 legacy parity proceeds as a liveness/overflow gate. `--format json` includes the downgraded warnings under `warning_details`. Cohort-level mismatches (`host_arch`, `shared_rng_build_id`, `cohort_config_hash`) remain hard fails. Forensic use only. |
 | `--keep-current` | `inspect cache prune` | off | In the Phase 2 baseline, only deletes sidecar slots whose build id does not match the logical `<backend>-logical` current slot. Live-envelope stale detection is enforced by `verify` for transcript cohorts; report-card/recompute sidecar coverage lives under `inspect divergence` and the Phase 7 integration stanza. |
 | `--cache-dir <path>` | every cache-touching command | `./.mcts-cache/` when omitted | The `mcts` binary does not read cache-root environment variables. |
 | `--format json\|table\|plain` | every non-TUI command | `table` on TTY, `plain` otherwise | Per [HASKELL_CLI_TOOL.md → Output Rules](../../HASKELL_CLI_TOOL.md). TUI commands (`play`, `inspect replay`) ignore the flag. |
@@ -287,24 +287,25 @@ that the user is not looking at originator numbers from the current live backend
 
 ## `mcts verify` Envelope Errors
 
-Logical `mcts verify` enforces the layered envelope rule from
+`mcts verify` enforces the layered envelope rule from
 [determinism_contract.md → Engine Envelope](./determinism_contract.md):
 
 - **Cohort-level**: every transcript in the cohort must agree on
   `host_arch`, `rng_source`, `cohort_config_hash`, and `shared_rng_build_id`.
   Mismatch → exit non-zero with `AppError EngineEnvelopeMismatch
   CohortLevel field expected got`. Not overridable by `--allow-stale`.
-- **Per backend slot**: logical verify compares against the logical envelope
-  for the slot. Live per-backend-slot comparison is exercised by
-  `checkTranscriptEnvelopesLive` in integration and supports the same
-  `--allow-stale` downgrade semantics for stale cached transcripts. In JSON
+- **Per backend slot**: verify compares each transcript against the live
+  envelope for that backend slot when the cdylib is present, and against the
+  in-process fallback envelope when it is not. This path uses
+  `checkTranscriptEnvelopesLive` and supports the same `--allow-stale`
+  downgrade semantics for stale cached transcripts. In JSON
   output, downgraded envelope warnings are structured as `warning_details`
   objects with `scope`, `backend`, `field`, `expected`, `got`, and `message`
   fields.
 
 Cross-backend differences in per-backend-slot fields are expected and
-silent — the whole point of logical `verify` is to compare different backend
-slots under one deterministic transcript generator.
+silent — the whole point of `verify` is to compare different backend slots under
+one deterministic input schedule.
 
 ## Cross-References
 

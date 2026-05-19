@@ -20,8 +20,10 @@
 strict `Word64` board slots/bitsets with path-preserving wall checks, recursive UCT
 search in `ST s` over a structure-of-arrays `STUArray` arena, transcript writing,
 monotonic bench timing, logical envelope stamping through `MCTS.Engine.Envelope`,
-deterministic `non_terminal_rank` tie-breaking pinned to the imported legacy source,
-and in-process equity recompute. Tree persistence, per-rollout scratch boards,
+`non_terminal_rank` implemented and pinned to the imported legacy source for
+inspection/tests, current verifier-cohort UCT tie-breaking by action ID/highest
+visit count per Sprint `7.2`, and in-process equity recompute. Tree persistence,
+per-rollout scratch boards,
 post-link build-id stamping, and performance parity remain owned by Phase `8`; foreign
 backend dispatch and foreign recompute coverage remain owned by Phases `4` through `7`.
 
@@ -198,17 +200,12 @@ ancestor path).
 
 ### Deliverables
 
-- `src/MCTS/Search/UCT.hs` exposes `selectBestChild` implementing UCT in the
-  selection phase, with deterministic tie-break on `(equity desc, non_terminal_rank
-  asc)` per the project [README → Cross-backend
-  verification](../README.md). The operational definition of `non_terminal_rank`
-  lives in
-  [../documents/engineering/determinism_contract.md → `non_terminal_rank` Operational Definition](../documents/engineering/determinism_contract.md);
-  closing this sprint requires reading
-  `~/MCTS_legacy/backend/core/mcts.cpp` to replace the provisional citation in
-  that subsection with the precise function and line range, and confirming every
-  other backend's tie-break implementation (Phases 4–6) will cite the same
-  definition.
+- `src/MCTS/Search/UCT.hs` implements UCT in the selection phase. The current
+  verifier-cohort contract breaks equal UCT scores by action ID and chooses the
+  final root action by highest visit count, then action ID, per the project
+  [README → Cross-backend verification](../README.md). `non_terminal_rank`
+  remains implemented and cited for legacy inspection coverage; it is no longer
+  part of the `(ii)..(v)` verifier-cohort tie-break after Sprint `7.2`.
 - `src/MCTS/Search/UCT.hs` owns the random-rollout leaf evaluator: from the
   expanded leaf, play random legal moves until terminal (positional win or ply cap),
   return the terminal evaluation (`-1.0`, `0.0`, `+1.0` from hero's perspective).
@@ -249,7 +246,9 @@ ancestor path).
 - `non_terminal_rank` is now implemented in `MCTS.Engine` and cited in
   `documents/engineering/determinism_contract.md` against
   `cpp-legacy/legacy-core/board.cpp:395` and
-  `cpp-legacy/legacy-core/mcts.hpp:258`-`266`, `400`-`421`.
+  `cpp-legacy/legacy-core/mcts.hpp:258`-`266`, `400`-`421`; Sprint `7.2`
+  keeps that value as a tested legacy reference while removing it from the
+  verifier-cohort UCT tie-break.
 - `mcts-unit` covers same-seed determinism, legal chosen moves, legal visit-list actions,
   sorted visit rows, root-child visit totals, the balanced initial `nonTerminalRank`, and
   the known-position engine golden.

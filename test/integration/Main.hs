@@ -208,6 +208,7 @@ binaryBenchDeterminism maybeLibraryPath backend = do
                 firstHash <- requireBinaryBenchHash first
                 secondHash <- requireBinaryBenchHash second
                 firstHash @?= secondHash
+                assertBinaryBenchTranscriptDeterminism cacheA cacheB firstHash secondHash
 
 runBinaryBench :: FilePath -> Backend -> IO ProcessOutput
 runBinaryBench cacheRoot backend = do
@@ -260,6 +261,22 @@ requireBinaryBenchHash output =
     case jsonStringField "hash" (processStdout output) of
         Nothing -> assertFailure ("real mcts binary JSON missing hash: " <> processStdout output)
         Just value -> pure value
+
+assertBinaryBenchTranscriptDeterminism :: FilePath -> FilePath -> String -> String -> IO ()
+assertBinaryBenchTranscriptDeterminism cacheA cacheB firstHash secondHash = do
+    first <- readTranscriptFile (benchTranscriptPath cacheA firstHash)
+    second <- readTranscriptFile (benchTranscriptPath cacheB secondHash)
+    case (first, second) of
+        (Right firstTranscript, Right secondTranscript) ->
+            firstTranscript @?= secondTranscript
+        (Left err, _) ->
+            assertFailure ("first real-binary transcript failed to decode: " <> show err)
+        (_, Left err) ->
+            assertFailure ("second real-binary transcript failed to decode: " <> show err)
+
+benchTranscriptPath :: FilePath -> String -> FilePath
+benchTranscriptPath cacheRoot hashValue =
+    cacheRoot </> "transcripts" </> hostArch </> (hashValue <> ".tr")
 
 jsonStringField :: String -> String -> Maybe String
 jsonStringField key text =
@@ -336,7 +353,7 @@ reportCardDivergenceIntegration = do
                 , inputGames = 1
                 , inputSeed = 42
                 , inputSims = FixedSims 16
-                , inputMaxPlies = 8
+                , inputMaxPlies = 60
                 }
     case reportResult of
         Left err ->
@@ -431,7 +448,7 @@ foreignFfiSmokeDriver libraryPath backend runner = do
                         , inputRng = CppRng
                         , inputGames = 1
                         , inputSims = FixedSims 4
-                        , inputMaxPlies = 8
+                        , inputMaxPlies = 60
                         }
                     0
             case result of
@@ -524,7 +541,7 @@ foreignDispatchLiveEnvelope libraryPath backend loader = do
                         , inputThreading = SingleThreaded
                         , inputGames = 1
                         , inputSims = FixedSims 4
-                        , inputMaxPlies = 8
+                        , inputMaxPlies = 60
                         , inputCacheDir = Just cacheRoot
                         }
             case batchResult of
