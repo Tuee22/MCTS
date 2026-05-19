@@ -18,6 +18,7 @@ main =
         testGroup
             "mcts-cross-backend"
             [ testCase "four-backend rollout cohort" rolloutsCheck
+            , testCase "four-backend selfplay cohort" selfplayCheck
             , testCase "cohort constraints" cohortConstraintsCheck
             , testCase "envelope: cohort host_arch mismatch hard-fails" envelopeCohortHostArchCheck
             , testCase "envelope: shared_rng_build_id mismatch hard-fails" envelopeCohortRngBuildCheck
@@ -33,13 +34,6 @@ rolloutsCheck = do
                 , inputSims = FixedSims 16
                 , inputMaxPlies = 40
                 }
-    -- The full four-backend (ii)..(v) cohort under the (Sprint 7.2 doctrine)
-    -- `--rng cpp` and `SingleThreaded` settings. Once cpp-imperative drives
-    -- the real legacy-derived engine while cpp-functional and rust stay on
-    -- the logical baseline, the cohort surfaces `VerifyMismatch`. Phase 7
-    -- closure replaces those backends with their real engines; until then,
-    -- the smoke gate accepts either `Right` or a well-formed
-    -- `VerifyMismatch`, mirroring the legacy-parity stanza.
     detailed <-
         verifyRunDetailed
             False
@@ -48,8 +42,26 @@ rolloutsCheck = do
             inputs{inputThreading = SingleThreaded}
     case detailed of
         Right result -> length (verifyBatches result) @?= 4
-        Left (VerifyMismatch _ _ _ _ _ _) -> pure ()
         Left err -> assertFailure ("cross-backend verify failed: " <> show err)
+
+selfplayCheck :: IO ()
+selfplayCheck = do
+    let inputs =
+            defaultRunInputs
+                { inputGames = 1
+                , inputSeed = 42
+                , inputSims = FixedSims 16
+                , inputMaxPlies = 8
+                }
+    detailed <-
+        verifyRunDetailed
+            False
+            Selfplay
+            [CppImperative, CppFunctional, Rust, Haskell]
+            inputs{inputThreading = SingleThreaded}
+    case detailed of
+        Right result -> length (verifyBatches result) @?= 4
+        Left err -> assertFailure ("cross-backend selfplay verify failed: " <> show err)
 
 cohortConstraintsCheck :: IO ()
 cohortConstraintsCheck = do
@@ -72,7 +84,12 @@ cohortConstraintsCheck = do
 envelopeCohortHostArchCheck :: IO ()
 envelopeCohortHostArchCheck = do
     let base = makeBaseTranscript
-        skewed = base{transcriptEnvelope = (transcriptEnvelope base){envelopeHostArch = "amd64"}}
+        baseEnvelope = transcriptEnvelope base
+        otherArch =
+            if envelopeHostArch baseEnvelope == "amd64"
+                then "arm64"
+                else "amd64"
+        skewed = base{transcriptEnvelope = baseEnvelope{envelopeHostArch = otherArch}}
     case checkCohortInvariant [base, skewed] of
         Right () ->
             assertFailure
@@ -113,9 +130,9 @@ envelopeCohortRngBuildCheck = do
 
 -- | Sprint 7.5: a backend-slot mismatch (here, a forged
 -- `compiler_id`) is hard-fail without `--allow-stale` and is
--- downgraded to a warning when `allowStale = True`. We model
--- "the live binary expects compiler_id 3" via the logical baseline
--- in `checkBackendSlot`.
+-- downgraded to a warning when `allowStale = True`. This focused test
+-- uses the pure logical fallback; `mcts-unit` covers the live-envelope
+-- fixture comparison shape.
 envelopeStaleCheck :: IO ()
 envelopeStaleCheck = do
     let base = makeBaseTranscript

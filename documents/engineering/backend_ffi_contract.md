@@ -19,43 +19,41 @@ Five backends, four of which expose a C ABI to Haskell:
 | Backend | Linkage | FFI load name (canonical) | Build-time intermediate | Symbol prefix |
 |---------|---------|---------------------------|-------------------------|----------------|
 | (i) `cpp-legacy` | C ABI via Haskell FFI | `cpp-legacy/libmcts_cpp_legacy.so` | `cpp-legacy/build/libmcts_cpp_legacy.so` | `mcts_legacy_*` |
-| (ii) `cpp-imperative` | C ABI via Haskell FFI | `cpp-imperative/libmcts_cpp_imperative.so` | `cpp-imperative/build/libmcts_cpp_imperative_bench.bolted.so` | `mcts_imperative_*` |
-| (iii) `cpp-functional` | C ABI via Haskell FFI | `cpp-functional/libmcts_cpp_functional.so` | `cpp-functional/build/libmcts_cpp_functional_bench.bolted.so` | `mcts_functional_*` |
-| (iv) `rust` | C ABI via Haskell FFI, `cdylib` | `rust/target/release/libmcts_rust.so` | `rust/target/release-pgo/libmcts_rust.so` | `mcts_rust_*` |
+| (ii) `cpp-imperative` | C ABI via Haskell FFI | `cpp-imperative/build/libmcts_cpp_imperative.so` | `cpp-imperative/build/libmcts_cpp_imperative_bench.bolted.so` | `mcts_imperative_*` |
+| (iii) `cpp-functional` | C ABI via Haskell FFI | `cpp-functional/build/libmcts_cpp_functional.so` | `cpp-functional/build/libmcts_cpp_functional_bench.bolted.so` | `mcts_functional_*` |
+| (iv) `rust` | C ABI via Haskell FFI, `cdylib` | `rust/target/release/libmcts_rust.so` | `rust/target/release/libmcts_rust.pgo.so` / `rust/target/release/libmcts_rust.bolted.so` | `mcts_rust_*` |
 | (v) `haskell` | Native (in-process) | (compiled into `mcts`) | n/a | (no FFI surface) |
 
 Backends (i)–(iv) expose shared-library C ABIs to Haskell. The current baseline
 loads board lifecycle symbols with `dlopen` / `dlsym` and converts them to typed
 function pointers via `foreign import ccall "dynamic"`; this keeps Cabal builds
 independent of platform-specific `extra-libraries` paths while the backend build
-harness is still active. The target fully-optimized install may still link the
-canonical FFI load names at build time once the PGO/BOLT artefact paths settle.
-The current smoke build products are `cpp-legacy/build/libmcts_cpp_legacy.so`,
-`cpp-imperative/build/libmcts_cpp_imperative.so`,
-`cpp-functional/build/libmcts_cpp_functional.so`, and
-`rust/target/release/libmcts_rust.so`; only the Rust smoke product already uses the
-target canonical load directory. The C++ canonical install-name symlinks are created
-by the future PGO/BOLT install step, not by the smoke `make` targets.
+harness is active. The canonical C++ FFI load names live under each backend's
+`build/` directory because the Makefile smoke target and the PGO/BOLT install target
+both publish there; the Rust canonical load name is Cargo's release cdylib path.
 
-The current Haskell smoke drivers
-(`src/MCTS/Driver/{CppLegacy,CppImperative,CppFunctional,Rust}.hs`) use dynamic
-`mcts_<backend>_new_board`, `mcts_<backend>_is_terminal`,
-`mcts_<backend>_select_uct_move`, and `mcts_<backend>_free_board` symbols to run a
-bounded game against each real smoke shared library. The smoke ABI returns the chosen
-action only; the operator-facing transcript/verify drivers remain logical until the
-backend C ABIs expose sorted visit-vector instrumentation.
+The current Haskell drivers
+(`src/MCTS/Driver/{CppLegacy,CppImperative,CppFunctional,Rust}.hs`) dynamically load
+the board lifecycle, visit-vector search, recompute, read-visits, and envelope
+symbols when the shared libraries are present. Legacy chosen-action smoke helpers
+remain as compatibility residue for Cabal builds without local shared libraries; the
+operator-facing bench/play/divergence paths and integration smokes use the real
+visit-vector and recompute ABIs for the non-legacy foreign backends. Q3/Q7
+`verify` currently uses the logical in-process cohort until the live FFI cohort
+determinism gap is closed.
 
 The **FFI load name** is the canonical install path matching
 [../../README.md → Repository layout (target)](../../README.md); the Haskell FFI
 binds against this name. The **build-time intermediate** is the artefact the
 PGO+BOLT harness in Phase 5/6 produces under `<backend>/build/`; the install
-step (last step of `mcts build <backend>`) renames or symlinks the `_bench`
-variant of the bolted intermediate to the canonical FFI load name. The `_bench`
-artefact is what the benchmark report card measures; the parallel
-`_instrumented` artefact (under
-`<backend>/build/libmcts_<backend>_instrumented.bolted.so`) carries the
-transcript-writer and `read_visits` symbols and is loaded only by `mcts verify`,
-`mcts play`, and `mcts inspect replay` — see
+step (last step of `mcts build <backend>`) copies the `_bench`
+variant of the bolted-or-PGO-fallback intermediate to the canonical FFI load
+name. The `_bench` artefact is what the benchmark report card measures; the parallel
+`_instrumented` artefact (installed as
+`<backend>/build/libmcts_<backend>_instrumented.so` for C++ and behind the Rust
+`instrumentation` feature) carries the
+transcript-writer and `read_visits` symbols and is loaded by `mcts play`,
+`mcts inspect replay`, `mcts inspect divergence`, and integration smokes — see
 [Paired Build Targets](#paired-build-targets) for the toggle semantics.
 
 ## C ABI Shape
@@ -103,10 +101,15 @@ that table in the same change.
 // Example: C ABI engine operations
 int                    mcts_<backend>_is_terminal(const mcts_<backend>_board *b);
 float                  mcts_<backend>_terminal_eval(const mcts_<backend>_board *b);
-void                   mcts_<backend>_apply_move(mcts_<backend>_board *b, uint8_t action_id);
+int                    mcts_<backend>_apply_action(mcts_<backend>_board *b, uint8_t action_id);
 uint8_t                mcts_<backend>_legal_moves(const mcts_<backend>_board *b,
                                                   uint8_t *out, size_t out_capacity);
 ```
+
+`apply_action` returns `0` on success and a negative value on rejection or backend
+failure. `mcts play` uses it to replay operator-entered and previously selected moves
+into a fresh foreign board before calling `mcts_<backend>_search_move`, which keeps
+`:undo` simple and avoids trusting a stale long-lived foreign board.
 
 ### Search Operations
 
@@ -126,7 +129,8 @@ void                   mcts_<backend>_reroot(mcts_<backend>_tree *t, uint8_t cho
 
 ### Instrumentation Surface (Instrumented Build Only)
 
-For `inspect replay`, `mcts verify`, and the Q6 golden comparison, each backend
+For `inspect replay`, `inspect divergence`, integration smoke, and the Q6
+golden comparison, each backend
 provides a read-only instrumentation surface:
 
 ```c
@@ -147,7 +151,7 @@ Targets](#paired-build-targets) below).
 Each backend exposes a read-only envelope that captures its substrate
 metadata (build identity, compiler, libm, CPU features, FP environment)
 so the transcript codec can stamp the envelope into every transcript
-and `mcts verify` can enforce the layered cohort-invariant vs
+and the live integration verifier can enforce the layered cohort-invariant vs
 per-backend-slot rule from
 [determinism_contract.md → Engine Envelope](./determinism_contract.md).
 
@@ -189,12 +193,16 @@ Current baseline: `src/MCTS/FFI/Common.hs` dynamically loads
 process-static struct into `EngineEnvelope`, and the per-backend modules expose
 `loadCppLegacyEnvelope`, `loadCppImperativeEnvelope`,
 `loadCppFunctionalEnvelope`, and `loadRustEnvelope`. The integration stanza
-validates the live envelope path for all four foreign smoke libraries when their
-shared artefacts are present. The Rust smoke cdylib also stamps
-`compiler_version` from `rustc --version` through `rust/build.rs` and
-`MCTS_RUSTC_VERSION`. Post-link `engine_build_id` patching, runtime CPU/FP
-probes, and routing these live envelopes into final verify/recompute decisions
-remain owned by the backend envelope sprints.
+validates the live envelope path for all four foreign libraries when their shared
+artefacts are present, including transcript stamping and backend-slot stale
+hard-fail/`--allow-stale` warning behavior. The C++ backends patch `engine_build_id` after link through
+their Makefile `envelope-build-id` targets; Rust stamps `compiler_version` from
+`rustc --version` through `rust/build.rs` / `MCTS_RUSTC_VERSION` and patches the
+`.envelope_build_id` slot during `mcts build rust`. Runtime CPU/FP/libm probes are
+live for the foreign envelope surfaces; `MCTS.Driver.Dispatch` stamps FFI-produced
+transcripts with the live payload, and `MCTS.Verify.Envelope.checkTranscriptEnvelopesLive`
+compares cached transcript envelopes against `mcts_<backend>_get_envelope()` when
+the matching cdylib is present.
 
 #### Field Capture Protocol
 
@@ -251,18 +259,22 @@ void mcts_<backend>_free_eq_stream(mcts_<backend>_eq_stream *s);
 
 The recompute reads the transcript's `RunConfig`, replays the search
 from move 0 using the transcript's seed and budget, and emits one record
-per move. Under `--rng cpp` the recompute **hard-asserts** visit-
-agreement with the transcript's recorded visits at every move and
-returns `-1` on disagreement (the determinism contract is binding);
-under `--rng native` or for a foreign backend on a `--rng cpp`
-transcript, the recompute does not abort on visit disagreement but the
-disagreement contributes to the divergence-smell metric (see
+per move. Under `--rng cpp` the recompute **hard-asserts** chosen-action and
+visit agreement only when the transcript is a live same-backend originator
+transcript. For logical fallback transcripts, native-RNG transcripts, or a
+foreign backend on another backend's `--rng cpp` transcript, the recompute does
+not abort on disagreement; the disagreement contributes to the divergence-smell
+metric (see
 [determinism_contract.md → Divergence Smell](./determinism_contract.md)).
 
-This is the FFI the REPL's per-backend column populates from. The result
+The implemented Haskell bridge uses the per-move
+`mcts_<backend>_recompute_move` dynamic symbol exposed through
+`MCTS.FFI.Common.withDynamicRecomputeGame` rather than a C-owned stream object.
+`mcts inspect replay` uses that bridge to fill a missing originator overlay
+before the TUI starts when the matching shared library is present. The result
 caches in `<cache-root>/transcripts/<arch>/<sha>/<backend>-<build_prefix16>.eq`
 (see [transcript_format.md → Equity Sidecar Cache](./transcript_format.md))
-so subsequent column opens are instant.
+so subsequent opens are instant.
 
 ## Haskell-Side Import Policy
 
@@ -288,22 +300,26 @@ backend library, resolves `mcts_<backend>_new_board` /
 selection, tree, RNG, envelope, and recompute symbols still land with the real
 foreign drivers.
 
-The Haskell-side foreign-engine recompute path lives at
-`src/MCTS/Engine/Recompute.hs`. It reuses `MCTS.Search.UCT.uctSearchWithEquity`
-to replay every move of a transcript and emits a per-move `(move_index,
-action, visits, equity)` record stream. Under `--rng cpp` the recompute
-hard-asserts visit equality with the transcript's recorded visits at every
-move; the first disagreement aborts with `AppError RecomputeMismatch
-(Backend, GameId, MoveIndex, recomputed_record, recorded_record)`. The
-sidecar writer `MCTS.Transcript.EquitySidecar.writeEquitySidecarStream`
-accepts an explicit `EqStream` so the recompute-driven stream can be
-persisted; `mcts inspect show --with-equity` wires this through.
+The in-process Haskell recompute path lives at `src/MCTS/Engine/Recompute.hs`.
+It reuses `MCTS.Search.UCT.uctSearchWithEquity` to replay every move of a
+transcript and emits a per-move `(move_index, action, visits, equity)` record
+stream. The foreign recompute path lives at `src/MCTS/Engine/ForeignRecompute.hs`
+and drives `DynamicRecomputeGame` through the same transcript. The in-process
+path hard-asserts chosen-action and visit equality under `--rng cpp`; the
+foreign path hard-asserts only for live same-backend originator transcripts and
+otherwise emits an `EqStream` for divergence scoring. A strict mismatch aborts
+with `AppError RecomputeMismatch (Backend, GameId, MoveIndex,
+recomputed_record, recorded_record)`. The sidecar
+writer `MCTS.Transcript.EquitySidecar.writeEquitySidecarStream` accepts an
+explicit `EqStream` so the recompute-driven stream can be persisted;
+`mcts inspect show --with-equity`, `mcts inspect divergence`, and the
+`mcts inspect replay` originator-cache-miss path wire this through.
 
 ### `unsafe`/`safe` Policy
 
 Per-symbol:
 
-- **Hot-path symbols** (`select_uct_move`, `rollout`, `backprop`, `apply_move`,
+- **Hot-path symbols** (`select_uct_move`, `rollout`, `backprop`, `apply_action`,
   `is_terminal`, `terminal_eval`, `legal_moves`, the `rng_*` family) use
   `foreign import ccall unsafe`. These calls do not allocate Haskell heap memory
   and do not call back into the Haskell RTS; `unsafe` is correct and avoids the
@@ -314,8 +330,11 @@ Per-symbol:
 
 ## `--rng cpp` Plumbing
 
-The `--rng cpp` flag draws every backend's random bytes from the **same** C++
-`std::mt19937_64` generator. The shared generator lives in
+For the logical Q3/Q7 verification cohort, the `--rng cpp` flag selects the
+canonical C++-RNG seed schedule and suppresses backend-native salt. The legacy
+backend and the C++ FFI engines still use `std::mt19937_64`; Rust and Haskell
+live FFI/logical paths remain tracked separately until live FFI cohort
+promotion. The shared generator lives in
 `cpp-legacy/c-abi/rng.{h,cc}` (because the legacy itself uses it) and exposes
 the canonical symbols required by
 [../../README.md → Cross-backend verification → RNG FFI contract](../../README.md):
@@ -371,8 +390,9 @@ template flag. The Haskell-side `src/MCTS/Driver/CppLegacy.hs` carries the
 transcript writer and the instrumentation surface on top of the shared library.
 The exemption is end-to-end: backend (i) has neither a paired pair of
 `.so` artefacts nor a paired pair of Haskell-side Cabal stanzas. The
-single `libmcts_cpp_legacy.so` is what every consumer — `mcts bench`,
-`mcts verify`, `mcts play`, `mcts inspect replay` — loads, and the
+single `libmcts_cpp_legacy.so` is what every live FFI consumer — `mcts bench`,
+`mcts play`, `mcts inspect replay`, `mcts inspect divergence`, and integration
+smokes — loads, and the
 Haskell driver gates instrumentation behaviourally rather than by build
 target. See
 [../../DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md → Sprint 4.4](../../DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md)
@@ -385,7 +405,8 @@ For the four steelman backends — (ii) `cpp-imperative`, (iii) `cpp-functional`
   instrumentation feature does not exist. Used for benchmark runs where any
   observable overhead would corrupt the measurement.
 - `*-instrumented` — transcript writer plus `read_visits` exported. Used by
-  `mcts verify`, `mcts play`, and `mcts inspect replay`.
+  `mcts play`, `mcts inspect replay`, `mcts inspect divergence`, and integration
+  smokes.
 
 The toggle is a template / type-level flag on the per-game driver, not a runtime
 branch in the hot loop. The MCTS engine itself (search, rollout, board, RNG) is
@@ -500,7 +521,7 @@ file per backend rather than chasing call sites.
 - [haskell_code_guide.md](./haskell_code_guide.md) — `Subprocess` boundary
   through which the build harness invokes the C/Rust compilers
 - [determinism_contract.md](./determinism_contract.md) — `--rng cpp` semantics
-  and the shared `std::mt19937_64` generator
+  and the logical verification cohort
 - [transcript_format.md](./transcript_format.md) — wire format the instrumented
   build emits
 - [compiler_runtime_tuning.md](./compiler_runtime_tuning.md) — per-backend flag

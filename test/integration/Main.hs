@@ -2,27 +2,35 @@
 
 module Main where
 
+import Control.Monad (filterM)
 import qualified Data.ByteString as BS
-import Data.List (sort)
+import Data.List (isInfixOf, isSuffixOf, sort, stripPrefix)
 import Data.Word (Word32, Word8)
+import MCTS.CLI.Test (buildMeasuredReportCardWith)
+import MCTS.Crypto.SHA256 (sha256Hex)
 import MCTS.Driver
 import MCTS.Driver.CppFunctional (runGameCppFunctional)
 import MCTS.Driver.CppImperative (runGameCppImperative)
 import MCTS.Driver.CppLegacy (runGameCppLegacy)
+import MCTS.Driver.Dispatch (runBatchDispatch)
 import MCTS.Driver.Rust (runGameRust)
 import MCTS.Engine.ForeignRecompute (foreignRecomputeEqStream)
-import MCTS.Error (AppError)
+import qualified MCTS.Engine.Recompute as Recompute
+import MCTS.Error (AppError (..), EnvelopeMismatchScope (..))
 import MCTS.FFI.Common (EngineEnvelope (..))
 import qualified MCTS.FFI.Common
 import MCTS.FFI.CppFunctional (loadCppFunctionalEnvelope, withCppFunctionalRecomputeGame)
 import MCTS.FFI.CppImperative (loadCppImperativeEnvelope, withCppImperativeRecomputeGame)
 import MCTS.FFI.CppLegacy (cppLegacyRecomputeMove, loadCppLegacyEnvelope, withCppLegacyGame)
 import MCTS.FFI.Rust (loadRustEnvelope, withRustRecomputeGame)
+import MCTS.ReportCard (ReportCard (..), ReportDivergenceRow (..), renderReportCardJson)
+import MCTS.Subprocess (ProcessOutput (..), Subprocess (..), capture)
 import MCTS.Transcript
 import MCTS.Transcript.EquitySidecar
 import MCTS.Types
+import MCTS.Verify.Envelope (checkTranscriptEnvelopesLive)
 import System.Directory (doesDirectoryExist, doesFileExist, listDirectory)
-import System.FilePath ((</>))
+import System.FilePath (takeBaseName, (</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty (TestTree, defaultMain, testGroup)
 import Test.Tasty.HUnit (assertBool, assertFailure, testCase, (@?=))
@@ -33,6 +41,29 @@ main =
         testGroup
             "mcts-integration"
             [ testGroup "same-backend determinism" (map sameBackend allBackends)
+            , testGroup
+                "real mcts binary determinism"
+                [ testCase "haskell" (binaryBenchDeterminism Nothing Haskell)
+                , testCase
+                    "cpp-legacy"
+                    (binaryBenchDeterminism (Just "cpp-legacy/build/libmcts_cpp_legacy.so") CppLegacy)
+                , testCase
+                    "cpp-imperative"
+                    ( binaryBenchDeterminism
+                        (Just "cpp-imperative/build/libmcts_cpp_imperative.so")
+                        CppImperative
+                    )
+                , testCase
+                    "cpp-functional"
+                    ( binaryBenchDeterminism
+                        (Just "cpp-functional/build/libmcts_cpp_functional.so")
+                        CppFunctional
+                    )
+                , testCase
+                    "rust"
+                    (binaryBenchDeterminism (Just "rust/target/release/libmcts_rust.so") Rust)
+                , testCase "integration subprocess boundary guard" integrationSubprocessBoundaryGuard
+                ]
             , testGroup
                 "foreign ffi smoke drivers"
                 [ testCase
@@ -75,7 +106,37 @@ main =
                     )
                 , testCase "rust" (foreignFfiEnvelope "rust/target/release/libmcts_rust.so" Rust loadRustEnvelope)
                 ]
+            , testGroup
+                "foreign ffi live envelope stamping"
+                [ testCase
+                    "cpp-legacy"
+                    ( foreignDispatchLiveEnvelope
+                        "cpp-legacy/build/libmcts_cpp_legacy.so"
+                        CppLegacy
+                        loadCppLegacyEnvelope
+                    )
+                , testCase
+                    "cpp-imperative"
+                    ( foreignDispatchLiveEnvelope
+                        "cpp-imperative/build/libmcts_cpp_imperative.so"
+                        CppImperative
+                        loadCppImperativeEnvelope
+                    )
+                , testCase
+                    "cpp-functional"
+                    ( foreignDispatchLiveEnvelope
+                        "cpp-functional/build/libmcts_cpp_functional.so"
+                        CppFunctional
+                        loadCppFunctionalEnvelope
+                    )
+                , testCase
+                    "rust"
+                    (foreignDispatchLiveEnvelope "rust/target/release/libmcts_rust.so" Rust loadRustEnvelope)
+                ]
             , testCase "equity sidecar originator markers" sidecarOriginMarkers
+            , testCase
+                "report-card divergence and inspect sidecar integration"
+                reportCardDivergenceIntegration
             , testCase "legacy goldens decode and respect no-draw semantics" legacyGoldenCheck
             , testCase "legacy parity pre-flight: S_LP=42 does not trip MAX_ROLLOUT_ITERS" legacyParityPreflight
             , testCase "cpp-legacy recompute symbol returns visits and equity" legacyRecomputeSmoke
@@ -132,6 +193,98 @@ sameBackendSeed baseInputs seedValue = do
         second = runGame inputs 0
     first @?= second
 
+binaryBenchDeterminism :: Maybe FilePath -> Backend -> IO ()
+binaryBenchDeterminism maybeLibraryPath backend = do
+    present <-
+        case maybeLibraryPath of
+            Nothing -> pure True
+            Just libraryPath -> doesFileExist libraryPath
+    if not present
+        then pure ()
+        else withSystemTempDirectory "mcts-bin-a" $ \cacheA ->
+            withSystemTempDirectory "mcts-bin-b" $ \cacheB -> do
+                first <- runBinaryBench cacheA backend
+                second <- runBinaryBench cacheB backend
+                firstHash <- requireBinaryBenchHash first
+                secondHash <- requireBinaryBenchHash second
+                firstHash @?= secondHash
+
+runBinaryBench :: FilePath -> Backend -> IO ProcessOutput
+runBinaryBench cacheRoot backend = do
+    result <-
+        capture
+            ( Subprocess
+                "mcts"
+                [ "bench"
+                , "selfplay"
+                , "--backend"
+                , backendIdentifier backend
+                , "--threading"
+                , "single"
+                , "--rng"
+                , "cpp"
+                , "--games"
+                , "1"
+                , "--seed"
+                , "42"
+                , "--sims"
+                , "4"
+                , "--max-plies"
+                , "8"
+                , "--cache-dir"
+                , cacheRoot
+                , "--format"
+                , "json"
+                ]
+                Nothing
+                Nothing
+            )
+    case result of
+        Left err ->
+            assertFailure
+                ("real mcts binary bench failed for " <> backendIdentifier backend <> ": " <> show err)
+        Right output -> do
+            assertBool
+                (backendIdentifier backend <> " binary JSON names backend")
+                (("\"backend\":\"" <> backendIdentifier backend <> "\"") `isInfixOf` processStdout output)
+            assertBool
+                (backendIdentifier backend <> " binary JSON names workload")
+                ("\"workload\":\"selfplay\"" `isInfixOf` processStdout output)
+            assertBool
+                (backendIdentifier backend <> " binary JSON names one game")
+                ("\"games\":1" `isInfixOf` processStdout output)
+            pure output
+
+requireBinaryBenchHash :: ProcessOutput -> IO String
+requireBinaryBenchHash output =
+    case jsonStringField "hash" (processStdout output) of
+        Nothing -> assertFailure ("real mcts binary JSON missing hash: " <> processStdout output)
+        Just value -> pure value
+
+jsonStringField :: String -> String -> Maybe String
+jsonStringField key text =
+    takeWhile (/= '"') <$> findAfter ("\"" <> key <> "\":\"") text
+
+findAfter :: String -> String -> Maybe String
+findAfter needle text =
+    case stripPrefix needle text of
+        Just rest -> Just rest
+        Nothing ->
+            case text of
+                [] -> Nothing
+                _ : rest -> findAfter needle rest
+
+integrationSubprocessBoundaryGuard :: IO ()
+integrationSubprocessBoundaryGuard = do
+    source <- readFile "test/integration/Main.hs"
+    let typedProcessModule = "System.Process" <> ".Typed"
+        typedProcessProc = "Process" <> ".proc"
+    assertBool
+        "integration test must use MCTS.Subprocess rather than direct process constructors"
+        ( typedProcessModule `notElem` words source
+            && typedProcessProc `notElem` words source
+        )
+
 sidecarOriginMarkers :: IO ()
 sidecarOriginMarkers =
     withSystemTempDirectory "mcts-sidecars" $ \cacheRoot -> do
@@ -170,6 +323,95 @@ sidecarOriginMarkers =
                 assertBool
                     "foreign sidecar is not marked as originator"
                     (not (sidecarIsOriginator transcript foreignEntry))
+
+reportCardDivergenceIntegration :: IO ()
+reportCardDivergenceIntegration = do
+    reportResult <-
+        buildMeasuredReportCardWith
+            [CppImperative, CppFunctional, Rust, Haskell]
+            defaultRunInputs
+                { inputWorkload = Selfplay
+                , inputRng = CppRng
+                , inputThreading = SingleThreaded
+                , inputGames = 1
+                , inputSeed = 42
+                , inputSims = FixedSims 16
+                , inputMaxPlies = 8
+                }
+    case reportResult of
+        Left err ->
+            assertFailure ("measured report-card builder failed: " <> show err)
+        Right card -> do
+            map reportDivergenceOrigin (reportDivergenceRows card)
+                @?= map backendIdentifier [CppImperative, CppFunctional, Rust, Haskell]
+            assertBool
+                "each measured divergence row has a four-backend cell set"
+                (all ((== 4) . length . reportDivergenceCells) (reportDivergenceRows card))
+            assertBool
+                "measured report-card JSON exposes divergence_matrix"
+                ("\"divergence_matrix\"" `isInfixOf` renderReportCardJson card)
+            assertBool
+                "measured report-card JSON exposes Q1 evidence fields"
+                ("\"q1_rollouts_st\"" `isInfixOf` renderReportCardJson card)
+            assertBool
+                "measured report-card JSON exposes Q5 evidence fields"
+                ("\"q5_cpp_imperative_scaling\"" `isInfixOf` renderReportCardJson card)
+
+    withSystemTempDirectory "mcts-divergence-sidecar" $ \cacheRoot -> do
+        let inputs =
+                defaultRunInputs
+                    { inputBackend = Haskell
+                    , inputWorkload = Selfplay
+                    , inputRng = CppRng
+                    , inputThreading = SingleThreaded
+                    , inputGames = 1
+                    , inputSeed = 42
+                    , inputSims = FixedSims 4
+                    , inputMaxPlies = 8
+                    }
+            transcript =
+                Transcript
+                    (makeRunConfig inputs)
+                    (makeLogicalEnvelope Haskell CppRng)
+                    [runGame inputs 0]
+        written <- writeTranscript (Just cacheRoot) transcript
+        case written of
+            Left err ->
+                assertFailure ("report-card sidecar transcript write failed: " <> show err)
+            Right (hashValue, _) -> do
+                case Recompute.recomputeEqStream hashValue (envelopeBuildId (transcriptEnvelope transcript)) transcript of
+                    Left err ->
+                        assertFailure ("report-card sidecar recompute failed: " <> show err)
+                    Right stream -> do
+                        _ <- writeEquitySidecarStream (Just cacheRoot) transcript stream
+                        divergence <-
+                            capture
+                                ( Subprocess
+                                    "mcts"
+                                    [ "inspect"
+                                    , "divergence"
+                                    , take 8 hashValue
+                                    , "--cache-dir"
+                                    , cacheRoot
+                                    , "--format"
+                                    , "json"
+                                    ]
+                                    Nothing
+                                    Nothing
+                                )
+                        case divergence of
+                            Left err ->
+                                assertFailure ("inspect divergence sidecar path failed: " <> show err)
+                            Right output -> do
+                                assertBool
+                                    "inspect divergence reports the cached sidecar"
+                                    ("\"cached_sidecars\":1" `isInfixOf` processStdout output)
+                                assertBool
+                                    "inspect divergence includes the originator sidecar row"
+                                    ("\"backend_pair\":\"haskell/haskell\"" `isInfixOf` processStdout output)
+                                assertBool
+                                    "originator sidecar has zero visit disagreement"
+                                    ("\"visit_disagreement_rate\":0.0" `isInfixOf` processStdout output)
 
 foreignFfiSmokeDriver
     :: FilePath
@@ -262,6 +504,37 @@ foreignFfiEnvelope libraryPath backend loader = do
                         )
                         (engineEnvLibmId envelope `elem` ["glibc", "musl", "libsystem"])
 
+foreignDispatchLiveEnvelope :: FilePath -> Backend -> IO (Either AppError EngineEnvelope) -> IO ()
+foreignDispatchLiveEnvelope libraryPath backend loader = do
+    present <- doesFileExist libraryPath
+    if not present
+        then pure ()
+        else withSystemTempDirectory "mcts-live-envelope" $ \cacheRoot -> do
+            loaded <- loader
+            expected <-
+                case loaded of
+                    Left err -> assertFailure (backendIdentifier backend <> " FFI envelope failed: " <> show err)
+                    Right envelope -> pure (MCTS.FFI.Common.engineEnvelopeToEnvelope envelope)
+            batchResult <-
+                runBatchDispatch
+                    defaultRunInputs
+                        { inputBackend = backend
+                        , inputWorkload = Selfplay
+                        , inputRng = CppRng
+                        , inputThreading = SingleThreaded
+                        , inputGames = 1
+                        , inputSims = FixedSims 4
+                        , inputMaxPlies = 8
+                        , inputCacheDir = Just cacheRoot
+                        }
+            case batchResult of
+                Left err ->
+                    assertFailure (backendIdentifier backend <> " dispatch failed: " <> err)
+                Right batch -> do
+                    let transcript = batchTranscript batch
+                    transcriptEnvelope transcript @?= expected
+                    assertStaleCompilerVersion backend transcript
+
 expectedHostArch :: Word8
 expectedHostArch =
     case hostArch of
@@ -280,21 +553,58 @@ prefixOf [] _ = True
 prefixOf _ [] = False
 prefixOf (x : xs) (y : ys) = x == y && prefixOf xs ys
 
+assertStaleCompilerVersion :: Backend -> Transcript -> IO ()
+assertStaleCompilerVersion backend transcript = do
+    let staleVersion = envelopeCompilerVersion (transcriptEnvelope transcript) <> "-stale-test"
+        staleTranscript =
+            transcript
+                { transcriptEnvelope =
+                    (transcriptEnvelope transcript)
+                        { envelopeCompilerVersion = staleVersion
+                        }
+                }
+    hardResult <- checkTranscriptEnvelopesLive False [staleTranscript]
+    case hardResult of
+        Left (EngineEnvelopeMismatch (BackendSlot gotBackend) "compiler_version" _ got) -> do
+            gotBackend @?= backend
+            got @?= staleVersion
+        other -> assertFailure ("expected hard stale compiler_version mismatch, got " <> show other)
+    allowedResult <- checkTranscriptEnvelopesLive True [staleTranscript]
+    case allowedResult of
+        Right [EngineEnvelopeMismatch (BackendSlot gotBackend) "compiler_version" _ got] -> do
+            gotBackend @?= backend
+            got @?= staleVersion
+        other -> assertFailure ("expected allow-stale compiler_version warning, got " <> show other)
+
 -- | Sprint 4.5 Q6 golden check. Iterates `test/golden/legacy/transcripts/<arch>/`
 -- and asserts every fixture decodes via the Phase 2 wire format with the
 -- legacy parity envelope: backend = cpp-legacy, rng = cpp, no Draw winners.
--- Byte-exact comparison against a `mcts bench` regeneration awaits the Phase 2
--- single-game-file alignment tracked in legacy-tracking-for-deletion.md.
+-- The check is intentionally cross-architecture: committed fixtures for any
+-- `<arch>` directory are decode-validated on every host so an amd64 run still
+-- covers the currently committed arm64 Q6 anchor.
 legacyGoldenCheck :: IO ()
 legacyGoldenCheck = do
-    let dir = "test/golden/legacy/transcripts" </> hostArch
-    present <- doesDirectoryExist dir
+    let root = "test/golden/legacy/transcripts"
+    present <- doesDirectoryExist root
     if not present
-        then pure ()
+        then assertFailure ("legacy fixture root missing: " <> root)
         else do
-            files <- sort <$> listDirectory dir
-            assertBool ("legacy fixtures present in " <> dir) (not (null files))
-            mapM_ (validateLegacyFixture dir) files
+            entries <- sort <$> listDirectory root
+            archDirs <- filterM (doesDirectoryExist . (root </>)) entries
+            assertBool ("legacy fixture arch directories present in " <> root) (not (null archDirs))
+            counts <- mapM (validateLegacyFixtureDir root) archDirs
+            assertBool
+                ("legacy fixtures present below " <> root)
+                (sum counts > 0)
+
+validateLegacyFixtureDir :: FilePath -> FilePath -> IO Int
+validateLegacyFixtureDir root arch = do
+    let dir = root </> arch
+    files <- sort . filter (".tr" `isSuffixOf`) <$> listDirectory dir
+    assertBool ("legacy fixtures present in " <> dir) (not (null files))
+    length files @?= 10
+    mapM_ (validateLegacyFixture dir) files
+    pure (length files)
 
 -- | Sprint 4.6 validation #3 pre-flight: assert that backend (i) at the
 -- pinned report-card legacy-parity envelope (seed = S_LP = 42, single
@@ -374,12 +684,21 @@ legacyEnvelopeRuntime = do
 validateLegacyFixture :: FilePath -> FilePath -> IO ()
 validateLegacyFixture dir file = do
     bytes <- BS.readFile (dir </> file)
+    takeBaseName file @?= sha256Hex bytes
     case decodeTranscript bytes of
         Left err ->
             assertFailure ("legacy fixture " <> file <> " failed to decode: " <> show err)
         Right transcript -> do
-            runBackend (transcriptConfig transcript) @?= CppLegacy
-            runRngSource (transcriptConfig transcript) @?= CppRng
+            let config = transcriptConfig transcript
+            runBackend config @?= CppLegacy
+            runWorkload config @?= Selfplay
+            runThreading config @?= SingleThreaded
+            runRngSource config @?= CppRng
+            runMasterSeed config @?= 42
+            runInitialSims config @?= 10000
+            runPerMoveSims config @?= 10000
+            runMaxPlies config @?= 10000
+            runGames config @?= 1
             assertBool
                 ("legacy fixture " <> file <> " must not record Draw winners")
                 (all ((/= Draw) . gameWinner) (transcriptGames transcript))
@@ -406,33 +725,36 @@ foreignRecomputeSmoke libraryPath backend opener = do
                         { inputBackend = backend
                         , inputWorkload = Selfplay
                         , inputRng = CppRng
+                        , inputThreading = SingleThreaded
                         , inputGames = 1
                         , inputSims = FixedSims 4
                         , inputMaxPlies = 6
                         }
-                transcript =
-                    Transcript
-                        (makeRunConfig inputs)
-                        (makeLogicalEnvelope backend CppRng)
-                        [runGame inputs 0]
-                moveCount = sum (map (length . gameMoves) (transcriptGames transcript))
-            result <-
-                foreignRecomputeEqStream
-                    backend
-                    (replicate 64 '0')
-                    "smoke-build"
-                    opener
-                    transcript
-            case result of
+            batch <- runBatchDispatch inputs
+            case batch of
                 Left err ->
                     assertFailure
-                        ( backendIdentifier backend
-                            <> " foreign recompute failed: "
-                            <> show err
-                        )
-                Right stream -> do
-                    eqBackend stream @?= backend
-                    eqBuildId stream @?= "smoke-build"
-                    assertBool
-                        (backendIdentifier backend <> " foreign recompute emitted records")
-                        (length (eqRecords stream) == moveCount)
+                        (backendIdentifier backend <> " foreign transcript generation failed: " <> err)
+                Right batchResult -> do
+                    let transcript = batchTranscript batchResult
+                        moveCount = sum (map (length . gameMoves) (transcriptGames transcript))
+                    result <-
+                        foreignRecomputeEqStream
+                            backend
+                            (replicate 64 '0')
+                            "smoke-build"
+                            opener
+                            transcript
+                    case result of
+                        Left err ->
+                            assertFailure
+                                ( backendIdentifier backend
+                                    <> " foreign recompute failed: "
+                                    <> show err
+                                )
+                        Right stream -> do
+                            eqBackend stream @?= backend
+                            eqBuildId stream @?= "smoke-build"
+                            assertBool
+                                (backendIdentifier backend <> " foreign recompute emitted records")
+                                (length (eqRecords stream) == moveCount)

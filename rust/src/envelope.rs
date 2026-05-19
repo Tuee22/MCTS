@@ -143,12 +143,12 @@ fn probe_cpu_features() -> u32 {
     }
     #[cfg(target_arch = "x86_64")]
     {
-        if std::arch::is_x86_feature_detected!("fpu") {
-            bits |= 0x1;
-        }
-        if std::arch::is_x86_feature_detected!("sse2") {
-            bits |= 0x2;
-        }
+        // Match the broad C++ envelope bit shape: x86_64 guarantees the
+        // baseline MMX/SSE/SSE2 surface, then the dynamic probes add newer
+        // extensions when rustc exposes them.
+        bits |= 0x1;
+        bits |= 0x2;
+        bits |= 0x4;
         if std::arch::is_x86_feature_detected!("sse3") {
             bits |= 0x8;
         }
@@ -166,6 +166,9 @@ fn probe_cpu_features() -> u32 {
         }
         if std::arch::is_x86_feature_detected!("avx2") {
             bits |= 0x200;
+        }
+        if std::arch::is_x86_feature_detected!("avx512f") {
+            bits |= 0x400;
         }
         if std::arch::is_x86_feature_detected!("fma") {
             bits |= 0x100;

@@ -1,23 +1,24 @@
 {-# LANGUAGE RankNTypes #-}
 
 -- | Shared driver for FFI-backed backends exposing the doctrine's
--- full search ABI (`<prefix>_search_move` + standard
--- `new/free/is_terminal` triplet). Each per-backend module supplies
+-- full search ABI (`<prefix>_search_move`, `<prefix>_apply_action`,
+-- and the standard `new/free/is_terminal` triplet). Each per-backend module supplies
 -- a `withCpp*SearchGame` opener; this module wraps the per-move
 -- loop with the same perspective-flip translation that
 -- `MCTS.Driver.CppLegacy` uses.
 module MCTS.Driver.ForeignSearch
     ( runForeignSearchGame
+    , foreignSearchMove
     , ForeignSearchOpener
     ) where
 
 import Data.Bits (xor)
-import Data.Word (Word32, Word64, Word8)
+import Data.Word (Word16, Word32, Word64, Word8)
 import MCTS.Driver (RunInputs (..))
 import MCTS.Engine (Board, applyMove, boardSideToMove, initialBoard, legalMoves, terminalWinner)
 import MCTS.Error (AppError (..))
 import MCTS.FFI.Common (DynamicSearchGame (..))
-import MCTS.Rng.Mix (mix)
+import MCTS.Rng.Mix (backendNativeSalt, mix)
 import MCTS.Types
 
 legacyMaxRolloutIters :: Int
@@ -44,7 +45,7 @@ runForeignSearchGame openGame inputs gid = do
         Left err -> pure (Left err)
         Right (Left err) -> pure (Left err)
         Right (Right (records, finalBoard)) ->
-            case legacyWinner finalBoard of
+            case terminalWinner (inputMaxPlies inputs) finalBoard of
                 Just winner ->
                     pure $
                         Right
@@ -78,13 +79,14 @@ runForeignSearchGame openGame inputs gid = do
                         moveNo
         | otherwise = do
             cxxTerminal <- searchGameIsTerminal game
-            if cxxTerminal
+            if cxxTerminal || terminalWinner (inputMaxPlies inputs) board /= Nothing
                 then pure (Right (acc, board))
                 else case legacyWinner board of
                     Just _ -> pure (Right (acc, board))
                     Nothing -> do
                         let budget = moveBudget inputs
-                            effectiveSeed = seed `xor` fromIntegral (moveNo * 257 + 1)
+                            salt = backendNativeSalt (inputRng inputs) (inputBackend inputs)
+                            effectiveSeed = seed `xor` salt `xor` fromIntegral (moveNo * 257 + 1)
                         searched <- searchGameSearchMove game effectiveSeed budget
                         case searched of
                             Left err -> pure (Left err)
@@ -100,6 +102,77 @@ runForeignSearchGame openGame inputs gid = do
                                             }
                                     nextBoard = applyMove chosen board
                                  in go game seed nextBoard (moveNo + 1) (record : acc)
+
+-- | Search one move from an arbitrary Haskell `Board` by rebuilding a
+-- fresh foreign board from the already-played move history, then
+-- calling the backend's `search_move` ABI. Used by `mcts play`, where
+-- human moves can interleave with backend-selected AI moves and no
+-- long-lived foreign board can be trusted after `:undo`.
+foreignSearchMove
+    :: Backend
+    -> ForeignSearchOpener
+    -> RngSource
+    -> Word64
+    -> Word16
+    -> Int
+    -> Board
+    -> [MoveRecord]
+    -> IO (Either AppError (Action, [(Action, Word32)]))
+foreignSearchMove backend openGame rng gameSeed maxPlies sims board history = do
+    outer <- openGame $ \game -> do
+        synced <- syncHistory game initialBoard history
+        case synced of
+            Left err -> pure (Left err)
+            Right rebuilt
+                | rebuilt /= board ->
+                    pure $
+                        Left $
+                            FFIFailure
+                                backend
+                                "foreignSearchMove"
+                                "Haskell board and replayed foreign history diverged"
+                | terminalWinner maxPlies board /= Nothing ->
+                    pure $
+                        Left $
+                            FFIFailure
+                                backend
+                                "foreignSearchMove"
+                                "cannot search from terminal board"
+                | otherwise -> do
+                    let moveNo = length history
+                        budget = fromIntegral (max 1 sims)
+                        salt = backendNativeSalt rng backend
+                        effectiveSeed = gameSeed `xor` salt `xor` fromIntegral (moveNo * 257 + 1)
+                    searched <- searchGameSearchMove game effectiveSeed budget
+                    pure (decodeSearchResult backend board searched)
+    pure $ case outer of
+        Left err -> Left err
+        Right result -> result
+
+syncHistory
+    :: DynamicSearchGame
+    -> Board
+    -> [MoveRecord]
+    -> IO (Either AppError Board)
+syncHistory _ board [] = pure (Right board)
+syncHistory game board (record : rest) = do
+    let rawAction = foreignActionId board (moveChosen record)
+    applied <- searchGameApplyAction game rawAction
+    case applied of
+        Left err -> pure (Left err)
+        Right () -> syncHistory game (applyMove (moveChosen record) board) rest
+
+decodeSearchResult
+    :: Backend
+    -> Board
+    -> Either AppError (Word8, [(Word8, Word32)])
+    -> Either AppError (Action, [(Action, Word32)])
+decodeSearchResult _ board (Right (rawChosen, rawVisits)) =
+    let flipped = needsFlip (boardSideToMove board)
+        chosen = resolveAction board (applyFlip flipped rawChosen)
+        visits = decodeVisits (map (\(aid, n) -> (applyFlip flipped aid, n)) rawVisits)
+     in Right (chosen, visits)
+decodeSearchResult _ _ (Left err) = Left err
 
 moveBudget :: RunInputs -> Word32
 moveBudget inputs =
@@ -133,6 +206,10 @@ legacyWinner board =
 needsFlip :: Side -> Bool
 needsFlip Hero = True
 needsFlip Villain = False
+
+foreignActionId :: Board -> Action -> Word8
+foreignActionId board action =
+    applyFlip (needsFlip (boardSideToMove board)) (actionId action)
 
 applyFlip :: Bool -> Word8 -> Word8
 applyFlip False aid = aid

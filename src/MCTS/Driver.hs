@@ -6,7 +6,11 @@ module MCTS.Driver
     , makeLogicalEnvelope
     , runGame
     , runBatch
+    , runBatchNoWrite
     , runBatchWithGame
+    , runBatchWithGameEnvelope
+    , runBatchNoWriteWithGame
+    , uctChooseMove
     ) where
 
 import Control.Concurrent (MVar, forkIO, newEmptyMVar, newMVar, putMVar, takeMVar)
@@ -81,9 +85,12 @@ makeRunConfig inputs =
 runBatch :: RunInputs -> IO (Either String BatchResult)
 runBatch inputs = runBatchWithGame (\gid -> pure (Right (runGame inputs gid))) inputs
 
+runBatchNoWrite :: RunInputs -> IO (Either String ())
+runBatchNoWrite inputs = runBatchNoWriteWithGame (\gid -> pure (Right (runGame inputs gid))) inputs
+
 -- | Run a batch with a caller-supplied per-game runner that may fail.
 -- The default runner is the pure in-process `runGame`. Backend (i)
--- routes through this with `runGameCppLegacy` so the bench/verify
+-- routes through this with `runGameCppLegacy` so FFI-backed batch
 -- transcripts carry the legacy's real `(action_id, visits)` records;
 -- on legacy ABI failure the runner returns `Left` and the whole
 -- batch surfaces the error string.
@@ -92,8 +99,16 @@ runBatchWithGame
     -> RunInputs
     -> IO (Either String BatchResult)
 runBatchWithGame runOne inputs = do
+    let envelope = makeLogicalEnvelope (inputBackend inputs) (inputRng inputs)
+    runBatchWithGameEnvelope envelope runOne inputs
+
+runBatchWithGameEnvelope
+    :: Envelope
+    -> (Word32 -> IO (Either String GameTranscript))
+    -> RunInputs
+    -> IO (Either String BatchResult)
+runBatchWithGameEnvelope envelope runOne inputs = do
     let config = makeRunConfig inputs
-        envelope = makeLogicalEnvelope (inputBackend inputs) (inputRng inputs)
     gamesResult <- runGameBatchWith runOne inputs
     case gamesResult of
         Left err -> pure (Left err)
@@ -113,6 +128,38 @@ runBatchWithGame runOne inputs = do
                                 }
                     (Left err, _) -> Left (show err)
                     (_, Left err) -> Left (show err)
+
+-- | Run the same per-game workload as 'runBatchWithGame' but do not
+-- retain or write transcripts. The report-card timing path uses this
+-- for large benchmark counts where retaining 100k game transcripts
+-- would measure cache pressure instead of backend throughput.
+runBatchNoWriteWithGame
+    :: (Word32 -> IO (Either String GameTranscript))
+    -> RunInputs
+    -> IO (Either String ())
+runBatchNoWriteWithGame runOne inputs =
+    case inputThreading inputs of
+        SingleThreaded -> go gameIds
+        MultiThreaded workers ->
+            unitSequence <$> runGamePool (max 1 workers) runForce gameIds
+  where
+    gameIds = [0 .. max 0 (inputGames inputs - 1)]
+    go [] = pure (Right ())
+    go (gid : rest) = do
+        result <- runForce gid
+        case result of
+            Left err -> pure (Left err)
+            Right () -> go rest
+    runForce gameIndex = do
+        result <- runOne (fromIntegral gameIndex)
+        case result of
+            Left err -> pure (Left err)
+            Right game -> evaluate (forceGame game) >> pure (Right ())
+
+unitSequence :: [Either String ()] -> Either String ()
+unitSequence [] = Right ()
+unitSequence (Right () : rest) = unitSequence rest
+unitSequence (Left err : _) = Left err
 
 runGameBatchWith
     :: (Word32 -> IO (Either String GameTranscript))
@@ -136,9 +183,9 @@ sequenceEither = go []
 
 runGamePool
     :: Int
-    -> (Int -> IO (Either String GameTranscript))
+    -> (Int -> IO (Either String a))
     -> [Int]
-    -> IO [Either String GameTranscript]
+    -> IO [Either String a]
 runGamePool workers runOne gameIds = do
     jobs <- newMVar (zip [0 :: Int ..] gameIds)
     results <- newMVar []

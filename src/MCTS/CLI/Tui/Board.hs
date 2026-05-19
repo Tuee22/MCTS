@@ -4,19 +4,17 @@
 -- `mcts inspect replay` TUIs render through the same code path.
 module MCTS.CLI.Tui.Board
     ( renderBoard
+    , renderBoardText
     , renderStatus
+    , renderStatusText
     ) where
 
-import Brick.AttrMap (attrName)
 import Brick.Types (Widget)
 import Brick.Widgets.Border (borderWithLabel)
 import qualified Brick.Widgets.Border.Style as BS
 import Brick.Widgets.Core
-    ( hBox
-    , str
+    ( str
     , vBox
-    , withAttr
-    , (<+>)
     )
 import qualified Brick.Widgets.Core as Brick
 import Data.Bits (testBit)
@@ -35,40 +33,44 @@ renderBoard :: Board -> Widget String
 renderBoard board =
     Brick.withBorderStyle BS.unicode $
         borderWithLabel (str "Corridors") $
-            vBox (concatMap (renderRank board) [8, 7 .. 0])
+            vBox (map str (renderBoardRows board))
 
-renderRank :: Board -> Int -> [Widget String]
+renderBoardText :: Board -> String
+renderBoardText = unlines . renderBoardRows
+
+renderBoardRows :: Board -> [String]
+renderBoardRows board = concatMap (renderRank board) [8, 7 .. 0]
+
+renderRank :: Board -> Int -> [String]
 renderRank board y =
     renderCellRow board y
         : [renderHorizontalWallRow board (y - 1) | y > 0]
 
-renderCellRow :: Board -> Int -> Widget String
+renderCellRow :: Board -> Int -> String
 renderCellRow board y =
-    hBox [renderCellWithEastWall board x y | x <- [0 .. 8]]
+    trimRight (concat [renderCellWithEastWall board x y | x <- [0 .. 8]])
 
-renderCellWithEastWall :: Board -> Int -> Int -> Widget String
+renderCellWithEastWall :: Board -> Int -> Int -> String
 renderCellWithEastWall board x y =
-    renderCell board x y <+> str (if verticalWallEastOf board x y then "|" else " ")
+    renderCell board x y <> [if verticalWallEastOf board x y then '|' else ' ']
 
-renderCell :: Board -> Int -> Int -> Widget String
-renderCell board x y =
-    let pawnHere
-            | (x, y) == coords (boardHero board) = withAttr (attrName "hero") (str " H ")
-            | (x, y) == coords (boardVillain board) = withAttr (attrName "villain") (str " V ")
-            | otherwise = str " . "
-     in pawnHere
+renderCell :: Board -> Int -> Int -> String
+renderCell board x y
+    | (x, y) == coords (boardHero board) = " H "
+    | (x, y) == coords (boardVillain board) = " V "
+    | otherwise = " . "
   where
     coords w = (fromIntegral w `mod` 9, fromIntegral w `div` 9)
 
-renderHorizontalWallRow :: Board -> Int -> Widget String
+renderHorizontalWallRow :: Board -> Int -> String
 renderHorizontalWallRow board wallY =
-    hBox [str (cellSpan x) <+> str (intersection x) | x <- [0 .. 8]]
+    trimRight (concat [cellSpan x <> [intersection x] | x <- [0 .. 8]])
   where
     cellSpan x = if horizontalWallBelow board x wallY then "---" else "   "
     intersection x =
         if horizontalWallBelow board x wallY || verticalWallAtIntersection board x wallY
-            then "+"
-            else " "
+            then '+'
+            else ' '
 
 horizontalWallBelow :: Board -> Int -> Int -> Bool
 horizontalWallBelow board x wallY =
@@ -92,12 +94,19 @@ wallBit bits x y =
 -- `<hash> | move M / total | press ? for help`.
 renderStatus :: String -> Int -> Int -> Widget String
 renderStatus hashPrefix moveIndex moveCount =
-    str hashPrefix
-        <+> str " | move "
-        <+> str (show moveIndex)
-        <+> str " / "
-        <+> str (show moveCount)
-        <+> str " | press ? for help"
+    str (renderStatusText hashPrefix moveIndex moveCount)
+
+renderStatusText :: String -> Int -> Int -> String
+renderStatusText hashPrefix moveIndex moveCount =
+    hashPrefix
+        <> " | move "
+        <> show moveIndex
+        <> " / "
+        <> show moveCount
+        <> " | press ? for help"
+
+trimRight :: String -> String
+trimRight = reverse . dropWhile (== ' ') . reverse
 
 -- | Smoke entry that takes no input. Confirms the renderer compiles
 -- and produces a Widget value for the initial board.

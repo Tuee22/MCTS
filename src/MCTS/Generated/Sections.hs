@@ -66,6 +66,9 @@ renderCommandCell path =
         "mcts build cpp-imperative" -> path <> " [--dry-run] [--plan-file <path>]"
         "mcts build cpp-functional" -> path <> " [--dry-run] [--plan-file <path>]"
         "mcts build rust" -> path <> " [--dry-run] [--plan-file <path>]"
+        "mcts build legacy-fixtures" ->
+            path
+                <> " [--output-dir <dir>] [--seed <u64>] [--games <n>] [--sims <n>] [--dry-run] [--plan-file <path>]"
         _ -> path
 
 renderPurpose :: String -> CommandSpec -> String
@@ -83,7 +86,7 @@ renderPurpose path spec =
         "mcts inspect cache list" -> "Enumerate equity-sidecar entries per transcript"
         "mcts inspect cache prune" -> "Delete stale equity-sidecar entries"
         "mcts inspect divergence" -> "Emit the cross-backend divergence-rate matrix for a single transcript"
-        "mcts test all" -> "Plan/Apply: every Cabal stanza plus pinned report card"
+        "mcts test all" -> "Plan/Apply: backend builds, every Cabal stanza, and pinned report card"
         "mcts test <stanza>" -> "Run a named Cabal test-suite stanza"
         "mcts lint files" -> "Check whitespace, final newlines, forbidden paths, and tracked generated-file drift"
         "mcts lint docs" -> "Run the generated-docs drift gate"
@@ -98,6 +101,7 @@ renderPurpose path spec =
         "mcts build cpp-imperative" -> "Plan/Apply: imperative C++ backend build harness"
         "mcts build cpp-functional" -> "Plan/Apply: functional C++ backend build harness"
         "mcts build rust" -> "Plan/Apply: Rust backend build harness"
+        "mcts build legacy-fixtures" -> "Plan/Apply: regenerate legacy Q6 fixture transcripts"
         _ -> summary spec
 
 spliceMarkerRegion :: String -> String -> String -> String -> Maybe String

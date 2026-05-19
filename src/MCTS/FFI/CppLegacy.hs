@@ -12,12 +12,15 @@ module MCTS.FFI.CppLegacy
     ( CppLegacyGame
     , withCppLegacyBoard
     , withCppLegacyGame
+    , withCppLegacySearchGame
+    , withCppLegacyRecomputeGame
     , cppLegacyIsTerminal
     , cppLegacySelectMove
     , cppLegacySearchMove
     , cppLegacyRecomputeMove
     , loadCppLegacyEnvelope
     , withCppLegacyRng
+    , cppLegacyLibraryPath
     ) where
 
 import Control.Exception (bracket)
@@ -29,7 +32,16 @@ import Foreign.Marshal.Array (allocaArray, peekArray)
 import Foreign.Ptr (FunPtr, Ptr)
 import Foreign.Storable (peek)
 import MCTS.Error (AppError (..))
-import MCTS.FFI.Common (EngineEnvelope, liftFFI, loadDynamicEnvelope, withDynamicBoard)
+import MCTS.FFI.Common
+    ( DynamicRecomputeGame
+    , DynamicSearchGame
+    , EngineEnvelope
+    , liftFFI
+    , loadDynamicEnvelope
+    , withDynamicBoard
+    , withDynamicRecomputeGame
+    , withDynamicSearchGame
+    )
 import MCTS.Types (Backend (CppLegacy))
 import qualified System.Posix.DynamicLinker as DL
 
@@ -136,6 +148,16 @@ withCppLegacyGame body =
     bracketLibrary = bracket (DL.dlopen legacyLibraryPath [DL.RTLD_NOW]) DL.dlclose
     bracketBoard = bracket
 
+withCppLegacySearchGame
+    :: (DynamicSearchGame -> IO a) -> IO (Either AppError a)
+withCppLegacySearchGame =
+    withDynamicSearchGame CppLegacy legacyLibraryPath "mcts_legacy"
+
+withCppLegacyRecomputeGame
+    :: (DynamicRecomputeGame -> IO a) -> IO (Either AppError a)
+withCppLegacyRecomputeGame =
+    withDynamicRecomputeGame CppLegacy legacyLibraryPath "mcts_legacy"
+
 cppLegacyIsTerminal :: CppLegacyGame -> IO Bool
 cppLegacyIsTerminal game =
     (/= 0) <$> legacyIsTerminal game (legacyBoardPtr game)
@@ -229,6 +251,9 @@ cppLegacyRecomputeMove game seed sims =
 loadCppLegacyEnvelope :: IO (Either AppError EngineEnvelope)
 loadCppLegacyEnvelope =
     loadDynamicEnvelope CppLegacy legacyLibraryPath "mcts_legacy"
+
+cppLegacyLibraryPath :: FilePath
+cppLegacyLibraryPath = legacyLibraryPath
 
 legacyLibraryPath :: FilePath
 legacyLibraryPath = "cpp-legacy/build/libmcts_cpp_legacy.so"

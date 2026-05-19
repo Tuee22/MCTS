@@ -35,7 +35,7 @@ struct mcts_functional_board {
 
 namespace {
 
-constexpr uint16_t kDefaultMaxPlies = 10000;
+constexpr uint16_t kDefaultMaxPlies = 200;
 
 [[gnu::hot]] static int apply_action_id(mcts_functional::State &state, uint8_t action_id) {
     std::vector<corridors::board> moves;
@@ -78,6 +78,16 @@ extern "C" void mcts_functional_free_board(mcts_functional_board *board) {
 extern "C" int mcts_functional_is_terminal(const mcts_functional_board *board) {
     if (!board) return 1;
     return board->state.is_terminal(kDefaultMaxPlies) ? 1 : 0;
+}
+
+extern "C" int mcts_functional_apply_action(mcts_functional_board *board, uint8_t action_id) {
+    if (!board) return -1;
+    const int applied = apply_action_id(board->state, action_id);
+    if (applied == 0) {
+        board->last_visits.clear();
+        board->last_chosen = 0;
+    }
+    return applied;
 }
 
 // Sprint 5.3: engine + shim both compile under `-fno-exceptions`.

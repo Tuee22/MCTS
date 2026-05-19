@@ -166,6 +166,7 @@ prerequisitesForBuild backend =
         case backend of
             "rust" -> ["cargo", "rustc", "lld-linker", "pgo-profiles"]
             "cpp-legacy" -> ["cxx"]
+            "legacy-fixtures" -> ["cxx"]
             "cpp-imperative" -> ["cxx", "llvm", "bolt", "pgo-profiles", "mimalloc"]
             "cpp-functional" -> ["cxx", "llvm", "bolt", "pgo-profiles", "mimalloc"]
             _ -> []

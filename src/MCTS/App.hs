@@ -94,7 +94,8 @@ runPlayInteractive options = do
     let seed = maybe 42 fromIntegral (playSeed options) :: Integer
         sims = max 1 (simPerMove (playSims options))
         maxPlies = Types.runMaxPlies mempty
-    _ <- liftIO (TuiPlay.runInteractivePlay (fromIntegral seed) maxPlies sims)
+    _ <-
+        liftIO (TuiPlay.runInteractivePlay (playBackend options) Nothing (fromIntegral seed) maxPlies sims)
     pure ExitSuccess
 
 runPlayBatch :: PlayOptions -> Env.App ExitCode

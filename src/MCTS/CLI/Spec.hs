@@ -128,6 +128,11 @@ commandSpec =
                 `withOptions` planOptions
             , leaf "rust" "Build Rust backend" "mcts build rust --dry-run"
                 `withOptions` planOptions
+            , leaf
+                "legacy-fixtures"
+                "Regenerate legacy Q6 fixtures"
+                "mcts build legacy-fixtures --output-dir test/golden/legacy/transcripts --seed 42 --games 10 --sims 10000 --dry-run"
+                `withOptions` (legacyFixtureOptions <> planOptions)
             ]
         ]
   where
@@ -146,6 +151,14 @@ planOptions :: [OptionSpec]
 planOptions =
     [ OptionSpec "dry-run" Nothing Nothing "Render the plan without applying it" False
     , OptionSpec "plan-file" Nothing (Just "PATH") "Write the rendered plan to a file" False
+    ]
+
+legacyFixtureOptions :: [OptionSpec]
+legacyFixtureOptions =
+    [ OptionSpec "output-dir" Nothing (Just "DIR") "Fixture transcript output root" False
+    , OptionSpec "seed" Nothing (Just "U64") "Master seed" False
+    , OptionSpec "games" Nothing (Just "N") "Games" False
+    , OptionSpec "sims" Nothing (Just "N") "Sims per move" False
     ]
 
 leafSpecs :: CommandSpec -> [CommandSpec]

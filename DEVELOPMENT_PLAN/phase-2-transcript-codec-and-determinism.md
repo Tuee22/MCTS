@@ -26,8 +26,9 @@ v1 header, transcript writes use same-directory temp files plus rename, and
 `MEQ1` `.eq` / `.envelope` sidecar codec, sidecar listing,
 `inspect show --with-equity` recompute-backed sidecar writes, `inspect cache prune`
 Plan/Apply handling, and originator-vs-foreign sidecar markers now exist. Live backend
-envelope capture, foreign-engine recompute sidecars, and live-envelope stale detection are
-owned by Sprints `3.6`, `4.7`, `5.5`, `6.5`, and `7.5`.
+envelope capture, foreign-engine recompute sidecars, and verify-time live-envelope
+stale detection live in Sprints `3.6`, `4.7`, `5.5`, `6.5`, and `7.5`; the Phase
+`2` sidecar-prune baseline still treats `<backend>-logical` as the current slot.
 
 ## Phase Summary
 
@@ -142,9 +143,11 @@ records of `(action_id, visits)` sorted ascending by action ID, equity excluded.
   that carry a `Draw` winner (`AppError TranscriptFormatUnsupported`) per
   [../README.md → Draw rule](../README.md). Byte-level golden fixtures now pin
   the v1 wire output for known 2-game transcripts for `haskell`,
-  `cpp-imperative`, `cpp-functional`, and `rust`; each fixture is 3614 bytes,
-  and the `mcts-unit` stanza asserts byte-equality on every run and creates any
-  missing fixture on first run.
+  `cpp-imperative`, `cpp-functional`, and `rust`; each fixture is 3614 bytes.
+  The `mcts-unit` stanza asserts byte-equality after normalizing only the two
+  architecture tag bytes (`host_arch` in the fixed header and envelope), because
+  the committed fixtures were captured on arm64 and the Compose image may run on
+  amd64.
 - The single-module `MCTS.Transcript` implementation is retained as the concrete codec
   owner, with thin `MCTS.Transcript.Codec`, `MCTS.Transcript.Action`,
   `MCTS.Transcript.Cache`, `MCTS.Transcript.Hash`, and `MCTS.Transcript.Lookup`
@@ -480,7 +483,9 @@ layered cohort-invariant vs per-backend-slot semantics.
   `build_id`. `decodeEnvelope . encodeEnvelope == id` round-trips through
   `mcts-unit`. The byte-level golden
   `test/golden/transcript-codec/v1-haskell-2games.bin` has been regenerated
-  at 3614 bytes to reflect the current full-envelope fixture. `MCTS.Verify.Envelope`
+  at 3614 bytes to reflect the current full-envelope fixture; `mcts-unit`
+  normalizes only the duplicated architecture tag bytes when checking committed
+  codec bytes across supported host architectures. `MCTS.Verify.Envelope`
   cohort-level checks now compare `rng_source`, `shared_rng_build_id`,
   and `cohort_config_hash` (in addition to `host_arch` and
   `envelope_version`); backend-slot checks now compare `engine_build_id`,

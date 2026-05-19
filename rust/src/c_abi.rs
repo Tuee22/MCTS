@@ -4,7 +4,7 @@ use crate::search::{run_search, select_uct_move};
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
-const DEFAULT_MAX_PLIES: u16 = 10000;
+const DEFAULT_MAX_PLIES: u16 = 200;
 
 type VisitVector = Vec<(u8, u32)>;
 
@@ -38,7 +38,7 @@ pub extern "C" fn mcts_rust_new_board() -> *mut MctsRustBoard {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn mcts_rust_free_board(board: *mut MctsRustBoard) {
     if !board.is_null() {
-        clear_last_visits(board);
+        clear_last_visits(board as *const MctsRustBoard);
         drop(unsafe { Box::from_raw(board) });
     }
 }
@@ -49,6 +49,23 @@ pub unsafe extern "C" fn mcts_rust_is_terminal(board: *const MctsRustBoard) -> i
         return 1;
     }
     unsafe { (*board).is_terminal(DEFAULT_MAX_PLIES) as i32 }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mcts_rust_apply_action(
+    board: *mut MctsRustBoard,
+    action_id: u8,
+) -> i32 {
+    if board.is_null() {
+        return -1;
+    }
+    let board_ref = unsafe { &mut *board };
+    if board_ref.apply_action_flip(flip_action_id(action_id)) {
+        clear_last_visits(board);
+        0
+    } else {
+        -1
+    }
 }
 
 #[unsafe(no_mangle)]

@@ -17,7 +17,8 @@ module MCTS.Engine.ForeignRecompute
     ) where
 
 import Data.Bits (xor)
-import Data.Word (Word32, Word64)
+import Data.Word (Word32, Word64, Word8)
+import MCTS.Engine (Board, applyMove, boardSideToMove, initialBoard)
 import MCTS.Error (AppError (..))
 import MCTS.FFI.Common
     ( DynamicRecomputeGame (..)
@@ -25,14 +26,18 @@ import MCTS.FFI.Common
 import MCTS.Rng.Mix (backendNativeSalt, mix)
 import MCTS.Transcript.EquitySidecar (EqRecord (..), EqStream (..))
 import MCTS.Types
-    ( Backend
+    ( Action
+    , Backend
+    , Envelope (..)
     , GameTranscript (..)
     , MoveRecord (..)
     , RngSource (..)
     , RunConfig (..)
+    , Side (..)
     , SimBudget (..)
     , Transcript (..)
     , actionFromId
+    , backendIdentifier
     , simPerMove
     )
 
@@ -63,7 +68,7 @@ foreignRecomputeEqStream backend transcriptHash buildId opener transcript = do
     perGameResults <-
         sequenceEither
             [ opener $ \game ->
-                recomputeGameMoves backend game masterSeed rng sims gameRec
+                recomputeGameMoves strictRecompute backend game masterSeed rng sims gameRec
             | gameRec <- transcriptGames transcript
             ]
     pure $ case perGameResults of
@@ -81,8 +86,13 @@ foreignRecomputeEqStream backend transcriptHash buildId opener transcript = do
                             }
   where
     config = transcriptConfig transcript
+    envelope = transcriptEnvelope transcript
     masterSeed = runMasterSeed config
     rng = runRngSource config
+    strictRecompute =
+        rng == CppRng
+            && envelopeBackend envelope == backend
+            && envelopeBuildId envelope /= backendIdentifier backend <> "-logical"
     sims =
         max 1 $
             fromIntegral $
@@ -94,21 +104,29 @@ foreignRecomputeEqStream backend transcriptHash buildId opener transcript = do
                             else RampedSims (fromIntegral i) (fromIntegral p)
 
 recomputeGameMoves
-    :: Backend
+    :: Bool
+    -> Backend
     -> DynamicRecomputeGame
     -> Word64
     -> RngSource
     -> Word32
     -> GameTranscript
     -> IO (Either AppError [EqRecord])
-recomputeGameMoves backend game masterSeed rng sims gameTranscript =
+recomputeGameMoves strictRecompute backend game masterSeed rng sims gameTranscript =
     let perGameSeed = mix masterSeed (fromIntegral (gameId gameTranscript))
-     in go perGameSeed (gameMoves gameTranscript) 0 []
+     in go perGameSeed initialBoard (gameMoves gameTranscript) 0 []
   where
     salt = backendNativeSalt rng backend
 
-    go !_ [] _ acc = pure (Right (reverse acc))
-    go !seed (recorded : rest) !moveNo acc = do
+    go
+        :: Word64
+        -> Board
+        -> [MoveRecord]
+        -> Word64
+        -> [EqRecord]
+        -> IO (Either AppError [EqRecord])
+    go !_ _ [] _ acc = pure (Right (reverse acc))
+    go !seed board (recorded : rest) !moveNo acc = do
         let effectiveSeed =
                 seed
                     `xor` salt
@@ -117,23 +135,84 @@ recomputeGameMoves backend game masterSeed rng sims gameTranscript =
         case outcome of
             Left err -> pure (Left err)
             Right (rawChosen, _rawVisits, equity) ->
-                case actionFromId rawChosen of
-                    Nothing ->
-                        pure $
-                            Left $
-                                FFIFailure
-                                    backend
-                                    "foreignRecomputeEqStream"
-                                    ("invalid action id " <> show rawChosen)
-                    Just chosenAction ->
-                        let record =
-                                EqRecord
-                                    { eqGameId = gameId gameTranscript
-                                    , eqMoveIndex = moveIndex recorded
-                                    , eqChosen = chosenAction
-                                    , eqEquity = equity
-                                    }
-                         in go seed rest (moveNo + 1) (record : acc)
+                let flipped = needsFlip (boardSideToMove board)
+                    chosenId = applyFlip flipped rawChosen
+                    visitsResult = decodeVisits (map (\(aid, n) -> (applyFlip flipped aid, n)) _rawVisits)
+                 in case (actionFromId chosenId, visitsResult) of
+                        (Nothing, _) ->
+                            pure $
+                                Left $
+                                    FFIFailure
+                                        backend
+                                        "foreignRecomputeEqStream"
+                                        ("invalid action id " <> show chosenId)
+                        (_, Left badActionId) ->
+                            pure $
+                                Left $
+                                    FFIFailure
+                                        backend
+                                        "foreignRecomputeEqStream"
+                                        ("invalid visit action id " <> show badActionId)
+                        (Just chosenAction, Right visits)
+                            | strictRecompute
+                                && (chosenAction /= moveChosen recorded || visitMismatch visits (moveVisits recorded)) ->
+                                let recomputed =
+                                        recorded
+                                            { moveChosen = chosenAction
+                                            , moveVisits = visits
+                                            }
+                                 in pure $
+                                        Left $
+                                            RecomputeMismatch
+                                                backend
+                                                (fromIntegral (gameId gameTranscript))
+                                                (fromIntegral moveNo)
+                                                recomputed
+                                                recorded
+                            | otherwise ->
+                                let record =
+                                        EqRecord
+                                            { eqGameId = gameId gameTranscript
+                                            , eqMoveIndex = moveIndex recorded
+                                            , eqChosen = chosenAction
+                                            , eqEquity = equity
+                                            }
+                                    nextBoard = applyMove chosenAction board
+                                 in go seed nextBoard rest (moveNo + 1) (record : acc)
+
+decodeVisits :: [(Word8, Word32)] -> Either Word8 [(Action, Word32)]
+decodeVisits raw =
+    traverse decodeOne raw
+  where
+    decodeOne (rawId, visits) =
+        case actionFromId rawId of
+            Just action -> Right (action, visits)
+            Nothing -> Left rawId
+
+visitMismatch :: [(Action, Word32)] -> [(Action, Word32)] -> Bool
+visitMismatch recomputed recorded =
+    any
+        ( \(action, visits) ->
+            lookupVisits action recorded /= visits
+        )
+        recomputed
+  where
+    lookupVisits action table =
+        case lookup action table of
+            Just visits -> visits
+            Nothing -> 0
+
+needsFlip :: Side -> Bool
+needsFlip Hero = True
+needsFlip Villain = False
+
+applyFlip :: Bool -> Word8 -> Word8
+applyFlip False aid = aid
+applyFlip True aid
+    | aid <= 80 = 80 - aid
+    | aid <= 144 = 225 - aid
+    | aid <= 208 = fromIntegral (353 - fromIntegral aid :: Int)
+    | otherwise = aid
 
 -- | Sequence a list of `IO (Either e a)` into `IO (Either e [a])`,
 -- short-circuiting on the first `Left`.

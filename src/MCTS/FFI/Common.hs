@@ -27,6 +27,7 @@ module MCTS.FFI.Common
     , withDynamicRecomputeGame
     , DynamicSearchGame (..)
     , DynamicRecomputeGame (..)
+    , engineEnvelopeToEnvelope
     , loadDynamicEnvelope
     , liftFFI
     ) where
@@ -41,7 +42,13 @@ import Foreign.Marshal.Array (allocaArray, peekArray)
 import Foreign.Ptr (FunPtr, Ptr, castPtr, plusPtr)
 import Foreign.Storable (peek, peekByteOff)
 import MCTS.Error (AppError (..))
-import MCTS.Types (Backend)
+import MCTS.Types
+    ( Backend
+    , ByteString32 (..)
+    , Envelope (..)
+    , RngSource (..)
+    , backendIdentifier
+    )
 import Numeric (showHex)
 import qualified System.Posix.DynamicLinker as DL
 
@@ -75,6 +82,38 @@ data EngineEnvelope = EngineEnvelope
     }
     deriving (Eq, Show)
 
+engineEnvelopeToEnvelope :: EngineEnvelope -> Envelope
+engineEnvelopeToEnvelope engine =
+    Envelope
+        { envelopeVersion = engineEnvVersion engine
+        , envelopeBackend = backend
+        , envelopeRngSource = rngSourceName (engineEnvRngSource engine)
+        , envelopeHostArch = hostArchName (engineEnvHostArch engine)
+        , envelopeSharedRngBuildId = ByteString32 (engineEnvSharedRngBuildId engine)
+        , envelopeCohortConfigHash = ByteString32 (engineEnvCohortConfigHash engine)
+        , envelopeEngineBuildId = ByteString32 (engineEnvBuildId engine)
+        , envelopeEngineGitCommit = engineEnvGitCommit engine
+        , envelopeCompilerId = engineEnvCompilerId engine
+        , envelopeCompilerVersion = engineEnvCompilerVersion engine
+        , envelopeFpFlags = engineEnvFpFlags engine
+        , envelopeLibmId = engineEnvLibmId engine
+        , envelopeCpuFeatures = engineEnvCpuFeatures engine
+        , envelopeFpEnv = engineEnvFpEnv engine
+        , envelopeBuildId = backendIdentifier backend <> "-" <> take 16 (engineEnvBuildId engine)
+        }
+  where
+    backend = engineEnvBackend engine
+
+    rngSourceName value =
+        case value of
+            1 -> CppRng
+            _ -> NativeRng
+
+    hostArchName value =
+        case value of
+            1 -> "arm64"
+            _ -> "amd64"
+
 data DynamicGame = DynamicGame
     { dynamicGameBoard :: !(Ptr ())
     , dynamicGameIsTerminal :: !(IO Bool)
@@ -92,6 +131,7 @@ data DynamicGame = DynamicGame
 data DynamicSearchGame = DynamicSearchGame
     { searchGameBoard :: !(Ptr ())
     , searchGameIsTerminal :: !(IO Bool)
+    , searchGameApplyAction :: !(Word8 -> IO (Either AppError ()))
     , searchGameSearchMove
         :: !(Word64 -> Word32 -> IO (Either AppError (Word8, [(Word8, Word32)])))
     }
@@ -175,6 +215,8 @@ foreign import ccall "dynamic"
         -> Ptr Word32
         -> Ptr Word8
         -> IO Int32
+foreign import ccall "dynamic"
+    mkDynamicApplyAction :: FunPtr (Ptr () -> Word8 -> IO CInt) -> Ptr () -> Word8 -> IO CInt
 foreign import ccall "dynamic"
     mkDynamicRecomputeMove
         :: FunPtr
@@ -261,14 +303,27 @@ withDynamicSearchGame backend libraryPath symbolPrefix body =
                 newFun <- DL.dlsym library (symbolPrefix <> "_new_board")
                 freeFun <- DL.dlsym library (symbolPrefix <> "_free_board")
                 isTerminalFun <- DL.dlsym library (symbolPrefix <> "_is_terminal")
+                applyActionFun <- DL.dlsym library (symbolPrefix <> "_apply_action")
                 searchMoveFun <- DL.dlsym library (symbolPrefix <> "_search_move")
                 let isTerminal board' = (/= 0) <$> mkDynamicIsTerminal isTerminalFun board'
+                    applyAction' = mkDynamicApplyAction applyActionFun
                     searchMove' = mkDynamicSearchMove searchMoveFun
                 bracket (mkBoardNew newFun) (mkBoardFree freeFun) $ \board ->
                     body
                         DynamicSearchGame
                             { searchGameBoard = board
                             , searchGameIsTerminal = isTerminal board
+                            , searchGameApplyAction = \actionId -> do
+                                ret <- applyAction' board actionId
+                                pure $
+                                    if ret == 0
+                                        then Right ()
+                                        else
+                                            Left $
+                                                FFIFailure
+                                                    backend
+                                                    (symbolPrefix <> "_apply_action")
+                                                    ("apply returned " <> show ret)
                             , searchGameSearchMove = \seed sims ->
                                 allocaArray actionCount $ \actionIdsBuf ->
                                     allocaArray actionCount $ \visitsBuf ->

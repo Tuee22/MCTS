@@ -1,8 +1,10 @@
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module MCTS.CLI.Inspect
     ( runInspect
     , InspectRow (..)
+    , prepareReplayOverlays
     , renderInspectRows
     , renderTranscript
     ) where
@@ -12,15 +14,18 @@ import qualified Control.Exception.Safe as Catch
 import Control.Monad.IO.Class (liftIO)
 import qualified Data.ByteString as BS
 import Data.List (intercalate, sortOn)
+import qualified Data.Text as Text
 import MCTS.CLI.Command
 import MCTS.CLI.Output (OutputFormat (..), OutputOptions (..), outputLine, renderErrorString)
 import qualified MCTS.CLI.Tui.Replay as ReplayTui
+import MCTS.Driver (makeLogicalEnvelope)
 import qualified MCTS.Engine.ForeignRecompute as ForeignRecompute
 import qualified MCTS.Engine.Recompute as Recompute
 import qualified MCTS.Env as Env
 import qualified MCTS.Error
 import MCTS.FFI.CppFunctional (cppFunctionalLibraryPath, withCppFunctionalRecomputeGame)
 import MCTS.FFI.CppImperative (cppImperativeLibraryPath, withCppImperativeRecomputeGame)
+import MCTS.FFI.CppLegacy (cppLegacyLibraryPath, withCppLegacyRecomputeGame)
 import MCTS.FFI.Rust (rustLibraryPath, withRustRecomputeGame)
 import MCTS.Notation (renderMove, renderWinner)
 import MCTS.Plan (Plan (..), PlanOptions (..), renderPlanWith, writePlanFile)
@@ -287,11 +292,161 @@ inspectReplay output options = do
 -- cache size on the replay state.
 runReplayInteractive :: ReplayOptions -> String -> Transcript -> IO Int
 runReplayInteractive options hashValue transcript = do
-    overlays <- loadOverlayStreams (replayCacheDir options) hashValue
+    (overlays, recomputeMessage) <- prepareReplayOverlays (replayCacheDir options) hashValue transcript
     let baseState = ReplayTui.initialReplayStateWithOverlays hashValue transcript overlays
-        configuredState = baseState{ReplayTui.replayCacheStates = max 1 (replayCacheStates options)}
+        configuredState =
+            baseState
+                { ReplayTui.replayCacheStates = max 1 (replayCacheStates options)
+                , ReplayTui.replayOverlayLoader =
+                    Just (loadReplayOverlay (replayCacheDir options) hashValue transcript)
+                , ReplayTui.replayOverlayCandidates = allBackends
+                , ReplayTui.replayMessage =
+                    case recomputeMessage of
+                        Nothing -> ReplayTui.replayMessage baseState
+                        Just message -> message <> " | " <> ReplayTui.replayMessage baseState
+                }
     _ <- ReplayTui.runReplayTuiFromState configuredState
     pure 0
+
+-- | Load cached replay overlays and fill the originator column on
+-- cache miss. The recompute path performs the visit-count check for
+-- `--rng cpp` transcripts before the TUI starts; failures are returned
+-- as a status-line message so the replay navigator can still open.
+prepareReplayOverlays :: Maybe FilePath -> String -> Transcript -> IO ([EqStream], Maybe String)
+prepareReplayOverlays cacheDir hashValue transcript = do
+    overlays <- loadOverlayStreams cacheDir hashValue
+    if originatorOverlayPresent hashValue transcript overlays
+        then pure (overlays, Nothing)
+        else do
+            recomputed <- recomputeOriginatorOverlay hashValue transcript
+            case recomputed of
+                OverlaySkipped message -> pure (overlays, Just message)
+                OverlayFailed err ->
+                    pure
+                        ( overlays
+                        , Just ("recompute failed: " <> Text.unpack (MCTS.Error.renderError err))
+                        )
+                OverlayReady stream -> do
+                    written <-
+                        (Right <$> writeEquitySidecarStream cacheDir transcript stream)
+                            `Catch.catch` (\e -> pure (Left (e :: IOException)))
+                    let message =
+                            case written of
+                                Right _ ->
+                                    "recomputed "
+                                        <> backendIdentifier (eqBackend stream)
+                                        <> " replay equity sidecar"
+                                Left err ->
+                                    "recomputed "
+                                        <> backendIdentifier (eqBackend stream)
+                                        <> " replay equity but sidecar write failed: "
+                                        <> show err
+                    pure (overlays <> [stream], Just message)
+
+data OverlayRecomputeResult
+    = OverlayReady !EqStream
+    | OverlaySkipped !String
+    | OverlayFailed !MCTS.Error.AppError
+
+originatorOverlayPresent :: String -> Transcript -> [EqStream] -> Bool
+originatorOverlayPresent hashValue transcript =
+    any
+        ( \stream ->
+            eqTranscriptHash stream == hashValue
+                && eqBackend stream == originBackend
+                && eqBuildId stream == originBuildId
+        )
+  where
+    envelope = transcriptEnvelope transcript
+    originBackend = envelopeBackend envelope
+    originBuildId = envelopeBuildId envelope
+
+recomputeOriginatorOverlay :: String -> Transcript -> IO OverlayRecomputeResult
+recomputeOriginatorOverlay hashValue transcript =
+    recomputeBackendOverlay hashValue transcript (envelopeBackend envelope) (envelopeBuildId envelope)
+  where
+    envelope = transcriptEnvelope transcript
+
+loadReplayOverlay
+    :: Maybe FilePath -> String -> Transcript -> Backend -> IO ReplayTui.ReplayOverlayLoadResult
+loadReplayOverlay cacheDir hashValue transcript backend = do
+    let buildId = envelopeBuildId (makeLogicalEnvelope backend (runRngSource (transcriptConfig transcript)))
+    recomputed <- recomputeBackendOverlay hashValue transcript backend buildId
+    case recomputed of
+        OverlaySkipped message -> pure (ReplayTui.ReplayOverlaySkipped message)
+        OverlayFailed err -> pure (ReplayTui.ReplayOverlayFailed (Text.unpack (MCTS.Error.renderError err)))
+        OverlayReady stream -> do
+            written <-
+                (Right <$> writeEquitySidecarStream cacheDir transcript stream)
+                    `Catch.catch` (\e -> pure (Left (e :: IOException)))
+            pure $
+                case written of
+                    Right _ -> ReplayTui.ReplayOverlayLoaded stream
+                    Left err ->
+                        ReplayTui.ReplayOverlayFailed
+                            ( "sidecar write failed for "
+                                <> backendIdentifier (eqBackend stream)
+                                <> ": "
+                                <> show err
+                            )
+
+recomputeBackendOverlay :: String -> Transcript -> Backend -> String -> IO OverlayRecomputeResult
+recomputeBackendOverlay hashValue transcript backend buildId =
+    case backend of
+        Haskell ->
+            pure $
+                case Recompute.recomputeEqStream hashValue buildId (retagTranscript Haskell buildId transcript) of
+                    Left err -> OverlayFailed err
+                    Right stream -> OverlayReady stream
+        CppLegacy ->
+            recomputeForeign CppLegacy cppLegacyLibraryPath withCppLegacyRecomputeGame
+        CppImperative ->
+            recomputeForeign CppImperative cppImperativeLibraryPath withCppImperativeRecomputeGame
+        CppFunctional ->
+            recomputeForeign CppFunctional cppFunctionalLibraryPath withCppFunctionalRecomputeGame
+        Rust ->
+            recomputeForeign Rust rustLibraryPath withRustRecomputeGame
+  where
+    retagTranscript taggedBackend taggedBuildId current =
+        current
+            { transcriptConfig = (transcriptConfig current){runBackend = taggedBackend}
+            , transcriptEnvelope =
+                (transcriptEnvelope current)
+                    { envelopeBackend = taggedBackend
+                    , envelopeBuildId = taggedBuildId
+                    }
+            }
+
+    recomputeForeign
+        :: Backend
+        -> FilePath
+        -> ForeignRecompute.ForeignRecomputeOpener
+        -> IO OverlayRecomputeResult
+    recomputeForeign foreignBackend libPath opener = do
+        present <- doesFileExist libPath
+        if not present
+            then
+                pure $
+                    OverlaySkipped
+                        ( "no cached "
+                            <> backendIdentifier foreignBackend
+                            <> " replay sidecar and shared library is not built"
+                        )
+            else do
+                result <-
+                    ForeignRecompute.foreignRecomputeEqStream
+                        foreignBackend
+                        hashValue
+                        buildId
+                        opener
+                        transcript
+                        `Catch.catch` ( \(e :: IOException) ->
+                                            pure (Left (MCTS.Error.FFIFailure foreignBackend "foreignRecomputeEqStream" (show e)))
+                                      )
+                pure $
+                    case result of
+                        Left err -> OverlayFailed err
+                        Right stream -> OverlayReady stream
 
 -- | Load every cached `EqStream` whose transcript-hash slot matches
 -- `hashValue`. Read failures and decode failures silently drop the

@@ -69,6 +69,25 @@ static uint8_t parse_action_id(const std::string& action) {
     return 0;
 }
 
+extern "C" int mcts_legacy_apply_action(mcts_legacy_board* board, uint8_t action_id) {
+    if (!board || !board->root || board->root->get_state().is_terminal()) {
+        return -1;
+    }
+    try {
+        auto moves = board->root->get_sorted_actions(false);
+        for (const auto &mv : moves) {
+            const std::string &text = std::get<2>(mv);
+            if (parse_action_id(text) == action_id) {
+                board->root = board->root->make_move(text, false);
+                return 0;
+            }
+        }
+        return -1;
+    } catch (...) {
+        return -1;
+    }
+}
+
 extern "C" uint8_t mcts_legacy_select_uct_move(mcts_legacy_board* board, uint64_t seed, uint32_t sims) {
     if (!board || !board->root || board->root->get_state().is_terminal()) {
         return 0;

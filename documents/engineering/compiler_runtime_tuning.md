@@ -71,31 +71,34 @@ The `mcts build cpp-imperative` (and `mcts build cpp-functional`) Plan/Apply
 commands run:
 
 1. **Two-stage PGO.** Instrumented build via
-   `-fprofile-generate=cpp-imperative/pgo-profile/`; training run on benchmark
-   (b) at a representative game count (100 games × 10_000 sims is the pinned
-   training workload); optimised build with
-   `-fprofile-use=cpp-imperative/pgo-profile/ -fprofile-correction`.
-2. **BOLT post-link.** `llvm-bolt cpp-imperative/build/libmcts_cpp_imperative_bench.so
-   -o cpp-imperative/build/libmcts_cpp_imperative_bench.bolted.so -data
-   cpp-imperative/bolt-profile/perf.fdata` (and the same for the
-   `_instrumented` artefact).
+   `-fprofile-generate=$(abspath $(PGO_DIR))`; each generated `_bench` and
+   `_instrumented` artefact is installed to the canonical FFI load name for a
+   one-game, `--sims 100` training run before the canonical `.gcda` files are
+   copied back to artefact-specific profile names; optimised build with
+   `-fprofile-use=$(abspath $(PGO_DIR)) -fprofile-correction`.
+2. **BOLT post-link.** `llvm-bolt -instrument` produces a `_bench.inst.so` /
+   `_instrumented.inst.so`; each is installed to the canonical FFI load name for
+   a one-game, `--sims 50` training run. `llvm-bolt -reorder-blocks=ext-tsp`
+   consumes the resulting `.fdata` when present; otherwise the PGO artefact is
+   copied as the `.bolted.so` fallback.
 3. **`mimalloc` link.** Static-linked (preferred for FFI determinism;
    `LD_PRELOAD` is acceptable for ad-hoc benchmark runs).
-4. **Install.** Rename or symlink `cpp-imperative/build/libmcts_cpp_imperative_bench.bolted.so`
-   to `cpp-imperative/libmcts_cpp_imperative.so` — the canonical FFI load name
-   pinned by the project [../../README.md → Repository layout
-   (target)](../../README.md). The `_instrumented.bolted.so` artefact is
-   symlinked to `cpp-imperative/libmcts_cpp_imperative_instrumented.so` for
-   the verify/play/replay path. See
+4. **Install.** Copy `cpp-imperative/build/libmcts_cpp_imperative_bench.bolted.so`
+   to `cpp-imperative/build/libmcts_cpp_imperative.so` — the canonical FFI load
+   name pinned by the project [../../README.md → Repository layout
+   (target)](../../README.md). The `_instrumented.bolted.so` artefact is copied
+   to `cpp-imperative/build/libmcts_cpp_imperative_instrumented.so` for the
+   verify/play/replay path. See
    [./backend_ffi_contract.md → Backends and Linkage](./backend_ffi_contract.md)
    for the full install-name vs build-intermediate table.
 
-Current implementation baseline: the Plan/Apply surface and prerequisite gate run
-inside the container, but the apply steps still delegate to each backend's smoke
-`make` target. The smoke builds validate the toolchain and C ABI skeletons with the
-same C++23 optimization flag set listed above, default-visible C ABI exports, and a
-`mimalloc` link. The two-stage PGO, BOLT, static allocator link discipline, paired
-bench/instrumented artefacts, and install-name steps remain active Phase 5/6 work.
+Current implementation baseline: the C++ Plan/Apply surface uses the shared
+19-step `pgoBoltPlan` for both `cpp-imperative` and `cpp-functional`.
+`docker compose run --rm mcts mcts build cpp-functional` validates the canonical
+training/install path in the pinned amd64 container. C++ shared-library BOLT
+instrumentation can still produce no `.fdata` in that container; the build
+harness records that explicitly and installs the PGO artefact as the canonical
+fallback rather than treating the backend build as failed.
 
 ### Code-Level Requirements
 
@@ -188,18 +191,22 @@ strip = "symbols"
 
 The `mcts build rust` Plan/Apply command runs:
 
-- **Two-stage PGO** via `rustc -Cprofile-generate=rust/pgo-profile/` → train on
-  benchmark (b) → `-Cprofile-use=rust/pgo-profile/`.
-- **BOLT** post-link, same shape as the C++ backends.
+- **Two-stage PGO** via
+  `rustc -Cprofile-generate=/workspace/MCTS/rust/pgo-profile` → train on
+  benchmark (b) with `--games 1 --sims 100` → hard-failing
+  `llvm-profdata merge` into `rust/pgo-profile/merged.profdata` →
+  `-Cprofile-use=/workspace/MCTS/rust/pgo-profile/merged.profdata`.
+- **BOLT** post-link: instrument the PGO cdylib, install the instrumented cdylib
+  at the canonical FFI load name for a one-game `--sims 50` training run, restore
+  the PGO cdylib, then optimize with `-reorder-blocks=ext-tsp` when `.fdata`
+  exists or copy the PGO artefact as the fallback.
 - **`mimalloc`** as `#[global_allocator]` (via the `mimalloc` crate).
 
-Current implementation baseline: `mcts build rust` validates the pinned Rust toolchain
-inside the container and delegates to `cargo build --release`, producing the smoke
-`cdylib` at `rust/target/release/libmcts_rust.so`. The smoke crate is split into the
-planned `board`, `tree`, `search`, `rollout`, `c_abi`, and `envelope` modules and
-declares `mimalloc::MiMalloc` as `#[global_allocator]`; `rust/build.rs` stamps
-`rustc --version` into the live FFI envelope as `compiler_version`. The rustc
-PGO/BOLT pipeline remains active Phase 6 work.
+Current implementation baseline: `docker compose run --rm --build mcts mcts build
+rust` validates the pinned Rust toolchain, inherited subprocess environment,
+absolute profile paths, profile merge guard, canonical install path
+`rust/target/release/libmcts_rust.so`, `mimalloc::MiMalloc` global allocator, and
+post-link `engine_build_id` patching inside the pinned amd64 container.
 
 ### Code-Level Requirements
 
@@ -331,8 +338,9 @@ search inner loop. Round 1 takes the rollout's per-step cost from ~1 ms to
 
 GHC `9.14` has no production-grade profile-guided optimisation comparable to
 GCC/Clang `-fprofile-use` or `rustc -Cprofile-use`. The Haskell backend
-therefore competes against PGO+BOLT-optimised C++ and Rust without an equivalent
-feedback loop.
+therefore competes against the container-built PGO/BOLT backend artefacts without
+an equivalent feedback loop; when C++ BOLT data is absent in the pinned container,
+that means the explicit PGO-only C++ fallback and full Rust PGO/BOLT on amd64.
 
 This is the asymmetry that most concretely tests the project hypothesis: if
 Haskell matches under these conditions, the result is meaningful; if it falls
@@ -399,39 +407,52 @@ optimization beyond the `thread_local` move buffer.
 
 ### Sprint 6.4 / 8.3 PGO+BOLT Status
 
-The end-to-end Rust PGO pipeline (`rustPgoBoltPlan` in
-`src/MCTS/CLI/Build.hs`) compiles cleanly: cargo `-Cprofile-generate`
-instrumented build, training run, `llvm-profdata merge`, and
-`-Cprofile-use` optimized rebuild all work in the pinned container.
-The BOLT post-link step does **not** complete on aarch64 — the
-container's `llvm-bolt-19` reports:
+The Phase 6 backend install surface is closed. On amd64,
+`rustPgoBoltPlan` in `src/MCTS/CLI/Build.hs` completes cargo
+`-Cprofile-generate`, the one-game PGO training run,
+`llvm-profdata merge`, `-Cprofile-use`, BOLT instrumentation/training,
+canonical install, and post-link `engine_build_id` patching. The shared
+C++ `pgoBoltPlan` validates the canonical FFI training/install sequence
+for `cpp-functional`; if C++ BOLT instrumentation yields no `.fdata` in
+the pinned container, the plan installs the PGO artefact as the explicit
+fallback.
+
+On aarch64, the container's `llvm-bolt-19` reports:
 
 ```
 BOLT-WARNING: non-relocation mode for AArch64 is not fully supported
 BOLT-ERROR: instrumentation runtime libraries require relocations
 ```
 
-even with `--allow-stripped`. The cdylib is built with `strip = "symbols"`
-per the pinned `[profile.release]`, and BOLT instrumentation on
-aarch64 requires relocations that the stripped release profile does
-not preserve. The plan's step 7 `|| cp` fallback gracefully degrades
-the BOLT pass to a no-op so the install path still publishes the
+even with `--allow-stripped`. The cdylib is built with `strip =
+"symbols"` per the pinned `[profile.release]`, and BOLT instrumentation
+on aarch64 requires relocations that the stripped release profile does
+not preserve. The fallback keeps the install path publishing a
 PGO-optimized cdylib at the canonical location.
 
-The Sprint 8.3 verdict remains `Pending` because:
+The Sprint 8.3 verdict was recorded on 2026-05-18 by
+`docker compose run --rm --build mcts mcts test all` against the bounded
+canonical workload (`G_R=1_000`, `G_S=4`, `S_BENCH=500`, MT8 variants)
+and the canonical artefacts produced by that same container run. On amd64,
+Rust completed PGO/BOLT; the C++ shared-library BOLT instrumentation yielded no
+`.fdata`, so the report card measures the documented C++ PGO-only fallback.
+Q1/Q2/Q5 use the production monotonic clock through the no-write batch runner
+rather than the former zero-valued test stub or transcript-retaining benchmark
+subprocesses.
 
-- BOLT post-link is not functional on aarch64 in the current
-  container; the comparison floor on this platform is **PGO-only
-  cpp-imperative**, not the full PGO+BOLT-tuned target the doctrine
-  pinned. The full PGO+BOLT bar is achievable on amd64 only.
-- Even at the non-PGO cpp-imperative smoke baseline, the
-  measurements above show Haskell at **parity or better** on Q1 ST,
-  Q1 MT8, and Q2 ST (sims ≤ 500). At Q2 ST sims=1000 Haskell is in
-  the 5–15% PGO-attributable band.
-- The full pinned report-card workload (`G_R=100_000`, `G_S=1_000`,
-  `S_BENCH=10_000`, MT8 variants) is the actual measurement basis
-  per the [Parity Tolerance](#parity-tolerance) section; the
-  snapshots above are scaled smoke runs.
+| Row | Ratio | Evidence |
+|-----|------:|----------|
+| Q1 rollouts ST | 2.88x | Haskell 531.4 games/s vs cpp-imperative 1531.6 games/s |
+| Q1 rollouts MT8 | 18.93x | Haskell 493.8 games/s vs cpp-imperative 9344.6 games/s |
+| Q2 self-play ST | 3.65x | Haskell 0.4 games/s vs cpp-imperative 1.6 games/s |
+| Q2 self-play MT8 | 10.18x | Haskell 0.4 games/s vs cpp-imperative 4.5 games/s |
+| Q5 Haskell MT scaling | 1.00x | 0.4 -> 0.4 games/s |
+| Q5 cpp-imperative MT scaling | 2.80x | 1.6 -> 4.5 games/s |
+
+The final Sprint 8.3 verdict is **`Shortfall 17.925246987694774`**. This is
+outside the 5% tolerance and also far outside the 5-15% PGO-attributable band,
+so the PGO asymmetry is recorded as context rather than as a plausible full
+explanation for the measured gap.
 
 ## Parity Tolerance
 

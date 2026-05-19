@@ -56,7 +56,7 @@ From the host, run any listed logical command as
 | `mcts inspect cache list` | Enumerate equity-sidecar entries per transcript |
 | `mcts inspect cache prune [--keep-current] [--dry-run] [--plan-file <path>]` | Delete stale equity-sidecar entries |
 | `mcts inspect divergence <hash-prefix>` | Emit the cross-backend divergence-rate matrix for a single transcript |
-| `mcts test all [--dry-run] [--plan-file <path>]` | Plan/Apply: every Cabal stanza plus pinned report card |
+| `mcts test all [--dry-run] [--plan-file <path>]` | Plan/Apply: backend builds, every Cabal stanza, and pinned report card |
 | `mcts test <stanza>` | Run a named Cabal test-suite stanza |
 | `mcts lint files [--write]` | Check whitespace, final newlines, forbidden paths, and tracked generated-file drift |
 | `mcts lint docs [--write]` | Run the generated-docs drift gate |
@@ -71,6 +71,7 @@ From the host, run any listed logical command as
 | `mcts build cpp-imperative [--dry-run] [--plan-file <path>]` | Plan/Apply: imperative C++ backend build harness |
 | `mcts build cpp-functional [--dry-run] [--plan-file <path>]` | Plan/Apply: functional C++ backend build harness |
 | `mcts build rust [--dry-run] [--plan-file <path>]` | Plan/Apply: Rust backend build harness |
+| `mcts build legacy-fixtures [--output-dir <dir>] [--seed <u64>] [--games <n>] [--sims <n>] [--dry-run] [--plan-file <path>]` | Plan/Apply: regenerate legacy Q6 fixture transcripts |
 <!-- mcts:command-matrix:end -->
 
 Current implementation baseline: `src/MCTS/CLI/Parser.hs` exposes
@@ -82,14 +83,24 @@ originator sidecar and renders its stream-backed per-move equity column;
 `inspect cache list` enumerates `.eq` / `.envelope` slots; `inspect cache prune
 --keep-current` retains the logical `<backend>-logical` build id; `inspect show
 --envelope` renders the current envelope fields; and `inspect divergence` renders
-transcript-pair metrics from `MCTS.Verify.Divergence`. `mcts verify ...
---allow-stale` is routed through the baseline envelope verifier. Live
-backend-envelope stale detection, foreign recompute, and the full cross-backend
-matrix remain active plan work.
+transcript-pair metrics from `MCTS.Verify.Divergence`. Logical `mcts verify ...
+--allow-stale` is routed through the logical layered envelope verifier; when a
+foreign cdylib is present, FFI-produced transcripts are stamped with
+`mcts_<backend>_get_envelope()` and integration exercises live envelope
+comparison through `checkTranscriptEnvelopesLive`. JSON verify output includes
+`warning_details` for downgraded `--allow-stale` backend-slot warnings. The report-card renderer now emits
+explicit Q1/Q2/Q5 evidence fields and the cross-backend divergence matrix in
+table and JSON form; the default golden uses the logical baseline, and the live
+`mcts test all` path requires canonical backend artefacts, measures Q1/Q2/Q5
+with the production monotonic clock through the no-write batch runner, and
+populates divergence rows from the measured logical `G_V` verify cohort.
+`mcts build legacy-fixtures` is the supported Q6
+fixture-regeneration path; it builds `cpp-legacy/build/legacy-to-wire` and
+passes output root, seed, game count, and simulation count as explicit flags.
 
-## ADT Source of Truth
+## Typed Source of Truth
 
-All command, option, and backend ADTs — `Command`, `BenchCommand`,
+All command, option, backend ADTs, and verify-cohort GADTs — `Command`, `BenchCommand`,
 `VerifyCommand`, `BuildCommand`, `InspectCommand`, `TestCommand`, `LintCommand`,
 `DocsCommand`, `CommandsOptions`, `HelpOptions`, `BenchOptions`,
 `VerifyOptions`, `LegacyParityOptions`, `PlayOptions`, `ShowOptions`,
@@ -112,20 +123,21 @@ command also live in
 | `--threading single\|multi` | `bench`, `verify` | `multi` for `bench`, `single` for `verify` | Threading mode for the batch dispatcher. |
 | `--workers N` | `bench` (when `--threading multi`) | `8` | Worker count for the batch pool. |
 | `--rng native\|cpp` | `bench`, `play` | `native` | Pinned to `cpp` on the `verify` subtree at parse time. |
-| `--games N` | `bench`, `verify` | required | Game count for the run. |
-| `--seed N` | `bench`, `verify`, `play` | required (bench/verify); `Nothing` ⇒ fresh random (play) | Master seed; per-game seeds derive via `splitmix64(master_seed, game_index)`. |
+| `--games N` | `bench`, `verify`, `build legacy-fixtures` | required for bench/verify; `10` for legacy fixtures | Game count for the run. |
+| `--seed N` | `bench`, `verify`, `play`, `build legacy-fixtures` | required (bench/verify); `Nothing` ⇒ fresh random (play); `42` for legacy fixtures | Master seed; per-game seeds derive via `splitmix64(master_seed, game_index)`. |
 | `--max-plies N` | `bench`, `verify`, `play` | `200`; pinned to `10000` under `verify legacy-parity` | Ignored for backend (i); part of the determinism contract for (ii)–(v). |
-| `--sims N` or `--sims N0:N1` | `bench`, `verify`, `play` | `10_000` | `N` parses as `FixedSims N`; `N0:N1` parses as `RampedSims N0 N1`. Ignored by `bench rollouts` / `verify rollouts`. |
+| `--sims N` or `--sims N0:N1` | `bench`, `verify`, `play`, `build legacy-fixtures` | `10_000` | `N` parses as `FixedSims N`; `N0:N1` parses as `RampedSims N0 N1` for run commands. `build legacy-fixtures` accepts fixed `N` only. Ignored by `bench rollouts` / `verify rollouts`. |
+| `--output-dir <path>` | `build legacy-fixtures` | `test/golden/legacy/transcripts` | Fixture transcript output root; files land below the host-architecture subdirectory. |
 | `--top N` | `inspect show`, `inspect replay` | `10`; `0` ⇒ all legal moves | Live-adjustable via `+`/`-` in `inspect replay`. |
 | `--with-equity` | `inspect show` | `False` | Re-runs the deterministic search to populate the equity column. Reads the originator's cached `.eq` if envelope-matched (instant); otherwise recomputes locally and writes a fresh sidecar. |
 | `--envelope` | `inspect show` | `False` | Dump the transcript's engine-envelope block as plain text (one field per line) before the per-move output. Useful for scripting (`diff`-friendly) and forensics. |
 | `--cache-states N` | `inspect replay` | `20` | In-memory MCTS-state LRU cache for back-navigation. |
-| `--allow-stale` | `verify rollouts`, `verify selfplay`, `verify legacy-parity` | off | Downgrade per-backend-slot `EngineEnvelopeMismatch` from hard fail to a warning; verify proceeds on visit counts only. Cohort-level mismatches (`host_arch`, `shared_rng_build_id`, `cohort_config_hash`) remain hard fails. Forensic use only. |
-| `--keep-current` | `inspect cache prune` | off | In the Phase 2 baseline, only deletes sidecar slots whose build id does not match the logical `<backend>-logical` current slot; live-envelope matching lands with the backend FFI envelope work. |
+| `--allow-stale` | `verify rollouts`, `verify selfplay`, `verify legacy-parity` | off | Downgrade per-backend-slot `EngineEnvelopeMismatch` from hard fail to a warning; verify proceeds on visit counts only. `--format json` includes the downgraded warnings under `warning_details`. Cohort-level mismatches (`host_arch`, `shared_rng_build_id`, `cohort_config_hash`) remain hard fails. Forensic use only. |
+| `--keep-current` | `inspect cache prune` | off | In the Phase 2 baseline, only deletes sidecar slots whose build id does not match the logical `<backend>-logical` current slot. Live-envelope stale detection is enforced by `verify` for transcript cohorts; report-card/recompute sidecar coverage lives under `inspect divergence` and the Phase 7 integration stanza. |
 | `--cache-dir <path>` | every cache-touching command | `./.mcts-cache/` when omitted | The `mcts` binary does not read cache-root environment variables. |
 | `--format json\|table\|plain` | every non-TUI command | `table` on TTY, `plain` otherwise | Per [HASKELL_CLI_TOOL.md → Output Rules](../../HASKELL_CLI_TOOL.md). TUI commands (`play`, `inspect replay`) ignore the flag. |
 | `--color auto\|always\|never`, `--no-color` | every non-TUI command | `auto` | TUI commands ignore the flag. |
-| `--dry-run` | every Plan/Apply command (`test all`, `build <backend>`, `inspect cache prune`) | off | Renders the typed `Plan` and exits 0. |
+| `--dry-run` | every Plan/Apply command (`test all`, `build <backend>`, `build legacy-fixtures`, `inspect cache prune`) | off | Renders the typed `Plan` and exits 0. |
 | `--plan-file <path>` | every Plan/Apply command | unset | Writes the rendered plan to disk for out-of-band review. |
 
 ## Backend Identifiers
@@ -154,6 +166,22 @@ json|table|plain` (default `table` on TTY, `plain` otherwise) and `--color
 auto|always|never` / `--no-color` apply to every non-TUI command. The TUI commands
 (`mcts play`, `mcts inspect replay`) own their own rendering and ignore both flag
 families; the `CommandSpec` declares this asymmetry.
+
+## `mcts play` Transcript Saves
+
+`mcts play` accepts `:save` inside the `brick` prompt. The TUI keeps a
+chronological `MoveRecord` list for the current game; human-entered moves carry
+an empty visit vector, and AI moves carry the visit vector returned by the search
+that selected the action. AI turns use the selected backend's dynamic FFI
+`search_move` path when the matching foreign shared library is present; if the
+library is absent, the TUI falls back to the logical Haskell search path with the
+selected backend's native RNG salt and reports the fallback in the status line.
+`:save` writes a one-game transcript through
+`MCTS.Transcript.writePlayTranscript` into the normal transcript cache and
+addresses it by `sha256(run_config || move_history)`, matching
+[transcript_format.md → `mcts play`-Recorded
+Transcripts](./transcript_format.md). The status line reports the short hash and
+path after a successful write.
 
 ## `mcts inspect replay` Multi-Backend Overlay
 
@@ -201,13 +229,15 @@ Conventions:
 
 - **★** marks the originator (the transcript header's `backend` field).
   The originator column reads from its cached `.eq` sidecar when
-  envelope-matched; otherwise the cell shows recomputed-locally values
-  with the yellow BUILD MISMATCH banner.
+  envelope-matched. If the originator sidecar is missing, `inspect replay`
+  recomputes it before the TUI starts, writes the sidecar, and shows the
+  recompute result in the status line. Envelope-stale originator handling
+  remains governed by the yellow BUILD MISMATCH banner.
 - **`--`** marks a column that has not been computed yet for this
-  transcript. The user moves focus to the column header and presses
-  `r` to trigger recompute (the column shows `…computing` in the
-  background; once the FFI returns, the column back-fills and writes
-  to a fresh sidecar so subsequent opens are instant).
+  transcript. Pressing `r` asks for the next missing backend column.
+  The replay TUI recomputes that backend's `EqStream`, writes it to a
+  fresh sidecar, appends the column, and records loaded/skipped/error
+  status in the status line so subsequent opens are instant.
 - **Column-header icons** indicate envelope status:
   - `✓` — verified (live build matches the build that wrote this `.eq`)
   - `Δ` — build mismatch (`.eq` exists but envelope drifted; cells are
@@ -222,18 +252,20 @@ Conventions:
 
 ### Lazy Compute Trigger
 
-- **On transcript open** the originator's `.eq` is read if it exists
-  *and* its embedded envelope matches the live originator binary's
-  envelope. Match → originator column populates instantly. Absent /
-  envelope-stale → originator column is empty; user explicitly
-  populates it (cursor on the originator column header, press `r`).
-  No background work happens on open.
-- **Other backends** stay `--` until requested. Compute runs in the
-  background (the FFI call returns from a worker thread the REPL
-  spawns); the column shows `…computing` until ready. The result
-  writes to `<cache-root>/transcripts/<arch>/<sha>/<backend>-<build_prefix16>.eq`,
-  so subsequent navigation away and back to that column reads the
-  cache and is instant.
+- **On transcript open** the originator's `.eq` is read if it exists and matches
+  the transcript's `(backend, engine_build_id)` slot. Match → originator column
+  populates instantly. Absent → `MCTS.CLI.Inspect.prepareReplayOverlays`
+  recomputes the full originator `EqStream`, validates chosen actions and visits
+  under `--rng cpp`, writes the sidecar, and opens the TUI with that overlay
+  already loaded. Recompute failure becomes a status-line message; the stored
+  transcript still opens for navigation.
+- **Other backends** populate from cached `.eq` sidecars when present. Pressing
+  `r` recomputes the next missing backend column through the Haskell recompute path
+  or the matching foreign recompute FFI opener, writes
+  `<cache-root>/transcripts/<arch>/<sha>/<backend>-<build_prefix16>.eq`, appends the
+  overlay, and makes subsequent navigation instant. If a requested foreign shared
+  library is absent or recompute fails, the backend is marked unavailable for that
+  TUI session and the status line explains why.
 - **Under `--rng cpp`** the recompute hard-asserts visit-agreement
   with the transcript's recorded visits at every move; a mismatch
   surfaces as a red error banner `AppError RecomputeMismatch
@@ -246,33 +278,33 @@ Conventions:
 If the live binary is a different `backend` than the originator (e.g.,
 the user is running `inspect replay` on a `cpp-imperative` transcript
 from a `haskell`-only build), the originator column shows the cached
-`.eq` if one exists (read-only — the live binary cannot recompute the
-originator's values), and the foreign-backend's own column populates on
-`r`. The persistent orange FOREIGN VIEW banner is the contract that
-the user is not looking at the originator's numbers in the live
-column; if no `.eq` exists for the originator, the originator column
-shows `--` and a placeholder `(no cached originator equities; rebuild
-cpp-imperative locally to populate)`.
+`.eq` if one exists. If the matching originator shared library is present,
+`prepareReplayOverlays` can also recompute that originator column through
+`MCTS.Engine.ForeignRecompute.foreignRecomputeEqStream`; if the library is absent,
+the TUI opens with a status-line note that the originator sidecar is missing and
+the library is not built. The persistent orange FOREIGN VIEW banner is the contract
+that the user is not looking at originator numbers from the current live backend.
 
 ## `mcts verify` Envelope Errors
 
-`mcts verify` enforces the layered envelope rule from
+Logical `mcts verify` enforces the layered envelope rule from
 [determinism_contract.md → Engine Envelope](./determinism_contract.md):
 
 - **Cohort-level**: every transcript in the cohort must agree on
   `host_arch`, `rng_source`, `cohort_config_hash`, and `shared_rng_build_id`.
   Mismatch → exit non-zero with `AppError EngineEnvelopeMismatch
   CohortLevel field expected got`. Not overridable by `--allow-stale`.
-- **Per backend slot**: each cached transcript's per-backend-slot
-  fields must match the live binary's per-backend-slot fields for the
-  same backend. Mismatch → exit non-zero with `AppError
-  EngineEnvelopeMismatch (BackendSlot b) field expected got`. The
-  user's options are (a) regenerate the cached transcript (`mcts bench`
-  with the same `RunConfig` overwrites it) or (b) pass `--allow-stale`
-  to downgrade this layer's mismatch to a warning.
+- **Per backend slot**: logical verify compares against the logical envelope
+  for the slot. Live per-backend-slot comparison is exercised by
+  `checkTranscriptEnvelopesLive` in integration and supports the same
+  `--allow-stale` downgrade semantics for stale cached transcripts. In JSON
+  output, downgraded envelope warnings are structured as `warning_details`
+  objects with `scope`, `backend`, `field`, `expected`, `got`, and `message`
+  fields.
 
 Cross-backend differences in per-backend-slot fields are expected and
-silent — the whole point of `verify` is to compare different binaries.
+silent — the whole point of logical `verify` is to compare different backend
+slots under one deterministic transcript generator.
 
 ## Cross-References
 

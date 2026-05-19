@@ -136,13 +136,16 @@ alongside the user-facing variants:
 - `ArchEnvelopeMismatch` — a transcript cohort or verify cohort spans more than
   one `host_arch`; see
   [determinism_contract.md → Architecture Envelope](./determinism_contract.md).
-- `EngineEnvelopeMismatch` — `mcts verify` detects a layered engine-envelope
+- `EngineEnvelopeMismatch` — logical `mcts verify` or the live integration
+  verifier detects a layered engine-envelope
   disagreement: either a cohort-invariant field
   (`host_arch`, `rng_source`, `shared_rng_build_id`, `cohort_config_hash`)
-  disagrees across the cohort, or a per-backend-slot field
+  disagrees across the cohort, or, in the live integration verifier, a per-backend-slot field
   (`engine_build_id`, `compiler_id`, `compiler_version`, `fp_flags`,
   `libm_id`, `cpu_features`, `fp_env`) disagrees between a cached
-  transcript and the live binary for the same backend slot. Carries
+  transcript and the live binary for the same backend slot. Foreign transcripts
+  produced through `MCTS.Driver.Dispatch` carry the live C ABI envelope when the
+  cdylib is present; absent cdylibs use the logical fallback. Carries
   an `EnvelopeMismatchScope` discriminator (`CohortLevel | BackendSlot
   Backend`) plus `(field, expected, got)`. Cohort-level mismatches are
   unconditionally hard fails; per-backend-slot mismatches are
@@ -184,7 +187,7 @@ at the type level:
   time. See
   [determinism_contract.md → Legacy Parity Envelope](./determinism_contract.md).
 
-Phase 7 Sprint 7.2 owns the GADT shapes per
+Phase 7 Sprint 7.2 implements these GADT-shaped parser surfaces per
 [../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md →
 Sprint 7.2](../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md).
 
@@ -288,9 +291,16 @@ Two recorded deviations from
 
 - **`brick` + `vty` for TUIs only.** Required by the interactive `mcts play` and
   `mcts inspect replay` commands. Gated: `brick` and `vty` are imported only by
-  modules under `src/MCTS/CLI/Tui/`, `src/MCTS/CLI/Play.hs`, and
-  `src/MCTS/CLI/Replay.hs`. Phase 7 Sprint 7.4 owns the gate. The `mcts lint
+  modules under `src/MCTS/CLI/Tui/`. Phase 7 Sprint 7.4 owns the gate. The `mcts lint
   haskell` pass enforces the gate via an `.hlint.yaml` rule.
+- TUI side effects still route through ordinary project boundaries. For example,
+  `mcts play :save` records move state in `MCTS.CLI.Tui.Play` but writes through
+  `MCTS.Transcript.writePlayTranscript`; AI turns call
+  `MCTS.Driver.ForeignSearch.foreignSearchMove` when a selected foreign backend's
+  shared library is present and use the logical fallback otherwise; `mcts inspect
+  replay` prepares originator cache-miss overlays and on-demand backend-column
+  loaders in `MCTS.CLI.Inspect` before passing pure `EqStream`s and loader callbacks
+  into `MCTS.CLI.Tui.Replay`; terminal output stays inside the `brick` renderer.
 - **`dhall` unused.** The doctrine prescribes `dhall` for daemon configuration;
   daemon configuration is out of scope for this CLI per
   [../../DEVELOPMENT_PLAN/00-overview.md → Doctrine
@@ -318,6 +328,36 @@ code:
 Adding new code that invokes any of these patterns is a doctrine-scope change
 and requires updating
 [../../README.md → Doctrine scope](../../README.md) first.
+
+## Editor / IDE Setup
+
+The project's build doctrine (see [../../CLAUDE.md](../../CLAUDE.md)) routes all
+builds, tests, lints, and codegen through
+`docker compose run --rm mcts mcts <command>`. The IDE pipeline is the single
+intentional exception:
+
+- **Haskell Language Server runs on the host.** The VS Code / code-server
+  Haskell extension launches `haskell-language-server-wrapper` as a host
+  subprocess of the editor, so it cannot see anything that lives only inside
+  the Compose service.
+- **The host's `~/.cabal/store/<ghc-ver>/` and the project's `dist-newstyle/`
+  are treated as an IDE-only cache.** They are never consumed by CI, release
+  artifacts, or any `mcts <command>` workflow. Both are already gitignored or
+  outside the repo.
+- **One-time host seed:** `cabal update && cabal build all` from the project
+  root, using the GHC version pinned by `cabal.project`'s `with-compiler:`
+  field. After that, HLS self-heals across dependency changes — the first
+  hover after a `mcts.cabal` edit may be slow while cabal rebuilds the delta,
+  but no manual intervention is needed.
+- **GHC version bumps** require: `ghcup install ghc <new-ver>`,
+  `ghcup install hls latest`, an update to `with-compiler:` in
+  `cabal.project`, and an update to `haskell.toolchain.ghc` in the editor's
+  settings (vscode-server: `~/.vscode-server/data/Machine/settings.json`;
+  code-server: `~/.local/share/code-server/User/settings.json`). Then re-run
+  the host seed step. Expected cadence: rare.
+
+Adding any other host-side build pathway is a doctrine change and requires
+updating [../../CLAUDE.md](../../CLAUDE.md).
 
 ## Cross-References
 

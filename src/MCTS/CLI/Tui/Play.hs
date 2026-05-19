@@ -1,10 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
 
 -- | Sprint 7.4: interactive `brick` TUI for `mcts play`. The board
 -- renders via `MCTS.CLI.Tui.Board.renderBoard`; the event loop
 -- accepts legacy-notation move input via `MCTS.Notation.parseMove`,
--- applies it, then advances the AI through
--- `MCTS.Search.UCT.uctSearch`. The in-app commands `:hint`, `:undo`,
+-- applies it, then advances the AI through the selected backend's
+-- search path. The in-app commands `:hint`, `:undo`,
 -- `:save`, `:quit` are dispatched per
 -- [DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md → Sprint 7.4](../../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md).
 module MCTS.CLI.Tui.Play
@@ -12,6 +13,8 @@ module MCTS.CLI.Tui.Play
     , PlayState (..)
     , initialPlayState
     , applyUserInput
+    , savePlayState
+    , advanceAiState
     , UserInputOutcome (..)
     ) where
 
@@ -21,11 +24,16 @@ import Brick.Types (BrickEvent (..), EventM, Widget)
 import Brick.Util (fg)
 import Brick.Widgets.Border (border)
 import Brick.Widgets.Core (str, vBox, withAttr)
+import Control.Monad.IO.Class (liftIO)
 import Control.Monad.State.Strict (get, modify, put)
-import Data.Word (Word16, Word64)
+import qualified Data.Text as Text
+import Data.Word (Word16, Word32, Word64)
 import qualified Graphics.Vty as V
+import System.Directory (doesFileExist)
 
 import MCTS.CLI.Tui.Board (renderBoard, renderStatus)
+import MCTS.Driver (makeLogicalEnvelope, uctChooseMove)
+import MCTS.Driver.ForeignSearch (ForeignSearchOpener, foreignSearchMove)
 import MCTS.Engine
     ( Board
     , applyMove
@@ -33,15 +41,38 @@ import MCTS.Engine
     , legalMoves
     , terminalWinner
     )
+import MCTS.Error (AppError, renderError)
+import MCTS.FFI.CppFunctional (cppFunctionalLibraryPath, withCppFunctionalSearchGame)
+import MCTS.FFI.CppImperative (cppImperativeLibraryPath, withCppImperativeSearchGame)
+import MCTS.FFI.CppLegacy (cppLegacyLibraryPath, withCppLegacySearchGame)
+import MCTS.FFI.Rust (rustLibraryPath, withRustSearchGame)
 import MCTS.Notation (parseMove, renderMove)
 import MCTS.Rng.Mix (mix)
-import MCTS.Search.UCT (uctSearch)
-import MCTS.Types (Action, Winner (..))
+import MCTS.Transcript (writePlayTranscript)
+import MCTS.Types
+    ( Action
+    , Backend (..)
+    , GameTranscript (..)
+    , MoveRecord (..)
+    , RngSource (..)
+    , RunConfig (..)
+    , SimBudget (..)
+    , Threading (..)
+    , Transcript (..)
+    , Winner (..)
+    , Workload (..)
+    , backendIdentifier
+    , shortHash
+    )
 
 data PlayState = PlayState
     { playStateBoard :: !Board
     , playStateHistory :: ![Board]
     -- ^ Snapshots before each played move; head is most-recent.
+    , playStateRecords :: ![MoveRecord]
+    -- ^ Chronological transcript records for played moves.
+    , playStateBackend :: !Backend
+    , playStateCacheDir :: !(Maybe FilePath)
     , playStateMoveCount :: !Int
     , playStateSeed :: !Word64
     , playStateMaxPlies :: !Word16
@@ -54,10 +85,16 @@ data PlayState = PlayState
     }
 
 initialPlayState :: Word64 -> Word16 -> Int -> PlayState
-initialPlayState seed maxPlies sims =
+initialPlayState = initialPlayStateFor Haskell Nothing
+
+initialPlayStateFor :: Backend -> Maybe FilePath -> Word64 -> Word16 -> Int -> PlayState
+initialPlayStateFor backend cacheDir seed maxPlies sims =
     PlayState
         { playStateBoard = initialBoard
         , playStateHistory = []
+        , playStateRecords = []
+        , playStateBackend = backend
+        , playStateCacheDir = cacheDir
         , playStateMoveCount = 0
         , playStateSeed = seed
         , playStateMaxPlies = maxPlies
@@ -72,6 +109,7 @@ initialPlayState seed maxPlies sims =
 data UserInputOutcome
     = OutcomeQuit
     | OutcomeContinue !PlayState
+    | OutcomeSave !PlayState
 
 -- | Pure dispatcher for one input line. Returns either `OutcomeQuit`
 -- to terminate the event loop, or `OutcomeContinue` with an updated
@@ -85,9 +123,9 @@ applyUserInput raw st =
         ":hint" -> OutcomeContinue (issueHint st)
         ":undo" -> OutcomeContinue (issueUndo st)
         ":save" ->
-            OutcomeContinue
+            OutcomeSave
                 st
-                    { playStateMessage = ":save is a CLI side effect; use mcts inspect show later"
+                    { playStateMessage = "saving transcript"
                     , playStateInput = ""
                     }
         other -> OutcomeContinue (applyMoveText other st)
@@ -105,9 +143,11 @@ applyMoveText raw st =
                 then
                     let nextBoard = applyMove action (playStateBoard st)
                         terminal = terminalWinner (playStateMaxPlies st) nextBoard
+                        record = playMoveRecord st action []
                      in st
                             { playStateBoard = nextBoard
                             , playStateHistory = playStateBoard st : playStateHistory st
+                            , playStateRecords = playStateRecords st <> [record]
                             , playStateMoveCount = playStateMoveCount st + 1
                             , playStateInput = ""
                             , playStateLastHint = Nothing
@@ -130,11 +170,7 @@ settleTerminal board terminal =
 
 issueHint :: PlayState -> PlayState
 issueHint st =
-    let board = playStateBoard st
-        seed = mix (playStateSeed st) (fromIntegral (playStateMoveCount st))
-        sims = playStateSims st
-        maxPlies = fromIntegral (playStateMaxPlies st)
-        (chosen, _) = uctSearch board seed sims maxPlies
+    let (chosen, _) = logicalAiMove st
      in st
             { playStateLastHint = Just chosen
             , playStateInput = ""
@@ -149,6 +185,7 @@ issueUndo st =
             st
                 { playStateBoard = prev
                 , playStateHistory = rest
+                , playStateRecords = dropLast (playStateRecords st)
                 , playStateMoveCount = max 0 (playStateMoveCount st - 1)
                 , playStateDone = Nothing
                 , playStateLastHint = Nothing
@@ -186,9 +223,14 @@ handleEvent (VtyEvent (V.EvKey key _mods)) =
                 OutcomeQuit -> halt
                 OutcomeContinue st' -> do
                     put st'
-                    case playStateDone st' of
-                        Nothing -> advanceAi
-                        Just _ -> pure ()
+                    if playStateMoveCount st' > playStateMoveCount st
+                        then case playStateDone st' of
+                            Nothing -> advanceAi
+                            Just _ -> pure ()
+                        else pure ()
+                OutcomeSave st' -> do
+                    saved <- liftIO (savePlayState st')
+                    put saved
         V.KChar ' ' -> do
             st <- get
             -- Space when buffer is empty advances AI as a smoke shortcut;
@@ -209,25 +251,91 @@ dropLast xs = init xs
 advanceAi :: EventM String PlayState ()
 advanceAi = do
     st <- get
+    advanced <- liftIO (advanceAiState st)
+    put advanced
+
+advanceAiState :: PlayState -> IO PlayState
+advanceAiState st =
     case playStateDone st of
-        Just _ -> pure ()
+        Just _ -> pure st
         Nothing -> do
-            let board = playStateBoard st
-                seed = mix (playStateSeed st) (fromIntegral (playStateMoveCount st))
-                sims = playStateSims st
-                maxPlies = fromIntegral (playStateMaxPlies st)
-                (chosen, _visits) = uctSearch board seed sims maxPlies
-                nextBoard = applyMove chosen board
-                terminal = terminalWinner (playStateMaxPlies st) nextBoard
-            modify $ \s ->
-                s
-                    { playStateBoard = nextBoard
-                    , playStateHistory = playStateBoard s : playStateHistory s
-                    , playStateMoveCount = playStateMoveCount s + 1
-                    , playStateMessage = "AI played " <> renderMove chosen
-                    , playStateLastHint = Nothing
-                    , playStateDone = settleTerminal nextBoard terminal
-                    }
+            selected <- selectAiMove st
+            pure $
+                case selected of
+                    Left err ->
+                        st
+                            { playStateMessage = "AI search failed: " <> Text.unpack (renderError err)
+                            , playStateInput = ""
+                            }
+                    Right (chosen, visits, sourceLabel) ->
+                        let record = playMoveRecord st chosen visits
+                            nextBoard = applyMove chosen (playStateBoard st)
+                            terminal = terminalWinner (playStateMaxPlies st) nextBoard
+                         in st
+                                { playStateBoard = nextBoard
+                                , playStateHistory = playStateBoard st : playStateHistory st
+                                , playStateRecords = playStateRecords st <> [record]
+                                , playStateMoveCount = playStateMoveCount st + 1
+                                , playStateMessage = "AI played " <> renderMove chosen <> sourceLabel
+                                , playStateLastHint = Nothing
+                                , playStateInput = ""
+                                , playStateDone = settleTerminal nextBoard terminal
+                                }
+
+selectAiMove :: PlayState -> IO (Either AppError (Action, [(Action, Word32)], String))
+selectAiMove st =
+    case playStateBackend st of
+        Haskell -> pure (Right (tagMove "" (logicalAiMove st)))
+        CppLegacy -> chooseForeign CppLegacy cppLegacyLibraryPath withCppLegacySearchGame st
+        CppImperative -> chooseForeign CppImperative cppImperativeLibraryPath withCppImperativeSearchGame st
+        CppFunctional -> chooseForeign CppFunctional cppFunctionalLibraryPath withCppFunctionalSearchGame st
+        Rust -> chooseForeign Rust rustLibraryPath withRustSearchGame st
+
+chooseForeign
+    :: Backend
+    -> FilePath
+    -> ForeignSearchOpener
+    -> PlayState
+    -> IO (Either AppError (Action, [(Action, Word32)], String))
+chooseForeign backend libraryPath opener st = do
+    present <- doesFileExist libraryPath
+    if present
+        then do
+            searched <-
+                foreignSearchMove
+                    backend
+                    opener
+                    NativeRng
+                    (playGameSeed st)
+                    (playStateMaxPlies st)
+                    (playStateSims st)
+                    (playStateBoard st)
+                    (playStateRecords st)
+            pure ((\result -> (fst result, snd result, " via " <> backendIdentifier backend)) <$> searched)
+        else
+            pure $
+                Right
+                    ( tagMove
+                        (" via " <> backendIdentifier backend <> " logical fallback")
+                        (logicalAiMove st)
+                    )
+
+tagMove :: String -> (Action, [(Action, Word32)]) -> (Action, [(Action, Word32)], String)
+tagMove label (action, visits) = (action, visits, label)
+
+logicalAiMove :: PlayState -> (Action, [(Action, Word32)])
+logicalAiMove st =
+    uctChooseMove
+        (playStateBackend st)
+        NativeRng
+        (playGameSeed st)
+        (playStateMoveCount st)
+        (playStateBoard st)
+        (FixedSims (playStateSims st))
+        (playStateMaxPlies st)
+
+playGameSeed :: PlayState -> Word64
+playGameSeed st = mix (playStateSeed st) 0
 
 playApp :: App PlayState () String
 playApp =
@@ -247,9 +355,61 @@ playApp =
                 )
         }
 
--- | Run the interactive brick event loop. The current move advance
--- always runs the in-process Haskell engine UCT search; the foreign
--- backend dispatch is owned by Sprint 7.4's remaining work.
-runInteractivePlay :: Word64 -> Word16 -> Int -> IO PlayState
-runInteractivePlay seed maxPlies sims =
-    defaultMain playApp (initialPlayState seed maxPlies sims)
+-- | Run the interactive brick event loop. AI turns use the selected
+-- backend's dynamic FFI search path when the shared library is present,
+-- with the same logical fallback policy used by batch dispatch when it
+-- is not.
+runInteractivePlay :: Backend -> Maybe FilePath -> Word64 -> Word16 -> Int -> IO PlayState
+runInteractivePlay backend cacheDir seed maxPlies sims =
+    defaultMain playApp (initialPlayStateFor backend cacheDir seed maxPlies sims)
+
+playMoveRecord :: PlayState -> Action -> [(Action, Word32)] -> MoveRecord
+playMoveRecord st action visits =
+    MoveRecord
+        { moveIndex = fromIntegral (playStateMoveCount st)
+        , moveChosen = action
+        , moveVisits = visits
+        }
+
+savePlayState :: PlayState -> IO PlayState
+savePlayState st = do
+    result <- writePlayTranscript (playStateCacheDir st) (playStateTranscript st)
+    pure $
+        case result of
+            Right (hashValue, path) ->
+                st
+                    { playStateMessage = "saved " <> shortHash hashValue <> " to " <> path
+                    , playStateInput = ""
+                    }
+            Left err ->
+                st
+                    { playStateMessage = "save failed: " <> show err
+                    , playStateInput = ""
+                    }
+
+playStateTranscript :: PlayState -> Transcript
+playStateTranscript st =
+    Transcript
+        (playRunConfig st)
+        (makeLogicalEnvelope (playStateBackend st) NativeRng)
+        [ GameTranscript
+            { gameId = 0
+            , gameMoves = playStateRecords st
+            , gameWinner = maybe Draw id (playStateDone st)
+            }
+        ]
+
+playRunConfig :: PlayState -> RunConfig
+playRunConfig st =
+    RunConfig
+        { runBackend = playStateBackend st
+        , runWorkload = Selfplay
+        , runThreading = SingleThreaded
+        , runRngSource = NativeRng
+        , runMasterSeed = playStateSeed st
+        , runInitialSims = fromIntegral (playStateSims st)
+        , runPerMoveSims = fromIntegral (playStateSims st)
+        , runMaxPlies = playStateMaxPlies st
+        , runGames = 1
+        , runCParamBits = 0x3fe6666666666666
+        }

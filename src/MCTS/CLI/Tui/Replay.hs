@@ -21,6 +21,9 @@ module MCTS.CLI.Tui.Replay
     , initialReplayStateWithOverlays
     , applyReplayKey
     , ReplayKey (..)
+    , ReplayOverlayLoadResult (..)
+    , nextOverlayBackend
+    , applyOverlayLoadResult
     , replayBoardAt
     , currentOverlayRows
     , OverlayRow (..)
@@ -32,7 +35,9 @@ import Brick.Types (BrickEvent (..), EventM, Widget)
 import Brick.Util (fg)
 import Brick.Widgets.Border (border, borderWithLabel)
 import Brick.Widgets.Core (str, vBox, withAttr)
+import Control.Monad.IO.Class (liftIO)
 import Control.Monad.State.Strict (get, modify)
+import Data.List (find)
 import qualified Data.Map.Strict as Map
 import qualified Graphics.Vty as V
 import Text.Printf (printf)
@@ -46,8 +51,15 @@ import MCTS.Types
     , GameTranscript (..)
     , MoveRecord (..)
     , Transcript (..)
+    , allBackends
     , backendIdentifier
     )
+
+data ReplayOverlayLoadResult
+    = ReplayOverlayLoaded !EqStream
+    | ReplayOverlaySkipped !String
+    | ReplayOverlayFailed !String
+    deriving (Eq, Show)
 
 data ReplayState = ReplayState
     { replayTranscript :: !Transcript
@@ -58,6 +70,14 @@ data ReplayState = ReplayState
     , replayOverlays :: ![EqStream]
     -- ^ Sprint 7.4: one EqStream per cached sidecar feeding the
     -- per-move equity overlay column.
+    , replayOverlayLoader :: !(Maybe (Backend -> IO ReplayOverlayLoadResult))
+    -- ^ Optional on-demand loader used by the `r` key to materialise
+    -- another backend column.
+    , replayOverlayCandidates :: ![Backend]
+    -- ^ Ordered backend list used by the on-demand column loader.
+    , replayUnavailableBackends :: ![Backend]
+    -- ^ Backends already attempted and skipped/failed in this TUI
+    -- session; excluded from the next `r` request.
     , replayBoardCache :: !(Map.Map Int Board)
     -- ^ Sprint 7.4: last N reconstructed `Board` snapshots, keyed
     -- by `replayMoveIndex`. Forward navigation reuses the cached
@@ -93,8 +113,11 @@ initialReplayStateWithOverlays hashValue transcript overlays =
         { replayTranscript = transcript
         , replayHash = take 8 hashValue
         , replayMoveIndex = 0
-        , replayMessage = "← prev  → next  Home start  End end  q quit"
+        , replayMessage = "← prev  → next  Home start  End end  r column  q quit"
         , replayOverlays = overlays
+        , replayOverlayLoader = Nothing
+        , replayOverlayCandidates = allBackends
+        , replayUnavailableBackends = []
         , replayBoardCache = Map.singleton 0 initialBoard
         , replayCacheStates = 20
         }
@@ -140,6 +163,7 @@ data ReplayKey
     | ReplayNext
     | ReplayStart
     | ReplayEnd
+    | ReplayRequestOverlay
     | ReplayQuit
     deriving (Eq, Show)
 
@@ -159,6 +183,7 @@ applyReplayKey key st =
         ReplayEnd ->
             let total = length (flattenMoves (replayTranscript st))
              in Just (warm total)
+        ReplayRequestOverlay -> Just st
   where
     warm idx =
         let (_, cache') = boardWithCache idx st
@@ -261,6 +286,7 @@ handleEvent :: BrickEvent String () -> EventM String ReplayState ()
 handleEvent (VtyEvent (V.EvKey key _mods)) =
     case toReplayKey key of
         Just ReplayQuit -> halt
+        Just ReplayRequestOverlay -> loadNextOverlay
         Just k -> do
             st <- get
             case applyReplayKey k st of
@@ -268,6 +294,67 @@ handleEvent (VtyEvent (V.EvKey key _mods)) =
                 Just st' -> modify (const st')
         Nothing -> pure ()
 handleEvent _ = pure ()
+
+loadNextOverlay :: EventM String ReplayState ()
+loadNextOverlay = do
+    st <- get
+    case replayOverlayLoader st of
+        Nothing ->
+            modify
+                ( \current ->
+                    current{replayMessage = "on-demand replay columns are unavailable in this context"}
+                )
+        Just loader ->
+            case nextOverlayBackend st of
+                Nothing ->
+                    modify
+                        ( \current ->
+                            current{replayMessage = "all replay equity columns are loaded or unavailable"}
+                        )
+                Just backend -> do
+                    result <- liftIO (loader backend)
+                    modify (applyOverlayLoadResult backend result)
+
+nextOverlayBackend :: ReplayState -> Maybe Backend
+nextOverlayBackend st =
+    find wantsColumn (replayOverlayCandidates st)
+  where
+    loaded = map eqBackend (replayOverlays st)
+    unavailable = replayUnavailableBackends st
+    wantsColumn backend =
+        backend `notElem` loaded && backend `notElem` unavailable
+
+applyOverlayLoadResult :: Backend -> ReplayOverlayLoadResult -> ReplayState -> ReplayState
+applyOverlayLoadResult backend result st =
+    case result of
+        ReplayOverlayLoaded stream ->
+            st
+                { replayOverlays = replayOverlays st <> [stream]
+                , replayUnavailableBackends = filter (/= backend) (replayUnavailableBackends st)
+                , replayMessage =
+                    "loaded "
+                        <> backendIdentifier (eqBackend stream)
+                        <> " replay equity column"
+                }
+        ReplayOverlaySkipped message ->
+            st
+                { replayUnavailableBackends = markUnavailable
+                , replayMessage = message
+                }
+        ReplayOverlayFailed message ->
+            st
+                { replayUnavailableBackends = markUnavailable
+                , replayMessage =
+                    "recompute failed for "
+                        <> backendIdentifier backend
+                        <> ": "
+                        <> message
+                }
+  where
+    markUnavailable =
+        if backend `elem` replayUnavailableBackends st
+            then replayUnavailableBackends st
+            else replayUnavailableBackends st <> [backend]
 
 toReplayKey :: V.Key -> Maybe ReplayKey
 toReplayKey key =
@@ -280,6 +367,7 @@ toReplayKey key =
         V.KChar 'l' -> Just ReplayNext
         V.KHome -> Just ReplayStart
         V.KEnd -> Just ReplayEnd
+        V.KChar 'r' -> Just ReplayRequestOverlay
         _ -> Nothing
 
 replayApp :: App ReplayState () String

@@ -1,15 +1,15 @@
 -- | Per-backend driver dispatch for `mcts bench` and `mcts verify`.
 --
--- The pure in-process Haskell `runBatch` covers the logical baseline
--- for every backend. Real FFI-backed drivers (cpp-legacy and
--- cpp-imperative) plug in here. When a backend's shared library is
--- present, `--backend X` routes through the per-backend FFI driver so
--- the transcript carries the engine's real per-move
--- `(action_id, visits)` records. When the library is absent the
--- logical in-process driver is used so `cabal test all` stays
+-- The pure in-process Haskell `runBatch` covers the logical fallback.
+-- When a foreign backend's shared library is present, `--backend X`
+-- routes through the per-backend FFI driver so the transcript carries
+-- both the engine's real per-move `(action_id, visits)` records and the
+-- live `mcts_<backend>_get_envelope()` payload. When the library is
+-- absent the logical in-process driver is used so `cabal test all` stays
 -- self-contained.
 module MCTS.Driver.Dispatch
     ( runBatchDispatch
+    , runBatchNoWriteDispatch
     , cppLegacyLibraryPath
     ) where
 
@@ -21,9 +21,11 @@ import MCTS.Driver.CppImperative (runGameCppImperative)
 import MCTS.Driver.CppLegacy (runGameCppLegacy)
 import MCTS.Driver.ForeignSearch (runForeignSearchGame)
 import MCTS.Error (AppError, renderError)
-import MCTS.FFI.CppFunctional (cppFunctionalLibraryPath)
-import MCTS.FFI.CppImperative (cppImperativeLibraryPath)
-import MCTS.FFI.Rust (rustLibraryPath, withRustSearchGame)
+import MCTS.FFI.Common (EngineEnvelope, engineEnvelopeToEnvelope)
+import MCTS.FFI.CppFunctional (cppFunctionalLibraryPath, loadCppFunctionalEnvelope)
+import MCTS.FFI.CppImperative (cppImperativeLibraryPath, loadCppImperativeEnvelope)
+import MCTS.FFI.CppLegacy (loadCppLegacyEnvelope)
+import MCTS.FFI.Rust (loadRustEnvelope, rustLibraryPath, withRustSearchGame)
 import MCTS.Types (Backend (..), GameTranscript)
 import System.Directory (doesFileExist)
 
@@ -36,27 +38,73 @@ runBatchDispatch inputs =
         CppLegacy -> do
             present <- doesFileExist cppLegacyLibraryPath
             if present
-                then Driver.runBatchWithGame (runWithRunner runGameCppLegacy inputs) inputs
+                then runWithLiveEnvelope loadCppLegacyEnvelope (runWithRunner runGameCppLegacy inputs) inputs
                 else Driver.runBatch inputs
         CppImperative -> do
             present <- doesFileExist cppImperativeLibraryPath
             if present
-                then Driver.runBatchWithGame (runWithRunner runGameCppImperative inputs) inputs
+                then
+                    runWithLiveEnvelope loadCppImperativeEnvelope (runWithRunner runGameCppImperative inputs) inputs
                 else Driver.runBatch inputs
         CppFunctional -> do
             present <- doesFileExist cppFunctionalLibraryPath
             if present
-                then Driver.runBatchWithGame (runWithRunner runGameCppFunctional inputs) inputs
+                then
+                    runWithLiveEnvelope loadCppFunctionalEnvelope (runWithRunner runGameCppFunctional inputs) inputs
                 else Driver.runBatch inputs
         Rust -> do
             present <- doesFileExist rustLibraryPath
             if present
                 then
-                    Driver.runBatchWithGame
+                    runWithLiveEnvelope
+                        loadRustEnvelope
                         (runWithRunner (runForeignSearchGame withRustSearchGame) inputs)
                         inputs
                 else Driver.runBatch inputs
         _ -> Driver.runBatch inputs
+
+runBatchNoWriteDispatch :: Driver.RunInputs -> IO (Either String ())
+runBatchNoWriteDispatch inputs =
+    case Driver.inputBackend inputs of
+        CppLegacy -> do
+            present <- doesFileExist cppLegacyLibraryPath
+            if present
+                then Driver.runBatchNoWriteWithGame (runWithRunner runGameCppLegacy inputs) inputs
+                else Driver.runBatchNoWrite inputs
+        CppImperative -> do
+            present <- doesFileExist cppImperativeLibraryPath
+            if present
+                then Driver.runBatchNoWriteWithGame (runWithRunner runGameCppImperative inputs) inputs
+                else Driver.runBatchNoWrite inputs
+        CppFunctional -> do
+            present <- doesFileExist cppFunctionalLibraryPath
+            if present
+                then Driver.runBatchNoWriteWithGame (runWithRunner runGameCppFunctional inputs) inputs
+                else Driver.runBatchNoWrite inputs
+        Rust -> do
+            present <- doesFileExist rustLibraryPath
+            if present
+                then
+                    Driver.runBatchNoWriteWithGame
+                        (runWithRunner (runForeignSearchGame withRustSearchGame) inputs)
+                        inputs
+                else Driver.runBatchNoWrite inputs
+        _ -> Driver.runBatchNoWrite inputs
+
+runWithLiveEnvelope
+    :: IO (Either AppError EngineEnvelope)
+    -> (Word32 -> IO (Either String GameTranscript))
+    -> Driver.RunInputs
+    -> IO (Either String Driver.BatchResult)
+runWithLiveEnvelope loadEnvelope runOne inputs = do
+    loaded <- loadEnvelope
+    case loaded of
+        Left err -> pure (Left (Text.unpack (renderError err)))
+        Right envelope ->
+            Driver.runBatchWithGameEnvelope
+                (engineEnvelopeToEnvelope envelope)
+                runOne
+                inputs
 
 runWithRunner
     :: (Driver.RunInputs -> Word32 -> IO (Either AppError GameTranscript))

@@ -35,3 +35,4 @@
 - `mcts build cpp-imperative` - Build imperative C++ backend
 - `mcts build cpp-functional` - Build functional C++ backend
 - `mcts build rust` - Build Rust backend
+- `mcts build legacy-fixtures` - Regenerate legacy Q6 fixtures

@@ -9,7 +9,6 @@ module MCTS.Verify
 
 import Data.List (sortOn)
 import MCTS.Driver
-import MCTS.Driver.Dispatch (runBatchDispatch)
 import MCTS.Error (AppError (..))
 import MCTS.Types
 import MCTS.Verify.Envelope (checkTranscriptEnvelopes)
@@ -92,13 +91,14 @@ runAndCompare allowStale workload backends inputs = do
     results <-
         mapM
             ( \backend ->
-                runBatchDispatch inputs{inputBackend = backend, inputWorkload = workload}
+                runBatch inputs{inputBackend = backend, inputWorkload = workload}
             )
             backends
     case sequence results of
         Left message -> pure (Left (IOErrorText message))
-        Right batchResults ->
-            case checkTranscriptEnvelopes allowStale (map batchTranscript batchResults) of
+        Right batchResults -> do
+            let envelopeResult = checkTranscriptEnvelopes allowStale (map batchTranscript batchResults)
+            case envelopeResult of
                 Left err -> pure (Left err)
                 Right warnings ->
                     case compareAll batchResults of

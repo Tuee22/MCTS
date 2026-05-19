@@ -89,14 +89,15 @@ leafParser path =
         ["build", "cpp-imperative"] -> Just (Build . BuildCppImperative <$> planOptionsParser)
         ["build", "cpp-functional"] -> Just (Build . BuildCppFunctional <$> planOptionsParser)
         ["build", "rust"] -> Just (Build . BuildRust <$> planOptionsParser)
+        ["build", "legacy-fixtures"] -> Just (Build . BuildLegacyFixtures <$> legacyFixtureParser)
         _ -> Nothing
 
 benchParser :: Workload -> OA.Parser Command
 benchParser workload =
-    mk <$> runOptionsParser workload NativeRng True False
+    mk <$> runOptionsParser workload NativeRng True False backendListOption
   where
     mk opts =
-        let inputs = runOptionsToInputs workload opts
+        let inputs = runOptionsToInputs workload id opts
             backends = maybe [inputBackend inputs] id (runBackends opts)
          in Bench
                 (if workload == Rollouts then BenchRollouts backends inputs else BenchSelfplay backends inputs)
@@ -105,10 +106,10 @@ verifyParser :: Workload -> OA.Parser Command
 verifyParser workload =
     mk
         <$> allowStaleSwitch
-        <*> runOptionsParser workload CppRng False True
+        <*> runOptionsParser workload CppRng False True verifyBackendListOption
   where
     mk allowStale opts =
-        let inputs = runOptionsToInputs workload opts
+        let inputs = runOptionsToInputs workload verifyBackendToBackend opts
             backends = maybe [] id (runBackends opts)
          in Verify
                 ( if workload == Rollouts
@@ -121,15 +122,15 @@ legacyParityParser =
     mk
         <$> workloadArgument
         <*> allowStaleSwitch
-        <*> runOptionsParser Selfplay CppRng False True
+        <*> runOptionsParser Selfplay CppRng False True legacyParityBackendListOption
   where
     mk workload allowStale opts =
-        let inputs = runOptionsToInputs workload opts
+        let inputs = runOptionsToInputs workload legacyParityBackendToBackend opts
             backends = maybe [] id (runBackends opts)
          in Verify (VerifyLegacyParity workload allowStale backends inputs)
 
-data RunOptions = RunOptions
-    { runBackends :: !(Maybe [Backend])
+data RunOptions backend = RunOptions
+    { runBackends :: !(Maybe [backend])
     , runRng :: !RngSource
     , runThreadingOption :: !Threading
     , runGamesOption :: !Int
@@ -139,8 +140,9 @@ data RunOptions = RunOptions
     , runCacheDir :: !(Maybe FilePath)
     }
 
-runOptionsParser :: Workload -> RngSource -> Bool -> Bool -> OA.Parser RunOptions
-runOptionsParser workload defaultRng allowNativeRng backendRequired =
+runOptionsParser
+    :: Workload -> RngSource -> Bool -> Bool -> OA.Parser [backend] -> OA.Parser (RunOptions backend)
+runOptionsParser workload defaultRng allowNativeRng backendRequired backendList =
     RunOptions
         <$> backendParser
         <*> rngOption defaultRng allowNativeRng
@@ -173,13 +175,13 @@ runOptionsParser workload defaultRng allowNativeRng backendRequired =
   where
     backendParser =
         if backendRequired
-            then Just <$> backendListOption
-            else OA.optional backendListOption
+            then Just <$> backendList
+            else OA.optional backendList
 
-runOptionsToInputs :: Workload -> RunOptions -> RunInputs
-runOptionsToInputs workload options =
+runOptionsToInputs :: Workload -> (backend -> Backend) -> RunOptions backend -> RunInputs
+runOptionsToInputs workload toBackend options =
     defaultRunInputs
-        { inputBackend = maybe Haskell headBackend (runBackends options)
+        { inputBackend = selectedBackend
         , inputWorkload = workload
         , inputRng = runRng options
         , inputThreading = runThreadingOption options
@@ -190,8 +192,11 @@ runOptionsToInputs workload options =
         , inputCacheDir = runCacheDir options
         }
   where
-    headBackend [] = Haskell
-    headBackend (backend : _) = backend
+    selectedBackend =
+        case runBackends options of
+            Nothing -> Haskell
+            Just [] -> Haskell
+            Just (backend : _) -> toBackend backend
 
 defaultSims :: Workload -> SimBudget
 defaultSims workload =
@@ -340,6 +345,27 @@ planOptionsParser =
         <$> OA.switch (OA.long "dry-run" <> OA.help "Render the plan without applying it")
         <*> optionalStringOption "plan-file" "PATH" "Write the generated plan to a file"
 
+legacyFixtureParser :: OA.Parser LegacyFixtureOptions
+legacyFixtureParser =
+    LegacyFixtureOptions
+        <$> OA.strOption
+            ( OA.long "output-dir"
+                <> OA.metavar "DIR"
+                <> OA.value "test/golden/legacy/transcripts"
+                <> OA.showDefault
+                <> OA.help "Fixture transcript output root"
+            )
+        <*> OA.option
+            OA.auto
+            (OA.long "seed" <> OA.metavar "U64" <> OA.value 42 <> OA.showDefault <> OA.help "Master seed")
+        <*> OA.option
+            OA.auto
+            (OA.long "games" <> OA.metavar "N" <> OA.value 10 <> OA.showDefault <> OA.help "Games")
+        <*> OA.option
+            OA.auto
+            (OA.long "sims" <> OA.metavar "N" <> OA.value 10000 <> OA.showDefault <> OA.help "Sims per move")
+        <*> planOptionsParser
+
 parsePlanOptions :: [String] -> PlanOptions
 parsePlanOptions args =
     case OA.execParserPure OA.defaultPrefs (OA.info planOptionsParser OA.fullDesc) args of
@@ -351,6 +377,18 @@ backendListOption =
     OA.option
         backendListReader
         (OA.long "backend" <> OA.metavar "BACKENDS" <> OA.help "Comma-separated backend list")
+
+verifyBackendListOption :: OA.Parser [VerifyBackend]
+verifyBackendListOption =
+    OA.option
+        verifyBackendListReader
+        (OA.long "backend" <> OA.metavar "BACKENDS" <> OA.help "Comma-separated non-legacy backend list")
+
+legacyParityBackendListOption :: OA.Parser [LegacyParityBackend]
+legacyParityBackendListOption =
+    OA.option
+        legacyParityBackendListReader
+        (OA.long "backend" <> OA.metavar "BACKENDS" <> OA.help "Comma-separated legacy-parity backend list")
 
 backendReader :: OA.ReadM Backend
 backendReader =
@@ -365,6 +403,25 @@ backendListReader =
         case parseBackends raw of
             Right backends -> Right backends
             Left err -> Left (show err)
+
+verifyBackendListReader :: OA.ReadM [VerifyBackend]
+verifyBackendListReader =
+    OA.eitherReader $ \raw ->
+        case parseBackends raw of
+            Left err -> Left (show err)
+            Right [] -> Left "backend list is empty"
+            Right backends ->
+                case traverse toVerifyBackend backends of
+                    Nothing -> Left "cpp-legacy is excluded from verify; use legacy-parity"
+                    Just typedBackends -> Right typedBackends
+
+legacyParityBackendListReader :: OA.ReadM [LegacyParityBackend]
+legacyParityBackendListReader =
+    OA.eitherReader $ \raw ->
+        case parseBackends raw of
+            Left err -> Left (show err)
+            Right [] -> Left "backend list is empty"
+            Right backends -> Right (map toLegacyParityBackend backends)
 
 rngOption :: RngSource -> Bool -> OA.Parser RngSource
 rngOption defaultRng allowNativeRng =
@@ -439,16 +496,22 @@ manyStringArguments metavar =
 validateCommand :: Command -> Either AppError Command
 validateCommand command =
     case command of
-        Verify (VerifyRollouts _ backends inputs) -> validateVerify backends inputs command
-        Verify (VerifySelfplay _ backends inputs) -> validateVerify backends inputs command
-        Verify (VerifyLegacyParity _ _ _ inputs)
+        Verify (VerifyRollouts _ backends inputs) -> validateVerify (verifyBackendsToBackends backends) inputs command
+        Verify (VerifySelfplay _ backends inputs) -> validateVerify (verifyBackendsToBackends backends) inputs command
+        Verify (VerifyLegacyParity _ _ backends inputs)
             | inputRng inputs == NativeRng ->
                 Left (ParseError "verify requires --rng cpp; omit --rng or pass --rng cpp")
+            | length backends < 2 ->
+                Left (VerifyCohortTooSmall "legacy parity needs at least two backends")
+            | LpCppLegacy `notElem` backends ->
+                Left (VerifyCohortTooSmall "legacy parity cohort must include cpp-legacy")
         _ -> Right command
   where
     validateVerify backends inputs original
         | inputRng inputs == NativeRng =
             Left (ParseError "verify requires --rng cpp; omit --rng or pass --rng cpp")
+        | length backends < 2 =
+            Left (VerifyCohortTooSmall "at least two non-legacy backends are required")
         | any (== CppLegacy) backends = Left (VerifyCohortTooSmall "cpp-legacy is excluded from verify")
         | otherwise = Right original
 

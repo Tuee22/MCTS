@@ -10,6 +10,7 @@ module MCTS.Transcript
     , hostArch
     , transcriptPath
     , writeTranscript
+    , writePlayTranscript
     , writeTranscriptPerGame
     , readTranscriptFile
     , lookupByPrefix
@@ -542,6 +543,18 @@ writeTranscript explicit transcript = do
     root <- resolveCacheRoot explicit
     let config = (transcriptConfig transcript){runGames = fromIntegral (length (transcriptGames transcript))}
         hashValue = runConfigHash config
+        path = transcriptPath root hashValue
+        dir = root </> "transcripts" </> hostArch
+    createDirectoryIfMissing True dir
+    writeFileAtomically dir path (encodeTranscript transcript{transcriptConfig = config})
+    pure (Right (hashValue, path))
+
+writePlayTranscript :: Maybe FilePath -> Transcript -> IO (Either AppError (String, FilePath))
+writePlayTranscript explicit transcript = do
+    root <- resolveCacheRoot explicit
+    let config = (transcriptConfig transcript){runGames = fromIntegral (length (transcriptGames transcript))}
+        records = concatMap gameMoves (transcriptGames transcript)
+        hashValue = playTranscriptHash config records
         path = transcriptPath root hashValue
         dir = root </> "transcripts" </> hostArch
     createDirectoryIfMissing True dir

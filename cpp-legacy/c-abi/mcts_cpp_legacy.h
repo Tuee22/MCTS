@@ -13,6 +13,7 @@ typedef struct mcts_legacy_tree mcts_legacy_tree;
 mcts_legacy_board* mcts_legacy_new_board(void);
 void mcts_legacy_free_board(mcts_legacy_board*);
 int mcts_legacy_is_terminal(const mcts_legacy_board*);
+int mcts_legacy_apply_action(mcts_legacy_board*, uint8_t action_id);
 uint8_t mcts_legacy_select_uct_move(mcts_legacy_board*, uint64_t seed, uint32_t sims);
 
 // Run `sims` simulations from the current root, then commit the chosen

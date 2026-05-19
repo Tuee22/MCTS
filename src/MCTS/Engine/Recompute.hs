@@ -115,8 +115,8 @@ recomputeGame masterSeed rng sims maxPlies game =
                             Left
                                 ( RecomputeMismatch
                                     Haskell
-                                    (fromIntegral moveNo)
                                     (fromIntegral (gameId game))
+                                    (fromIntegral moveNo)
                                     recorded
                                     recorded
                                         { moveVisits =

@@ -8,6 +8,7 @@ module MCTS.Subprocess
 
 import qualified Data.ByteString.Lazy.Char8 as ByteString
 import MCTS.Error (AppError (..))
+import System.Environment (getEnvironment)
 import System.Exit (ExitCode (..))
 import qualified System.Process.Typed as Process
 
@@ -34,7 +35,8 @@ renderSubprocess subprocess =
 
 runStreaming :: Subprocess -> IO (Either AppError ExitCode)
 runStreaming subprocess = do
-    code <- Process.runProcess (processConfig subprocess)
+    config <- processConfig subprocess
+    code <- Process.runProcess config
     pure $
         case code of
             ExitSuccess -> Right ExitSuccess
@@ -42,7 +44,8 @@ runStreaming subprocess = do
 
 capture :: Subprocess -> IO (Either AppError ProcessOutput)
 capture subprocess = do
-    (code, out, err) <- Process.readProcess (processConfig subprocess)
+    config <- processConfig subprocess
+    (code, out, err) <- Process.readProcess config
     pure $
         case code of
             ExitSuccess ->
@@ -54,11 +57,12 @@ capture subprocess = do
                         }
             ExitFailure n -> Left (SubprocessFailed (renderSubprocess subprocess <> "\n" <> ByteString.unpack err) n)
 
-processConfig :: Subprocess -> Process.ProcessConfig () () ()
-processConfig subprocess =
-    withWorkingDirectory $
+processConfig :: Subprocess -> IO (Process.ProcessConfig () () ())
+processConfig subprocess = do
+    config <-
         withEnvironment $
             Process.proc (subprocessPath subprocess) (subprocessArguments subprocess)
+    pure (withWorkingDirectory config)
   where
     withWorkingDirectory =
         case subprocessWorkingDirectory subprocess of
@@ -66,8 +70,12 @@ processConfig subprocess =
             Just path -> Process.setWorkingDir path
     withEnvironment =
         case subprocessEnvironment subprocess of
-            Nothing -> id
-            Just env -> Process.setEnv env
+            Nothing -> pure
+            Just env -> \config -> do
+                base <- getEnvironment
+                let keys = map fst env
+                    merged = env <> filter ((`notElem` keys) . fst) base
+                pure (Process.setEnv merged config)
 
 shellQuote :: String -> String
 shellQuote value

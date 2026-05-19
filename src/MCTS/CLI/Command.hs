@@ -2,11 +2,18 @@ module MCTS.CLI.Command
     ( Command (..)
     , BenchCommand (..)
     , VerifyCommand (..)
+    , VerifyBackend (..)
+    , LegacyParityBackend (..)
+    , verifyBackendToBackend
+    , verifyBackendsToBackends
+    , legacyParityBackendToBackend
+    , legacyParityBackendsToBackends
     , InspectCommand (..)
     , TestCommand (..)
     , LintCommand (..)
     , DocsCommand (..)
     , BuildCommand (..)
+    , LegacyFixtureOptions (..)
     , CommandsOptions (..)
     , HelpOptions (..)
     , PlayOptions (..)
@@ -18,7 +25,17 @@ module MCTS.CLI.Command
 
 import MCTS.Driver (RunInputs)
 import MCTS.Plan (PlanOptions)
-import MCTS.Types (Backend, Side, SimBudget, Transcript, Workload)
+import MCTS.Types
+    ( Backend
+    , LegacyParityBackend (..)
+    , Side
+    , SimBudget
+    , Transcript
+    , VerifyBackend (..)
+    , Workload
+    , legacyParityBackendToBackend
+    , verifyBackendToBackend
+    )
 
 data Command
     = Bench BenchCommand
@@ -40,10 +57,16 @@ data BenchCommand
     deriving (Eq, Show)
 
 data VerifyCommand
-    = VerifyRollouts Bool [Backend] RunInputs
-    | VerifySelfplay Bool [Backend] RunInputs
-    | VerifyLegacyParity Workload Bool [Backend] RunInputs
+    = VerifyRollouts Bool [VerifyBackend] RunInputs
+    | VerifySelfplay Bool [VerifyBackend] RunInputs
+    | VerifyLegacyParity Workload Bool [LegacyParityBackend] RunInputs
     deriving (Eq, Show)
+
+verifyBackendsToBackends :: [VerifyBackend] -> [Backend]
+verifyBackendsToBackends = map verifyBackendToBackend
+
+legacyParityBackendsToBackends :: [LegacyParityBackend] -> [Backend]
+legacyParityBackendsToBackends = map legacyParityBackendToBackend
 
 data InspectCommand
     = InspectList (Maybe FilePath)
@@ -80,6 +103,16 @@ data BuildCommand
     | BuildCppImperative PlanOptions
     | BuildCppFunctional PlanOptions
     | BuildRust PlanOptions
+    | BuildLegacyFixtures LegacyFixtureOptions
+    deriving (Eq, Show)
+
+data LegacyFixtureOptions = LegacyFixtureOptions
+    { legacyFixtureOutputDir :: !FilePath
+    , legacyFixtureSeed :: !Integer
+    , legacyFixtureGames :: !Int
+    , legacyFixtureSims :: !Int
+    , legacyFixturePlanOptions :: !PlanOptions
+    }
     deriving (Eq, Show)
 
 data CommandsOptions = CommandsOptions

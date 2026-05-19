@@ -34,18 +34,38 @@ Stanzas](../../DEVELOPMENT_PLAN/system-components.md):
 | Stanza | Tier | Scope |
 |--------|------|-------|
 | `mcts-unit` | Pure logic | Engine invariants, parser tests via `execParserPure`, property invariants (`decode . encode == id`, `render is deterministic`, `parser roundtrips`), golden tests for `CommandSpec` output and `inspect show` rendering, transcript codec roundtrips, RNG mixer properties, per-leaf `Example` presence |
-| `mcts-integration` | Subprocess | Real `mcts` binary across the FFI to every backend; same-backend determinism (Q4) at 3 seeds per backend; foreign-backend FFI smoke-driver and live-envelope coverage when shared libraries are present; Q6 golden comparison for backend (i) against `test/golden/legacy/` |
-| `mcts-cross-backend` | Round-robin verify | `verify` cohort under `--rng cpp` covering `(ii)..(v)`; backend (i) excluded by the `VerifyBackend` GADT |
-| `mcts-legacy-parity` | Round-robin verify, legacy envelope | `verify legacy-parity` across all five backends with `max_plies = 10000` pinned and fixture seed `S_LP = 42`; pre-flight guard asserts (i) does not throw or reach `MAX_ROLLOUT_ITERS` |
+| `mcts-integration` | Subprocess | Real `mcts` binary across the FFI to every backend; same-backend determinism (Q4) at 3 seeds per backend; bounded report-card divergence plus cached recompute-sidecar `inspect divergence` coverage; foreign-backend FFI smoke-driver, live-envelope stamping, and backend-slot stale hard-fail/`--allow-stale` warning coverage when shared libraries are present; Q6 golden-fixture decode for every committed `test/golden/legacy/transcripts/<arch>/` directory |
+| `mcts-cross-backend` | Round-robin verify | logical `verify` cohort under `--rng cpp` covering `(ii)..(v)`; backend (i) excluded by the `VerifyBackend` GADT |
+| `mcts-legacy-parity` | Round-robin verify, legacy envelope | logical `verify legacy-parity` across all five backend slots with `max_plies = 10000` pinned and fixture seed `S_LP = 42`; the integration pre-flight guard asserts live (i) does not throw or reach `MAX_ROLLOUT_ITERS` |
 | `mcts-haskell-style` | Lint | `cabal format` temp-file round-trip byte-equality, pinned style-tool `fourmolu --mode check` and `hlint`, plus the source-walker guard for tabs and the conservative forbidden-symbol subset |
 
 Each stanza declares `type: exitcode-stdio-1.0`, the `tasty` dependencies, and a
-dedicated `test/<stanza>/Main.hs` with its own `tasty` tree. The current Phase 7
-baseline still uses logical backend dispatch for the foreign-named backends in the
-integration, cross-backend, and legacy-parity tiers; real FFI-backed Q4/Q6/Q7
-coverage remains active plan work. The integration tier additionally runs bounded
-foreign-backend smoke games through `src/MCTS/Driver/{CppLegacy,CppImperative,CppFunctional,Rust}.hs`
-when the container-built shared libraries are present. The single-tree-across-stanzas
+dedicated `test/<stanza>/Main.hs` with its own `tasty` tree. The `mcts-unit`
+runner is split into named `tasty-hunit` cases by CLI/parser, transcripts/cache,
+engine/RNG, envelopes/sidecars, plans/subprocesses, and renderers/TUI dispatch;
+the renderers/TUI group also pins the shared board/status layout in
+`test/golden/cli/tui-board.txt` and asserts the `mcts play :save` path by writing
+and decoding a hand-play transcript. It also advances an AI turn with a selected
+foreign backend, exercising the live FFI path when the matching cdylib exists and the
+logical fallback otherwise, and asserts that the transcript record keeps the returned
+visit vector. The replay overlay case also covers originator cache-miss preparation:
+`prepareReplayOverlays` recomputes a missing `.eq`, writes one sidecar, and then
+loads the same overlay on a cache hit without recomputing. The envelope case also
+covers live C ABI envelope conversion plus hard-fail vs `--allow-stale` behavior
+for `compiler_version` and `shared_rng_build_id` mismatches, plus structured JSON
+`warning_details` for downgraded stale warnings. Fixture-scale properties and byte-golden
+assertions remain in those cases until the final `tasty-quickcheck` /
+`tasty-golden` provider promotion lands. The
+current Phase 7 verification baseline uses logical backend dispatch for Q3/Q7,
+while live foreign shared libraries are covered by integration and divergence
+smokes. The integration tier also runs real `mcts` binary same-backend determinism checks through
+`MCTS.Subprocess.capture` for Haskell and every built foreign backend, a bounded
+measured report-card builder check, a cached recompute-sidecar
+`mcts inspect divergence` subprocess check, plus bounded foreign-backend smoke games through
+`src/MCTS/Driver/{CppLegacy,CppImperative,CppFunctional,Rust}.hs` when the
+container-built shared libraries are present. The cross-backend and legacy-parity
+stanzas assert `Right` results for their focused logical rollout and self-play smoke cohorts;
+`VerifyMismatch` is not an accepted passing outcome. The single-tree-across-stanzas
 pattern is forbidden.
 
 ## Property Invariants
@@ -65,10 +85,17 @@ applied across the project surface:
 ## Golden Tests
 
 Live under `test/golden/`. Non-deterministic content (wall-clock throughputs, host
-identifiers, GHC build IDs) renders as sentinel placeholders in the golden file. The
-`mcts-legacy-parity` and `mcts-integration` stanzas additionally consume
+identifiers, GHC build IDs) renders as sentinel placeholders in the golden file.
+Transcript byte goldens keep the committed bytes fixed but normalize the two
+architecture tag bytes (`host_arch` in the fixed header and envelope) during
+comparison, so codec fixtures validate across supported Compose host
+architectures.
+The `mcts-integration` stanza additionally consumes
 `test/golden/legacy/transcripts/` as the Q6 anchor produced out-of-band from
-`~/MCTS_legacy/` per
+`~/MCTS_legacy/` through the supported `mcts build legacy-fixtures` path; it
+decodes every committed architecture directory on every host, verifies
+hash-named bytes, and asserts the full `S_LP = 42`, `S_LP_SIMS = 10000`,
+`max_plies = 10000` legacy parity envelope per
 [../../DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md → Sprint
 4.5](../../DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md).
 
@@ -88,29 +115,32 @@ needed. Internally, the plan is a typed `[Subprocess]` sequence run via
    drift on the `GeneratedSectionRule` registry).
 3. Inside the container, `cabal build all` warning-clean under the pinned
    toolchain.
-4. Inside the container, `cabal test mcts-haskell-style` (`cabal format`
+4. Build canonical foreign backend artefacts through the supported build harness:
+   `mcts build cpp-legacy`, `mcts build cpp-imperative`, `mcts build
+   cpp-functional`, and `mcts build rust`.
+5. Inside the container, `cabal test mcts-haskell-style` (`cabal format`
    temp-file round-trip,
    `/opt/mcts-style-tools/bin/fourmolu --mode check`,
    `/opt/mcts-style-tools/bin/hlint --with-group=default --with-group=extra`
    with only `Error:` findings blocking, and the source-walker guard). The
    style tools are installed inside the container with the separate pinned
    formatter-tools GHC `9.12.4`; ambient host tools are never used as a fallback.
-5. Inside the container, `cabal test mcts-unit`.
-6. Inside the container, `cabal test mcts-integration`.
-7. Inside the container, `cabal test mcts-cross-backend`.
-8. Inside the container, `cabal test mcts-legacy-parity`.
-9. Pinned report-card workload — the seven `mcts bench` / `mcts verify`
-   invocations from the project, rendered through `cabal exec mcts -- ...` in the
-   apply plan so the command does not depend on a separate `mcts` executable on `PATH`,
-   [../../README.md → Report-card workload](../../README.md) lines 223–246,
-   enumerated verbatim by
-   [../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md →
-   Sprint 7.3](../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md).
-10. Render the tidy summary block from the collected `ReportCard` value.
+6. Inside the container, `cabal test mcts-unit`.
+7. Inside the container, `cabal test mcts-integration`.
+8. Inside the container, `cabal test mcts-cross-backend`.
+9. Inside the container, `cabal test mcts-legacy-parity`.
+10. Pinned report-card workload — Q1/Q2/Q5 are measured inside the report-card
+   builder through the no-write batch runner, while Q3/Q7 are rendered as
+   explicit `mcts verify` subprocesses through `cabal exec mcts -- ...` so the
+   command does not depend on a separate `mcts` executable on `PATH`.
+11. Render the tidy summary block from the collected `ReportCard` value,
+    including the `visit/move` divergence matrix populated from the measured
+    `G_V` verify transcripts on the live `mcts test all` path.
 
 `--dry-run` renders the typed plan and exits 0. `--plan-file <path>` writes the
 rendered plan for out-of-band review. `--format json` emits the JSON form of the
-`ReportCard` value for CI consumption.
+`ReportCard` value for CI consumption, including the Q1/Q2/Q5 evidence fields
+and `divergence_matrix` rows.
 
 ## POC Headline Questions
 
@@ -162,9 +192,16 @@ throughput.
 The Q1–Q7 results from the pinned report-card workload. Knobs are pinned in
 `cabal.project` per
 [../../DEVELOPMENT_PLAN/system-components.md → POC Report-Card
-Knobs](../../DEVELOPMENT_PLAN/system-components.md): `G_R = 100_000`, `G_S =
-1_000`, `G_V = 50`, `G_LP = 10`, `S_BENCH = 10_000`, `S_VERIFY = 10_000`,
+Knobs](../../DEVELOPMENT_PLAN/system-components.md): `G_R = 1_000`, `G_S =
+4`, `G_V = 4`, `G_LP = 2`, `S_BENCH = 500`, `S_VERIFY = 500`,
 `S_LP_SIMS = 10_000`, `S_LP = 42`.
+
+`mcts test all` builds the canonical foreign backend artefacts before running
+the Cabal stanzas and final report card. The measured report-card builder
+requires those artefacts, uses the production monotonic clock for Q1/Q2/Q5
+throughput through `runBatchNoWriteDispatch`, and renders `Evidence pending`
+only in the static golden baseline,
+not in a live full run.
 
 Summary block format pinned in the project [../../README.md → Tidy summary
 block](../../README.md). Renderer is pure; wall-clock numbers render to fixed
@@ -175,9 +212,14 @@ dependent wrapping.
 A `mcts-unit` golden test asserts byte-equality between the rendered tidy
 summary block (with sentinel placeholders substituted for the live wall-clock
 numbers and host arch) and the literal layout pinned at
-[../../README.md → Tidy summary block](../../README.md) lines 255–273. Drift
-from the README layout fails the golden — the README's tidy summary is the
-source of truth for the renderer.
+[../../README.md → Tidy summary block](../../README.md), including the
+four-backend `visit/move` divergence matrix. A paired JSON golden pins the
+evidence-pending Q1/Q2/Q5 fields and `divergence_matrix`, and the unit test
+checks that payload against `test/golden/report-card-schema.json` so schema
+drift fails in `mcts-unit`. Drift from the README layout fails the golden — the
+README's tidy summary is the source of truth for the renderer.
+The unit suite also covers `divergenceRowsFromTranscripts`, while the golden
+fixtures keep the static logical matrix as the deterministic renderer baseline.
 
 ## Cross-References
 

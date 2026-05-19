@@ -46,8 +46,8 @@ renderManpage =
         , ".B mcts"
         , "[command] [options]"
         , ".SH COMMANDS"
-        , escapeMan renderCommandList
         ]
+        <> escapeMan renderCommandList
 
 renderBashCompletion :: String
 renderBashCompletion =

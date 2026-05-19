@@ -24,7 +24,6 @@ import MCTS.Engine
     , applyMove
     , legalMoves
     , nonTerminalOutcome
-    , nonTerminalRank
     , terminalOutcome
     , terminalWinner
     )
@@ -70,12 +69,11 @@ uctSearchWithEquity
 uctSearchWithEquity board seed nSims maxPlies = runST $ do
     let rootMoves = legalMoves board
         -- Capacity has to hold every node the recursive descent may
-        -- create: root + every legal child of root + a bounded number
-        -- of grandchildren per sim. We cap aggressively because the
-        -- depth-2+ growth is opportunistic (only nodes that get a second
-        -- visit get expanded). A safe over-estimate is
-        -- `1 + rootKids + nSims * 8`.
-        capacity = max 32 (1 + length rootMoves + nSims * 8)
+        -- create: root + every legal child of root + one expanded
+        -- child set per sim. `legalMoves` emits at most four pawn
+        -- moves plus the twelve-wall cap, so 16 is a safe per-sim
+        -- branch bound.
+        capacity = max 32 (1 + length rootMoves + nSims * 16)
     arena <- Arena.newArena capacity
     root <- Arena.allocNode arena (-1) 0xFF
     rootChildrenIds <- mapM (\action -> Arena.allocNode arena root (actionId action)) rootMoves

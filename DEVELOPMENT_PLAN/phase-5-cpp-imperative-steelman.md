@@ -29,9 +29,13 @@ the full `mcts_imperative_search_move` / `mcts_imperative_recompute_move`
 bench / instrumented split lives in the same TU under
 `MCTS_IMPERATIVE_INSTRUMENTED`, and the Haskell dispatcher routes
 `--backend cpp-imperative` through the real FFI driver. Sprint 5.3
-ships the typed 11-step PGO+BOLT pipeline through `Subprocess` —
-BOLT uses `-instrument` so `perf` is not a closure prerequisite —
-with idempotence + failure-mode coverage in `mcts-unit`. The former
+ships the shared typed 19-step PGO+BOLT pipeline through `Subprocess`
+for both C++ steelman backends: each paired artefact is installed to
+the canonical FFI load name for its training run before profile data is
+copied back to the artefact-specific path. BOLT uses `-instrument` so
+`perf` is not a closure prerequisite, and missing BOLT data degrades to
+an explicit PGO artefact fallback. Idempotence, failure-mode, and
+backend-rewrite coverage live in `mcts-unit`. The former
 `-fno-exceptions` and per-rollout scratch-board residues are closed;
 the measured Q1+Q2 speedup ratio that PGO+BOLT enables ships through
 Phase 7's report-card workflow once the cohort runs against the BOLT
@@ -134,14 +138,14 @@ backend-agnostic from the Haskell side.
   PGO+BOLT pipeline in Sprint 5.3 runs **both** artefacts through training and
   reordering; the bench artefact is the canonical one whose throughput appears
   in the report card.
-- **Install step.** The `_bench.bolted.so` intermediate is renamed or symlinked
-  to the canonical FFI load name `cpp-imperative/libmcts_cpp_imperative.so` per
+- **Install step.** The `_bench.bolted.so` intermediate is copied to the canonical
+  FFI load name `cpp-imperative/build/libmcts_cpp_imperative.so` per
   [../README.md → Repository layout (target)](../README.md) and
   [../documents/engineering/backend_ffi_contract.md → Backends and Linkage](../documents/engineering/backend_ffi_contract.md).
   The Haskell FFI binds against the canonical name; the suffixed/bolted names
   are private to the build harness. The `_instrumented.bolted.so` intermediate
-  retains its full name (loaded only by `mcts verify`, `mcts play`,
-  `mcts inspect replay`).
+  is copied to `cpp-imperative/build/libmcts_cpp_imperative_instrumented.so`
+  for `mcts verify`, `mcts play`, and `mcts inspect replay`.
 
 ### Validation
 
@@ -260,10 +264,10 @@ policy remains ledger-owned rather than sprint-owned.
 
 ## Sprint 5.3: PGO+BOLT+`mimalloc` Build Harness ✅
 
-**Status**: Done (typed Subprocess pipeline lands the 11-step PGO +
-BOLT-instrument + BOLT-optimize + install sequence; BOLT runs without
-`perf` via `llvm-bolt -instrument`; idempotence + failure-mode tests
-live in `mcts-unit`)
+**Status**: Done (typed Subprocess pipeline lands the shared 19-step PGO +
+BOLT-instrument + BOLT-optimize + install sequence for the paired C++ artefacts;
+BOLT runs without `perf` via `llvm-bolt -instrument`; idempotence,
+failure-mode, and backend-rewrite tests live in `mcts-unit`)
 **Implementation**: `src/MCTS/CLI/Build.hs` (`cppImperativePgoBoltPlan`,
 `pgoTrainingGames` / `pgoTrainingSims` / `boltTrainingGames` /
 `boltTrainingSims`), `src/MCTS/CLI/Spec.hs` (Build subtree),
@@ -288,35 +292,34 @@ that backend (v) Haskell must match.
 - The plan is a typed `[Subprocess]` sequence; both paired targets ride through
   the same pipeline (the `_bench` and `_instrumented` artefacts each go through
   PGO+BOLT):
-  1. **Instrumented PGO build.** `g++ ... -fprofile-generate=cpp-imperative/pgo-profile/ ...`
-     for both targets.
-  2. **Training run.** Run `mcts bench selfplay --backend cpp-imperative
-     --threading multi --workers 8 --rng cpp --games $PGO_TRAINING_GAMES
-     --seed 42 --sims $PGO_TRAINING_SIMS` (benchmark (b) at a representative game
-     count). The pinned tuple `($PGO_TRAINING_GAMES, $PGO_TRAINING_SIMS) =
-     (100, 10_000)` lives in `cabal.project` alongside the report-card knobs so
-     the training workload is reproducible across hosts. The PGO-instrumented
-     binary writes profile data into the `pgo-profile/` directory. Training
-     drives only the `_bench` target (whose throughput is what the report card
-     measures).
-  3. **Optimised build.** `g++ ... -fprofile-use=cpp-imperative/pgo-profile/
-     -fprofile-correction ...` producing the PGO-optimised
-     `libmcts_cpp_imperative_bench.so` and `libmcts_cpp_imperative_instrumented.so`.
-  4. **BOLT post-link.** `llvm-bolt cpp-imperative/build/libmcts_cpp_imperative_bench.so
-     -o cpp-imperative/build/libmcts_cpp_imperative_bench.bolted.so -data
-     cpp-imperative/bolt-profile/perf.fdata`, and the same for the
-     `_instrumented` artefact. The perf data comes from the BOLT
-     instrumentation, which itself runs benchmark (b).
+  1. **Instrumented PGO build.** Build `_bench` with
+     `g++ ... -fprofile-generate=$(abspath $(PGO_DIR)) ...`, install the generated
+     artefact to the canonical FFI load name, run
+     `mcts bench selfplay --backend cpp-imperative --threading single --rng cpp
+     --games 1 --seed 42 --sims 100`, then copy the canonical-profile `.gcda`
+     files back to the `_bench`-specific profile names.
+  2. **Instrumented PGO build for the verification artefact.** Repeat the same
+     build/install/train/profile-copy sequence for `_instrumented`.
+  3. **Optimised build.** Rebuild both artefacts with
+     `g++ ... -fprofile-use=$(abspath $(PGO_DIR)) -fprofile-correction ...`,
+     producing the PGO-optimised `libmcts_cpp_imperative_bench.so` and
+     `libmcts_cpp_imperative_instrumented.so`.
+  4. **BOLT post-link.** Instrument the PGO `_bench` artefact with
+     `llvm-bolt -instrument`, install the `.inst.so` to the canonical FFI load
+     name, run a one-game `--sims 50` training pass, then repeat for the
+     `_instrumented` artefact. `llvm-bolt -reorder-blocks=ext-tsp` consumes the
+     resulting `.fdata` when present; otherwise the PGO artefact is copied as the
+     `.bolted.so` fallback.
   5. **`mimalloc` link.** Static link `mimalloc` per
      [00-overview.md → Hard Constraints item 18](00-overview.md) for both
      artefacts. Static link is preferred for FFI determinism; `LD_PRELOAD` is
      acceptable for ad-hoc benchmark runs.
-  6. **Install.** Rename or symlink the `_bench.bolted.so` intermediate to the
-     canonical FFI load name `cpp-imperative/libmcts_cpp_imperative.so` per
+  6. **Install.** Copy the `_bench.bolted.so` intermediate to the canonical FFI
+     load name `cpp-imperative/build/libmcts_cpp_imperative.so` per
      [../README.md → Repository layout (target)](../README.md). The
-     `_instrumented.bolted.so` intermediate keeps its full name; it lives at
-     `cpp-imperative/libmcts_cpp_imperative_instrumented.so` (symlink) for
-     `mcts verify`/`play`/`inspect replay` loads.
+     `_instrumented.bolted.so` intermediate is copied to
+     `cpp-imperative/build/libmcts_cpp_imperative_instrumented.so` for
+     `mcts verify` / `play` / `inspect replay` loads.
 - `src/MCTS/CLI/Build.hs` builds and applies the plan, with `--dry-run` rendering
   the typed `Subprocess` sequence and exiting 0.
 - `src/MCTS/CLI/Command.hs` gains the `BuildCppImperative` constructor on the
@@ -348,15 +351,17 @@ that backend (v) Haskell must match.
 ### Closure Notes
 
 - `cppImperativePgoBoltPlan :: [Subprocess]` (in `src/MCTS/CLI/Build.hs`)
-  is the 11-step typed sequence: PGO-instrument both artefacts → PGO
-  training (`bench selfplay --backend cpp-imperative --rng cpp --games
-  100 --seed 42 --sims 10000`) → PGO-optimize both artefacts → BOLT
-  `-instrument` both artefacts → BOLT training (`bench selfplay` with
-  the lighter `(20, 2000)` workload — BOLT block-frequency profiles
-  converge fast) → BOLT `-reorder-blocks=ext-tsp` optimize both
-  artefacts → install (`_bench.bolted.so` → canonical
-  `libmcts_cpp_imperative.so`; `_instrumented.bolted.so` retains its
-  full name).
+  is the shared 19-step typed sequence: PGO-instrument `_bench` → install it to
+  the canonical FFI load name → PGO training
+  (`bench selfplay --backend cpp-imperative --rng cpp --games 1 --seed 42
+  --sims 100`) → copy canonical `.gcda` files to `_bench` profile names; repeat
+  for `_instrumented`; PGO-optimize both artefacts; BOLT `-instrument` `_bench`
+  → install the `.inst.so` or PGO fallback to the canonical FFI load name →
+  BOLT training (`--games 1 --sims 50`); repeat for `_instrumented`; BOLT
+  `-reorder-blocks=ext-tsp` optimize both artefacts when `.fdata` exists, else
+  copy the PGO outputs as `.bolted.so`; install `_bench.bolted.so` to
+  `build/libmcts_cpp_imperative.so` and `_instrumented.bolted.so` to
+  `build/libmcts_cpp_imperative_instrumented.so`.
 - `cpp-imperative/Makefile` carries the per-stage targets and reuses
   the existing `envelope-build-id` post-link patch so the embedded
   digest reflects the final shipping `.bolted.so` artefact.
@@ -482,7 +487,7 @@ that ships at the canonical FFI load path).
 
 - `mcts-integration`: `mcts_imperative_get_envelope()` returns a
   struct whose `engine_build_id` equals
-  `sha256(cpp-imperative/libmcts_cpp_imperative.so)` measured
+  `sha256(cpp-imperative/build/libmcts_cpp_imperative.so)` measured
   externally.
 - `mcts-cross-backend`: write a (ii) transcript, rebuild (ii) with
   a different `-march=` value, re-run `mcts verify rollouts

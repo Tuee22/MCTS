@@ -6,11 +6,8 @@
 // documented in `documents/engineering/transcript_format.md`; one .tr file
 // per game (file name is sha256(payload)).
 //
-// Build (from project root):
-//     make -C cpp-legacy legacy-to-wire
-//
-// Run (writes 10 .tr files under the host arch's fixture directory):
-//     ./cpp-legacy/build/legacy-to-wire test/golden/legacy/transcripts
+// Supported regeneration entrypoint (from project root):
+//     docker compose run --rm mcts mcts build legacy-fixtures --output-dir test/golden/legacy/transcripts --seed 42 --games 10 --sims 10000
 //
 // Pinned report-card knobs per
 // `DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md`:
@@ -46,9 +43,10 @@ namespace fs = std::filesystem;
 namespace {
 
 // Report-card knobs per phase-7. The official fixture set uses these
-// exact values; the build target overrides them via env vars for quick
-// smoke runs (the long-form fixture is a frozen historical record that
-// regenerates only when `~/MCTS_legacy` is upgraded).
+// exact values; the supported `mcts build legacy-fixtures` entrypoint
+// passes them explicitly for quick smoke runs or the full fixture refresh
+// (the long-form fixture is a frozen historical record that regenerates
+// only when `~/MCTS_legacy` is upgraded).
 constexpr uint64_t DEFAULT_SEED = 42;
 constexpr uint32_t DEFAULT_GAMES = 10;
 constexpr uint32_t DEFAULT_SIMS = 10000;
@@ -356,15 +354,49 @@ std::string hex(const std::vector<uint8_t> &data) {
 } // namespace
 
 int main(int argc, char **argv) {
-    std::string out_root = (argc > 1) ? argv[1] : "test/golden/legacy/transcripts";
-    if (const char *env = std::getenv("LEGACY_FIXTURE_SEED")) {
-        REPORT_CARD_SEED = static_cast<uint64_t>(std::stoull(env));
-    }
-    if (const char *env = std::getenv("LEGACY_FIXTURE_GAMES")) {
-        REPORT_CARD_GAMES = static_cast<uint32_t>(std::stoul(env));
-    }
-    if (const char *env = std::getenv("LEGACY_FIXTURE_SIMS")) {
-        REPORT_CARD_SIMS = static_cast<uint32_t>(std::stoul(env));
+    std::string out_root = "test/golden/legacy/transcripts";
+    auto require_value = [&](int &index, const char *flag) -> const char * {
+        if (index + 1 >= argc) {
+            std::fprintf(stderr, "[legacy-to-wire] missing value for %s\n", flag);
+            return nullptr;
+        }
+        ++index;
+        return argv[index];
+    };
+
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--output-dir") {
+            const char *value = require_value(i, "--output-dir");
+            if (value == nullptr) return 2;
+            out_root = value;
+        } else if (arg == "--seed") {
+            const char *value = require_value(i, "--seed");
+            if (value == nullptr) return 2;
+            REPORT_CARD_SEED = static_cast<uint64_t>(std::stoull(value));
+        } else if (arg == "--games") {
+            const char *value = require_value(i, "--games");
+            if (value == nullptr) return 2;
+            REPORT_CARD_GAMES = static_cast<uint32_t>(std::stoul(value));
+        } else if (arg == "--sims") {
+            const char *value = require_value(i, "--sims");
+            if (value == nullptr) return 2;
+            REPORT_CARD_SIMS = static_cast<uint32_t>(std::stoul(value));
+        } else if (arg == "--max-plies") {
+            const char *value = require_value(i, "--max-plies");
+            if (value == nullptr) return 2;
+            const auto max_plies = static_cast<uint16_t>(std::stoul(value));
+            if (max_plies != LEGACY_MAX_PLIES) {
+                std::fprintf(stderr, "[legacy-to-wire] --max-plies must be %u\n",
+                             static_cast<unsigned>(LEGACY_MAX_PLIES));
+                return 2;
+            }
+        } else if (arg.rfind("--", 0) == 0) {
+            std::fprintf(stderr, "[legacy-to-wire] unknown option: %s\n", arg.c_str());
+            return 2;
+        } else {
+            out_root = arg;
+        }
     }
     fs::path dir = fs::path(out_root) / arch_dir();
     fs::create_directories(dir);

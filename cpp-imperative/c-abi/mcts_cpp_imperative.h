@@ -18,6 +18,7 @@ typedef struct mcts_imperative_board mcts_imperative_board;
 MCTS_IMPERATIVE_API mcts_imperative_board* mcts_imperative_new_board(void);
 MCTS_IMPERATIVE_API void mcts_imperative_free_board(mcts_imperative_board*);
 MCTS_IMPERATIVE_API int mcts_imperative_is_terminal(const mcts_imperative_board*);
+MCTS_IMPERATIVE_API int mcts_imperative_apply_action(mcts_imperative_board*, uint8_t action_id);
 MCTS_IMPERATIVE_API uint8_t mcts_imperative_select_uct_move(mcts_imperative_board*, uint64_t seed, uint32_t sims);
 
 // Full search-with-visit-vector ABI per

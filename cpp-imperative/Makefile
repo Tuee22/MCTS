@@ -47,30 +47,30 @@ instrumented:
 # Sprint 5.3: PGO + BOLT pipeline (per phase doc Deliverables block).
 #
 # Stage 1: PGO instrumented build. Compile with
-# `-fprofile-generate=cpp-imperative/pgo-profile` so the resulting .so
+# `-fprofile-generate=$(abspath $(PGO_DIR))` so the resulting .so
 # emits per-edge profile data when exercised by the training run.
 pgo-bench-generate:
 	mkdir -p build $(PGO_DIR)
-	$(CXX) $(CXXFLAGS) -fprofile-generate=$(PGO_DIR) -DMCTS_IMPERATIVE_INSTRUMENTED=0 $(LDFLAGS) -fprofile-generate=$(PGO_DIR) $(ENGINE_SRCS) $(LDLIBS) -o build/libmcts_cpp_imperative_bench.so
+	$(CXX) $(CXXFLAGS) -fprofile-generate=$(abspath $(PGO_DIR)) -DMCTS_IMPERATIVE_INSTRUMENTED=0 $(LDFLAGS) -fprofile-generate=$(abspath $(PGO_DIR)) $(ENGINE_SRCS) $(LDLIBS) -o build/libmcts_cpp_imperative_bench.so
 	$(MAKE) envelope-build-id LIB=build/libmcts_cpp_imperative_bench.so
 
 pgo-instr-generate:
 	mkdir -p build $(PGO_DIR)
-	$(CXX) $(CXXFLAGS) -fprofile-generate=$(PGO_DIR) -DMCTS_IMPERATIVE_INSTRUMENTED=1 $(LDFLAGS) -fprofile-generate=$(PGO_DIR) $(ENGINE_SRCS) $(LDLIBS) -o build/libmcts_cpp_imperative_instrumented.so
+	$(CXX) $(CXXFLAGS) -fprofile-generate=$(abspath $(PGO_DIR)) -DMCTS_IMPERATIVE_INSTRUMENTED=1 $(LDFLAGS) -fprofile-generate=$(abspath $(PGO_DIR)) $(ENGINE_SRCS) $(LDLIBS) -o build/libmcts_cpp_imperative_instrumented.so
 	$(MAKE) envelope-build-id LIB=build/libmcts_cpp_imperative_instrumented.so
 
 # Stage 2: PGO optimized rebuild. Compile with
-# `-fprofile-use=cpp-imperative/pgo-profile -fprofile-correction` so
+# `-fprofile-use=$(abspath $(PGO_DIR)) -fprofile-correction` so
 # the optimizer pulls the recorded edge frequencies into hot-path
 # layout decisions.
 pgo-bench-use:
 	mkdir -p build
-	$(CXX) $(CXXFLAGS) -fprofile-use=$(PGO_DIR) -fprofile-correction -DMCTS_IMPERATIVE_INSTRUMENTED=0 $(LDFLAGS) -fprofile-use=$(PGO_DIR) -fprofile-correction $(ENGINE_SRCS) $(LDLIBS) -o build/libmcts_cpp_imperative_bench.so
+	$(CXX) $(CXXFLAGS) -fprofile-use=$(abspath $(PGO_DIR)) -fprofile-correction -DMCTS_IMPERATIVE_INSTRUMENTED=0 $(LDFLAGS) -fprofile-use=$(abspath $(PGO_DIR)) -fprofile-correction $(ENGINE_SRCS) $(LDLIBS) -o build/libmcts_cpp_imperative_bench.so
 	$(MAKE) envelope-build-id LIB=build/libmcts_cpp_imperative_bench.so
 
 pgo-instr-use:
 	mkdir -p build
-	$(CXX) $(CXXFLAGS) -fprofile-use=$(PGO_DIR) -fprofile-correction -DMCTS_IMPERATIVE_INSTRUMENTED=1 $(LDFLAGS) -fprofile-use=$(PGO_DIR) -fprofile-correction $(ENGINE_SRCS) $(LDLIBS) -o build/libmcts_cpp_imperative_instrumented.so
+	$(CXX) $(CXXFLAGS) -fprofile-use=$(abspath $(PGO_DIR)) -fprofile-correction -DMCTS_IMPERATIVE_INSTRUMENTED=1 $(LDFLAGS) -fprofile-use=$(abspath $(PGO_DIR)) -fprofile-correction $(ENGINE_SRCS) $(LDLIBS) -o build/libmcts_cpp_imperative_instrumented.so
 	$(MAKE) envelope-build-id LIB=build/libmcts_cpp_imperative_instrumented.so
 
 # Stage 3 (BOLT): instrument the PGO-optimized shared library with

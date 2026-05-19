@@ -34,9 +34,15 @@ on uct-search** vs the original list-based baseline. Snapshot Q1 ST
 PGO-attributable band). Recorded inline in
 [../documents/engineering/compiler_runtime_tuning.md →
  Sprint 8.3 — Measured Q2 Selfplay Snapshot](../documents/engineering/compiler_runtime_tuning.md).
-The final verdict (Sprint `8.3`) and the (i)→(ii)→(iii)→(v) retirement
-chain (Sprints `8.4`–`8.7`) remain gated on Q1 MT8 + Q2 MT8 against the
-PGO+BOLT cdylib, not just the single-threaded snapshots above.
+Sprint `8.3` is closed with the bounded canonical 2026-05-18 report card:
+Q1 ST 2.88×, Q1 MT8 18.93×, Q2 ST 3.65×, Q2 MT8 10.18×, Q5 Haskell
+1.00×, Q5 cpp-imperative 2.80×, and verdict
+`Shortfall 17.925246987694774`. That verdict measures the canonical
+container-built C++ steelman artefacts exactly as produced, including the
+explicit PGO-only fallback when C++ BOLT data is absent. Because the measured
+shortfall is outside tolerance, the (i)→(ii)→(iii)→(v) retirement chain
+(Sprints `8.4`–`8.7`) is blocked until a new profile-directed Haskell tuning
+round closes the gap and a fresh `mcts test all` report card records parity.
 
 ## Phase Summary
 
@@ -57,10 +63,12 @@ grade PGO comparable to GCC/Clang `-fprofile-use` or `rustc -Cprofile-use`, so a
 the pass/fail threshold is `HASKELL_PARITY_TOLERANCE = 0.05`, so any shortfall in
 the 5–15% band still renders `Shortfall <ratio>` (with the PGO note attached as
 attribution, not as exemption).
-Once parity holds, the retirement protocol runs: backend (i) retires after Q6
-closure, backend (ii) retires after backend (iii) reaches parity, backend (iii)
-retires after backend (v) reaches parity. Backend (iv) Rust stays live as the
-cross-language second opinion.
+The 2026-05-18 canonical report card did not reach parity: the verdict is
+`Shortfall 17.925246987694774`. The retirement protocol therefore does not run
+yet. Once a future profile-directed iteration reaches parity, backend (i)
+retires after Q6 closure, backend (ii) retires after backend (iii) reaches
+parity, and backend (iii) retires after backend (v) reaches parity. Backend
+(iv) Rust stays live as the cross-language second opinion.
 
 ## Sprint 8.1: Haskell Compiler and RTS Tuning ✅
 
@@ -272,24 +280,24 @@ defined in
   legal-moves** and **~200× on uct-search**).
   `docker compose run --rm mcts mcts test all` remains green. The Q1 ST snapshot collapses from `Shortfall 9.76`
   to **0.89×** (Haskell faster than the non-PGO cpp-imperative
-  smoke library); the final verdict remains `Pending` against the
-  PGO+BOLT cdylib.
+  smoke library). The later bounded canonical report card against
+  container-built artefacts records `Shortfall 17.925246987694774`.
 
 ### Remaining Work
 
 - Continue only profile-directed iterations with new evidence. Round 3 already
   landed the Word128-backed wavefront-bitmap BFS and collapsed the known legal-move
   hotspot; new tuning work should start from fresh criterion or report-card data.
-- Drive `mcts bench` Q1/Q2 measurements against the PGO+BOLT C++ steelman within
-  `HASKELL_PARITY_TOLERANCE = 0.05` and record the Q1/Q2 parity ratio. Closure
-  depends on running the multi-minute pinned report-card workload. Current
-  non-PGO smoke snapshots are: Q1 ST **0.89×** (Haskell faster), Q1 MT8
-  **0.66-0.87×**, and Q2 ST sims=500 **1.03×** (within tolerance), with
-  sims=1000 **1.13×** in the PGO-attributable band.
+- The 2026-05-18 bounded canonical report card against canonical
+  container-built artefacts is recorded: Q1 ST **2.88×**, Q1 MT8
+  **18.93×**, Q2 ST **3.65×**, Q2 MT8 **10.18×**, verdict
+  **Shortfall 17.925246987694774**. Current remaining work is a new
+  profile-directed tuning round grounded in the canonical report-card data,
+  not another smoke snapshot.
 
-## Sprint 8.3: Parity Verdict and One-Known-Asymmetry Note 📋
+## Sprint 8.3: Parity Verdict and One-Known-Asymmetry Note ✅
 
-**Status**: Planned
+**Status**: Done
 **Implementation**: `src/MCTS/ReportCard.hs`,
 `src/MCTS/ReportCard/Render.hs`,
 `documents/engineering/compiler_runtime_tuning.md`
@@ -337,16 +345,21 @@ attribution rather than as exemption.
 
 ### Remaining Work
 
-Not started.
+None for the verdict surface. `docker compose run --rm --build mcts mcts test all`
+passed on 2026-05-18 and emitted `Verdict: Shortfall 17.925246987694774`.
+The resulting parity failure reopens Sprint `8.2` tuning work and blocks
+Sprints `8.4`-`8.7`.
 
-## Sprint 8.4: Backend (i) Retirement 📋
+## Sprint 8.4: Backend (i) Retirement ⏸️
 
-**Status**: Planned
+**Status**: Blocked
 **Implementation**: `legacy-tracking-for-deletion.md`,
 `test/golden/cpp-legacy/transcripts/<arch>/*.tr`,
 `test/golden/cpp-legacy/throughput.json`,
 `src/MCTS/CLI/Build.hs` (remove `cpp-legacy` build entry),
 `cpp-legacy/RETIRED.md`
+**Blocked by**: Sprint `8.2` parity tuning after Sprint `8.3` recorded
+`Shortfall 17.925246987694774`.
 **Docs to update**: `documents/engineering/backend_ffi_contract.md`,
 `documents/engineering/determinism_contract.md`,
 `DEVELOPMENT_PLAN/system-components.md`,
@@ -413,16 +426,18 @@ record the retirement in the cleanup ledger.
 
 ### Remaining Work
 
-Not started.
+Blocked by the recorded Sprint `8.3` parity shortfall; not started.
 
-## Sprint 8.5: Backend (ii) Retirement 📋
+## Sprint 8.5: Backend (ii) Retirement ⏸️
 
-**Status**: Planned
+**Status**: Blocked
 **Implementation**: `legacy-tracking-for-deletion.md`,
 `test/golden/cpp-imperative/transcripts/<arch>/*.tr`,
 `test/golden/cpp-imperative/throughput.json`,
 `src/MCTS/CLI/Build.hs` (remove `cpp-imperative` build entry),
 `cpp-imperative/RETIRED.md`
+**Blocked by**: Sprint `8.2` parity tuning after Sprint `8.3` recorded
+`Shortfall 17.925246987694774`.
 **Docs to update**: `documents/engineering/backend_ffi_contract.md`,
 `documents/engineering/compiler_runtime_tuning.md`,
 `DEVELOPMENT_PLAN/system-components.md`,
@@ -463,16 +478,18 @@ the retirement.
 
 ### Remaining Work
 
-Not started.
+Blocked by the recorded Sprint `8.3` parity shortfall; not started.
 
-## Sprint 8.6: Backend (iii) Retirement 📋
+## Sprint 8.6: Backend (iii) Retirement ⏸️
 
-**Status**: Planned
+**Status**: Blocked
 **Implementation**: `legacy-tracking-for-deletion.md`,
 `test/golden/cpp-functional/transcripts/<arch>/*.tr`,
 `test/golden/cpp-functional/throughput.json`,
 `src/MCTS/CLI/Build.hs` (remove `cpp-functional` build entry),
 `cpp-functional/RETIRED.md`
+**Blocked by**: Sprint `8.2` parity tuning after Sprint `8.3` recorded
+`Shortfall 17.925246987694774`.
 **Docs to update**: `documents/engineering/backend_ffi_contract.md`,
 `documents/engineering/compiler_runtime_tuning.md`,
 `DEVELOPMENT_PLAN/system-components.md`,
@@ -507,14 +524,16 @@ Haskell as the target.
 
 ### Remaining Work
 
-Not started.
+Blocked by the recorded Sprint `8.3` parity shortfall; not started.
 
-## Sprint 8.7: Plan Closure 📋
+## Sprint 8.7: Plan Closure ⏸️
 
-**Status**: Planned
+**Status**: Blocked
 **Implementation**: `DEVELOPMENT_PLAN/README.md`,
 `DEVELOPMENT_PLAN/00-overview.md`,
 `DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md`
+**Blocked by**: Sprint `8.2` parity tuning and Sprints `8.4`-`8.6`
+retirement completion after Sprint `8.3` recorded `Shortfall 17.925246987694774`.
 **Docs to update**: every plan file.
 
 ### Objective
@@ -550,7 +569,8 @@ retirement rows have moved to `Completed`).
 
 ### Remaining Work
 
-Not started.
+Blocked by the recorded Sprint `8.3` parity shortfall and the retirement chain;
+not started.
 
 ## Documentation Requirements
 

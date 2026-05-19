@@ -7,7 +7,7 @@ use crate::rollout::{rollout_value, smoke_rollout_action};
 use crate::tree::{NO_INDEX, Tree};
 use crate::xoshiro256pp::Xoshiro256pp;
 
-const DEFAULT_MAX_PLIES: u16 = 10000;
+const DEFAULT_MAX_PLIES: u16 = 200;
 const EXPLORATION_C: f64 = 1.4;
 
 pub struct SearchOutput {

@@ -403,16 +403,6 @@ nonTerminalRank :: Board -> Int
 nonTerminalRank board =
     shortestDistance Villain board - shortestDistance Hero board
 
-neighbours :: (Int, Int) -> [(Int, Int)]
-neighbours (x, y) =
-    [ (nx, ny)
-    | (nx, ny) <- [(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)]
-    , nx >= 0
-    , nx <= 8
-    , ny >= 0
-    , ny <= 8
-    ]
-
 edgeBlocked :: Board -> (Int, Int) -> (Int, Int) -> Bool
 edgeBlocked board (x1, y1) (x2, y2)
     | x1 == x2 && abs (y1 - y2) == 1 =

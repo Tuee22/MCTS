@@ -237,8 +237,14 @@ first divergent record.
 Hand-played transcripts produced by `mcts play` are addressed by
 `sha256(run_config || move_history)` (where `||` denotes byte concatenation)
 rather than `sha256(run_config)` alone, because the human's move choices make the
-post-config bytes non-deterministic. The `move_history` is the canonical
-byte sequence of `chosen_action` values from the per-move records.
+post-config bytes non-deterministic. The `move_history` is the canonical encoded
+per-move record sequence, including the chosen action and any visit-count vector
+captured for AI moves. When `mcts play` uses a selected foreign backend and the
+matching cdylib is present, that visit vector comes from the backend's
+`search_move` ABI after the current history has been replayed through
+`apply_action`; otherwise it comes from the logical fallback. `MCTS.Transcript.writePlayTranscript`
+is the writer for this address shape; batch benchmark and verify transcripts continue
+to use the per-game `sha256(run_config)` writer.
 
 ## Cache Root Resolution
 
@@ -351,6 +357,9 @@ the sidecar: under `--rng cpp` within the (ii)–(v) cohort they MUST agree;
 under `--rng native` or cross-build they *usually* agree, and disagreement is
 surfaced as the divergence-smell metric (see
 [determinism_contract.md → Divergence Smell](./determinism_contract.md)).
+`mcts inspect replay` uses the same writer on originator cache miss before
+starting the TUI, so a successful replay-preparation recompute creates the same
+sidecar that later opens read instantly.
 
 ### Originator vs Foreign Columns
 

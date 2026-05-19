@@ -19,7 +19,7 @@
 ✅ **Done**. All seven sprints have closed under the pinned toolchain
 (`docker compose run --rm mcts mcts test all` +
 `docker compose run --rm mcts mcts check-code` green).
-Backend (i) drives real bench/verify transcripts via the FFI, the Q6
+Backend (i) drives real bench and fixture transcripts via the FFI, the Q6
 fixture set is checked in under `test/golden/legacy/transcripts/`, the
 post-link envelope patch fills `engine_build_id`, and the foreign-engine
 recompute symbol is exposed and bound. Full cross-backend bit-equality
@@ -36,8 +36,7 @@ minimum changes required to expose a C ABI. The legacy keeps its
 its no-draw-rule terminal semantics (`is_terminal()` ↔ `hero_wins() ||
 villain_wins()`); the legacy is a strictly verbatim regression-sanity port, not a
 performance ceiling, and the default cross-backend `verify` cohort excludes it
-through parser/runtime guards today. The final `VerifyBackend` GADT remains Phase
-7 work. Phase 4 also lands the `--rng cpp` C++ generator the
+through the Phase 7 `VerifyBackend` parser surface. Phase 4 also lands the `--rng cpp` C++ generator the
 other backends will draw from in Phase 5+, the Q6 golden fixture set from
 out-of-band `MCTS_legacy` runs, and the `mcts verify legacy-parity` cohort logic
 that pins `max_plies = 10000` so all five backends agree under the envelope.
@@ -61,7 +60,7 @@ add a C ABI shim layer (`cpp-legacy/c-abi/`); rename the build product to
 - `cpp-legacy/legacy-core/` mirrors `~/MCTS_legacy/backend/core/`
   contents verbatim. No code-level edits. No structural reorganisation.
 - `cpp-legacy/c-abi/mcts_cpp_legacy.h` declares the C ABI: opaque handles for
-  `Board`, `Tree`, `Rng`; `mcts_legacy_new_board`, `mcts_legacy_apply_move`,
+  `Board`, `Tree`, `Rng`; `mcts_legacy_new_board`, `mcts_legacy_apply_action`,
   `mcts_legacy_is_terminal`, `mcts_legacy_select_uct_move`, `mcts_legacy_rollout`,
   `mcts_legacy_backprop`, `mcts_legacy_free_board`, `mcts_legacy_free_tree`, and
   the `mcts_legacy_rng_*` family. The complete C ABI function inventory (every
@@ -344,9 +343,9 @@ backend (i)'s no-draw-rule terminal semantics.
 
 ## Sprint 4.5: `test/golden/legacy/` Q6 Fixture Set ✅
 
-**Status**: Done (committed as a `1000`-simulation transitional fixture set; the
-`S_LP_SIMS = 10000` re-roll is a cohort-preparation step gated by the
-surrounding report-card sprint and must run through a `mcts` entrypoint)
+**Status**: Done (`S_LP_SIMS = 10000` fixtures are committed for the current
+`amd64` validation architecture and regenerate through the supported
+`mcts build legacy-fixtures` entrypoint)
 **Implementation**: `cpp-legacy/tools/legacy-to-wire.cc`,
 `cpp-legacy/Makefile` (legacy-to-wire target),
 `test/golden/legacy/README.md`,
@@ -379,13 +378,12 @@ this anchor (Q6).
   `test/golden/legacy/transcripts/<arch>/<sha>.tr` with `<arch>` ∈ `{amd64,
   arm64}`. Each supported host architecture ships its own fixture set generated on
   that arch (per [../README.md → Architecture envelope](../README.md)).
-- `test/integration/CppLegacyParity.hs` declares the Q6 golden cohort: it runs
-  `mcts bench selfplay --backend cpp-legacy --rng cpp --max-plies 10000 --seed
-  $S_LP --games $G_LP --sims $S_LP_SIMS` and compares the resulting per-game
-  transcript set byte-by-byte against `test/golden/legacy/transcripts/<arch>/`
-  for the current host arch. Sprint 7.1 wires this test into the `mcts-integration`
-  stanza (it does **not** live in the `mcts-legacy-parity` stanza, which
-  round-robins live binaries instead).
+- `test/integration/Main.hs` declares the current Q6 golden cohort: it decodes
+  every committed `test/golden/legacy/transcripts/<arch>/*.tr` fixture on every
+  host, checks each filename against `sha256(file_bytes)`, and asserts the
+  cpp-legacy backend slot, self-play workload, single-threaded cpp RNG source,
+  seed `42`, `10000` sims, `max_plies = 10000`, one game per file, and no-draw
+  semantics.
 - The fixture set is a frozen historical record: it regenerates only when
   `MCTS_legacy` is upgraded **or** the wire format's `flags u32` bumps. Otherwise
   it's a checked-in artefact; any other refresh is a separate scheduled sprint
@@ -408,30 +406,24 @@ this anchor (Q6).
   directly against `cpp-legacy/legacy-core/` (the byte-identical port of
   `~/MCTS_legacy/backend/core/`) and emits one `<sha>.tr` file per game in
   the Phase 2 wire format. The pinned envelope is single-threaded,
-  `--rng cpp`, `max_plies = 10000`, seed `S_LP = 42`, `G_LP = 10`. The
-  committed fixtures use `1000` simulations so routine checks stay bounded;
-  the full `S_LP_SIMS = 10000` refresh is reserved for report-card publication
-  and must be exposed through a `docker compose run --rm mcts mcts <command>`
-  entrypoint rather than direct tool execution.
-- `test/golden/legacy/transcripts/arm64/*.tr` carries the 10-game arm64
-  fixture set. amd64 fixtures regenerate per
-  [../README.md → Architecture envelope](../README.md) once an amd64
-  build host is available.
+  `--rng cpp`, `max_plies = 10000`, seed `S_LP = 42`, `G_LP = 10`, and
+  `S_LP_SIMS = 10000`. Regeneration enters through `docker compose run --rm
+  mcts mcts build legacy-fixtures --output-dir test/golden/legacy/transcripts
+  --seed 42 --games 10 --sims 10000` rather than direct tool execution.
+- `test/golden/legacy/transcripts/amd64/*.tr` carries the 10-game `amd64`
+  fixture set regenerated on 2026-05-18 after comparing the imported core
+  against `/home/matt/MCTS_legacy/backend/core/` with whitespace ignored.
 - `test/golden/legacy/transcripts` is named in
   `src/MCTS/Generated/Paths.hs → externallyTrackedPaths` (and thus in
   `trackingGeneratedPaths`) so `mcts lint files` keeps hand-edits out
   while skipping the renderer-source content comparison — the renderer
   is the external legacy binary, not a Haskell module.
 - `test/integration/Main.hs` adds the `legacy goldens` group: every
-  fixture is decoded via `MCTS.Transcript.decodeTranscript` and
-  asserted to carry the cpp-legacy backend slot, the cpp RNG source,
-  and no `Draw` winners (the legacy has no draw rule).
-- Byte-exact comparison against a `mcts bench` regeneration is the
-  Phase 2 single-game-file alignment work tracked in
-  [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md);
-  Sprint 4.5's `mcts-integration` stanza covers the decode + envelope
-  shape, the per-game-file regeneration check is a separate ledger
-  item.
+  committed `transcripts/<arch>/*.tr` fixture is decoded via
+  `MCTS.Transcript.decodeTranscript` on every host and asserted to carry the
+  cpp-legacy backend slot, self-play workload, single-threaded cpp RNG source,
+  seed `42`, `10000` sims, `max_plies = 10000`, one game per file, hash-named
+  bytes, and no `Draw` winners (the legacy has no draw rule).
 
 ## Sprint 4.6: `mcts verify legacy-parity` Cohort Logic ✅
 
@@ -455,10 +447,9 @@ the legacy parity envelope (`max_plies = 10000`, fixture seed pinned, `--rng cpp
 
 - `src/MCTS/CLI/Spec.hs` adds the `Verify VerifyCommand` subtree carrying
   `VerifyLegacyParity LegacyParityOptions` per the project [README → CLI command
-  topology](../README.md). The current worktree carries the cohort as a parsed
-  `[Backend]` and rejects cohorts without `cpp-legacy` in the verify runner with
-  `AppError VerifyCohortTooSmall`; the final `LegacyParityBackend` GADT /
-  parse-time shape remains Phase 7 Sprint 7.2 work.
+topology](../README.md). The current worktree carries the cohort as a parsed
+  `[LegacyParityBackend]` and rejects cohorts without `LpCppLegacy` at the parser
+  boundary with `AppError VerifyCohortTooSmall`.
 - `LegacyParityOptions` pins `RngSource = CppRng`, `Threading = SingleThreaded`,
   `max_plies = MAX_ROLLOUT_ITERS = 10000` non-user-overridable. The
   `lpSeed :: Word64` field defaults to the report-card knob `S_LP = 42`. The
@@ -516,8 +507,8 @@ the legacy parity envelope (`max_plies = 10000`, fixture seed pinned, `--rng cpp
   other backends still drive the in-process logical engine and will
   diverge from the legacy. The full cohort closure lives in
   [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md);
-  the gap is intentional and the legacy-parity test stanza accepts a
-  `VerifyMismatch` outcome as expected under that phase split.
+  Sprint 7.2 later tightens the legacy-parity smoke cohorts so
+  `VerifyMismatch` fails the stanza.
 
 ## Sprint 4.7: Backend (i) Engine Envelope and Foreign-Engine Recompute ✅
 
@@ -630,10 +621,12 @@ Envelope Surface](../documents/engineering/backend_ffi_contract.md).
   expects patched, non-zero `engine_build_id` values for
   `cpp-legacy`, `cpp-imperative`, and `cpp-functional`; Rust is accepted
   in either smoke-build zero-digest form or post-`mcts build rust`
-  patched form.
-- Routing the live envelope into the layered verifier's
-  `BackendSlot CppLegacy` slot is Phase 7 cross-backend cohort work;
-  Sprint 4.7 closes the per-backend envelope and recompute surfaces.
+  patched form. Phase 7 later extends that group to prove live transcript
+  stamping and stale compiler-version hard-fail/`--allow-stale` behavior
+  for every present foreign cdylib.
+- Phase 7 Sprint 7.5 routes the live envelope into the layered verifier's
+  `BackendSlot CppLegacy` slot when the cdylib is present; Sprint 4.7 closes
+  the per-backend envelope and recompute surfaces.
 
 ## Documentation Requirements
 

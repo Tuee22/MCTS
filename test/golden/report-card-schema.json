@@ -1,0 +1,202 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "seed",
+    "max_plies",
+    "verdict",
+    "q1_rollouts_st",
+    "q1_rollouts_mt8",
+    "q2_selfplay_st",
+    "q2_selfplay_mt8",
+    "q5_haskell_scaling",
+    "q5_cpp_imperative_scaling",
+    "divergence_matrix"
+  ],
+  "properties": {
+    "seed": {
+      "type": "number"
+    },
+    "max_plies": {
+      "type": "number"
+    },
+    "verdict": {
+      "type": "string"
+    },
+    "q1_rollouts_st": {
+      "type": "object",
+      "required": [
+        "measured",
+        "time_ratio",
+        "haskell_games_per_second",
+        "cpp_imperative_games_per_second"
+      ],
+      "properties": {
+        "measured": {
+          "type": "boolean"
+        },
+        "time_ratio": {
+          "type": "number"
+        },
+        "haskell_games_per_second": {
+          "type": "number"
+        },
+        "cpp_imperative_games_per_second": {
+          "type": "number"
+        }
+      }
+    },
+    "q1_rollouts_mt8": {
+      "type": "object",
+      "required": [
+        "measured",
+        "time_ratio",
+        "haskell_games_per_second",
+        "cpp_imperative_games_per_second"
+      ],
+      "properties": {
+        "measured": {
+          "type": "boolean"
+        },
+        "time_ratio": {
+          "type": "number"
+        },
+        "haskell_games_per_second": {
+          "type": "number"
+        },
+        "cpp_imperative_games_per_second": {
+          "type": "number"
+        }
+      }
+    },
+    "q2_selfplay_st": {
+      "type": "object",
+      "required": [
+        "measured",
+        "time_ratio",
+        "haskell_games_per_second",
+        "cpp_imperative_games_per_second"
+      ],
+      "properties": {
+        "measured": {
+          "type": "boolean"
+        },
+        "time_ratio": {
+          "type": "number"
+        },
+        "haskell_games_per_second": {
+          "type": "number"
+        },
+        "cpp_imperative_games_per_second": {
+          "type": "number"
+        }
+      }
+    },
+    "q2_selfplay_mt8": {
+      "type": "object",
+      "required": [
+        "measured",
+        "time_ratio",
+        "haskell_games_per_second",
+        "cpp_imperative_games_per_second"
+      ],
+      "properties": {
+        "measured": {
+          "type": "boolean"
+        },
+        "time_ratio": {
+          "type": "number"
+        },
+        "haskell_games_per_second": {
+          "type": "number"
+        },
+        "cpp_imperative_games_per_second": {
+          "type": "number"
+        }
+      }
+    },
+    "q5_haskell_scaling": {
+      "type": "object",
+      "required": [
+        "measured",
+        "scaling_ratio",
+        "single_games_per_second",
+        "multi_games_per_second"
+      ],
+      "properties": {
+        "measured": {
+          "type": "boolean"
+        },
+        "scaling_ratio": {
+          "type": "number"
+        },
+        "single_games_per_second": {
+          "type": "number"
+        },
+        "multi_games_per_second": {
+          "type": "number"
+        }
+      }
+    },
+    "q5_cpp_imperative_scaling": {
+      "type": "object",
+      "required": [
+        "measured",
+        "scaling_ratio",
+        "single_games_per_second",
+        "multi_games_per_second"
+      ],
+      "properties": {
+        "measured": {
+          "type": "boolean"
+        },
+        "scaling_ratio": {
+          "type": "number"
+        },
+        "single_games_per_second": {
+          "type": "number"
+        },
+        "multi_games_per_second": {
+          "type": "number"
+        }
+      }
+    },
+    "divergence_matrix": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "backend",
+          "cells"
+        ],
+        "properties": {
+          "backend": {
+            "type": "string"
+          },
+          "cells": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "backend",
+                "visit",
+                "move"
+              ],
+              "properties": {
+                "backend": {
+                  "type": "string"
+                },
+                "visit": {
+                  "type": "number"
+                },
+                "move": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

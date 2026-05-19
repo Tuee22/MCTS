@@ -244,18 +244,24 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
   data Backend    = CppLegacy | CppImperative | CppFunctional | Rust | Haskell
                     deriving stock (Show, Eq)
 
-  data VerifyBackend = VCppImperative | VCppFunctional | VRust | VHaskell
-                       deriving stock (Show, Eq)
-                       -- (i) excluded at the type level per
-                       -- [../README.md → Cross-backend verification](../README.md)
-                       -- and [00-overview.md → Hard Constraints item 7](00-overview.md).
+  data VerifyBackend where
+    VCppImperative :: VerifyBackend
+    VCppFunctional :: VerifyBackend
+    VRust          :: VerifyBackend
+    VHaskell       :: VerifyBackend
+    -- (i) excluded at the type level per
+    -- [../README.md → Cross-backend verification](../README.md)
+    -- and [00-overview.md → Hard Constraints item 7](00-overview.md).
 
-  data LegacyParityBackend = LpCppLegacy | LpCppImperative | LpCppFunctional
-                           | LpRust | LpHaskell
-                             deriving stock (Show, Eq)
-                             -- LpCppLegacy required at parse time per
-                             -- [00-overview.md → Hard Constraints item 8](00-overview.md);
-                             -- cohorts without it fail with AppError VerifyCohortTooSmall.
+  data LegacyParityBackend where
+    LpCppLegacy     :: LegacyParityBackend
+    LpCppImperative :: LegacyParityBackend
+    LpCppFunctional :: LegacyParityBackend
+    LpRust          :: LegacyParityBackend
+    LpHaskell       :: LegacyParityBackend
+    -- LpCppLegacy required at parse time per
+    -- [00-overview.md → Hard Constraints item 8](00-overview.md);
+    -- cohorts without it fail with AppError VerifyCohortTooSmall.
 
   data LegacyParityWorkload = LpRollouts | LpSelfplay
                               deriving stock (Show, Eq)
@@ -378,7 +384,7 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
   `build cpp-imperative --dry-run` (Plan/Apply prints the typed Subprocess
   sequence and exits 0);
   `build cpp-imperative` (Plan/Apply executes the plan and produces
-  `cpp-imperative/libmcts_cpp_imperative.so`).
+  `cpp-imperative/build/libmcts_cpp_imperative.so`).
 
 ### Validation
 
@@ -407,10 +413,10 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
   bench cohort, legacy-parity, `inspect show --with-equity`, and the unhappy
   `verify --rng native` path; byte-stable golden coverage for `mcts commands --json`
   lives in `mcts-unit`.
-- Current implementation note: the concrete `VerifyCommand` constructors still
-  carry `[Backend]` with parser/runtime checks rather than the final
-  `VerifyBackend` / `LegacyParityBackend` GADT split. Phase 7 Sprint 7.2 owns
-  that tightening; the Phase 1 registry/parser surface is otherwise closed.
+- Current implementation note: the concrete `VerifyCommand` constructors now
+  carry typed `[VerifyBackend]` / `[LegacyParityBackend]` lists, with Phase 7
+  Sprint 7.2 parser-boundary guards for `cpp-legacy` exclusion and
+  `LpCppLegacy` membership. The Phase 1 registry/parser surface remains closed.
 - The README's full concrete invocation set wraps the same leaf `Example` entries in
   the Compose entrypoint. Validated on 2026-05-15 through the root Compose entrypoint
   with `docker compose run --rm mcts mcts test mcts-unit`,
@@ -508,9 +514,9 @@ text-artefact derived from the `CommandSpec` registry.
   `docker compose run --rm mcts mcts docs check` plus
   `docker compose run --rm mcts mcts lint files`.
 
-## Sprint 1.4: Lint Stack, `fourmolu.yaml`, `mcts-haskell-style` Stanza 🔄
+## Sprint 1.4: Lint Stack, `fourmolu.yaml`, `mcts-haskell-style` Stanza ✅
 
-**Status**: Active
+**Status**: Done
 **Implementation**: `fourmolu.yaml`, `.hlint.yaml`, `src/MCTS/CLI/Lint.hs`,
 `src/MCTS/App.hs` (`CheckCode` branch), `test/haskell-style/Main.hs`, `mcts.cabal`
 **Docs to update**: `documents/engineering/code_quality.md`,
@@ -609,19 +615,12 @@ forbidden-symbol HLint rules behind the `mcts-haskell-style` test stanza plus th
 - Reopened on 2026-05-18 for the Compose-only operator-surface doctrine update:
   `bootstrap/` and repository `.sh` workflow wrappers are now forbidden surfaces,
   the obsolete bootstrap script was removed, and the unit registry expectation was
-  updated. Validation has not yet closed: `docker compose run --rm mcts mcts test
-  mcts-unit` was stopped at operator request during Docker image build, while
-  installing the pinned formatter-tool dependency set, before the `mcts` command
-  or test stanza ran.
-
-### Remaining Work
-
-- Rerun `docker compose run --rm mcts mcts test mcts-unit` through completion to
-  validate the updated forbidden-path registry.
-- Rerun the Sprint 1.4 validation gate (`docker compose run --rm mcts mcts
-  lint files`, `docker compose run --rm mcts mcts lint all`, and
-  `docker compose run --rm mcts mcts check-code`) through the canonical Compose
-  entrypoint.
+  updated.
+- Reclosure validation passed on 2026-05-18 through the root Compose service:
+  `docker compose run --rm --build mcts mcts test mcts-unit`,
+  `docker compose run --rm mcts mcts lint files`,
+  `docker compose run --rm mcts mcts lint all`, and
+  `docker compose run --rm mcts mcts check-code`.
 
 ## Sprint 1.5: `Plan / Apply` Boundary ✅
 
@@ -781,7 +780,7 @@ typed boundary and emits structured remedy hints on failure.
   `llvm-config` (LLVM `19.x`), `llvm-bolt` (LLVM `19.x`), `rustup`,
   `cargo` / `rustc` (`1.95.0`), and `mimalloc` via `pkg-config`, plus the
   `pgo-profiles` directory probe and the `logical-backends` /
-  `legacy-fixtures` stubs.
+  `legacy-fixtures` tracked-fixture probe.
 - `nodeDependsOn` carries dependency edges (`cargo`/`rustc` depend on
   `rustup`; `bolt` depends on `llvm`; `ghc-9.14.1`/`cabal-3.16.1.0` depend
   on `ghcup`). `prerequisitesForBuild` and `prerequisitesForTest` resolve

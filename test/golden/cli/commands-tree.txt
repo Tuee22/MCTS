@@ -34,3 +34,4 @@ mcts - Monte Carlo Tree Search runtime
     cpp-imperative - Build imperative C++ backend
     cpp-functional - Build functional C++ backend
     rust - Build Rust backend
+    legacy-fixtures - Regenerate legacy Q6 fixtures

@@ -7,6 +7,7 @@ module MCTS.Verify.Divergence
 
 import Data.List (sort)
 import qualified Data.Map.Strict as Map
+import Data.Word (Word32)
 import MCTS.Transcript.EquitySidecar (EqRecord (..), EqStream (..))
 import MCTS.Types
 import Text.Printf (printf)
@@ -110,8 +111,12 @@ movesDiffer pair =
 visitsDiffer :: (Maybe MoveRecord, Maybe MoveRecord) -> Bool
 visitsDiffer pair =
     case pair of
-        (Just left, Just right) -> sort (moveVisits left) /= sort (moveVisits right)
+        (Just left, Just right) -> comparableVisits left /= comparableVisits right
         _ -> True
+
+comparableVisits :: MoveRecord -> [(Action, Word32)]
+comparableVisits =
+    sort . filter ((> 0) . snd) . moveVisits
 
 rate :: Int -> Int -> Double
 rate _ 0 = 0.0

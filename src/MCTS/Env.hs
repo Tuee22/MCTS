@@ -21,6 +21,7 @@ module MCTS.Env
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (ReaderT (..), ask, local, runReaderT)
 import Data.Word (Word64)
+import GHC.Clock (getMonotonicTimeNSec)
 import qualified MCTS.CLI.Output as Output
 import qualified MCTS.CLI.Spec as Spec
 import qualified MCTS.Generated.Paths as GeneratedPaths
@@ -72,7 +73,7 @@ defaultEnv =
         , envCacheDir = Nothing
         , envLogHandle = stdout
         , envRawArguments = []
-        , envClockMonotonic = pure 0
+        , envClockMonotonic = getMonotonicTimeNSec
         }
 
 -- | The doctrine-shaped application monad.

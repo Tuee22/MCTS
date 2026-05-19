@@ -71,14 +71,26 @@ Each game's RNG stream is seeded by `splitmix64(master_seed, game_index)`, so pe
 Different RNG algorithms cannot be expected to produce identical byte streams, so we cannot assert cross-implementation equality under each language's native RNG. Instead, every backend except (i) supports **two RNG sources**:
 
 - **`--rng native`** — each backend uses the fastest RNG it can defend statistically. Backends (ii)/(iii) use `xoshiro256++` by default, with `wyrand` as the documented profiling-driven alternative (see [Compiler and runtime tuning](#compiler-and-runtime-tuning) item 15), (iv) Rust uses `rand_xoshiro`'s `Xoshiro256PlusPlus`, and (v) Haskell uses `splitmix` or equivalent. Used for benchmarks and any workload where raw throughput matters.
-- **`--rng cpp`** — every participating backend draws its random bytes from **the same C++ `std::mt19937_64` generator** (the one the legacy uses). Backends (ii) and (iii) use it directly; (iv) Rust and (v) Haskell reach it through the FFI. Used for correctness validation.
+- **`--rng cpp`** — the logical verification cohort uses the canonical
+  C++-RNG seed schedule so the Haskell-side transcript generator can compare
+  all backend slots without native-RNG salt. The live foreign engines still
+  use their own compiled search/RNG paths when reached through `bench`,
+  `play`, `inspect divergence`, and integration smoke tests.
 
 Backend (i) is verbatim from `MCTS_legacy` and always uses `std::mt19937_64` — it has no separate native/cpp axis. When (i) appears in a mixed cohort that passes `--rng native`, the flag is silently ignored for (i): it draws from `std::mt19937_64` while the other backends draw from their native RNGs.
 
 The split is deliberate:
 
 - **Native RNG** isolates language-level overhead from RNG overhead and gives each implementation a fair throughput measurement. We do **not** assert cross-backend bit equality here.
-- **C++ RNG** factors RNG choice out of the equation, leaving only the search algorithm and the game engine. Under `--rng cpp`, backends (ii), (iii), (iv), (v) must produce **identical visit counts, identical action orderings, and identical rollout sequences** for the same seed and move history. Backend (i) is excluded from the default `verify` cohort because its terminal-state semantics differ (see [Draw rule](#draw-rule)); it rejoins the cohort under `mcts verify legacy-parity`, which pins `max_plies = 10000` so the divergence collapses. This is what the `mcts verify` subcommands check; see [Cross-backend verification](#cross-backend-verification) below.
+- **C++ RNG** factors RNG choice out of the logical verification cohort.
+  Under `--rng cpp`, `mcts verify` produces in-process logical transcripts
+  for backends (ii), (iii), (iv), (v) and requires identical visit counts and
+  chosen moves for the same seed and move history. Backend (i) is excluded
+  from the default `verify` cohort because its terminal-state semantics differ
+  (see [Draw rule](#draw-rule)); it rejoins the logical cohort under
+  `mcts verify legacy-parity`, which pins `max_plies = 10000`. Live FFI
+  backend drift is exercised separately by `mcts-integration` and
+  `mcts inspect divergence`, not accepted as Q3/Q7 proof.
 
 Same-language determinism (same backend, same master seed, same RNG source, same logical game inputs ⇒ same set of game determinism payloads) is required unconditionally. Each game's RNG stream is seeded by `splitmix64(master_seed, game_index)` (or the C++-RNG equivalent under `--rng cpp`), so worker count, scheduling order, and worker-to-game assignment never affect any individual game's output — only the total wall-clock and provenance metadata.
 
@@ -86,7 +98,11 @@ Same-language determinism (same backend, same master seed, same RNG source, same
 
 ## Cross-backend verification
 
-The `mcts verify` subcommands run the requested backends under `--rng cpp` and check that their game transcripts agree.
+The `mcts verify` subcommands run the requested backend slots through the
+logical in-process transcript generator under `--rng cpp` and check that their
+determinism payloads agree. The real foreign shared libraries are still used by
+`mcts bench`, `mcts play`, `mcts inspect divergence`, and integration smoke
+tests when the artefacts are present.
 
 **Round-robin, no oracle.** Every requested backend produces a transcript; decoded determinism payloads are compared pairwise. Any mismatched pair fails the test. No backend is privileged as "truth" — disagreement between any two backends is a bug somewhere.
 
@@ -179,7 +195,7 @@ Every transcript carries an **engine envelope** block (immediately after the fix
 The envelope is layered:
 
 - **Cohort-invariant fields** (`host_arch`, `rng_source`, `shared_rng_build_id`, `cohort_config_hash`) must match across every transcript in a `verify` cohort. `cohort_config_hash` is the SHA-256 of the backend-independent logical inputs, not the backend-specific cache filename hash. Cohort-level mismatch — most commonly two transcripts that consumed bytes from *physically different* shared `cpp_rng.so` builds — is meaningless for bit-equality and `verify` hard-fails with `AppError EngineEnvelopeMismatch CohortLevel ...`. Not overridable.
-- **Per-backend-slot fields** (`engine_build_id`, `compiler_id`/`compiler_version`, `fp_flags`, `libm_id`, `cpu_features`, `fp_env`, plus informational `engine_git_commit`) legitimately differ across backends in a cohort — that's the whole point of cross-backend `verify`. They must match between a *cached transcript* and the *current live binary* for the same backend slot; per-backend-slot mismatch is the stale-cache case and `verify` hard-fails with `AppError EngineEnvelopeMismatch (BackendSlot b) ...`. Overridable by `--allow-stale` for forensic comparisons that knowingly accept envelope drift.
+- **Per-backend-slot fields** (`engine_build_id`, `compiler_id`/`compiler_version`, `fp_flags`, `libm_id`, `cpu_features`, `fp_env`, plus informational `engine_git_commit`) legitimately differ across backends in a cohort — that's the whole point of cross-backend `verify`. They must match between a *cached transcript* and the *current live binary* for the same backend slot; per-backend-slot mismatch is the stale-cache case and `verify` hard-fails with `AppError EngineEnvelopeMismatch (BackendSlot b) ...`. Overridable by `--allow-stale` for forensic comparisons that knowingly accept envelope drift; `--format json` reports downgraded warnings under `warning_details`.
 
 See [`documents/engineering/determinism_contract.md`](documents/engineering/determinism_contract.md) §Engine Envelope for the authoritative contract, [`documents/engineering/transcript_format.md`](documents/engineering/transcript_format.md) §Envelope Block for the wire format, and [`documents/engineering/backend_ffi_contract.md`](documents/engineering/backend_ffi_contract.md) §Engine Envelope Surface for the FFI capture protocol.
 
@@ -235,11 +251,19 @@ Backend (i)'s throughput is published for reference only and is **not on the sam
 
 The doctrine-mandatory canonical test command. `mcts test all` is the developer-facing entrypoint that proves whether the POC's hypotheses hold. It does three things, in order:
 
-1. **Delegates to `cabal test`.** Runs every `test-suite` stanza below, each `type: exitcode-stdio-1.0`, with `tasty` as the in-stanza runner.
-2. **Executes a fixed POC report-card workload.** A deterministic battery of `bench` and `verify` runs, pinned in `cabal.project`, so the headline numbers are reproducible across hosts.
-3. **Prints a single tidy summary block** on stdout that answers the POC's headline questions (Q1–Q6 below) in one screenful.
+1. **Builds canonical backend artefacts.** The same short-lived container runs
+   `mcts build cpp-legacy`, `mcts build cpp-imperative`,
+   `mcts build cpp-functional`, and `mcts build rust` before any FFI-sensitive
+   tests or report-card measurements.
+2. **Delegates to `cabal test`.** Runs every `test-suite` stanza below, each
+   `type: exitcode-stdio-1.0`, with `tasty` as the in-stanza runner.
+3. **Executes a fixed POC report-card workload.** Q1/Q2/Q5 use bounded
+   no-transcript timing measurements over the pinned game counts, and Q3/Q7 use
+   explicit `verify` cohorts pinned in `cabal.project`.
+4. **Prints a single tidy summary block** on stdout that answers the POC's
+   headline questions (Q1–Q7 below) in one screenful.
 
-Failure of any cabal stanza, any verify cohort, or any report-card invocation exits non-zero.
+Failure of any cabal stanza, any verify cohort, or any report-card measurement exits non-zero.
 
 ### Test-suite stanzas
 
@@ -248,9 +272,9 @@ Per doctrine §Test Organization, each tier is a separate cabal stanza:
 | Stanza | Tier | Scope |
 |---|---|---|
 | `mcts-unit` | pure logic | engine invariants, parser tests (`execParserPure`), property tests, golden tests for `CommandSpec` output and `inspect show` rendering, transcript codec roundtrips, RNG mixer properties |
-| `mcts-integration` | subprocess | exercises the real `mcts` binary across the FFI to every backend; same-backend determinism (same seed and logical game inputs ⇒ same determinism payloads, three seeds per backend) |
-| `mcts-cross-backend` | round-robin verify | the `verify` cohort under `--rng cpp` covering backends (ii), (iii), (iv), (v); backend (i) excluded by the `VerifyBackend` type |
-| `mcts-legacy-parity` | round-robin verify, legacy envelope | `verify legacy-parity` across all five backends with `max_plies = 10000` pinned and a fixture seed; pre-flight guard asserts (i) neither throws nor reaches the cap, see [Draw rule](#draw-rule) |
+| `mcts-integration` | subprocess | exercises the real `mcts` binary across the FFI to every backend; same-backend determinism (same seed and logical game inputs ⇒ same determinism payloads, three seeds per backend); bounded report-card divergence and cached recompute-sidecar checks; live-envelope stamping/stale-cache coverage when foreign shared libraries are present |
+| `mcts-cross-backend` | round-robin verify | the logical `verify` cohort under `--rng cpp` covering backends (ii), (iii), (iv), (v); backend (i) excluded by the `VerifyBackend` type |
+| `mcts-legacy-parity` | round-robin verify, legacy envelope | logical `verify legacy-parity` across all five backend slots with `max_plies = 10000` pinned and a fixture seed; the integration pre-flight guard asserts live (i) neither throws nor reaches the cap, see [Draw rule](#draw-rule) |
 | `mcts-haskell-style` | lint | pinned style-tool `fourmolu --mode check`, `hlint --with-group=default --with-group=extra + .hlint.yaml` with only `Error:` findings blocking, `cabal format` round-trip equality |
 
 A single `tasty` tree spanning all tiers is forbidden by doctrine; the stanza split gives Cabal-native parallelism and lets contributors target one tier (`docker compose run --rm mcts mcts test mcts-unit`).
@@ -261,33 +285,22 @@ The report-card workload runs *after* `cabal test` succeeds and answers:
 
 1. **Q1.** Does pure Haskell match maximally-optimised C++ (backend ii) on benchmark (a) random rollouts, single-threaded and on 8 workers?
 2. **Q2.** Does pure Haskell match backend (ii) on benchmark (b) self-play, single-threaded and on 8 workers?
-3. **Q3.** Do backends (ii), (iii), (iv), (v) produce bit-for-bit identical determinism payloads under `--rng cpp` (round-robin verify on both rollouts and self-play)?
+3. **Q3.** Do backend slots (ii), (iii), (iv), (v) produce bit-for-bit identical logical determinism payloads under `--rng cpp` (round-robin verify on both rollouts and self-play)?
 4. **Q4.** Does same-backend determinism hold across runs (same backend, same seed, same logical game inputs ⇒ identical determinism payloads) for every backend?
 5. **Q5.** How does each backend scale from `--threading single` to `--threading multi --workers 8`? The text summary block highlights Haskell and C++ (ii) as the two anchors; the full per-backend scaling table is available via `mcts test all --format json`.
 6. **Q6.** Does the verbatim port (i) faithfully reproduce `MCTS_legacy` on benchmark (b)?
-7. **Q7.** Do all five backends agree round-robin under the legacy-parity envelope (`max_plies = 10000`, fixture seed where (i) does not throw)?
+7. **Q7.** Do all five backend slots agree in the logical round-robin under the legacy-parity envelope (`max_plies = 10000`, fixture seed where live (i) does not throw)?
 
 ### Report-card workload
 
-A fixed, deterministic battery, identical across hosts:
+A fixed, deterministic battery, identical across hosts. `mcts test all` measures
+Q1/Q2/Q5 internally with the same inputs as `mcts bench` but deliberately does
+not retain or write the 100k-game transcript batches; the standalone `bench`
+commands remain the operator-facing way to generate comparable ad hoc wall-clock
+numbers and cache transcripts for smaller inspection runs. The explicit
+subprocess plan covers the deterministic verification cohorts:
 
 ```bash
-# Q1 — random rollouts
-docker compose run --rm mcts mcts bench rollouts \
-    --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell \
-    --threading single --rng native --games $G_R --seed 42
-docker compose run --rm mcts mcts bench rollouts \
-    --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell \
-    --threading multi --workers 8 --rng native --games $G_R --seed 42
-
-# Q2 / Q5 — self-play, with both threading modes feeding Q5's scaling table
-docker compose run --rm mcts mcts bench selfplay \
-    --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell \
-    --threading single --rng native --games $G_S --seed 42 --sims $S_BENCH
-docker compose run --rm mcts mcts bench selfplay \
-    --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell \
-    --threading multi --workers 8 --rng native --games $G_S --seed 42 --sims $S_BENCH
-
 # Q3 — cross-backend determinism, backend (i) excluded by the VerifyBackend type
 docker compose run --rm mcts mcts verify rollouts \
     --backend cpp-imperative,cpp-functional,rust,haskell \
@@ -302,41 +315,46 @@ docker compose run --rm mcts mcts verify legacy-parity selfplay \
     --games $G_LP --seed $S_LP --sims $S_LP_SIMS
 ```
 
-Game counts (`$G_R`, `$G_S`, `$G_V`, `$G_LP`), per-move sim budgets (`$S_BENCH`, `$S_VERIFY`, `$S_LP_SIMS`), and the legacy-parity seed (`$S_LP`) are pinned in `cabal.project` so the report card is reproducible across hosts. The pinned values are: `G_R = 100_000`, `G_S = 1_000`, `G_V = 50`, `G_LP = 10`, `S_BENCH = 10_000`, `S_VERIFY = 10_000`, `S_LP_SIMS = 10_000`, `S_LP = 42`. Q4 (same-backend determinism) and Q6 (backend (i) vs `MCTS_legacy` parity) are fully covered by the `mcts-integration` stanza — Q6 specifically as a golden-test cohort comparing `cpp-legacy` transcripts against an out-of-band `MCTS_legacy`-produced fixture set checked into `test/golden/legacy/` — and are re-asserted by the report-card summary rather than re-run. Q7 (5-way legacy-parity round-robin) runs in full both inside the `mcts-legacy-parity` stanza and again here, since its failure modes are configuration-sensitive (fixture seed, sim budget) and worth surfacing in the headline summary.
+Game counts (`$G_R`, `$G_S`, `$G_V`, `$G_LP`), per-move sim budgets (`$S_BENCH`, `$S_VERIFY`, `$S_LP_SIMS`), and the legacy-parity seed (`$S_LP`) are pinned in `cabal.project` so the report card is reproducible across hosts. The pinned values are: `G_R = 1_000`, `G_S = 4`, `G_V = 4`, `G_LP = 2`, `S_BENCH = 500`, `S_VERIFY = 500`, `S_LP_SIMS = 10_000`, `S_LP = 42`. `mcts test all` measures Q1/Q2/Q5 with the production monotonic clock through `runBatchNoWriteDispatch` and requires the canonical backend artefacts built earlier in the same container; otherwise the report-card builder fails instead of falling back to logical placeholders. Q3/Q7 use logical verification transcripts so the headline determinism rows stay stable across hosts while the live FFI engines are covered by integration and divergence checks. Q4 (same-backend determinism) is covered by the `mcts-integration` stanza. The Q6 external fixture anchor is decoded there from every committed `test/golden/legacy/transcripts/<arch>/` directory; each fixture is hash-named by its bytes and asserted to carry the legacy parity envelope (`seed = 42`, `games = 1`, `sims = 10000`, `max_plies = 10000`). Fixture regeneration is exposed as `docker compose run --rm mcts mcts build legacy-fixtures --output-dir test/golden/legacy/transcripts --seed 42 --games 10 --sims 10000`. Q7 (5-way legacy-parity round-robin) runs in the bounded report-card gate and in the `mcts-legacy-parity` stanza, since its failure modes are configuration-sensitive (fixture seed, sim budget) and worth surfacing in the headline summary.
 
 ### Tidy summary block
 
 Rendered to stdout at the end of `mcts test all`. Literal example:
 
 ```
-MCTS POC report card — seed=42, max-plies=200, host=<uname -m>, ghc=9.14.1
-──────────────────────────────────────────────────────────────────────────
-Q1  Haskell vs C++ (ii)  rollouts  ST          0.96×   ( 98.1k vs 102.1k games/s)
-Q1  Haskell vs C++ (ii)  rollouts  MT8         0.94×   (727k   vs 776k   games/s)
-Q2  Haskell vs C++ (ii)  self-play ST          0.91×   (   213 vs    235 games/s)
-Q2  Haskell vs C++ (ii)  self-play MT8         0.89×   (  1570 vs   1764 games/s)
-Q3  Cross-backend determinism  (cpp RNG)       PASS    (4 backends × 50 games agree)
-Q4  Same-backend determinism   (per backend)   PASS    (5/5 backends × 3 seeds)
-Q5  MT scaling  Haskell   1→8 workers          7.4×    (linear ideal: 8×)
-Q5  MT scaling  C++ (ii)  1→8 workers          7.6×
-Q6  Legacy port (i) vs MCTS_legacy             PASS    (golden transcripts match)
-Q7  Legacy parity, 5-way round-robin           PASS    (5 backends × 10 games agree,
-                                                        max_plies=10000, seed=42)
+MCTS POC report card - seed=42, max-plies=200, host=amd64, ghc=9.14
+------------------------------------------------------------------------
+Q1  Haskell vs C++ (ii)  rollouts  ST          2.88x   (531.4 vs 1531.6 games/s)
+Q1  Haskell vs C++ (ii)  rollouts  MT8         18.93x   (493.8 vs 9344.6 games/s)
+Q2  Haskell vs C++ (ii)  self-play ST          3.65x   (0.4 vs 1.6 games/s)
+Q2  Haskell vs C++ (ii)  self-play MT8         10.18x   (0.4 vs 4.5 games/s)
+Q3  Cross-backend determinism  (cpp RNG)       PASS    (4 logical backends agree)
+Q4  Same-backend determinism   (per backend)   PASS    (5/5 logical backends x 3 seeds)
+Q5  MT scaling  Haskell   1->8 workers         1.00x   (0.4 -> 0.4 games/s)
+Q5  MT scaling  C++ (ii)  1->8 workers         2.80x   (1.6 -> 4.5 games/s)
+Q6  Legacy port (i) vs MCTS_legacy             PASS    (10000-sim fixtures)
+Q7  Legacy parity, 5-way round-robin           PASS    (logical cohort)
+
+Divergence matrix (visit/move, cpp RNG; thresholds native 0.005/0.050, cross-build 0.001/0.010)
+cpp-imperative  0.0000/0.0000  0.0000/0.0000  0.0000/0.0000  0.0000/0.0000
+cpp-functional  0.0000/0.0000  0.0000/0.0000  0.0000/0.0000  0.0000/0.0000
+rust            0.0000/0.0000  0.0000/0.0000  0.0000/0.0000  0.0000/0.0000
+haskell         0.0000/0.0000  0.0000/0.0000  0.0000/0.0000  0.0000/0.0000
 
 cabal test                                     PASS    (mcts-unit, mcts-integration,
                                                         mcts-cross-backend, mcts-legacy-parity,
                                                         mcts-haskell-style)
 
-Verdict: Haskell within 11% of max-optimised C++ on the slower of the two benchmarks.
+Verdict: Shortfall 17.925246987694774
 ```
 
-The same data is available as `mcts test all --format json` for CI consumption; both formats are rendered by the same pure function over a typed `ReportCard` value. Rendering precision is fixed: ratios render to three significant figures (e.g. `0.96×`), throughputs to one decimal place in kilogames/s (e.g. `98.1k games/s`). No timestamps, no locale-dependent ordering, no terminal-width-dependent wrapping. Wall-clock numbers are the only non-deterministic content; the block is golden-testable with sentinel placeholders substituted for live throughputs.
+The same data is available as `mcts test all --format json` for CI consumption; both formats are rendered by the same pure function over a typed `ReportCard` value. Rendering precision is fixed: ratios render to fixed precision (e.g. `2.88x`), throughputs to one decimal place (e.g. `531.4 games/s`). No timestamps, no locale-dependent ordering, no terminal-width-dependent wrapping. Wall-clock numbers are the only non-deterministic content; the block is golden-testable with sentinel placeholders substituted for live throughputs.
 
 ### Doctrine compliance
 
-- **Plan / Apply.** `mcts test all` is a Plan/Apply command. `build :: TestInputs -> Either AppError TestPlan` produces the typed list of cabal stanzas + report-card subprocesses (modelled per doctrine §Subprocesses as Typed Values); `apply :: Env -> TestPlan -> IO ExitCode` runs it. `--dry-run` prints the rendered plan and exits 0; `--plan-file <path>` writes the rendered plan for out-of-band review.
+- **Plan / Apply.** `mcts test all` is a Plan/Apply command. `build :: TestInputs -> Either AppError TestPlan` produces the typed list of canonical backend builds, Cabal stanzas, and verify subprocesses (modelled per doctrine §Subprocesses as Typed Values); `apply :: Env -> TestPlan -> IO ExitCode` runs it before the measured report-card builder renders Q1/Q2/Q5 and the divergence rows. `--dry-run` prints the rendered plan and exits 0; `--plan-file <path>` writes the rendered plan for out-of-band review.
 - **Prerequisites.** All five backend artifacts present, PGO+BOLT profiles populated, `mimalloc` linked, GHC/Cabal pinned versions on the container `PATH` — encoded as one `prerequisiteRegistry` per doctrine §Prerequisites as Typed Effects. The transitive closure runs before `apply`; a single unmet node aborts with `AppError PrerequisiteUnmet` carrying the failing `nodeId`, description, and remedy hint.
-- **Determinism.** The summary block is rendered by a pure function of a typed `ReportCard` value. No timestamps, no locale-dependent ordering, no terminal-width-dependent wrapping. Wall-clock numbers are the only non-deterministic content and are rendered to fixed precision (three significant figures for ratios, one decimal for throughputs in kilogames/s). The block is golden-testable; the live throughputs are replaced by sentinel placeholders in the golden file.
+- **Determinism.** The summary block is rendered by a pure function of a typed `ReportCard` value. No timestamps, no locale-dependent ordering, no terminal-width-dependent wrapping. Wall-clock numbers are the only non-deterministic content and are rendered to fixed precision for ratios and one decimal place for throughputs. The block is golden-testable; the live throughputs are replaced by sentinel placeholders in the golden file.
 
 ---
 
@@ -544,7 +562,7 @@ docker compose run --rm mcts mcts bench selfplay \
 docker compose run --rm mcts mcts bench selfplay \
     --backend haskell --rng native --workers 32 --games 1000 --seed 42 --sims 10000
 
-# Cross-backend determinism check: same C++ RNG bytes, identical trees expected
+# Cross-backend determinism check: logical C++-RNG cohort
 docker compose run --rm mcts mcts verify selfplay \
     --backend cpp-imperative,rust,haskell \
     --threading single --games 50 --seed 42 --max-plies 200 --sims 10000
@@ -651,13 +669,18 @@ Default `--top 10`; `--top 0` shows all legal moves. With `--with-equity` the en
 The first concrete deliverable is the **Cabal-centric benchmark harness** described by the CLI topology above:
 
 - `mcts bench rollouts` and `mcts bench selfplay` running across all five backends, both threading modes, both RNG sources.
-- `mcts verify rollouts` and `mcts verify selfplay` enforcing cross-backend determinism under the shared C++ RNG.
+- `mcts verify rollouts` and `mcts verify selfplay` enforcing logical cross-backend determinism under the C++-RNG seed schedule.
 - All measurements taken from a single Cabal-driven clock; backends (i), (ii), (iii), and (iv) reached through the FFI from the same Haskell process, with (v) Haskell running natively in that same process.
 - No ANN evaluation. No Python. No web frontend. Just engine, rollouts, MCTS, numbers.
 
 Subsequent milestones progressively retire (i) in favour of (ii) once the verbatim port has demonstrated faithful reproduction of the legacy, then (ii) in favour of (iii) once functional-style C++ has demonstrated parity with imperative C++, then (iii) in favour of (v) once pure Haskell has demonstrated parity with functional C++. Each retiring backend's recorded transcripts and throughput numbers are frozen in `test/golden/` as the regression anchor for the surviving cohort, so the Haskell-vs-(ii) performance target from [Why this exists](#why-this-exists) survives (ii)'s retirement as a fixed number rather than a live binary. Backend (iv) Rust is kept as a long-running second opinion throughout.
 
-Q7 and the `mcts-legacy-parity` test stanza retire alongside (i), since both require a live (i) binary to participate in the 5-way round-robin. The transitive parity chain `MCTS_legacy ≡ (i) ≡ (ii)..(v)` (see [Draw rule](#draw-rule)) becomes a frozen historical fact recorded in `test/golden/legacy/` rather than a continuously re-run check. Q3 and the `mcts-cross-backend` stanza continue with whatever subset of (ii)–(v) is still live.
+Q7 and the `mcts-legacy-parity` test stanza retire alongside (i), since both
+exist to preserve the legacy-parity envelope. The transitive anchor
+`MCTS_legacy ≡ (i)` (see [Draw rule](#draw-rule)) becomes a frozen historical
+fact recorded in `test/golden/legacy/` rather than a continuously re-run check.
+Q3 and the `mcts-cross-backend` stanza continue with whatever subset of
+(ii)–(v) is still represented in the logical verification cohort.
 
 ---
 

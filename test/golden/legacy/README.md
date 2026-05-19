@@ -29,19 +29,26 @@ transcript in the Phase 2 wire format (header + envelope + one game block).
 The conversion script lives at
 [`cpp-legacy/tools/legacy-to-wire.cc`](../../../cpp-legacy/tools/legacy-to-wire.cc).
 It links directly against `cpp-legacy/legacy-core/` and writes one
-`<sha>.tr` file per game. Fixture regeneration is not a routine operator
-entrypoint under the current container doctrine: supported host work must enter
-through `docker compose run --rm mcts mcts <command>`. A future fixture refresh
-must add or use a `mcts` subcommand for the regeneration path rather than
-documenting direct `make` or direct tool execution from the host.
+`<sha>.tr` file per game. Fixture regeneration uses the supported Plan/Apply
+entrypoint:
+
+```bash
+docker compose run --rm mcts mcts build legacy-fixtures \
+  --output-dir test/golden/legacy/transcripts \
+  --seed 42 \
+  --games 10 \
+  --sims 10000
+```
+
+The command builds `cpp-legacy/build/legacy-to-wire` inside the plan and then
+invokes it with explicit flags. Direct `make`, direct tool execution, and
+environment-variable-driven fixture regeneration are not supported operator
+workflows.
 
 The historical fixture constants are seed `42`, `10` games, and the spec
-value `S_LP_SIMS = 10000`. The committed arm64 fixtures capture a transitional
-`1000`-simulation snapshot so routine checks stay bounded; the full
-`10000`-simulation refresh is reserved for the doctrine's report-card
-publication and must be exposed as CLI flags on the future `mcts` regeneration
-subcommand. Environment-variable-driven fixture regeneration is not a supported
-operator workflow.
+value `S_LP_SIMS = 10000`. The committed `amd64` fixtures were regenerated
+through the command above after confirming the imported core matches
+`/home/matt/MCTS_legacy/backend/core/` modulo whitespace.
 
 ## When fixtures regenerate
 
@@ -60,16 +67,11 @@ Per [development_plan_standards.md §I](../../../DEVELOPMENT_PLAN/development_pl
 
 `test/integration/Main.hs` includes a `legacy goldens` group that:
 
-1. Lists every `.tr` file in `transcripts/<host_arch>/`.
+1. Lists every `.tr` file under every committed `transcripts/<arch>/`
+   directory, regardless of the current host architecture.
 2. Decodes each via `MCTS.Transcript.decodeTranscript`.
-3. Asserts the decoded transcript's backend slot equals `cpp-legacy`,
-   the envelope's RNG source equals `cpp`, and no game records a
-   `Draw` winner (the legacy has no draw rule).
-
-Full byte-exact comparison against a `mcts bench` regeneration is gated on
-the Phase 2 single-game-file wire-format alignment — the current Haskell
-writer aggregates multiple games into one file, while the fixtures
-follow the one-game-per-file rule from
-[../../../README.md → Cross-backend verification](../../../README.md);
-the gap is tracked in
-[../../../DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md](../../../DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md).
+3. Asserts each filename equals `sha256(file_bytes)`.
+4. Asserts the decoded transcript's backend slot equals `cpp-legacy`,
+   the workload is self-play, threading is single, RNG source is `cpp`,
+   seed is `42`, sims and `max_plies` are `10000`, each file contains one
+   game, and no game records a `Draw` winner (the legacy has no draw rule).

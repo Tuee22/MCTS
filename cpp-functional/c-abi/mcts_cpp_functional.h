@@ -18,6 +18,7 @@ typedef struct mcts_functional_board mcts_functional_board;
 MCTS_FUNCTIONAL_API mcts_functional_board* mcts_functional_new_board(void);
 MCTS_FUNCTIONAL_API void mcts_functional_free_board(mcts_functional_board*);
 MCTS_FUNCTIONAL_API int mcts_functional_is_terminal(const mcts_functional_board*);
+MCTS_FUNCTIONAL_API int mcts_functional_apply_action(mcts_functional_board*, uint8_t action_id);
 MCTS_FUNCTIONAL_API uint8_t mcts_functional_select_uct_move(mcts_functional_board*, uint64_t seed, uint32_t sims);
 
 MCTS_FUNCTIONAL_API int32_t mcts_functional_search_move(

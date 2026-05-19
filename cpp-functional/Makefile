@@ -39,22 +39,22 @@ instrumented:
 # PGO + BOLT pipeline mirroring Sprint 5.3 for backend (ii).
 pgo-bench-generate:
 	mkdir -p build $(PGO_DIR)
-	$(CXX) $(CXXFLAGS) -fprofile-generate=$(PGO_DIR) $(LDFLAGS) -fprofile-generate=$(PGO_DIR) $(ENGINE_SRCS) $(LDLIBS) -o build/libmcts_cpp_functional_bench.so
+	$(CXX) $(CXXFLAGS) -fprofile-generate=$(abspath $(PGO_DIR)) $(LDFLAGS) -fprofile-generate=$(abspath $(PGO_DIR)) $(ENGINE_SRCS) $(LDLIBS) -o build/libmcts_cpp_functional_bench.so
 	$(MAKE) envelope-build-id LIB=build/libmcts_cpp_functional_bench.so
 
 pgo-instr-generate:
 	mkdir -p build $(PGO_DIR)
-	$(CXX) $(CXXFLAGS) -fprofile-generate=$(PGO_DIR) $(LDFLAGS) -fprofile-generate=$(PGO_DIR) $(ENGINE_SRCS) $(LDLIBS) -o build/libmcts_cpp_functional_instrumented.so
+	$(CXX) $(CXXFLAGS) -fprofile-generate=$(abspath $(PGO_DIR)) $(LDFLAGS) -fprofile-generate=$(abspath $(PGO_DIR)) $(ENGINE_SRCS) $(LDLIBS) -o build/libmcts_cpp_functional_instrumented.so
 	$(MAKE) envelope-build-id LIB=build/libmcts_cpp_functional_instrumented.so
 
 pgo-bench-use:
 	mkdir -p build
-	$(CXX) $(CXXFLAGS) -fprofile-use=$(PGO_DIR) -fprofile-correction $(LDFLAGS) -fprofile-use=$(PGO_DIR) -fprofile-correction $(ENGINE_SRCS) $(LDLIBS) -o build/libmcts_cpp_functional_bench.so
+	$(CXX) $(CXXFLAGS) -fprofile-use=$(abspath $(PGO_DIR)) -fprofile-correction $(LDFLAGS) -fprofile-use=$(abspath $(PGO_DIR)) -fprofile-correction $(ENGINE_SRCS) $(LDLIBS) -o build/libmcts_cpp_functional_bench.so
 	$(MAKE) envelope-build-id LIB=build/libmcts_cpp_functional_bench.so
 
 pgo-instr-use:
 	mkdir -p build
-	$(CXX) $(CXXFLAGS) -fprofile-use=$(PGO_DIR) -fprofile-correction $(LDFLAGS) -fprofile-use=$(PGO_DIR) -fprofile-correction $(ENGINE_SRCS) $(LDLIBS) -o build/libmcts_cpp_functional_instrumented.so
+	$(CXX) $(CXXFLAGS) -fprofile-use=$(abspath $(PGO_DIR)) -fprofile-correction $(LDFLAGS) -fprofile-use=$(abspath $(PGO_DIR)) -fprofile-correction $(ENGINE_SRCS) $(LDLIBS) -o build/libmcts_cpp_functional_instrumented.so
 	$(MAKE) envelope-build-id LIB=build/libmcts_cpp_functional_instrumented.so
 
 bolt-bench-instrument:

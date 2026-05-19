@@ -44,7 +44,7 @@ struct mcts_imperative_board {
 
 namespace {
 
-constexpr uint16_t kDefaultMaxPlies = 10000;
+constexpr uint16_t kDefaultMaxPlies = 200;
 
 [[gnu::hot]] static int apply_action_id(mcts_imperative::State &state, uint8_t action_id) {
     std::vector<corridors::board> moves;
@@ -91,6 +91,16 @@ extern "C" void mcts_imperative_free_board(mcts_imperative_board *board) {
 extern "C" int mcts_imperative_is_terminal(const mcts_imperative_board *board) {
     if (!board) return 1;
     return board->state.is_terminal(kDefaultMaxPlies) ? 1 : 0;
+}
+
+extern "C" int mcts_imperative_apply_action(mcts_imperative_board *board, uint8_t action_id) {
+    if (!board) return -1;
+    const int applied = apply_action_id(board->state, action_id);
+    if (applied == 0) {
+        board->last_visits.clear();
+        board->last_chosen = 0;
+    }
+    return applied;
 }
 
 // Sprint 5.3: the engine and C ABI shim both compile under
