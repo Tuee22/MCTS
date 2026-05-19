@@ -46,9 +46,8 @@ From the host, run any listed logical command as
 |---------|---------|
 | `mcts bench rollouts [opts]` | Random-rollouts benchmark across the requested backend cohort |
 | `mcts bench selfplay [opts]` | Self-play benchmark across the requested backend cohort |
-| `mcts verify rollouts [opts]` | Round-robin visit-count equality across `(ii)..(v)` under `--rng cpp` |
-| `mcts verify selfplay [opts]` | Round-robin self-play visit-count equality across `(ii)..(v)` |
-| `mcts verify legacy-parity {rollouts\|selfplay} [opts]` | 5-backend legacy-envelope liveness/overflow gate |
+| `mcts verify rollouts [opts]` | Round-robin visit-count equality across `(iv)..(v)` under `--rng cpp` |
+| `mcts verify selfplay [opts]` | Round-robin self-play visit-count equality across `(iv)..(v)` |
 | `mcts play [opts]` | Interactive `brick` TUI; human vs AI or AI vs AI spectate |
 | `mcts inspect list` | Non-interactive enumeration of the local transcript cache |
 | `mcts inspect show <hash-prefix> [opts]` | Non-interactive transcript dump in legacy notation |
@@ -57,6 +56,7 @@ From the host, run any listed logical command as
 | `mcts inspect cache prune [--keep-current] [--dry-run] [--plan-file <path>]` | Delete stale equity-sidecar entries |
 | `mcts inspect divergence <hash-prefix>` | Emit the cross-backend divergence-rate matrix for a single transcript |
 | `mcts test all [--dry-run] [--plan-file <path>]` | Plan/Apply: backend builds, every Cabal stanza, and pinned report card |
+| `mcts test retirement-anchor <retiring> <successor> [--dry-run] [--plan-file <path>]` | Plan/Apply: measure a backend-retirement Q1/Q2 parity anchor |
 | `mcts test <stanza>` | Run a named Cabal test-suite stanza |
 | `mcts lint files [--write]` | Check whitespace, final newlines, forbidden paths, and tracked generated-file drift |
 | `mcts lint docs [--write]` | Run the generated-docs drift gate |
@@ -65,11 +65,8 @@ From the host, run any listed logical command as
 | `mcts docs check` | Compare rendered output against on-disk markers and tracked paths |
 | `mcts docs generate [--dry-run] [--plan-file <path>]` | Splice rendered output into markers and write tracked generated paths |
 | `mcts commands [--tree\|--json]` | Flat, tree, or JSON rendering of the command registry |
-| `mcts help <subcommand>` | Focused help; equivalent to `<subcommand> --help` |
+| `mcts help <subcommand>` | Focused help pointer for a target command |
 | `mcts check-code` | Doctrine alignment, formatter, HLint, warning-clean build, docs check |
-| `mcts build cpp-legacy [--dry-run] [--plan-file <path>]` | Plan/Apply: legacy C++ backend build harness |
-| `mcts build cpp-imperative [--dry-run] [--plan-file <path>]` | Plan/Apply: imperative C++ backend build harness |
-| `mcts build cpp-functional [--dry-run] [--plan-file <path>]` | Plan/Apply: functional C++ backend build harness |
 | `mcts build rust [--dry-run] [--plan-file <path>]` | Plan/Apply: Rust backend build harness |
 | `mcts build legacy-fixtures [--output-dir <dir>] [--seed <u64>] [--games <n>] [--sims <n>] [--dry-run] [--plan-file <path>]` | Plan/Apply: regenerate legacy Q6 fixture transcripts |
 <!-- mcts:command-matrix:end -->
@@ -94,18 +91,20 @@ table and JSON form; the default golden uses a static zero-matrix baseline, and 
 `mcts test all` path requires canonical backend artefacts, measures Q1/Q2/Q5
 with the production monotonic clock through the no-write batch runner, and
 populates divergence rows from the measured live `G_V` verify cohort.
-`mcts build legacy-fixtures` is the supported Q6
-fixture-regeneration path; it builds `cpp-legacy/build/legacy-to-wire` and
-passes output root, seed, game count, and simulation count as explicit flags.
+`mcts build legacy-fixtures` remains the supported Q6 fixture-regeneration
+path; it builds `cpp-legacy/build/legacy-to-wire` and passes output root, seed,
+game count, and simulation count as explicit flags. Backends (i), (ii), and
+(iii) are retired from live CLI selection; `test/golden/cpp-legacy/`,
+`test/golden/cpp-imperative/`, and `test/golden/cpp-functional/` are the frozen
+backend-retirement anchors.
 
 ## Typed Source of Truth
 
 All command, option, backend ADTs, and verify-cohort GADTs — `Command`, `BenchCommand`,
 `VerifyCommand`, `BuildCommand`, `InspectCommand`, `TestCommand`, `LintCommand`,
 `DocsCommand`, `CommandsOptions`, `HelpOptions`, `BenchOptions`,
-`VerifyOptions`, `LegacyParityOptions`, `PlayOptions`, `ShowOptions`,
-`ReplayOptions`, `Backend`, `VerifyBackend`, `LegacyParityBackend`,
-`LegacyParityWorkload`, `SimBudget`, `Threading`, `RngSource`, `Side`,
+`VerifyOptions`, `PlayOptions`, `ShowOptions`, `ReplayOptions`, `Backend`,
+`VerifyBackend`, `SimBudget`, `Threading`, `RngSource`, `Side`,
 `TranscriptRef` — are defined in
 [../../README.md → CLI command topology](../../README.md). This document does
 not duplicate them; it elaborates the operator-facing matrix and the per-command
@@ -125,14 +124,14 @@ command also live in
 | `--rng native\|cpp` | `bench`, `play` | `native` | Pinned to `cpp` on the `verify` subtree at parse time. |
 | `--games N` | `bench`, `verify`, `build legacy-fixtures` | required for bench/verify; `10` for legacy fixtures | Game count for the run. |
 | `--seed N` | `bench`, `verify`, `play`, `build legacy-fixtures` | required (bench/verify); `Nothing` ⇒ fresh random (play); `42` for legacy fixtures | Master seed; per-game seeds derive via `splitmix64(master_seed, game_index)`. |
-| `--max-plies N` | `bench`, `verify`, `play` | `200`; pinned to `10000` under `verify legacy-parity` | Ignored for backend (i); part of the determinism contract for (ii)–(v). |
+| `--max-plies N` | `bench`, `verify`, `play` | `200` | Part of the determinism contract for the live verifier cohort. |
 | `--sims N` or `--sims N0:N1` | `bench`, `verify`, `play`, `build legacy-fixtures` | `10_000` | `N` parses as `FixedSims N`; `N0:N1` parses as `RampedSims N0 N1` for run commands. `build legacy-fixtures` accepts fixed `N` only. Ignored by `bench rollouts` / `verify rollouts`. |
 | `--output-dir <path>` | `build legacy-fixtures` | `test/golden/legacy/transcripts` | Fixture transcript output root; files land below the host-architecture subdirectory. |
 | `--top N` | `inspect show`, `inspect replay` | `10`; `0` ⇒ all legal moves | Live-adjustable via `+`/`-` in `inspect replay`. |
 | `--with-equity` | `inspect show` | `False` | Re-runs the deterministic search to populate the equity column. Reads the originator's cached `.eq` if envelope-matched (instant); otherwise recomputes locally and writes a fresh sidecar. |
 | `--envelope` | `inspect show` | `False` | Dump the transcript's engine-envelope block as plain text (one field per line) before the per-move output. Useful for scripting (`diff`-friendly) and forensics. |
 | `--cache-states N` | `inspect replay` | `20` | In-memory MCTS-state LRU cache for back-navigation. |
-| `--allow-stale` | `verify rollouts`, `verify selfplay`, `verify legacy-parity` | off | Downgrade per-backend-slot `EngineEnvelopeMismatch` from hard fail to a warning; Q3 verify proceeds on visit counts, while Q7 legacy parity proceeds as a liveness/overflow gate. `--format json` includes the downgraded warnings under `warning_details`. Cohort-level mismatches (`host_arch`, `shared_rng_build_id`, `cohort_config_hash`) remain hard fails. Forensic use only. |
+| `--allow-stale` | `verify rollouts`, `verify selfplay` | off | Downgrade per-backend-slot `EngineEnvelopeMismatch` from hard fail to a warning; Q3 verify proceeds on visit counts. `--format json` includes the downgraded warnings under `warning_details`. Cohort-level mismatches (`host_arch`, `shared_rng_build_id`, `cohort_config_hash`) remain hard fails. Forensic use only. |
 | `--keep-current` | `inspect cache prune` | off | In the Phase 2 baseline, only deletes sidecar slots whose build id does not match the logical `<backend>-logical` current slot. Live-envelope stale detection is enforced by `verify` for transcript cohorts; report-card/recompute sidecar coverage lives under `inspect divergence` and the Phase 7 integration stanza. |
 | `--cache-dir <path>` | every cache-touching command | `./.mcts-cache/` when omitted | The `mcts` binary does not read cache-root environment variables. |
 | `--format json\|table\|plain` | every non-TUI command | `table` on TTY, `plain` otherwise | Per [HASKELL_CLI_TOOL.md → Output Rules](../../HASKELL_CLI_TOOL.md). TUI commands (`play`, `inspect replay`) ignore the flag. |
@@ -146,9 +145,9 @@ CLI flag values and the human-readable Roman numerals used in prose:
 
 | Identifier (CLI flag) | Roman | Path | Role |
 |------------------------|-------|------|------|
-| `cpp-legacy` | (i) | `cpp-legacy/` | Verbatim re-port of `MCTS_legacy`; regression-sanity port; excluded from the default `verify` cohort |
-| `cpp-imperative` | (ii) | `cpp-imperative/` | Maximally-tuned imperative C++23; performance ceiling |
-| `cpp-functional` | (iii) | `cpp-functional/` | Functional-style C++23 under the same optimisation stack as (ii) |
+| `cpp-legacy` | (i) | `cpp-legacy/`, `test/golden/cpp-legacy/` | Retired live backend; frozen `MCTS_legacy` reproduction anchor |
+| `cpp-imperative` | (ii) | `cpp-imperative/`, `test/golden/cpp-imperative/` | Retired maximally-tuned imperative C++23 performance ceiling |
+| `cpp-functional` | (iii) | `cpp-functional/`, `test/golden/cpp-functional/` | Retired functional-style C++23 anchor |
 | `rust` | (iv) | `rust/` | Rust `cdylib`; cross-language second opinion |
 | `haskell` | (v) | `src/MCTS/Engine/`, `src/MCTS/Search/` | Native Haskell engine; the target |
 
@@ -196,12 +195,12 @@ Two lines, always visible at the top of the TUI:
 
 ```text
 # Example: TUI status-line rendering
-Transcript: 7a2f…  (cpp-imperative, seed=42, sims=10000, c_param=0.7)
-Substrate:  ★ originator [cpp-imperative @ build a1b2c3…]  •  envelope: VERIFIED
+Transcript: 7a2f…  (rust, seed=42, sims=10000, c_param=0.7)
+Substrate:  ★ originator [rust @ build a1b2c3…]  •  envelope: VERIFIED
 ```
 
 The `Substrate:` line distinguishes three states, determined by
-comparing the live `cpp-imperative` binary's envelope against the
+comparing the live `rust` binary's envelope against the
 transcript's recorded per-backend-slot envelope:
 
 | State | Trailing text | Banner |
@@ -218,10 +217,10 @@ For the move at the cursor:
 # Example: TUI per-move panel
 Move 17 — H(3,5)                                                    -- chosen action
 ─────────────────────────────────────────────────────────────────────
-Action     Visits     ★cpp-imperative  cpp-functional  rust    haskell
-H(3,5)     4123       0.6421           0.6420          0.6422  0.6421
-*(4,2)      812        0.3104           0.3105          --      0.3104
-V(2,6)      287       -0.0512          -0.0510         --       --
+Action     Visits     ★rust    haskell
+H(3,5)     4123       0.6422  0.6421
+*(4,2)      812        --      0.3104
+V(2,6)      287       -0.0510         --       --
 …
 ```
 
@@ -276,7 +275,7 @@ Conventions:
 ### Foreign-Backend View
 
 If the live binary is a different `backend` than the originator (e.g.,
-the user is running `inspect replay` on a `cpp-imperative` transcript
+the user is running `inspect replay` on a `rust` transcript
 from a `haskell`-only build), the originator column shows the cached
 `.eq` if one exists. If the matching originator shared library is present,
 `prepareReplayOverlays` can also recompute that originator column through

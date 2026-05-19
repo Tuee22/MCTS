@@ -52,11 +52,12 @@ forbidden-primitives list.
 
 The MCTS commands that consume the `Plan / Apply` pattern are:
 
-- `mcts test all` — Plan/Apply over the five Cabal stanzas plus the report-card
+- `mcts test all` — Plan/Apply over the four live Cabal stanzas plus the report-card
   workload (Phase 7 Sprint 7.3).
-- `mcts build {cpp-legacy|cpp-imperative|cpp-functional|rust}` — Plan/Apply over
-  the per-backend two-stage PGO + BOLT post-link + `mimalloc` link pipeline
-  (Phase 5 Sprint 5.3, Phase 6 Sprint 6.2, Phase 6 Sprint 6.4).
+- `mcts build rust` — Plan/Apply over
+  the live foreign backend two-stage PGO + BOLT post-link + `mimalloc` link pipeline
+- `mcts build legacy-fixtures` — Plan/Apply over the retired backend (i)
+  fixture generator (Phase 4 Sprint 4.5; backend (i) retired in Sprint 8.4).
 - `mcts docs generate` — internally Plan/Apply over the rendered marker
   substitutions and the `trackingGeneratedPaths` writes (Phase 1 Sprint 1.3).
 
@@ -111,7 +112,7 @@ through `renderError`.
 
 ### `AppError` and `renderError`
 
-The single `AppError` ADT (Phase 1 Sprint 1.9) declares the canonical 15-variant
+The single `AppError` ADT (Phase 1 Sprint 1.9) declares the canonical 17-variant
 set. The set matches
 [../../README.md → Output and error discipline](../../README.md) exactly;
 `SubprocessFailed`, `FFIFailure`, `DocsCheckDrift`, and
@@ -164,6 +165,10 @@ alongside the user-facing variants:
   [backend_ffi_contract.md → Error rendering](./backend_ffi_contract.md).
 - `DocsCheckDrift` — `mcts docs check` detects a marker drift.
 - `UnknownCommand`, `InvalidMove` — `mcts play` in-app input errors.
+- `ParseError` — parser and option validation failures that need to render
+  through the same `AppError` boundary as runtime errors.
+- `IOErrorText` — textual IO failures surfaced at command boundaries where the
+  lower-level exception cannot be kept as a typed project error.
 
 `renderError :: AppError -> Text` lives in `src/MCTS/Error.hs` as the canonical
 boundary. `src/MCTS/CLI/Output.hs` re-exports that Text boundary and owns
@@ -178,13 +183,13 @@ than two states ⇒ GADT-indexed" rule, with backend cohort membership encoded
 at the type level:
 
 - `VerifyBackend` — type-level exclusion of backend (i) from the default
-  `verify` cohort. Constructors: `VCppImperative | VCppFunctional | VRust |
-  VHaskell`. See
+  `verify` cohort, extended in Sprints `8.5` and `8.6` to exclude retired
+  backends (ii) and (iii). Constructors: `VRust | VHaskell`. See
   [determinism_contract.md → Cross-Backend Determinism (Q3)](./determinism_contract.md).
-- `LegacyParityBackend` — type-level requirement of backend (i) for the
-  legacy-parity cohort. Constructors: `LpCppLegacy | LpCppImperative |
-  LpCppFunctional | LpRust | LpHaskell` with `LpCppLegacy` mandated at parse
-  time. See
+- The former `LegacyParityBackend` parser surface retired with backend (i) in
+  Sprint 8.4. Q7 is now represented by the frozen backend (i) anchor under
+  `test/golden/cpp-legacy/`; the wire-format `CppLegacy` constructor remains so
+  archived transcripts decode. See
   [determinism_contract.md → Legacy Parity Envelope](./determinism_contract.md).
 
 Phase 7 Sprint 7.2 implements these GADT-shaped parser surfaces per

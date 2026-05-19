@@ -5,7 +5,6 @@ mcts - Monte Carlo Tree Search runtime
   verify - Verify deterministic cohorts
     rollouts - Verify rollout visit counts
     selfplay - Verify self-play visit counts
-    legacy-parity - Verify legacy envelope liveness
   play - Play or spectate a game
   inspect - Inspect transcript cache
     list - List cached transcripts
@@ -17,6 +16,7 @@ mcts - Monte Carlo Tree Search runtime
     divergence - Show divergence matrix
   test - Run tests
     all - Run full suite and report card
+    retirement-anchor - Measure backend retirement parity anchor
     <stanza> - Run one cabal stanza
   lint - Run lint gates
     files - Lint files
@@ -30,8 +30,5 @@ mcts - Monte Carlo Tree Search runtime
   help - Focused help
   check-code - Run code-quality gate
   build - Build backend artefacts
-    cpp-legacy - Build legacy C++ backend
-    cpp-imperative - Build imperative C++ backend
-    cpp-functional - Build functional C++ backend
     rust - Build Rust backend
     legacy-fixtures - Regenerate legacy Q6 fixtures

@@ -374,7 +374,7 @@ consumer is wired in Phase 4 once the FFI bridge exists.
   native RNG streams remain owned by the backend-driver sprints.
 - The `verify` subtree pins `--rng cpp` at parse time (the `VerifyOptions` record
   has no `verifyRng` field); attempting `--rng native` on `verify` is rejected at
-  parse time with `AppError VerifyCohortTooSmall`-style messaging.
+  parse time with `AppError ParseError` messaging.
 - Backend (i) silently ignores `--rng native` and always uses `std::mt19937_64`; the
   `CommandSpec` documentation reflects this asymmetry.
 
@@ -391,8 +391,8 @@ consumer is wired in Phase 4 once the FFI bridge exists.
    The check is deferred to Phase 4 closure (the FFI shim must exist) but the
    fixture is committed in this sprint so the assertion lands the moment the
    shim is callable.
-4. `mcts bench rollouts --rng native --backend haskell --games 8 --seed 42` runs
-   to completion once Phase 3 closure connects the engine to the CLI surface;
+4. `docker compose run --rm mcts mcts bench rollouts --rng native --backend haskell --games 8 --seed 42`
+   runs to completion once Phase 3 closure connects the engine to the CLI surface;
    placeholder smoke test in this sprint asserts the CLI parses the flag matrix.
 
 ### Closure Notes

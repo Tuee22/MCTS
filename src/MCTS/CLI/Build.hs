@@ -2,8 +2,6 @@ module MCTS.CLI.Build
     ( runBuild
     , buildBackendPlan
     , legacyFixturePlan
-    , cppImperativePgoBoltPlan
-    , cppFunctionalPgoBoltPlan
     , rustPgoBoltPlan
     , pgoTrainingGames
     , pgoTrainingSims
@@ -49,9 +47,6 @@ runBuild command = do
                 "legacy-fixtures"
                 (legacyFixturePlanOptions fixtureOptions)
                 (legacyFixturePlan fixtureOptions)
-        BuildCppLegacy planOptions -> runBackendBuild env "cpp-legacy" planOptions
-        BuildCppImperative planOptions -> runBackendBuild env "cpp-imperative" planOptions
-        BuildCppFunctional planOptions -> runBackendBuild env "cpp-functional" planOptions
         BuildRust planOptions -> runBackendBuild env "rust" planOptions
 
 runBackendBuild :: Env.Env -> String -> PlanOptions -> Env.App ExitCode
@@ -74,8 +69,6 @@ runBuildPlan env name opts plan = do
 ensureProfileDirectories :: String -> IO ()
 ensureProfileDirectories backend =
     case backend of
-        "cpp-imperative" -> ensure ["cpp-imperative/pgo-profile", "cpp-imperative/bolt-profile"]
-        "cpp-functional" -> ensure ["cpp-functional/pgo-profile", "cpp-functional/bolt-profile"]
         "rust" -> ensure ["rust/pgo-profile", "rust/bolt-profile"]
         _ -> pure ()
   where
@@ -89,8 +82,6 @@ buildBackendPlan backend =
         { planName = "build " <> backend
         , planSteps =
             case backend of
-                "cpp-imperative" -> cppImperativePgoBoltPlan
-                "cpp-functional" -> cppFunctionalPgoBoltPlan
                 "rust" -> rustPgoBoltPlan
                 _ ->
                     [ Subprocess "make" ["-C", backend, "smoke"] Nothing Nothing
@@ -121,20 +112,20 @@ legacyFixturePlan options =
             ]
         }
 
--- | Sprint 5.3 PGO+BOLT pipeline as a typed `[Subprocess]` sequence
--- per [phase-5-cpp-imperative-steelman.md → Sprint 5.3](../../DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md):
+-- | Shared C++ PGO+BOLT pipeline as a typed `[Subprocess]` sequence
+-- per the backend (ii)/(iii) steelman build sprints:
 --
 --   1. PGO-instrumented bench + instrumented artefacts.
 --   2. Training run (self-play under `--rng cpp`) writes
---      `cpp-imperative/pgo-profile/*.gcda`.
+--      `<backend>/pgo-profile/*.gcda`.
 --   3. PGO-optimized rebuild of both artefacts with `-fprofile-use`.
 --   4. BOLT instrument pass for both artefacts (writes
---      `cpp-imperative/bolt-profile/*.fdata`).
+--      `<backend>/bolt-profile/*.fdata`).
 --   5. BOLT training run produces the BOLT profile data.
 --   6. BOLT optimize pass produces `*_bench.bolted.so` and
 --      `*_instrumented.bolted.so`.
 --   7. Install: rename `_bench.bolted.so` to the canonical FFI load
---      name `libmcts_cpp_imperative.so`; symlink-equivalent for the
+--      name `libmcts_cpp_functional.so`; symlink-equivalent for the
 --      `_instrumented` artefact.
 --
 -- The whole pipeline rides the typed `Subprocess` boundary; no
@@ -142,17 +133,6 @@ legacyFixturePlan options =
 -- this module. The training runs invoke `cabal exec mcts` so the
 -- exact same binary that ships the rest of the CLI drives the training
 -- workload — there is no separate training executable.
-cppImperativePgoBoltPlan :: [Subprocess]
-cppImperativePgoBoltPlan = pgoBoltPlan "cpp-imperative"
-
--- | Sprint 6.2 PGO+BOLT pipeline for backend (iii); identical shape
--- to backend (ii)'s plan, only the backend identifier changes. The
--- training workload and the BOLT instrumentation parameters share the
--- pinned constants so the (ii)-vs-(iii) report-card comparison
--- isolates style as the variable, not the build harness.
-cppFunctionalPgoBoltPlan :: [Subprocess]
-cppFunctionalPgoBoltPlan = pgoBoltPlan "cpp-functional"
-
 -- | Sprint 6.4 PGO+BOLT pipeline for backend (iv) Rust. The first
 -- four steps drive `cargo build --release` with rustc's PGO flags
 -- through `RUSTFLAGS`; the BOLT pass runs `llvm-bolt -instrument`
@@ -245,7 +225,7 @@ rustPgoBoltPlan =
     , -- 9. Post-link engine_build_id patch: hash the installed cdylib
       -- and overwrite the `.envelope_build_id` section with the
       -- 32-byte digest so `mcts_rust_get_envelope()` reports a
-      -- non-zero engine_build_id. Mirrors the cpp-imperative
+      -- non-zero engine_build_id. Mirrors the C++ backend
       -- `envelope-build-id` Makefile target. Uses `python3` to
       -- decode the hex digest because `xxd` is not in the pinned
       -- container's base image.
@@ -282,140 +262,6 @@ rustPgoBoltPlan =
 
     absoluteRustProfilePath profileDir =
         "/workspace/MCTS/rust/" <> profileDir
-
-pgoBoltPlan :: String -> [Subprocess]
-pgoBoltPlan backend =
-    [ -- 1. PGO instrument
-      make ["pgo-bench-generate"]
-    , installGeneratedArtifact backend "bench"
-    , -- 2. PGO training run for the bench artefact. The generated
-      -- shared library is copied to the canonical FFI load path before
-      -- training so the dispatcher exercises the PGO-instrumented
-      -- backend instead of falling back to the logical Haskell driver.
-      trainingRunFor backend pgoTrainingGames pgoTrainingSims
-    , copyCanonicalPgoProfiles backend "bench"
-    , make ["pgo-instr-generate"]
-    , installGeneratedArtifact backend "instrumented"
-    , -- 3. PGO training run for the instrumented artefact.
-      trainingRunFor backend pgoTrainingGames pgoTrainingSims
-    , copyCanonicalPgoProfiles backend "instrumented"
-    , -- 4. PGO optimize rebuild
-      make ["pgo-bench-use"]
-    , make ["pgo-instr-use"]
-    , -- 5. BOLT instrument
-      make ["bolt-bench-instrument"]
-    , installBoltTrainingArtifact backend "bench"
-    , -- 6. BOLT training run for the bench artefact (smaller workload;
-      -- block frequencies converge fast).
-      trainingRunFor backend boltTrainingGames boltTrainingSims
-    , make ["bolt-instr-instrument"]
-    , installBoltTrainingArtifact backend "instrumented"
-    , -- 7. BOLT training run for the instrumented artefact.
-      trainingRunFor backend boltTrainingGames boltTrainingSims
-    , -- 8. BOLT optimize
-      make ["bolt-bench-optimize"]
-    , make ["bolt-instr-optimize"]
-    , -- 9. Install
-      make ["install-bench"]
-    ]
-  where
-    make args =
-        Subprocess
-            "make"
-            ("-C" : backend : args)
-            Nothing
-            Nothing
-
-installGeneratedArtifact :: String -> String -> Subprocess
-installGeneratedArtifact backend artifact =
-    Subprocess
-        "bash"
-        [ "-c"
-        , "dir="
-            <> shellPath (pgoProfileDir backend)
-            <> "; stem="
-            <> shellPath (libraryStem backend)
-            <> "; rm -f \"$dir\"/*\"${stem}.so-\"*.gcda; cp "
-            <> shellPath (generatedLibraryPath backend artifact)
-            <> " "
-            <> shellPath (canonicalLibraryPath backend)
-        ]
-        Nothing
-        Nothing
-
-copyCanonicalPgoProfiles :: String -> String -> Subprocess
-copyCanonicalPgoProfiles backend artifact =
-    Subprocess
-        "bash"
-        [ "-c"
-        , "dir="
-            <> shellPath (pgoProfileDir backend)
-            <> "; stem="
-            <> shellPath (libraryStem backend)
-            <> "; artifact="
-            <> shellPath artifact
-            <> "; found=0; for file in \"$dir\"/*\"${stem}.so-\"*.gcda; do "
-            <> "[ -e \"$file\" ] || continue; found=1; "
-            <> "target=${file/${stem}.so/${stem}_${artifact}.so}; "
-            <> "cp \"$file\" \"$target\"; done; "
-            <> "for file in \"$dir\"/*\"${stem}_${artifact}.so-\"*.gcda; do "
-            <> "[ -e \"$file\" ] || continue; found=1; done; "
-            <> "if [ \"$found\" -eq 0 ]; then "
-            <> "echo \"[pgo] no profile data for $stem artifact $artifact\" >&2; "
-            <> "find \"$dir\" -maxdepth 1 -type f -name '*.gcda' -print >&2; "
-            <> "exit 1; fi"
-        ]
-        Nothing
-        Nothing
-
-installBoltTrainingArtifact :: String -> String -> Subprocess
-installBoltTrainingArtifact backend artifact =
-    Subprocess
-        "bash"
-        [ "-c"
-        , "if [ -f "
-            <> shellPath (boltInstrumentedLibraryPath backend artifact)
-            <> " ]; then cp "
-            <> shellPath (boltInstrumentedLibraryPath backend artifact)
-            <> " "
-            <> shellPath (canonicalLibraryPath backend)
-            <> "; else cp "
-            <> shellPath (generatedLibraryPath backend artifact)
-            <> " "
-            <> shellPath (canonicalLibraryPath backend)
-            <> "; fi"
-        ]
-        Nothing
-        Nothing
-
-generatedLibraryPath :: String -> String -> FilePath
-generatedLibraryPath backend artifact =
-    backend <> "/build/" <> libraryStem backend <> "_" <> artifact <> ".so"
-
-boltInstrumentedLibraryPath :: String -> String -> FilePath
-boltInstrumentedLibraryPath backend artifact =
-    backend <> "/build/" <> libraryStem backend <> "_" <> artifact <> ".inst.so"
-
-canonicalLibraryPath :: String -> FilePath
-canonicalLibraryPath backend =
-    backend <> "/build/" <> libraryStem backend <> ".so"
-
-pgoProfileDir :: String -> FilePath
-pgoProfileDir backend =
-    backend <> "/pgo-profile"
-
-libraryStem :: String -> String
-libraryStem backend =
-    case backend of
-        "cpp-imperative" -> "libmcts_cpp_imperative"
-        "cpp-functional" -> "libmcts_cpp_functional"
-        _ -> "libmcts_" <> backend
-
-shellPath :: FilePath -> String
-shellPath path = "'" <> concatMap quote path <> "'"
-  where
-    quote '\'' = "'\\''"
-    quote ch = [ch]
 
 trainingRunFor :: String -> Int -> Int -> Subprocess
 trainingRunFor backend games sims =

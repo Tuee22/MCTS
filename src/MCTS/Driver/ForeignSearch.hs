@@ -4,8 +4,8 @@
 -- full search ABI (`<prefix>_search_move`, `<prefix>_apply_action`,
 -- and the standard `new/free/is_terminal` triplet). Each per-backend module supplies
 -- a `withCpp*SearchGame` opener; this module wraps the per-move
--- loop with the same perspective-flip translation that
--- `MCTS.Driver.CppLegacy` uses.
+-- loop with the legacy perspective-flip translation used by the C ABI
+-- engines.
 module MCTS.Driver.ForeignSearch
     ( runForeignSearchGame
     , foreignSearchMove
@@ -28,10 +28,10 @@ type ForeignSearchOpener =
     forall a. (DynamicSearchGame -> IO a) -> IO (Either AppError a)
 
 -- | Run a single game through a `DynamicSearchGame` opener. Mirrors
--- `MCTS.Driver.CppLegacy.runGameCppLegacy` and applies the same
+-- the retired backend (i) coordinate convention and applies the same
 -- legacy-coordinate flip when the side-to-move (in Haskell) is Hero,
--- because the engine source under `cpp-imperative/engine/` is a
--- byte-for-byte copy of the legacy core.
+-- because the surviving foreign engines keep the backend (ii)/(iii)
+-- legacy-coordinate C ABI convention.
 runForeignSearchGame
     :: ForeignSearchOpener
     -> RunInputs

@@ -1,4 +1,12 @@
 .mcts-cache/
+transcripts/
+**/transcripts/
+*.tr
+**/*.tr
+*.eq
+**/*.eq
+*.envelope
+**/*.envelope
 dist-newstyle/
 cpp-legacy/build/
 cpp-imperative/build/

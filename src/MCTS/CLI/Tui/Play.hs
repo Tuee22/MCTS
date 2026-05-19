@@ -41,10 +41,7 @@ import MCTS.Engine
     , legalMoves
     , terminalWinner
     )
-import MCTS.Error (AppError, renderError)
-import MCTS.FFI.CppFunctional (cppFunctionalLibraryPath, withCppFunctionalSearchGame)
-import MCTS.FFI.CppImperative (cppImperativeLibraryPath, withCppImperativeSearchGame)
-import MCTS.FFI.CppLegacy (cppLegacyLibraryPath, withCppLegacySearchGame)
+import MCTS.Error (AppError (..), renderError)
 import MCTS.FFI.Rust (rustLibraryPath, withRustSearchGame)
 import MCTS.Notation (parseMove, renderMove)
 import MCTS.Rng.Mix (mix)
@@ -286,9 +283,9 @@ selectAiMove :: PlayState -> IO (Either AppError (Action, [(Action, Word32)], St
 selectAiMove st =
     case playStateBackend st of
         Haskell -> pure (Right (tagMove "" (logicalAiMove st)))
-        CppLegacy -> chooseForeign CppLegacy cppLegacyLibraryPath withCppLegacySearchGame st
-        CppImperative -> chooseForeign CppImperative cppImperativeLibraryPath withCppImperativeSearchGame st
-        CppFunctional -> chooseForeign CppFunctional cppFunctionalLibraryPath withCppFunctionalSearchGame st
+        CppLegacy -> pure (Left (ParseError "cpp-legacy is retired from live play"))
+        CppImperative -> pure (Left (ParseError "cpp-imperative is retired from live play"))
+        CppFunctional -> pure (Left (ParseError "cpp-functional is retired from live play"))
         Rust -> chooseForeign Rust rustLibraryPath withRustSearchGame st
 
 chooseForeign

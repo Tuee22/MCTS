@@ -3,8 +3,6 @@ module MCTS.Verify
     , VerifyResult (..)
     , verifyRun
     , verifyRunDetailed
-    , legacyParityRun
-    , legacyParityRunDetailed
     ) where
 
 import Data.List (sortOn)
@@ -76,27 +74,10 @@ verifyRunDetailed :: Bool -> Workload -> [Backend] -> RunInputs -> IO (Either Ap
 verifyRunDetailed allowStale workload backends inputs
     | length backends < 2 =
         pure (Left (VerifyCohortTooSmall "at least two non-legacy backends are required"))
-    | any (== CppLegacy) backends =
-        pure (Left (VerifyCohortTooSmall "cpp-legacy is excluded from mcts verify; use legacy-parity"))
+    | any (`elem` [CppLegacy, CppImperative, CppFunctional]) backends =
+        pure
+            (Left (VerifyCohortTooSmall "retired backends are not live verify targets; use frozen anchors"))
     | otherwise = runAndCompare allowStale workload backends inputs{inputRng = CppRng}
-
-legacyParityRun :: Workload -> [Backend] -> RunInputs -> IO (Either AppError [BatchResult])
-legacyParityRun workload backends inputs =
-    fmap verifyBatches <$> legacyParityRunDetailed False workload backends inputs
-
-legacyParityRunDetailed
-    :: Bool -> Workload -> [Backend] -> RunInputs -> IO (Either AppError VerifyResult)
-legacyParityRunDetailed allowStale workload backends inputs
-    | length backends < 2 =
-        pure (Left (VerifyCohortTooSmall "legacy parity needs at least two backends"))
-    | CppLegacy `notElem` backends =
-        pure (Left (VerifyCohortTooSmall "legacy parity cohort must include cpp-legacy"))
-    | otherwise =
-        runWithoutTranscriptComparison
-            allowStale
-            workload
-            backends
-            inputs{inputRng = CppRng, inputThreading = SingleThreaded, inputMaxPlies = 10000}
 
 runAndCompare :: Bool -> Workload -> [Backend] -> RunInputs -> IO (Either AppError VerifyResult)
 runAndCompare =
@@ -126,27 +107,6 @@ runAndCompareWith compareOneTranscript allowStale workload backends inputs = do
                     case compareAllWith compareOneTranscript batchResults of
                         Left err -> pure (Left err)
                         Right () -> pure (Right VerifyResult{verifyWarnings = warnings, verifyBatches = batchResults})
-
-runWithoutTranscriptComparison
-    :: Bool
-    -> Workload
-    -> [Backend]
-    -> RunInputs
-    -> IO (Either AppError VerifyResult)
-runWithoutTranscriptComparison allowStale workload backends inputs = do
-    results <-
-        mapM
-            ( \backend ->
-                runBatchDispatch inputs{inputBackend = backend, inputWorkload = workload}
-            )
-            backends
-    case sequence results of
-        Left message -> pure (Left (IOErrorText message))
-        Right batchResults -> do
-            envelopeResult <- checkTranscriptEnvelopesLive allowStale (map batchTranscript batchResults)
-            pure $ case envelopeResult of
-                Left err -> Left err
-                Right warnings -> Right VerifyResult{verifyWarnings = warnings, verifyBatches = batchResults}
 
 compareAllWith
     :: (Backend -> Transcript -> Backend -> Transcript -> Either AppError ())

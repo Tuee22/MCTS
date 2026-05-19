@@ -21,20 +21,23 @@ surfaces: Sprint 6.1 landed the arena-MCTS engine with the functional-style API
 surface (`std::optional<State>` move attempts, `std::variant<ChildIdx, NoChild>`
 select outcomes) on top of the same data layout as backend (ii); Sprint 6.2
 wired the visit-vector dispatch plus the typed `cppFunctionalPgoBoltPlan`
-pipeline. Backend (iv) Rust ships a real arena MCTS
+pipeline; Sprint 8.6 later retired backend (iii)'s live CLI/build/verify/FFI
+surface and froze its anchors under `test/golden/cpp-functional/`. Backend
+(iv) Rust ships a real arena MCTS
 (`rust/src/{tree.rs,search.rs,xoshiro256pp.rs}`), a real Corridors gameplay
 implementation in `rust/src/board.rs` (8x8 bitfield wall maps, post-move
 180-degree flip via `u64::reverse_bits`, iterative BFS escapability), a
 uniform-random rollout over real legal moves in `rust/src/rollout.rs`, and the
 real FFI dispatcher through `runForeignSearchGame withRustSearchGame` whenever
 `rust/target/release/libmcts_rust.so` is present. Sprint 6.4's canonical install
-closure is validated on amd64: `docker compose run --rm mcts mcts build
-cpp-functional`, `docker compose run --rm mcts mcts build rust`, and
-`docker compose run --rm mcts mcts test mcts-unit` pass. The C++ BOLT
-instrumentation step still no-ops in the pinned amd64 container and falls back to
-the PGO artefact; Rust completes the PGO train/merge/use pipeline and the BOLT
-training/install path. Sprint 6.5 ships live envelope probes and foreign
-recompute for the C-ABI backends. Rust's `mcts_rust_read_visits` symbol uses the
+closure was validated on amd64 before retirement with `docker compose run --rm
+mcts mcts build cpp-functional`, `docker compose run --rm mcts mcts build rust`,
+and `docker compose run --rm mcts mcts test mcts-unit`. The C++ BOLT
+instrumentation step no-opped in the pinned amd64 container and fell back to the
+PGO artefact; Rust completes the PGO train/merge/use pipeline and the BOLT
+training/install path. Sprint 6.5 shipped envelope probes and foreign recompute
+for the C-ABI backends; after Phase 8 retirement, only Rust remains live.
+Rust's `mcts_rust_read_visits` symbol uses the
 same per-board last-search visit-cache shape as the C++ shims; the active
 visit-vector and recompute paths remain `mcts_rust_search_move` /
 `mcts_rust_recompute_move`.
@@ -84,13 +87,17 @@ underneath so the optimisation stack still applies.
     (still the same buffer-reuse pattern as (ii); the difference is API shape).
 - `cpp-functional/c-abi/mcts_cpp_functional.{h,cc}` exposes the same C ABI shape
   as backends (i) and (ii) with the prefix `mcts_functional_*`.
-- **Native RNG choice.** Under `--rng native`, backend (iii) uses the same
-  `xoshiro256++` (or `wyrand`) RNG as backend (ii) per
-  [phase-5-cpp-imperative-steelman.md → Sprint 5.1](phase-5-cpp-imperative-steelman.md)
-  so that (ii)-vs-(iii) isolates style as the variable. The pinned choice
-  lives in
-  [../documents/engineering/determinism_contract.md → RNG Source Split → Per-Backend Native RNG Table](../documents/engineering/determinism_contract.md);
-  any swap must be applied to both (ii) and (iii) in the same commit.
+- **Native RNG choice.** Backend (iii) currently mirrors backend (ii)'s
+  splitmix-compatible live search schedule. `cpp-functional/engine/search.hpp`
+  still carries a `RngBackend` selector and xoshiro256++ helper, but
+  `cpp-functional/c-abi/mcts_cpp_functional.cc` passes `RngBackend::Mt19937`
+  and `cpp-functional/engine/search.cpp` currently ignores the selector. Under
+  `--rng native`, `MCTS.Rng.Mix.backendNativeSalt` distinguishes backend (iii)'s
+  benchmark streams; under `--rng cpp`, the salt is zero for verify parity.
+  Any future xoshiro256++ or `wyrand` live-path swap must be applied to
+  backends (ii) and (iii) together and update
+  [../documents/engineering/determinism_contract.md → RNG Source Split → Per-Backend Native RNG Table](../documents/engineering/determinism_contract.md)
+  in the same change.
 - `cpp-functional/Makefile` uses the **same** flag set as
   `cpp-imperative/Makefile` per
   [00-overview.md → Hard Constraints item 18](00-overview.md): `-std=c++23 -O3
@@ -187,39 +194,46 @@ library is present)
 
 Wire backend (iii) into the FFI, the PGO+BOLT build harness, the bench dispatch,
 and the verify dispatch, mirroring Phase 5 Sprints 5.2–5.4 for the functional
-variant.
+variant. Phase 8 later removed these live operator surfaces after freezing the
+backend (iii) anchor.
 
 ### Deliverables
 
-- `src/MCTS/FFI/CppFunctional.hs` declares the per-symbol bindings; same `unsafe`
+- At Sprint 6.2 closure, `src/MCTS/FFI/CppFunctional.hs` declared the per-symbol bindings; same `unsafe`
   / `safe` split as (i) and (ii).
-- `src/MCTS/Driver/CppFunctional.hs` exposes `runGameCppFunctional :: GameInputs
+- At Sprint 6.2 closure, `src/MCTS/Driver/CppFunctional.hs` exposed `runGameCppFunctional :: GameInputs
   -> App Transcript`.
-- `src/MCTS/CLI/Build.hs` extends the Plan/Apply build harness with
+- At Sprint 6.2 closure, `src/MCTS/CLI/Build.hs` extended the Plan/Apply build harness with
   `mcts build cpp-functional`; the plan structure (instrumented build →
   training run → optimised build → BOLT post-link → `mimalloc` link) mirrors
   Phase 5 Sprint 5.3.
-- `src/MCTS/CLI/Command.hs` gains the `BuildCppFunctional` constructor on the
-  `BuildCommand` family per
+- At Sprint 6.2 closure, `src/MCTS/CLI/Command.hs` had the
+  `BuildCppFunctional` constructor on the `BuildCommand` family per
   [phase-1-haskell-cli-surface.md → Sprint 1.2 ownership note](phase-1-haskell-cli-surface.md),
   with a matching `CommandSpec` leaf and an `Example`
-  (`mcts build cpp-functional --dry-run`) wired into the registry.
-- `src/MCTS/CLI/Bench.hs` dispatch table adds `--backend cpp-functional`.
-- `src/MCTS/CLI/Verify.hs` accepts `cpp-functional` in the parser-backed verify
-  cohort; the typed `VCppFunctional` constructor is closed by Phase 7 Sprint 7.2.
-- The `prerequisiteRegistry` gains `libmcts-cpp-functional-built` plus the
+  (`mcts build cpp-functional --dry-run`) wired into the registry. Sprint 8.6
+  later removed this constructor and command leaf from the live surface.
+- At Sprint 6.2 closure, `src/MCTS/CLI/Bench.hs` dispatch table added
+  `--backend cpp-functional`; Sprint 8.6 later retired live selection.
+- At Sprint 6.2 closure, `src/MCTS/CLI/Verify.hs` accepted `cpp-functional` in
+  the parser-backed verify cohort and Phase 7 added the typed
+  `VCppFunctional` constructor. Sprint 8.6 later reduced current
+  `VerifyBackend` to `VRust | VHaskell`.
+- At Sprint 6.2 closure, the `prerequisiteRegistry` gained `libmcts-cpp-functional-built` plus the
   `cpp-functional/pgo-profile/` and `cpp-functional/bolt-profile/` directory
-  nodes.
+  nodes. Sprint 8.6 later removed them from live prerequisite closure.
 
 ### Validation
 
-1. `mcts build cpp-functional --dry-run` renders the typed `Subprocess`
-   sequence and exits 0.
-2. `mcts build cpp-functional` runs the full pipeline and produces the bolted
-   `.so`.
-3. `mcts bench rollouts --backend cpp-functional --threading single --rng cpp
-   --games 8 --seed 42` runs to completion.
-4. Same-backend determinism: two runs produce identical determinism payload sets.
+1. Pre-retirement `docker compose run --rm mcts mcts build cpp-functional
+   --dry-run` rendered the typed `Subprocess` sequence and exited 0.
+2. Pre-retirement `docker compose run --rm mcts mcts build cpp-functional` ran
+   the full pipeline and produced the optimised `.so`.
+3. Pre-retirement `docker compose run --rm mcts mcts bench rollouts --backend
+   cpp-functional --threading single --rng cpp --games 8 --seed 42` ran to
+   completion.
+4. Same-backend determinism: two pre-retirement runs produced identical
+   determinism payload sets.
 
 ### Closure Notes
 
@@ -240,7 +254,7 @@ variant.
 
 ## Sprint 6.3: `rust/` Rust Engine and `cdylib` ✅
 
-**Status**: Done (real arena MCTS algorithm + xoshiro256++ + full
+**Status**: Done (real arena MCTS algorithm + splitmix-compatible live search schedule + xoshiro256++ helper module + full
 `mcts_rust_search_move` / `mcts_rust_recompute_move` C ABI,
 per-board cached `mcts_rust_read_visits` paired-target hook, and the Corridors gameplay port from
 `cpp-legacy/legacy-core/board.cpp` — 8x8 bitfield walls, iterative
@@ -286,14 +300,15 @@ exposed as a `cdylib` for the Haskell FFI.
   `u64::count_ones` / `u64::trailing_zeros` (lower to `popcnt`/`tzcnt`); no
   `Rc` / `Arc` in the hot path; no `Box<dyn Trait>` in the search.
 - `mimalloc` declared as the `#[global_allocator]` via the `mimalloc` crate.
-- **Native RNG choice.** Under `--rng native`, backend (iv) uses
-  `rand_xoshiro::Xoshiro256PlusPlus` (the `rand_xoshiro` crate), matching
-  backends (ii) and (iii)'s `xoshiro256++` family so the RNG algorithm is
-  cross-language-consistent under `--rng native`. The pinned choice lives in
-  [../documents/engineering/determinism_contract.md → RNG Source Split → Per-Backend Native RNG Table](../documents/engineering/determinism_contract.md).
-  `rand`'s `SmallRng` is allowed as a fallback only if profiling shows the
-  explicit `Xoshiro256PlusPlus` underperforms; the table must record any
-  swap.
+- **Native RNG choice.** Backend (iv) currently mirrors the splitmix-compatible
+  live search schedule used by backends (ii), (iii), and (v). The
+  `rust/src/xoshiro256pp.rs` helper remains present, but `rust/src/search.rs`
+  consumes its local splitmix-compatible `mix` function. Under `--rng native`,
+  `MCTS.Rng.Mix.backendNativeSalt` distinguishes backend (iv)'s benchmark
+  streams; under `--rng cpp`, the salt is zero for verify parity. A future
+  `Xoshiro256PlusPlus` or `SmallRng` live-path swap must update
+  [../documents/engineering/determinism_contract.md → RNG Source Split → Per-Backend Native RNG Table](../documents/engineering/determinism_contract.md)
+  in the same change.
 - `rust/src/c_abi.rs` exposes the same C ABI shape as the C++ backends with the
   prefix `mcts_rust_*`. The `#[no_mangle]` and `extern "C"` annotations carry
   through to the cdylib export list.
@@ -330,10 +345,12 @@ exposed as a `cdylib` for the Haskell FFI.
   rule, and an FPU-stable index tie-break. `#[inline(always)]` on hot
   helpers and `#[inline]` on the per-sim worker mirror the C++
   steelman's hot-path discipline.
-- xoshiro256++ native RNG lives in `rust/src/xoshiro256pp.rs`
-  (`Xoshiro256pp::new(seed)` / `next()` / `bounded(bound)`); matches
-  backend (ii)/(iii)'s native RNG choice so the cross-language
-  comparison isolates engine implementation as the variable.
+- splitmix-compatible live search schedule lives in `rust/src/search.rs`; the
+  xoshiro256++ helper lives in `rust/src/xoshiro256pp.rs` but is not on the
+  current live search path
+  (`Xoshiro256pp::new(seed)` / `next()` / `bounded(bound)`). The live schedule
+  matches backends (ii)/(iii) so the cross-language comparison isolates engine
+  implementation as the variable.
 - Full C ABI surface: `mcts_rust_search_move(board, seed, sims,
   out_action_ids, out_visits, out_chosen)` and
   `mcts_rust_recompute_move(..., out_equity)` ship with the cdylib.
@@ -538,7 +555,7 @@ covers the `libm_id` + `engine_build_id` invariants per backend.
 `src/MCTS/FFI/{CppImperative,CppFunctional,Rust}.hs`,
 `src/MCTS/Engine/ForeignRecompute.hs`,
 `test/integration/Main.hs`
-**Blocked by**: none (Sprint 6.2, Sprint 6.4, and Sprint 2.7 baselines
+**Prerequisites**: Sprint 6.2, Sprint 6.4, and Sprint 2.7 baselines
 are in place)
 **Docs to update**: `documents/engineering/determinism_contract.md`,
 `documents/engineering/backend_ffi_contract.md`,

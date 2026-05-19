@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module MCTS.CLI.Test
     ( buildMeasuredReportCardWith
     , runTestCommand
@@ -5,17 +7,21 @@ module MCTS.CLI.Test
     ) where
 
 import Control.Monad.IO.Class (liftIO)
+import Data.Aeson ((.:))
+import qualified Data.Aeson as Aeson
+import Data.Aeson.Types (Parser)
+import qualified Data.ByteString as BS
+import Data.List (find)
+import qualified Data.Text as Text
 import Data.Version (showVersion)
 import Data.Word (Word64)
 import MCTS.CLI.Bench (monotonicNanos)
-import MCTS.CLI.Command (TestCommand (..))
+import MCTS.CLI.Command (RetirementAnchorOptions (..), TestCommand (..))
 import MCTS.CLI.Output (OutputFormat (..), OutputOptions (..), outputLine, renderErrorString)
 import MCTS.Driver (BatchResult (..), RunInputs (..), defaultRunInputs)
-import MCTS.Driver.Dispatch (cppLegacyLibraryPath, runBatchNoWriteDispatch)
+import MCTS.Driver.Dispatch (runBatchNoWriteDispatch)
 import qualified MCTS.Env as Env
 import MCTS.Error (AppError (..))
-import MCTS.FFI.CppFunctional (cppFunctionalLibraryPath)
-import MCTS.FFI.CppImperative (cppImperativeLibraryPath)
 import MCTS.FFI.Rust (rustLibraryPath)
 import MCTS.Plan
 import MCTS.Prerequisite (checkPrerequisites, prerequisitesForTest)
@@ -27,6 +33,69 @@ import MCTS.Verify (VerifyResult (..), verifyRunDetailed)
 import System.Directory (doesFileExist)
 import System.Exit (ExitCode (..))
 import System.Info (compilerVersion)
+import Text.Printf (printf)
+
+data RetirementAnchorResult = RetirementAnchorResult
+    { anchorRetiring :: !Backend
+    , anchorSuccessor :: !Backend
+    , anchorRows :: ![RetirementAnchorRow]
+    }
+    deriving (Eq, Show)
+
+data RetirementAnchorRow = RetirementAnchorRow
+    { anchorQuestion :: !String
+    , anchorWorkload :: !Workload
+    , anchorThreading :: !Threading
+    , anchorGames :: !Int
+    , anchorSims :: !Int
+    , anchorRetiringGamesPerSecond :: !Double
+    , anchorSuccessorGamesPerSecond :: !Double
+    , anchorTimeRatio :: !Double
+    }
+    deriving (Eq, Show)
+
+data FrozenRetirementAnchor = FrozenRetirementAnchor
+    { frozenAnchorRows :: ![FrozenRetirementAnchorRow]
+    }
+    deriving (Eq, Show)
+
+data FrozenRetirementAnchorRow = FrozenRetirementAnchorRow
+    { frozenAnchorWorkload :: !Workload
+    , frozenAnchorThreading :: !Threading
+    , frozenAnchorRetiringGamesPerSecond :: !Double
+    }
+    deriving (Eq, Show)
+
+instance Aeson.FromJSON FrozenRetirementAnchor where
+    parseJSON =
+        Aeson.withObject "FrozenRetirementAnchor" $ \obj ->
+            FrozenRetirementAnchor <$> obj .: "rows"
+
+instance Aeson.FromJSON FrozenRetirementAnchorRow where
+    parseJSON =
+        Aeson.withObject "FrozenRetirementAnchorRow" $ \obj -> do
+            workloadRaw <- obj .: "workload"
+            threadingRaw <- obj .: "threading"
+            workload <- parseAnchorWorkload workloadRaw
+            threading <- parseAnchorThreading threadingRaw
+            FrozenRetirementAnchorRow
+                <$> pure workload
+                <*> pure threading
+                <*> obj .: "retiring_games_per_second"
+      where
+        parseAnchorWorkload :: Text.Text -> Parser Workload
+        parseAnchorWorkload raw =
+            case Text.unpack raw of
+                "rollouts" -> pure Rollouts
+                "selfplay" -> pure Selfplay
+                other -> fail ("bad workload in retirement anchor: " <> other)
+
+        parseAnchorThreading :: Text.Text -> Parser Threading
+        parseAnchorThreading raw =
+            case Text.unpack raw of
+                "ST" -> pure SingleThreaded
+                "MT8" -> pure (MultiThreaded 8)
+                other -> fail ("bad threading in retirement anchor: " <> other)
 
 runTestCommand :: TestCommand -> Env.App ExitCode
 runTestCommand command = do
@@ -65,6 +134,51 @@ runWithOutput output command =
                                                 )
                                                 >> pure ExitSuccess
                                 else pure code
+        TestRetirementAnchor opts -> do
+            let plan = retirementAnchorPlan opts
+                rendered = renderPlan plan
+            liftIO (writePlanFile (planFile (retirementAnchorPlanOptions opts)) rendered)
+            if planDryRun (retirementAnchorPlanOptions opts)
+                then liftIO (outputLine rendered) >> pure ExitSuccess
+                else
+                    if retirementAnchorRetiring opts == retirementAnchorSuccessor opts
+                        then do
+                            liftIO
+                                ( outputLine
+                                    ( renderErrorString
+                                        output
+                                        (ParseError "retirement-anchor requires distinct retiring and successor backends")
+                                    )
+                                )
+                            pure (ExitFailure 1)
+                        else do
+                            code <- runStanzaPlan output plan
+                            if code == ExitSuccess
+                                then do
+                                    anchor <-
+                                        liftIO
+                                            ( buildRetirementAnchor
+                                                monotonicNanos
+                                                (retirementAnchorRetiring opts)
+                                                (retirementAnchorSuccessor opts)
+                                            )
+                                    case anchor of
+                                        Left err ->
+                                            liftIO (outputLine (renderErrorString output err))
+                                                >> pure (ExitFailure 1)
+                                        Right result -> do
+                                            liftIO
+                                                ( outputLine
+                                                    ( if outputFormat output == JsonFormat
+                                                        then renderRetirementAnchorJson result
+                                                        else renderRetirementAnchor result
+                                                    )
+                                                )
+                                            pure $
+                                                if retirementAnchorWithinTolerance result
+                                                    then ExitSuccess
+                                                    else ExitFailure 1
+                                else pure code
         TestStanza stanza -> do
             prerequisites <- liftIO (checkPrerequisites prerequisitesForTest)
             case prerequisites of
@@ -82,20 +196,16 @@ testAllPlan =
             [ mctsStep ["lint", "files"]
             , mctsStep ["lint", "docs"]
             , Subprocess "cabal" ["build", "all"] Nothing Nothing
-            , mctsStep ["build", "cpp-legacy"]
-            , mctsStep ["build", "cpp-imperative"]
-            , mctsStep ["build", "cpp-functional"]
             , mctsStep ["build", "rust"]
             , Subprocess "cabal" ["test", "mcts-haskell-style"] Nothing Nothing
             , Subprocess "cabal" ["test", "mcts-unit"] Nothing Nothing
             , Subprocess "cabal" ["test", "mcts-integration"] Nothing Nothing
             , Subprocess "cabal" ["test", "mcts-cross-backend"] Nothing Nothing
-            , Subprocess "cabal" ["test", "mcts-legacy-parity"] Nothing Nothing
             , mctsStep
                 [ "verify"
                 , "rollouts"
                 , "--backend"
-                , "cpp-imperative,cpp-functional,rust,haskell"
+                , "rust,haskell"
                 , "--threading"
                 , "single"
                 , "--games"
@@ -109,7 +219,7 @@ testAllPlan =
                 [ "verify"
                 , "selfplay"
                 , "--backend"
-                , "cpp-imperative,cpp-functional,rust,haskell"
+                , "rust,haskell"
                 , "--threading"
                 , "single"
                 , "--games"
@@ -121,21 +231,37 @@ testAllPlan =
                 , "--sims"
                 , show reportCardVerifySims
                 ]
-            , mctsStep
-                [ "verify"
-                , "legacy-parity"
-                , "selfplay"
-                , "--backend"
-                , "cpp-legacy,cpp-imperative,cpp-functional,rust,haskell"
-                , "--games"
-                , show reportCardLegacyGames
-                , "--seed"
-                , "42"
-                , "--sims"
-                , show reportCardLegacySims
-                ]
             ]
         }
+
+retirementAnchorPlan :: RetirementAnchorOptions -> Plan Subprocess
+retirementAnchorPlan opts =
+    Plan
+        { planName =
+            "test retirement-anchor "
+                <> backendIdentifier (retirementAnchorRetiring opts)
+                <> " "
+                <> backendIdentifier (retirementAnchorSuccessor opts)
+        , planSteps =
+            Subprocess "cabal" ["build", "all"] Nothing Nothing
+                : concatMap buildStep (uniqueBackends [retirementAnchorRetiring opts, retirementAnchorSuccessor opts])
+        }
+  where
+    buildStep backend =
+        case backend of
+            CppLegacy -> []
+            CppImperative -> []
+            CppFunctional -> []
+            Rust -> [mctsStep ["build", "rust"]]
+            Haskell -> []
+
+uniqueBackends :: [Backend] -> [Backend]
+uniqueBackends = go []
+  where
+    go _ [] = []
+    go seen (backend : rest)
+        | backend `elem` seen = go seen rest
+        | otherwise = backend : go (backend : seen) rest
 
 mctsStep :: [String] -> Subprocess
 mctsStep args = Subprocess "cabal" (["exec", "mcts", "--"] <> args) Nothing Nothing
@@ -206,26 +332,102 @@ buildReportPerformance
             )
         )
 buildReportPerformance clock = do
-    q1ST <- measureComparison clock Rollouts SingleThreaded reportCardRolloutGames reportCardBenchSims
-    q1MT8 <-
-        measureComparison clock Rollouts (MultiThreaded 8) reportCardRolloutGames reportCardBenchSims
-    q2ST <- measureComparison clock Selfplay SingleThreaded reportCardSelfplayGames reportCardBenchSims
-    q2MT8 <-
-        measureComparison clock Selfplay (MultiThreaded 8) reportCardSelfplayGames reportCardBenchSims
-    pure $ (,,,) <$> q1ST <*> q1MT8 <*> q2ST <*> q2MT8
+    anchor <- readFrozenRetirementAnchor cppImperativeThroughputPath
+    case anchor of
+        Left err -> pure (Left err)
+        Right frozen -> do
+            q1ST <-
+                measureFrozenComparison
+                    clock
+                    frozen
+                    Rollouts
+                    SingleThreaded
+                    reportCardRolloutGames
+                    reportCardBenchSims
+            q1MT8 <-
+                measureFrozenComparison
+                    clock
+                    frozen
+                    Rollouts
+                    (MultiThreaded 8)
+                    reportCardRolloutGames
+                    reportCardBenchSims
+            q2ST <-
+                measureFrozenComparison
+                    clock
+                    frozen
+                    Selfplay
+                    SingleThreaded
+                    reportCardSelfplayGames
+                    reportCardBenchSims
+            q2MT8 <-
+                measureFrozenComparison
+                    clock
+                    frozen
+                    Selfplay
+                    (MultiThreaded 8)
+                    reportCardSelfplayGames
+                    reportCardBenchSims
+            pure $ (,,,) <$> q1ST <*> q1MT8 <*> q2ST <*> q2MT8
 
-measureComparison
+buildRetirementAnchor
     :: IO Word64
+    -> Backend
+    -> Backend
+    -> IO (Either AppError RetirementAnchorResult)
+buildRetirementAnchor clock retiring successor = do
+    q1ST <-
+        measureAnchorRow clock "Q1" Rollouts SingleThreaded reportCardRolloutGames reportCardBenchSims
+    q1MT8 <-
+        measureAnchorRow clock "Q1" Rollouts (MultiThreaded 8) reportCardRolloutGames reportCardBenchSims
+    q2ST <-
+        measureAnchorRow clock "Q2" Selfplay SingleThreaded reportCardSelfplayGames reportCardBenchSims
+    q2MT8 <-
+        measureAnchorRow clock "Q2" Selfplay (MultiThreaded 8) reportCardSelfplayGames reportCardBenchSims
+    pure $
+        RetirementAnchorResult retiring successor
+            <$> sequence [q1ST, q1MT8, q2ST, q2MT8]
+  where
+    measureAnchorRow clockSource question workload threading games sims = do
+        retiringRate <- measureBackend clockSource (inputs workload threading games sims) retiring
+        successorRate <- measureBackend clockSource (inputs workload threading games sims) successor
+        pure $ do
+            retiringGamesPerSecond <- retiringRate
+            successorGamesPerSecond <- successorRate
+            Right
+                RetirementAnchorRow
+                    { anchorQuestion = question
+                    , anchorWorkload = workload
+                    , anchorThreading = threading
+                    , anchorGames = games
+                    , anchorSims = sims
+                    , anchorRetiringGamesPerSecond = retiringGamesPerSecond
+                    , anchorSuccessorGamesPerSecond = successorGamesPerSecond
+                    , anchorTimeRatio = safeRatio retiringGamesPerSecond successorGamesPerSecond
+                    }
+    inputs workload threading games sims =
+        defaultRunInputs
+            { inputWorkload = workload
+            , inputRng = NativeRng
+            , inputThreading = threading
+            , inputGames = games
+            , inputSeed = 42
+            , inputMaxPlies = 200
+            , inputSims = FixedSims sims
+            }
+
+measureFrozenComparison
+    :: IO Word64
+    -> FrozenRetirementAnchor
     -> Workload
     -> Threading
     -> Int
     -> Int
     -> IO (Either AppError ReportRateComparison)
-measureComparison clock workload threading games sims = do
-    cpp <- measureBackend clock baseInputs CppImperative
+measureFrozenComparison clock frozen workload threading games sims = do
     haskell <- measureBackend clock baseInputs Haskell
     pure $ do
-        cppRate <- cpp
+        cppRate <- retiredRate frozen workload threading
         haskellRate <- haskell
         Right
             ReportRateComparison
@@ -245,6 +447,35 @@ measureComparison clock workload threading games sims = do
             , inputMaxPlies = 200
             , inputSims = FixedSims sims
             }
+
+readFrozenRetirementAnchor :: FilePath -> IO (Either AppError FrozenRetirementAnchor)
+readFrozenRetirementAnchor path = do
+    present <- doesFileExist path
+    if not present
+        then pure (Left (IOErrorText ("retired backend throughput anchor missing: " <> path)))
+        else do
+            bytes <- BS.readFile path
+            pure $
+                case Aeson.eitherDecodeStrict' bytes of
+                    Left err -> Left (IOErrorText ("retired backend throughput anchor decode failed: " <> err))
+                    Right anchor -> Right anchor
+
+retiredRate :: FrozenRetirementAnchor -> Workload -> Threading -> Either AppError Double
+retiredRate frozen workload threading =
+    case find matches (frozenAnchorRows frozen) of
+        Just row -> Right (frozenAnchorRetiringGamesPerSecond row)
+        Nothing ->
+            Left $
+                IOErrorText
+                    ( "retired backend throughput anchor missing row for "
+                        <> workloadName workload
+                        <> "/"
+                        <> threadingName threading
+                    )
+  where
+    matches row =
+        frozenAnchorWorkload row == workload
+            && frozenAnchorThreading row == threading
 
 measureBackend :: IO Word64 -> RunInputs -> Backend -> IO (Either AppError Double)
 measureBackend clock inputs backend = do
@@ -286,9 +517,8 @@ verdictFromRatios ratios =
 requireReportCardArtifacts :: IO (Either AppError ())
 requireReportCardArtifacts =
     go
-        [ cppLegacyLibraryPath
-        , cppImperativeLibraryPath
-        , cppFunctionalLibraryPath
+        [ cppImperativeThroughputPath
+        , cppFunctionalThroughputPath
         , rustLibraryPath
         ]
   where
@@ -301,7 +531,7 @@ requireReportCardArtifacts =
                 pure
                     ( Left
                         ( IOErrorText
-                            ( "report-card requires canonical backend artefact "
+                            ( "report-card requires canonical backend artefact or frozen anchor "
                                 <> path
                                 <> "; run `mcts test all` so the build steps and measurements share one container"
                             )
@@ -323,20 +553,124 @@ reportCardVerifyGames = 4
 reportCardVerifySims :: Int
 reportCardVerifySims = 500
 
-reportCardLegacyGames :: Int
-reportCardLegacyGames = 2
+cppImperativeThroughputPath :: FilePath
+cppImperativeThroughputPath = "test/golden/cpp-imperative/throughput.json"
 
-reportCardLegacySims :: Int
-reportCardLegacySims = 10000
+cppFunctionalThroughputPath :: FilePath
+cppFunctionalThroughputPath = "test/golden/cpp-functional/throughput.json"
 
 haskellParityTolerance :: Double
 haskellParityTolerance = 0.05
 
+retirementAnchorWithinTolerance :: RetirementAnchorResult -> Bool
+retirementAnchorWithinTolerance result =
+    all ((<= 1.0 + haskellParityTolerance) . anchorTimeRatio) (anchorRows result)
+
+renderRetirementAnchor :: RetirementAnchorResult -> String
+renderRetirementAnchor result =
+    unlines $
+        [ "retirement anchor: "
+            <> backendIdentifier (anchorRetiring result)
+            <> " "
+            <> backendRoman (anchorRetiring result)
+            <> " -> "
+            <> backendIdentifier (anchorSuccessor result)
+            <> " "
+            <> backendRoman (anchorSuccessor result)
+        , "question  workload  threading  retiring games/s  successor games/s  ratio"
+        ]
+            <> map renderRetirementAnchorRow (anchorRows result)
+            <> [ "Verdict: "
+                    <> if retirementAnchorWithinTolerance result
+                        then "Within tolerance"
+                        else "Shortfall " <> fixed4 (retirementAnchorShortfall result)
+               ]
+
+renderRetirementAnchorRow :: RetirementAnchorRow -> String
+renderRetirementAnchorRow row =
+    anchorQuestion row
+        <> "  "
+        <> workloadName (anchorWorkload row)
+        <> "  "
+        <> threadingName (anchorThreading row)
+        <> "  "
+        <> fixed4 (anchorRetiringGamesPerSecond row)
+        <> "  "
+        <> fixed4 (anchorSuccessorGamesPerSecond row)
+        <> "  "
+        <> fixed4 (anchorTimeRatio row)
+
+renderRetirementAnchorJson :: RetirementAnchorResult -> String
+renderRetirementAnchorJson result =
+    "{"
+        <> "\"schema\":\"mcts-retirement-anchor-v1\""
+        <> ",\"retiring\":\""
+        <> backendIdentifier (anchorRetiring result)
+        <> "\""
+        <> ",\"retiring_roman\":\""
+        <> backendRoman (anchorRetiring result)
+        <> "\""
+        <> ",\"successor\":\""
+        <> backendIdentifier (anchorSuccessor result)
+        <> "\""
+        <> ",\"successor_roman\":\""
+        <> backendRoman (anchorSuccessor result)
+        <> "\""
+        <> ",\"seed\":42"
+        <> ",\"max_plies\":200"
+        <> ",\"tolerance\":"
+        <> fixed4 haskellParityTolerance
+        <> ",\"within_tolerance\":"
+        <> renderBool (retirementAnchorWithinTolerance result)
+        <> ",\"shortfall\":"
+        <> fixed4 (retirementAnchorShortfall result)
+        <> ",\"rows\":["
+        <> joinWith "," (map renderRetirementAnchorRowJson (anchorRows result))
+        <> "]}"
+
+renderRetirementAnchorRowJson :: RetirementAnchorRow -> String
+renderRetirementAnchorRowJson row =
+    "{"
+        <> "\"question\":\""
+        <> anchorQuestion row
+        <> "\""
+        <> ",\"workload\":\""
+        <> workloadName (anchorWorkload row)
+        <> "\""
+        <> ",\"threading\":\""
+        <> threadingName (anchorThreading row)
+        <> "\""
+        <> ",\"games\":"
+        <> show (anchorGames row)
+        <> ",\"sims\":"
+        <> show (anchorSims row)
+        <> ",\"retiring_games_per_second\":"
+        <> fixed4 (anchorRetiringGamesPerSecond row)
+        <> ",\"successor_games_per_second\":"
+        <> fixed4 (anchorSuccessorGamesPerSecond row)
+        <> ",\"time_ratio\":"
+        <> fixed4 (anchorTimeRatio row)
+        <> "}"
+
+retirementAnchorShortfall :: RetirementAnchorResult -> Double
+retirementAnchorShortfall result =
+    max 0.0 (maximum (1.0 : map anchorTimeRatio (anchorRows result)) - 1.0)
+
+fixed4 :: Double -> String
+fixed4 = printf "%.4f"
+
+renderBool :: Bool -> String
+renderBool True = "true"
+renderBool False = "false"
+
+joinWith :: String -> [String] -> String
+joinWith _ [] = ""
+joinWith _ [x] = x
+joinWith separator (x : xs) = x <> separator <> joinWith separator xs
+
 reportCardBackends :: [Backend]
 reportCardBackends =
-    [ CppImperative
-    , CppFunctional
-    , Rust
+    [ Rust
     , Haskell
     ]
 

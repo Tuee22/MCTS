@@ -51,7 +51,7 @@ commandSpec =
             [ leaf
                 "rollouts"
                 "Random-rollout benchmark"
-                "mcts bench rollouts --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell --threading single --rng native --games 100000 --seed 42"
+                "mcts bench rollouts --backend rust,haskell --threading single --rng native --games 100000 --seed 42"
             , leaf
                 "selfplay"
                 "Self-play benchmark"
@@ -64,18 +64,14 @@ commandSpec =
             [ leaf
                 "rollouts"
                 "Verify rollout visit counts"
-                "mcts verify rollouts --backend cpp-imperative,cpp-functional,rust,haskell --games 2 --seed 42"
+                "mcts verify rollouts --backend rust,haskell --games 2 --seed 42"
             , leaf
                 "selfplay"
                 "Verify self-play visit counts"
-                "mcts verify selfplay --backend cpp-imperative,rust,haskell --threading single --games 50 --seed 42 --max-plies 200 --sims 10000"
-            , leaf
-                "legacy-parity"
-                "Verify legacy envelope liveness"
-                "mcts verify legacy-parity selfplay --backend cpp-legacy,haskell --games 1 --seed 42 --sims 10"
+                "mcts verify selfplay --backend rust,haskell --threading single --games 50 --seed 42 --max-plies 200 --sims 10000"
             ]
         , leaf "play" "Play or spectate a game" "mcts play --backend haskell --side hero --sims 10000"
-            `withExample` "mcts play --backend haskell --side villain --vs cpp-imperative --sims 10000"
+            `withExample` "mcts play --backend haskell --side villain --vs rust --sims 10000"
         , node
             "inspect"
             "Inspect transcript cache"
@@ -95,6 +91,11 @@ commandSpec =
             "test"
             "Run tests"
             [ leaf "all" "Run full suite and report card" "mcts test all --dry-run"
+                `withOptions` planOptions
+            , leaf
+                "retirement-anchor"
+                "Measure backend retirement parity anchor"
+                "mcts test retirement-anchor rust haskell --format json"
                 `withOptions` planOptions
             , leaf "<stanza>" "Run one cabal stanza" "mcts test mcts-unit"
             ]
@@ -119,14 +120,7 @@ commandSpec =
         , node
             "build"
             "Build backend artefacts"
-            [ leaf "cpp-legacy" "Build legacy C++ backend" "mcts build cpp-legacy --dry-run"
-                `withOptions` planOptions
-            , leaf "cpp-imperative" "Build imperative C++ backend" "mcts build cpp-imperative --dry-run"
-                `withExample` "mcts build cpp-imperative"
-                `withOptions` planOptions
-            , leaf "cpp-functional" "Build functional C++ backend" "mcts build cpp-functional --dry-run"
-                `withOptions` planOptions
-            , leaf "rust" "Build Rust backend" "mcts build rust --dry-run"
+            [ leaf "rust" "Build Rust backend" "mcts build rust --dry-run"
                 `withOptions` planOptions
             , leaf
                 "legacy-fixtures"
@@ -221,8 +215,6 @@ renderCommandMarkdown =
             <> concatMap markdownRow commandRows
   where
     markdownRow (path, spec)
-        | path == "mcts verify legacy-parity" =
-            ["- `" <> path <> " {rollouts|selfplay}` - " <> summary spec]
         | path == "mcts inspect show" =
             [ "- `" <> path <> "` - " <> summary spec
             , "- `" <> path <> " --envelope` - Show one transcript envelope"

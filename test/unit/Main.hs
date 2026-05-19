@@ -22,11 +22,10 @@ import MCTS.CLI.Build
     ( boltTrainingGames
     , boltTrainingSims
     , buildBackendPlan
-    , cppFunctionalPgoBoltPlan
-    , cppImperativePgoBoltPlan
     , legacyFixturePlan
     , pgoTrainingGames
     , pgoTrainingSims
+    , rustPgoBoltPlan
     )
 import MCTS.CLI.Command
     ( BenchCommand (..)
@@ -103,7 +102,6 @@ import qualified MCTS.Engine.Recompute as Recompute
 import MCTS.Env (Env (..), askEnv, defaultEnv, envClock, runAppIO, withTestClock)
 import MCTS.Error (AppError (..), EnvelopeMismatchScope (..), renderError)
 import MCTS.FFI.Common (EngineEnvelope (..), engineEnvelopeToEnvelope)
-import MCTS.FFI.CppLegacy (withCppLegacyBoard)
 import MCTS.Generated.Paths (trackingGeneratedPaths)
 import MCTS.Notation (parseMove, renderMove)
 import MCTS.Plan
@@ -131,7 +129,6 @@ import MCTS.ReportCard
     , renderReportCard
     , renderReportCardJson
     )
-import MCTS.Rng.Cpp (cppSplitSeed)
 import MCTS.Rng.Mix (backendNativeSalt, mix)
 import qualified MCTS.Search.Arena as Arena
 import qualified MCTS.Search.UCT as UCT
@@ -195,8 +192,6 @@ unitTests =
         , testCase "uct search" exerciseUctSearch
         , testCase "equity recompute" exerciseRecompute
         , testCase "splitmix fixtures" exerciseSplitmixSurface
-        , testCase "cpp rng fixture" exerciseCppRngFixture
-        , testCase "cpp legacy board fixture" exerciseCppLegacyBoardFixture
         , testCase "backend rng salts" exerciseBackendNativeSalt
         ]
     , testGroup
@@ -209,7 +204,7 @@ unitTests =
         "plans and subprocesses"
         [ testCase "prerequisite graph" exercisePrerequisiteSurface
         , testCase "plan/apply helpers" exercisePlanSurface
-        , testCase "C++ PGO/BOLT build plan" exerciseCppImperativeBuildPlan
+        , testCase "Rust PGO/BOLT build plan" exerciseRustBuildPlan
         , testCase "subprocess rendering and environment" exerciseSubprocessSurface
         ]
     , testGroup
@@ -265,28 +260,35 @@ exerciseCommandParserSurface = do
     assert
         "test/golden/legacy/transcripts is in the no-hand-edit registry"
         ("test/golden/legacy/transcripts" `elem` trackingGeneratedPaths)
+    assert
+        "test/golden/cpp-legacy/transcripts is in the no-hand-edit registry"
+        ("test/golden/cpp-legacy/transcripts" `elem` trackingGeneratedPaths)
+    assert
+        "test/golden/cpp-imperative/transcripts is in the no-hand-edit registry"
+        ("test/golden/cpp-imperative/transcripts" `elem` trackingGeneratedPaths)
+    assert
+        "test/golden/cpp-functional/transcripts is in the no-hand-edit registry"
+        ("test/golden/cpp-functional/transcripts" `elem` trackingGeneratedPaths)
     assert "command tree mentions verify" ("verify" `contains` renderCommandTree)
     assert "command json is object" (take 1 renderCommandJson == "{")
     assert "all leaves have examples" (all (not . null . examples) (leafSpecs commandSpec))
     assert
         "backend parser"
-        (parseBackends "cpp-imperative,rust,haskell" == Right [CppImperative, Rust, Haskell])
+        (parseBackends "rust,haskell" == Right [Rust, Haskell])
     assert
         "command parser"
         ( parsesBenchCohort
             ( parseCommand
-                ["bench", "selfplay", "--backend", "cpp-legacy,haskell", "--games", "1", "--seed", "42"]
+                ["bench", "selfplay", "--backend", "rust,haskell", "--games", "1", "--seed", "42"]
             )
         )
     assert
-        "legacy parity workload parser"
-        ( parsesLegacyRollouts
-            (parseCommand ["verify", "legacy-parity", "rollouts", "--backend", "cpp-legacy,haskell"])
-        )
+        "legacy parity command retired"
+        (isLeft (parseCommand ["verify", "legacy-parity", "rollouts", "--backend", "cpp-legacy,haskell"]))
     assert
         "allow stale parser"
         ( parsesAllowStale
-            (parseCommand ["verify", "selfplay", "--backend", "cpp-imperative,haskell", "--allow-stale"])
+            (parseCommand ["verify", "selfplay", "--backend", "rust,haskell", "--allow-stale"])
         )
     assert
         "legacy fixture build parser"
@@ -309,16 +311,20 @@ exerciseCommandParserSurface = do
     assert
         "verify rejects native rng"
         ( isLeft
-            (parseCommand ["verify", "selfplay", "--backend", "cpp-imperative,haskell", "--rng", "native"])
+            (parseCommand ["verify", "selfplay", "--backend", "rust,haskell", "--rng", "native"])
         )
     assert
         "verify rejects single-backend cohorts at parser boundary"
         (isVerifyCohortTooSmall (parseCommand ["verify", "selfplay", "--backend", "haskell"]))
     assert
-        "legacy parity requires cpp-legacy at parser boundary"
-        ( isVerifyCohortTooSmall
-            (parseCommand ["verify", "legacy-parity", "selfplay", "--backend", "cpp-imperative,haskell"])
-        )
+        "verify rejects retired cpp-legacy at parser boundary"
+        (isLeft (parseCommand ["verify", "selfplay", "--backend", "cpp-legacy,haskell"]))
+    assert
+        "verify rejects retired cpp-imperative at parser boundary"
+        (isLeft (parseCommand ["verify", "selfplay", "--backend", "cpp-imperative,haskell"]))
+    assert
+        "verify rejects retired cpp-functional at parser boundary"
+        (isLeft (parseCommand ["verify", "selfplay", "--backend", "cpp-functional,haskell"]))
     exerciseOptparseParser
     exercisePlanOptionMetadata
     exerciseForbiddenPathRegistry
@@ -455,22 +461,16 @@ isVerifyCohortTooSmall :: Either AppError Command -> Bool
 isVerifyCohortTooSmall (Left (VerifyCohortTooSmall _)) = True
 isVerifyCohortTooSmall _ = False
 
-parsesLegacyRollouts :: Either AppError Command -> Bool
-parsesLegacyRollouts parsed =
-    case parsed of
-        Right (Verify (VerifyLegacyParity Rollouts False [LpCppLegacy, LpHaskell] inputs)) -> inputWorkload inputs == Rollouts
-        _ -> False
-
 parsesAllowStale :: Either AppError Command -> Bool
 parsesAllowStale parsed =
     case parsed of
-        Right (Verify (VerifySelfplay True [VCppImperative, VHaskell] _)) -> True
+        Right (Verify (VerifySelfplay True [VRust, VHaskell] _)) -> True
         _ -> False
 
 parsesBenchCohort :: Either AppError Command -> Bool
 parsesBenchCohort parsed =
     case parsed of
-        Right (Bench (BenchSelfplay [CppLegacy, Haskell] inputs)) -> inputBackend inputs == CppLegacy
+        Right (Bench (BenchSelfplay [Rust, Haskell] inputs)) -> inputBackend inputs == Rust
         _ -> False
 
 parsesLegacyFixtureBuild :: Either AppError Command -> Bool
@@ -812,12 +812,6 @@ exercisePrerequisiteClosure = do
         (closure == map nodeId (transitiveClosure prerequisiteRegistry closure))
     let boltClosure = map nodeId (transitiveClosure prerequisiteRegistry ["bolt"])
     assert "bolt closure includes llvm" ("llvm" `elem` boltClosure)
-    let legacyLibClosure = map nodeId (transitiveClosure prerequisiteRegistry ["libmcts-cpp-legacy-built"])
-    assert "legacy shared library prerequisite includes cxx" ("cxx" `elem` legacyLibClosure)
-    let imperativeLibClosure = map nodeId (transitiveClosure prerequisiteRegistry ["libmcts-cpp-imperative-built"])
-    assert "imperative shared library prerequisite includes cxx" ("cxx" `elem` imperativeLibClosure)
-    let functionalLibClosure = map nodeId (transitiveClosure prerequisiteRegistry ["libmcts-cpp-functional-built"])
-    assert "functional shared library prerequisite includes cxx" ("cxx" `elem` functionalLibClosure)
     let rustLibClosure = map nodeId (transitiveClosure prerequisiteRegistry ["libmcts-rust-built"])
     assert "rust shared library prerequisite includes rustup" ("rustup" `elem` rustLibClosure)
     let lldClosure = map nodeId (transitiveClosure prerequisiteRegistry ["lld-linker"])
@@ -858,11 +852,9 @@ exercisePlanOptionMetadata :: IO ()
 exercisePlanOptionMetadata = do
     let planApplyLeaves =
             [ "mcts test all"
+            , "mcts test retirement-anchor"
             , "mcts docs generate"
             , "mcts inspect cache prune"
-            , "mcts build cpp-legacy"
-            , "mcts build cpp-imperative"
-            , "mcts build cpp-functional"
             , "mcts build rust"
             , "mcts build legacy-fixtures"
             ]
@@ -1175,73 +1167,42 @@ exercisePerGameTranscriptWriter = do
                 )
     removePathForcibly cacheRoot
 
--- | Sprint 5.3: validate the cpp-imperative PGO+BOLT plan as a typed
--- `[Subprocess]` sequence. The pipeline must visit, in order, the
--- doctrine-mandated stages: PGO-instrument both artefacts, run the
--- training workload (`bench selfplay --rng cpp`), PGO-optimize, BOLT
--- instrument both, BOLT training workload, BOLT optimize both, install
--- the bench artefact under the canonical FFI load name. Idempotence
--- holds because `buildBackendPlan` is a pure function of the backend
--- name; the failure-mode check uses an unknown backend.
-exerciseCppImperativeBuildPlan :: IO ()
-exerciseCppImperativeBuildPlan = do
-    let plan = buildBackendPlan "cpp-imperative"
-        steps = cppImperativePgoBoltPlan
+-- | Validate the surviving Rust PGO+BOLT plan as a typed
+-- `[Subprocess]` sequence. The retired C++ functional build plan is no longer
+-- reachable from the CLI; Rust remains the live foreign build harness.
+exerciseRustBuildPlan :: IO ()
+exerciseRustBuildPlan = do
+    let plan = buildBackendPlan "rust"
+        steps = rustPgoBoltPlan
         commands = map subprocessPath steps
         argsOf = map subprocessArguments steps
-    assert "PGO+BOLT plan has 19 typed Subprocess steps" (length steps == 19)
-    assert "PGO+BOLT plan is the same as buildBackendPlan output" (planSteps plan == steps)
+    assert "Rust PGO+BOLT plan has 12 typed Subprocess steps" (length steps == 12)
+    assert "Rust PGO+BOLT plan is the same as buildBackendPlan output" (planSteps plan == steps)
     assert
-        "PGO+BOLT step 1 is make pgo-bench-generate"
-        (case argsOf of (a : _) -> a == ["-C", "cpp-imperative", "pgo-bench-generate"]; _ -> False)
+        "Rust PGO step 1 is cargo build --release"
+        (case commands of (c : _) -> c == "cargo"; _ -> False)
     assert
-        "PGO+BOLT step 19 is make install-bench"
-        (case reverse argsOf of (a : _) -> a == ["-C", "cpp-imperative", "install-bench"]; _ -> False)
-    assert
-        "PGO bench artifact is installed before training"
-        ( commands !! 1 == "bash"
-            && argContains (argsOf !! 1) "libmcts_cpp_imperative_bench.so"
-            && argContains (argsOf !! 1) "libmcts_cpp_imperative.so"
+        "Rust PGO training step invokes bench selfplay --rng cpp"
+        ( commands !! 1 == "cabal"
+            && "selfplay" `elem` argsOf !! 1
+            && "cpp" `elem` argsOf !! 1
+            && show pgoTrainingGames `elem` argsOf !! 1
+            && show pgoTrainingSims `elem` argsOf !! 1
         )
     assert
-        "PGO training step invokes bench selfplay --rng cpp"
-        ( commands !! 2 == "cabal"
-            && "selfplay" `elem` argsOf !! 2
-            && "cpp" `elem` argsOf !! 2
-            && show pgoTrainingGames `elem` argsOf !! 2
-            && show pgoTrainingSims `elem` argsOf !! 2
+        "Rust BOLT training step invokes bench selfplay --rng cpp"
+        ( commands !! 7 == "cabal"
+            && "selfplay" `elem` argsOf !! 7
+            && show boltTrainingGames `elem` argsOf !! 7
+            && show boltTrainingSims `elem` argsOf !! 7
         )
     assert
-        "PGO bench profile copy follows training"
-        (commands !! 3 == "bash" && argContains (argsOf !! 3) "artifact='bench'")
+        "Rust final step patches engine_build_id"
+        (case reverse argsOf of (a : _) -> argContains a ".envelope_build_id"; _ -> False)
+    assert "buildBackendPlan is idempotent" (buildBackendPlan "rust" == plan)
     assert
-        "PGO instrumented artifact is installed before training"
-        ( commands !! 5 == "bash"
-            && argContains (argsOf !! 5) "libmcts_cpp_imperative_instrumented.so"
-            && argContains (argsOf !! 5) "libmcts_cpp_imperative.so"
-        )
-    assert
-        "PGO instrumented training step invokes bench selfplay --rng cpp"
-        ( commands !! 6 == "cabal"
-            && "selfplay" `elem` argsOf !! 6
-            && "cpp" `elem` argsOf !! 6
-            && show pgoTrainingGames `elem` argsOf !! 6
-            && show pgoTrainingSims `elem` argsOf !! 6
-        )
-    assert
-        "PGO instrumented profile copy follows training"
-        (commands !! 7 == "bash" && argContains (argsOf !! 7) "artifact='instrumented'")
-    assert
-        "BOLT training step invokes bench selfplay --rng cpp"
-        ( commands !! 12 == "cabal"
-            && "selfplay" `elem` argsOf !! 12
-            && show boltTrainingGames `elem` argsOf !! 12
-            && show boltTrainingSims `elem` argsOf !! 12
-        )
-    assert "buildBackendPlan is idempotent" (buildBackendPlan "cpp-imperative" == plan)
-    assert
-        "PGO+BOLT plan name is build cpp-imperative"
-        (planName plan == "build cpp-imperative")
+        "PGO+BOLT plan name is build rust"
+        (planName plan == "build rust")
     -- Failure-mode test: unknown backend collapses to a single
     -- `make -C <backend> smoke` step. The `BuildCommand` ADT in
     -- `MCTS.CLI.Command` constrains the set of backends reachable at
@@ -1256,28 +1217,9 @@ exerciseCppImperativeBuildPlan = do
                     && subprocessArguments s == ["-C", "wat-backend", "smoke"]
             _ -> False
         )
-    -- Sprint 6.2: the cpp-functional plan mirrors the cpp-imperative
-    -- plan exactly except for the backend identifier — this is the
-    -- (ii)-vs-(iii) style-isolation discipline at the build-harness
-    -- level (same training workload, same BOLT parameters, only the
-    -- backend identifier differs).
-    let imperativeSteps = cppImperativePgoBoltPlan
-        functionalSteps = cppFunctionalPgoBoltPlan
-        renameStep s =
-            s
-                { subprocessArguments = map renameArg (subprocessArguments s)
-                }
-        renameArg =
-            T.unpack
-                . T.replace (T.pack "libmcts_cpp_imperative") (T.pack "libmcts_cpp_functional")
-                . T.replace (T.pack "cpp-imperative") (T.pack "cpp-functional")
-                . T.pack
     assert
-        "cpp-functional plan is the cpp-imperative plan with backend rewritten"
-        (functionalSteps == map renameStep imperativeSteps)
-    assert
-        "cpp-functional plan matches buildBackendPlan"
-        (planSteps (buildBackendPlan "cpp-functional") == functionalSteps)
+        "rust plan matches buildBackendPlan"
+        (planSteps (buildBackendPlan "rust") == steps)
     let fixtureOptions =
             LegacyFixtureOptions
                 { legacyFixtureOutputDir = "test/golden/legacy/transcripts"
@@ -1665,15 +1607,15 @@ exerciseOptparseParser = do
     case OA.execParserPure
         OA.defaultPrefs
         commandParserInfo
-        ["bench", "selfplay", "--backend", "cpp-legacy,haskell", "--games", "1", "--seed", "42"] of
+        ["bench", "selfplay", "--backend", "rust,haskell", "--games", "1", "--seed", "42"] of
         OA.Success command -> assert "execParserPure parses bench cohort" (parsesBenchCohort (Right command))
         _ -> error "execParserPure failed to parse bench cohort"
     case OA.execParserPure
         OA.defaultPrefs
         commandParserInfo
         ["verify", "legacy-parity", "rollouts", "--backend", "cpp-legacy,haskell"] of
-        OA.Success command -> assert "execParserPure parses legacy parity" (parsesLegacyRollouts (Right command))
-        _ -> error "execParserPure failed to parse legacy parity"
+        OA.Failure _ -> pure ()
+        _ -> error "execParserPure accepted retired legacy parity command"
     case OA.execParserPure
         OA.defaultPrefs
         commandParserInfo
@@ -1683,7 +1625,7 @@ exerciseOptparseParser = do
     case OA.execParserPure
         OA.defaultPrefs
         commandParserInfo
-        ["verify", "selfplay", "--backend", "cpp-imperative,haskell", "--rng", "native"] of
+        ["verify", "selfplay", "--backend", "rust,haskell", "--rng", "native"] of
         OA.Failure _ -> pure ()
         _ -> error "execParserPure accepted native RNG for verify selfplay"
 
@@ -1704,10 +1646,10 @@ exerciseReportCardGolden = do
     validateJsonSchema
         (decodeJsonValue "test/golden/report-card-schema.json" schemaText)
         (decodeJsonValue "renderReportCardJson defaultReportCard" (renderReportCardJson defaultReportCard))
-    let rows = divergenceRowsFromTranscripts [asBackend CppImperative, asBackend Haskell]
+    let rows = divergenceRowsFromTranscripts [asBackend Rust, asBackend Haskell]
     assert
         "report card derives one matrix row per transcript"
-        (map reportDivergenceOrigin rows == ["cpp-imperative", "haskell"])
+        (map reportDivergenceOrigin rows == ["rust", "haskell"])
     assert
         "report card derives one matrix cell per transcript"
         (all ((== 2) . length . reportDivergenceCells) rows)
@@ -1987,30 +1929,6 @@ exerciseSplitmixBijection = do
     unique' [] = []
     unique' (x : xs) = x : unique' (filter (/= x) xs)
 
-exerciseCppRngFixture :: IO ()
-exerciseCppRngFixture = do
-    present <- doesFileExist "cpp-legacy/build/libmcts_cpp_legacy.so"
-    if not present
-        then putStrLn "mcts-unit SKIP cpp_rng_split_seed fixture (cpp-legacy shared library not built)"
-        else do
-            seed0 <- cppSplitSeed 42 0
-            seed1 <- cppSplitSeed 42 1
-            assert "cpp_rng_split_seed fixture 0" (seed0 == Right (mix 42 0))
-            assert "cpp_rng_split_seed fixture 1" (seed1 == Right (mix 42 1))
-
-exerciseCppLegacyBoardFixture :: IO ()
-exerciseCppLegacyBoardFixture = do
-    present <- doesFileExist "cpp-legacy/build/libmcts_cpp_legacy.so"
-    if not present
-        then putStrLn "mcts-unit SKIP cpp-legacy board fixture (cpp-legacy shared library not built)"
-        else mapM_ exerciseOne [1 :: Int]
-  where
-    exerciseOne _ = do
-        result <- withCppLegacyBoard (\_ -> pure ())
-        case result of
-            Right () -> pure ()
-            Left err -> error ("cpp-legacy dynamic board acquire/free failed: " <> show err)
-
 exerciseErrorRenderings :: IO ()
 exerciseErrorRenderings = do
     -- Smoke test: every variant has a non-empty renderError output.
@@ -2176,7 +2094,7 @@ exerciseTuiPlayInput = do
         OutcomeContinue st1 -> do
             assert "real move advances ply count" (playStateMoveCount st1 == 1)
             assert "real move records transcript move" (length (playStateRecords st1) == 1)
-            aiSt <- advanceAiState st1{playStateBackend = CppImperative}
+            aiSt <- advanceAiState st1{playStateBackend = Rust}
             assert "selected-backend AI advances the game" (playStateMoveCount aiSt == 2)
             assert
                 "selected-backend AI records transcript visits"
@@ -2288,34 +2206,34 @@ exerciseTuiReplayOverlay = do
     -- loaded/skipped results.
     let stateWithCandidates =
             stateAtStart
-                { replayOverlayCandidates = [Haskell, CppImperative, Rust]
-                , replayUnavailableBackends = [Rust]
+                { replayOverlayCandidates = [Haskell, Rust]
+                , replayUnavailableBackends = []
                 }
         onDemandStream =
             stream
-                { eqBackend = CppImperative
-                , eqBuildId = "cpp-on-demand"
+                { eqBackend = Rust
+                , eqBuildId = "rust-on-demand"
                 }
     assert
         "on-demand replay column skips loaded and unavailable backends"
-        (nextOverlayBackend stateWithCandidates == Just CppImperative)
+        (nextOverlayBackend stateWithCandidates == Just Rust)
     let loadedState =
             applyOverlayLoadResult
-                CppImperative
+                Rust
                 (ReplayOverlayLoaded onDemandStream)
                 stateWithCandidates
     assert "on-demand replay column appends overlay" (length (replayOverlays loadedState) == 2)
     assert
         "on-demand replay status reports loaded column"
-        ("loaded cpp-imperative" `isInfixOfStr` replayMessage loadedState)
+        ("loaded rust" `isInfixOfStr` replayMessage loadedState)
     let skippedState =
             applyOverlayLoadResult
-                CppFunctional
-                (ReplayOverlaySkipped "cpp-functional unavailable")
+                Rust
+                (ReplayOverlaySkipped "rust unavailable")
                 stateAtStart
     assert
         "on-demand skipped backend is marked unavailable"
-        (CppFunctional `elem` replayUnavailableBackends skippedState)
+        (Rust `elem` replayUnavailableBackends skippedState)
     -- Cache miss: replay preparation recomputes the originator column,
     -- writes the sidecar, and subsequent preparation loads it without
     -- recomputing.

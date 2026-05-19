@@ -84,7 +84,7 @@ The block lives at `envelope_offset` (byte 48 in version-1 transcripts):
 | 2 | 4 | envelope_byte_length | `u32`; total length of the envelope block in bytes, counting from `envelope_version` through the last byte of the block. A decoder that does not recognise an `envelope_version` skips past the block by reading this field. |
 | 6 | 1 | rng_source_envelope | `u8`; matches the header's `rng_source`. Recorded inside the envelope so the cohort-uniformity check is uniform across fields. |
 | 7 | 1 | host_arch_envelope | `u8`; matches the header's `host_arch`. Same rationale as `rng_source_envelope`. |
-| 8 | 32 | shared_rng_build_id | SHA-256 of the loaded `cpp_rng.so`. All-zero for `--rng native` transcripts. Under `mcts verify legacy-parity` pinned to backend (i)'s `engine_build_id`. |
+| 8 | 32 | shared_rng_build_id | Provenance for a physically shared RNG stream when one is used. The current no-shared-byte-stream baseline records all-zero for normal `--rng cpp` and `--rng native` transcripts; legacy-parity fixtures may pin this to backend (i)'s `engine_build_id`. |
 | 40 | 32 | cohort_config_hash | SHA-256 of the backend-independent cohort config: the common verify inputs excluding `backend`, the engine envelope, path, and cache metadata. Distinct from the backend-specific cache filename hash. |
 | 72 | 32 | engine_build_id | SHA-256 of the loaded backend shared library / executable that wrote this transcript. |
 | 104 | 40 | engine_git_commit | ASCII; project repo commit SHA at build time. Padded with NULs if shorter than 40 bytes. Informational; does not gate `verify`. |
@@ -193,7 +193,7 @@ holds vacuously over the smart constructor's accepted subset.
 ### Standard Transcripts
 
 Transcripts produced by `mcts bench rollouts/selfplay` and by `mcts verify
-rollouts/selfplay/legacy-parity` are one-game files addressed by the SHA-256 of
+rollouts/selfplay` are one-game files addressed by the SHA-256 of
 the canonical little-endian encoding of the backend-specific `RunConfig` record:
 
 ```haskell

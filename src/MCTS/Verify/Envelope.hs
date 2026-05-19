@@ -7,12 +7,8 @@ module MCTS.Verify.Envelope
     ) where
 
 import MCTS.Driver (makeLogicalEnvelope)
-import MCTS.Driver.Dispatch (cppLegacyLibraryPath)
 import MCTS.Error (AppError (..), EnvelopeMismatchScope (..))
 import MCTS.FFI.Common (engineEnvelopeToEnvelope)
-import MCTS.FFI.CppFunctional (cppFunctionalLibraryPath, loadCppFunctionalEnvelope)
-import MCTS.FFI.CppImperative (cppImperativeLibraryPath, loadCppImperativeEnvelope)
-import MCTS.FFI.CppLegacy (loadCppLegacyEnvelope)
 import MCTS.FFI.Rust (loadRustEnvelope, rustLibraryPath)
 import MCTS.Types
 import System.Directory (doesFileExist)
@@ -169,9 +165,9 @@ checkTranscriptLive allowStale transcript = do
 loadExpectedEnvelope :: Envelope -> IO (Either AppError Envelope)
 loadExpectedEnvelope envelope =
     case envelopeBackend envelope of
-        CppLegacy -> loadForeign cppLegacyLibraryPath loadCppLegacyEnvelope
-        CppImperative -> loadForeign cppImperativeLibraryPath loadCppImperativeEnvelope
-        CppFunctional -> loadForeign cppFunctionalLibraryPath loadCppFunctionalEnvelope
+        CppLegacy -> pure (Right envelope)
+        CppImperative -> pure (Right envelope)
+        CppFunctional -> pure (Right envelope)
         Rust -> loadForeign rustLibraryPath loadRustEnvelope
         Haskell -> pure (Right (makeLogicalEnvelope Haskell (envelopeRngSource envelope)))
   where

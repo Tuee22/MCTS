@@ -89,11 +89,11 @@ runBatchNoWrite :: RunInputs -> IO (Either String ())
 runBatchNoWrite inputs = runBatchNoWriteWithGame (\gid -> pure (Right (runGame inputs gid))) inputs
 
 -- | Run a batch with a caller-supplied per-game runner that may fail.
--- The default runner is the pure in-process `runGame`. Backend (i)
--- routes through this with `runGameCppLegacy` so FFI-backed batch
--- transcripts carry the legacy's real `(action_id, visits)` records;
--- on legacy ABI failure the runner returns `Left` and the whole
--- batch surfaces the error string.
+-- The default runner is the pure in-process `runGame`. Live foreign
+-- backend dispatch routes through this helper so FFI-backed batch
+-- transcripts carry real `(action_id, visits)` records; on ABI failure
+-- the runner returns `Left` and the whole batch surfaces the error
+-- string.
 runBatchWithGame
     :: (Word32 -> IO (Either String GameTranscript))
     -> RunInputs

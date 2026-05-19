@@ -11,8 +11,8 @@
 
 > **Purpose**: Land backend (i) — the strictly verbatim re-port of `MCTS_legacy`
 > exposed via a stable C ABI through the Haskell FFI — plus the build harness, the
-> `--rng cpp` `std::mt19937_64` plumbing, and the `test/golden/legacy/` Q6 fixture
-> set.
+> legacy C++ RNG split-seed fixture for `--rng cpp` validation, and the
+> `test/golden/legacy/` Q6 fixture set.
 
 ## Phase Status
 
@@ -193,7 +193,7 @@ wrappers that make every call safe (no leaked handles, no double-free).
   The bounded dynamic board acquire/free smoke now runs when
   `cpp-legacy/build/libmcts_cpp_legacy.so` is present.
 
-## Sprint 4.3: `--rng cpp` Shared `std::mt19937_64` Plumbing ✅
+## Sprint 4.3: `--rng cpp` C++ Split-Seed Fixture ✅
 
 **Status**: Done
 **Implementation**: `cpp-legacy/c-abi/rng.h`, `cpp-legacy/c-abi/rng.cc`,
@@ -203,18 +203,20 @@ wrappers that make every call safe (no leaked handles, no double-free).
 
 ### Objective
 
-Expose the `std::mt19937_64` generator to Haskell over the FFI so that every
-participating backend can draw from the same C++ generator under `--rng cpp`. This
-is the determinism contract's shared-RNG path.
+Expose the legacy C++ seed splitter to Haskell over the FFI so the no-backend-salt
+`--rng cpp` schedule can be validated against the C++ side. The current live
+verify path does not route every backend through a shared `std::mt19937_64` byte
+stream.
 
 ### Deliverables
 
-- `cpp-legacy/c-abi/rng.h` declares the C ABI for the `std::mt19937_64` generator
-  per [../README.md → Cross-backend verification → RNG FFI contract](../README.md).
-  The four exported symbols are:
+- `cpp-legacy/c-abi/rng.h` declares the C ABI for the legacy RNG fixture per
+  [../README.md → Cross-backend verification → RNG FFI contract](../README.md).
+  The exported symbols are:
   ```c
   cpp_rng* cpp_rng_new(uint64_t seed);
   uint64_t cpp_rng_next_u64(cpp_rng*);
+  uint64_t cpp_rng_split_seed(uint64_t master_seed, uint64_t game_index);
   cpp_rng* cpp_rng_split(uint64_t master_seed, uint64_t game_index);
   void     cpp_rng_free(cpp_rng*);
   ```
@@ -223,42 +225,37 @@ is the determinism contract's shared-RNG path.
   derived without mutating the parent generator state. Workers therefore do not
   carry RNG identities; the seed lives with the game, and worker-to-game
   assignment never changes a game's output.
-- `cpp-legacy/c-abi/rng.cc` wraps the standard library generator. The
-  implementation lives in `cpp-legacy/` (verbatim port territory) because the
-  legacy itself uses this generator; later backends (ii)–(iv) will dlopen-or-link
-  this same exported symbol set rather than provide their own copies of
-  `std::mt19937_64`, so the determinism contract is single-sourced.
-- `src/MCTS/Rng/Cpp.hs` exposes the Haskell-side `CppRng` consumer:
-  `withCppRngForGame :: Word64 -> Word64 -> (CppRngHandle -> App a) -> App a`
-  (master_seed → game_index → action) calls `cpp_rng_split` under the hood to get
-  a per-game handle, and `cppRngNextU64 :: CppRngHandle -> App Word64` draws bytes
-  from it. `cppRngFree` is paired into the bracket so the handle is always
-  released. `cpp_rng_new` is exposed for tests that need a non-split handle.
+- `cpp-legacy/c-abi/rng.cc` wraps the standard library generator and exposes
+  `cpp_rng_split_seed` for direct cross-language seed checks.
+- `src/MCTS/Rng/Cpp.hs` exposes the Haskell-side `cppSplitSeed` helper, which
+  dynamically loads `cpp_rng_split_seed` and lets `mcts-unit` compare the C++
+  fixture against `MCTS.Rng.Mix.mix`.
 - The `--rng cpp` flag is plumbed through `BenchOptions` (Phase 3 Sprint 3.5
   reserved the field). The `mcts bench rollouts/selfplay --backend cpp-legacy
   --rng cpp` invocation is end-to-end at Sprint 4.4 closure.
 
 ### Validation
 
-1. A unit test pins a specific `(seed, n)` pair to a specific
-   `cppRngNextU64`-produced `Word64` sequence (the values come from a verbatim
-   `std::mt19937_64` reference).
-2. Same-backend determinism: two runs of `mcts bench rollouts --backend
-   cpp-legacy --rng cpp --games 4 --seed 42` produce identical determinism payloads.
+1. A unit test pins `cpp_rng_split_seed(master_seed, game_index)` against the
+   Haskell `MCTS.Rng.Mix.mix` vectors when the legacy shared library is built.
+2. Same-backend determinism: two runs of the Compose invocation
+   `docker compose run --rm mcts mcts bench rollouts --backend cpp-legacy --rng cpp --games 4 --seed 42`
+   produce identical determinism payloads.
 3. The `prerequisiteRegistry` `libmcts-cpp-legacy-built` node passes its check.
 
 ### Closure Notes
 
-- Baseline landed: `cpp-legacy/c-abi/rng.h` and `rng.cc` provide the shared C++
-  RNG ABI, including `cpp_rng_split_seed(master_seed, game_index)` for direct
+- Baseline landed: `cpp-legacy/c-abi/rng.h` and `rng.cc` provide the legacy C++
+  RNG fixture ABI, including `cpp_rng_split_seed(master_seed, game_index)` for direct
   cross-language splitmix fixtures. `src/MCTS/Rng/Cpp.hs` dynamically calls that
   symbol through `foreign import ccall "dynamic"`, and `mcts-unit` checks the
   C++ split seed against the Haskell `MCTS.Rng.Mix.mix` vectors when the legacy
   shared library is built.
-- Routing `--rng cpp` through the shared `std::mt19937_64` stream for real foreign
-  backends is owned by each real backend driver in Sprints `4.4`, `5.4`, `6.2`, and
-  `6.4`; this sprint closes the shared ABI and cross-language splitmix fixture.
-- Whole-cohort identical `u64` stream validation is owned by Phase `7`'s
+- The current real foreign backend drivers use the cross-language splitmix
+  schedule validated by `cpp_rng_split_seed`; `--rng cpp` keeps
+  `MCTS.Rng.Mix.backendNativeSalt` at zero instead of routing a live shared
+  `std::mt19937_64` byte stream through every backend.
+- Whole-cohort identical visit-count validation is owned by Phase `7`'s
   cross-backend verify closure.
 
 ## Sprint 4.4: Backend (i) Game Driver and Transcript Output ✅
@@ -522,11 +519,10 @@ runtime probes + `mcts_legacy_recompute_move`), `cpp-legacy/Makefile`
 ### Objective
 
 Backend (i) populates its engine envelope from build-time constants
-and exposes a foreign-engine recompute entry point. The `cpp_rng.so`
-that backend (i) ships also stamps the canonical
-`shared_rng_build_id` (the SHA-256 of `libmcts_cpp_legacy.so` itself,
-since backend (i) IS the canonical `std::mt19937_64` owner under both
-`--rng cpp` and `mcts verify legacy-parity` cohorts). See
+and exposes a foreign-engine recompute entry point. The current envelope
+baseline leaves `shared_rng_build_id` zero for normal runs; backend (i)'s
+post-link SHA-256 is stamped as `engine_build_id`, and legacy-parity fixture
+provenance can compare against that build identity when needed. See
 [../documents/engineering/determinism_contract.md → Engine Envelope](../documents/engineering/determinism_contract.md)
 and [../documents/engineering/backend_ffi_contract.md → Engine
 Envelope Surface](../documents/engineering/backend_ffi_contract.md).
@@ -555,9 +551,8 @@ Envelope Surface](../documents/engineering/backend_ffi_contract.md).
   transcript's seed and budget, and stream `(move_index, action_id[],
   visits[], equity[])` records back to Haskell through the `EqStream`
   FFI. Recompute respects the transcript's `--rng cpp` envelope: if
-  the transcript was written with `rng_source = cpp`, the recompute
-  draws from the shared `cpp_rng.so` (which backend (i) itself owns)
-  and hard-asserts visit-agreement.
+  the transcript was written with `rng_source = cpp`, the recompute uses the
+  no-backend-salt schedule and hard-asserts visit-agreement.
 - Build harness extension: `mcts build cpp-legacy` Plan/Apply gains
   a post-link "envelope patch" step that computes
   `sha256(libmcts_cpp_legacy.so)` and `objcopy

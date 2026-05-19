@@ -25,6 +25,9 @@ trackingGeneratedPaths = map fst generatedFiles <> externallyTrackedPaths
 externallyTrackedPaths :: [FilePath]
 externallyTrackedPaths =
     [ "test/golden/legacy/transcripts"
+    , "test/golden/cpp-legacy/transcripts"
+    , "test/golden/cpp-imperative/transcripts"
+    , "test/golden/cpp-functional/transcripts"
     ]
 
 generatedFiles :: [(FilePath, String)]

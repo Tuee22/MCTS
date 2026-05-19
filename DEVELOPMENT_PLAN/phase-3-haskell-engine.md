@@ -333,7 +333,7 @@ wall-clock time from a single `GHC.Clock.getMonotonicTimeNSec`, emit
     Phases 4–6 add the four FFI backends.
   - `benchRng :: RngSource` — `NativeRng` or `CppRng` (Phase 3 supports
     `NativeRng` only on the Haskell side; `CppRng` lands in Phase 4 after the
-    FFI bridge exposes `std::mt19937_64`).
+    C++ split-seed fixture is exposed for cross-language validation).
   - `benchThreading :: Threading` — `SingleThreaded` or `MultiThreaded { workers
     = N }`; default `MultiThreaded { workers = 8 }`.
   - `benchGames`, `benchSeed`, `benchMaxPlies` (default 200; ignored for backend

@@ -8,17 +8,16 @@ import MCTS.Verify.Envelope (checkBackendSlot, checkCohortInvariant)
 import Test.Tasty (defaultMain, testGroup)
 import Test.Tasty.HUnit (assertBool, assertFailure, testCase, (@?=))
 
--- | Phase 7 Sprint 7.2 declares the four-backend `(ii)..(v)` round-robin under
--- `--rng cpp` as the canonical cross-backend cohort. The cpp-legacy backend
--- must be rejected at the verify boundary; the cohort minimum is two
--- backends.
+-- | Phase 8 Sprint 8.6 leaves a two-backend `(iv)..(v)` round-robin under
+-- `--rng cpp` as the canonical cross-backend cohort. Retired backends must be
+-- rejected at the verify boundary; the cohort minimum is two backends.
 main :: IO ()
 main =
     defaultMain $
         testGroup
             "mcts-cross-backend"
-            [ testCase "four-backend rollout cohort" rolloutsCheck
-            , testCase "four-backend selfplay cohort" selfplayCheck
+            [ testCase "two-backend rollout cohort" rolloutsCheck
+            , testCase "two-backend selfplay cohort" selfplayCheck
             , testCase "cohort constraints" cohortConstraintsCheck
             , testCase "envelope: cohort host_arch mismatch hard-fails" envelopeCohortHostArchCheck
             , testCase "envelope: shared_rng_build_id mismatch hard-fails" envelopeCohortRngBuildCheck
@@ -38,10 +37,10 @@ rolloutsCheck = do
         verifyRunDetailed
             False
             Rollouts
-            [CppImperative, CppFunctional, Rust, Haskell]
+            [Rust, Haskell]
             inputs{inputThreading = SingleThreaded}
     case detailed of
-        Right result -> length (verifyBatches result) @?= 4
+        Right result -> length (verifyBatches result) @?= 2
         Left err -> assertFailure ("cross-backend verify failed: " <> show err)
 
 selfplayCheck :: IO ()
@@ -57,20 +56,28 @@ selfplayCheck = do
         verifyRunDetailed
             False
             Selfplay
-            [CppImperative, CppFunctional, Rust, Haskell]
+            [Rust, Haskell]
             inputs{inputThreading = SingleThreaded}
     case detailed of
-        Right result -> length (verifyBatches result) @?= 4
+        Right result -> length (verifyBatches result) @?= 2
         Left err -> assertFailure ("cross-backend selfplay verify failed: " <> show err)
 
 cohortConstraintsCheck :: IO ()
 cohortConstraintsCheck = do
     let inputs = defaultRunInputs{inputGames = 1, inputSeed = 42, inputSims = FixedSims 4, inputMaxPlies = 20}
-    -- cpp-legacy is excluded from `mcts verify`; the runner must reject it.
-    rejectsLegacy <- verifyRun Rollouts [CppLegacy, CppImperative, Haskell] inputs
+    -- Retired backends are excluded from `mcts verify`; the runner must reject them.
+    rejectsLegacy <- verifyRun Rollouts [CppLegacy, Rust, Haskell] inputs
     case rejectsLegacy of
         Left (VerifyCohortTooSmall _) -> pure ()
         other -> assertFailure ("expected VerifyCohortTooSmall rejecting cpp-legacy, got " <> show other)
+    rejectsImperative <- verifyRun Rollouts [CppImperative, Rust, Haskell] inputs
+    case rejectsImperative of
+        Left (VerifyCohortTooSmall _) -> pure ()
+        other -> assertFailure ("expected VerifyCohortTooSmall rejecting cpp-imperative, got " <> show other)
+    rejectsFunctional <- verifyRun Rollouts [CppFunctional, Rust, Haskell] inputs
+    case rejectsFunctional of
+        Left (VerifyCohortTooSmall _) -> pure ()
+        other -> assertFailure ("expected VerifyCohortTooSmall rejecting cpp-functional, got " <> show other)
     -- A single-backend cohort must fail the minimum-cohort check.
     rejectsSingle <- verifyRun Rollouts [Haskell] inputs
     case rejectsSingle of

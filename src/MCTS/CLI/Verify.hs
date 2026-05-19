@@ -8,7 +8,6 @@ import Data.Char (ord)
 import qualified Data.Text as Text
 import MCTS.CLI.Command
     ( VerifyCommand (..)
-    , legacyParityBackendsToBackends
     , verifyBackendsToBackends
     )
 import MCTS.CLI.Output
@@ -43,11 +42,6 @@ runWithOutput output command =
                 "verify selfplay"
                 "agree on visit counts"
                 (verifyRunDetailed allowStale Selfplay (verifyBackendsToBackends backends) inputs)
-        VerifyLegacyParity workload allowStale backends inputs ->
-            run
-                ("verify legacy-parity " <> workloadName workload)
-                "complete the legacy envelope"
-                (legacyParityRunDetailed allowStale workload (legacyParityBackendsToBackends backends) inputs)
   where
     run label agreement action = do
         result <- liftIO action

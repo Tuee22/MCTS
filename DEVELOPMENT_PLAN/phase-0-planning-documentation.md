@@ -228,7 +228,7 @@ rule L.
     `plain`, `--color auto|always|never`, `--no-color`.
   - **Error Handling**: single `AppError` ADT, `renderError :: AppError -> Text`,
     forbidden `print`, `exitFailure`, direct terminal formatting outside the output
-    layer. The audit confirms the canonical 15-variant list is named in
+    layer. The audit confirms the canonical 17-variant list is named in
     [system-components.md → CLI Doctrine Components](system-components.md),
     [phase-1-haskell-cli-surface.md → Sprint 1.9](phase-1-haskell-cli-surface.md),
     and the doctrine-scope Error Handling bullet in [00-overview.md](00-overview.md):
@@ -237,10 +237,11 @@ rule L.
     `LegacyParityRolloutOverflow`,
     `ArchEnvelopeMismatch`, `EngineEnvelopeMismatch`, `PrerequisiteUnmet`,
     `SubprocessFailed`, `FFIFailure`, `DocsCheckDrift`, `UnknownCommand`,
-    `InvalidMove`. `TranscriptFormatUnsupported`, `ArchEnvelopeMismatch`, and
+    `InvalidMove`, `ParseError`, `IOErrorText`. `TranscriptFormatUnsupported`,
+    `ArchEnvelopeMismatch`, and
     `EngineEnvelopeMismatch` are doctrine-required because the project README
-    pins them; the others mirror the README's enumeration plus the three
-    project-added surfaces.
+    pins them; the rest mirror the README's current enumeration and the
+    implemented parser/IO catchall surfaces.
   - **GADT-Indexed State Machines**: phantom-type indices, singleton witnesses, the
     forbidden runtime-status-enum-with-manual-validation pattern.
   - **Project-level documentation standards**: the six elements
@@ -336,7 +337,7 @@ the surrounding phase documents and engineering docs cited above.
 | Lint/Format/Code-Quality Stack (`fourmolu.yaml` twelve settings, `.hlint.yaml`, `forbiddenPathRegistry`) | Phase 1 Sprint 1.4 |
 | Testing Doctrine (`tasty`, `execParserPure`, property invariants, golden tests) | Phase 1 Sprints 1.4/1.9 + Phase 7 Sprint 7.1 |
 | Output Rules (`--format`, `--color`, `--no-color`) | Phase 1 Sprint 1.9 |
-| Error Handling (15-variant `AppError`, `renderError`, forbidden `print`/`exitFailure`) | Phase 1 Sprint 1.9 |
+| Error Handling (17-variant `AppError`, `renderError`, forbidden `print`/`exitFailure`) | Phase 1 Sprint 1.9 |
 | GADT-Indexed State Machines (phantom indices, singleton witnesses) | `documents/engineering/haskell_code_guide.md`; Phase 7 Sprint 7.2 binding |
 | Project-level documentation standards (six elements) | Phase 0 Sprint 0.1 + Phase 1 Sprint 1.3 |
 

@@ -5,7 +5,7 @@
 -- backend handle (`withBoard`, `withTree`, `withRng`), the `AppError
 -- FFIFailure` lifting of foreign exceptions, and the `EngineEnvelope`
 -- record type that mirrors the C ABI `mcts_<backend>_envelope` struct.
--- Per-backend modules (`MCTS.FFI.CppLegacy`, etc.) supply the typed
+-- Per-backend modules such as `MCTS.FFI.Rust` supply the typed
 -- foreign-imported pointers and call this module's helpers.
 --
 -- Note: until the foreign shared libraries are actually loaded, the

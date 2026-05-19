@@ -1,7 +1,10 @@
 -- | Per-backend driver dispatch for `mcts bench` and `mcts verify`.
 --
 -- The pure in-process Haskell `runBatch` covers the logical fallback.
--- When a foreign backend's shared library is present, `--backend X`
+-- Backends (i) `cpp-legacy`, (ii) `cpp-imperative`, and (iii)
+-- `cpp-functional` are retired from live dispatch after Sprints 8.4,
+-- 8.5, and 8.6; their historical transcripts live under `test/golden/`.
+-- When a live foreign backend's shared library is present, `--backend X`
 -- routes through the per-backend FFI driver so the transcript carries
 -- both the engine's real per-move `(action_id, visits)` records and the
 -- live `mcts_<backend>_get_envelope()` payload. The C++/Rust search ABI
@@ -13,50 +16,26 @@
 module MCTS.Driver.Dispatch
     ( runBatchDispatch
     , runBatchNoWriteDispatch
-    , cppLegacyLibraryPath
     ) where
 
 import qualified Data.Text as Text
 import Data.Word (Word32)
 import qualified MCTS.Driver as Driver
-import MCTS.Driver.CppFunctional (runGameCppFunctional)
-import MCTS.Driver.CppImperative (runGameCppImperative)
-import MCTS.Driver.CppLegacy (runGameCppLegacy)
 import MCTS.Driver.ForeignSearch (runForeignSearchGame)
 import MCTS.Error (AppError, renderError)
 import MCTS.FFI.Common (EngineEnvelope, engineEnvelopeToEnvelope)
-import MCTS.FFI.CppFunctional (cppFunctionalLibraryPath, loadCppFunctionalEnvelope)
-import MCTS.FFI.CppImperative (cppImperativeLibraryPath, loadCppImperativeEnvelope)
-import MCTS.FFI.CppLegacy (loadCppLegacyEnvelope)
 import MCTS.FFI.Rust (loadRustEnvelope, rustLibraryPath, withRustSearchGame)
 import MCTS.Types (Backend (..), GameTranscript)
 import System.Directory (doesFileExist)
 
-cppLegacyLibraryPath :: FilePath
-cppLegacyLibraryPath = "cpp-legacy/build/libmcts_cpp_legacy.so"
-
 runBatchDispatch :: Driver.RunInputs -> IO (Either String Driver.BatchResult)
 runBatchDispatch inputs =
     case Driver.inputBackend inputs of
-        CppLegacy -> do
-            present <- doesFileExist cppLegacyLibraryPath
-            if present
-                then runWithLiveEnvelope loadCppLegacyEnvelope (runWithRunner runGameCppLegacy inputs) inputs
-                else Driver.runBatch inputs
-        CppImperative -> do
-            present <- doesFileExist cppImperativeLibraryPath
-            if present && canUseCappedForeignSearch inputs
-                then
-                    runWithLiveEnvelope loadCppImperativeEnvelope (runWithRunner runGameCppImperative inputs) inputs
-                else Driver.runBatch inputs
-        CppFunctional -> do
-            present <- doesFileExist cppFunctionalLibraryPath
-            if present && canUseCappedForeignSearch inputs
-                then
-                    runWithLiveEnvelope loadCppFunctionalEnvelope (runWithRunner runGameCppFunctional inputs) inputs
-                else Driver.runBatch inputs
+        CppLegacy -> pure (Left "cpp-legacy is retired from live dispatch; use test/golden/cpp-legacy/")
+        CppImperative -> pure (Left "cpp-imperative is retired from live dispatch; use test/golden/cpp-imperative/")
+        CppFunctional -> pure (Left "cpp-functional is retired from live dispatch; use test/golden/cpp-functional/")
         Rust -> do
-            present <- (&&) <$> doesFileExist rustLibraryPath <*> doesFileExist cppImperativeLibraryPath
+            present <- doesFileExist rustLibraryPath
             if present && canUseCappedForeignSearch inputs
                 then
                     runWithLiveEnvelope
@@ -69,23 +48,11 @@ runBatchDispatch inputs =
 runBatchNoWriteDispatch :: Driver.RunInputs -> IO (Either String ())
 runBatchNoWriteDispatch inputs =
     case Driver.inputBackend inputs of
-        CppLegacy -> do
-            present <- doesFileExist cppLegacyLibraryPath
-            if present
-                then Driver.runBatchNoWriteWithGame (runWithRunner runGameCppLegacy inputs) inputs
-                else Driver.runBatchNoWrite inputs
-        CppImperative -> do
-            present <- doesFileExist cppImperativeLibraryPath
-            if present && canUseCappedForeignSearch inputs
-                then Driver.runBatchNoWriteWithGame (runWithRunner runGameCppImperative inputs) inputs
-                else Driver.runBatchNoWrite inputs
-        CppFunctional -> do
-            present <- doesFileExist cppFunctionalLibraryPath
-            if present && canUseCappedForeignSearch inputs
-                then Driver.runBatchNoWriteWithGame (runWithRunner runGameCppFunctional inputs) inputs
-                else Driver.runBatchNoWrite inputs
+        CppLegacy -> pure (Left "cpp-legacy is retired from live dispatch; use test/golden/cpp-legacy/")
+        CppImperative -> pure (Left "cpp-imperative is retired from live dispatch; use test/golden/cpp-imperative/")
+        CppFunctional -> pure (Left "cpp-functional is retired from live dispatch; use test/golden/cpp-functional/")
         Rust -> do
-            present <- (&&) <$> doesFileExist rustLibraryPath <*> doesFileExist cppImperativeLibraryPath
+            present <- doesFileExist rustLibraryPath
             if present && canUseCappedForeignSearch inputs
                 then
                     Driver.runBatchNoWriteWithGame

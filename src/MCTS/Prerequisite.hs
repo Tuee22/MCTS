@@ -64,7 +64,7 @@ prerequisiteRegistry =
     , versionContainsNode
         "bolt"
         "LLVM BOLT 19 post-link optimizer"
-        "install LLVM BOLT 19 (llvm-bolt) for the cpp-imperative/cpp-functional/rust steelman stacks"
+        "install LLVM BOLT 19 (llvm-bolt) for the Rust steelman stack"
         ["llvm"]
         "llvm-bolt"
         ["--version"]
@@ -117,10 +117,6 @@ prerequisiteRegistry =
         "create container-local .build/profiles when running optimized backend builds"
         []
         (doesDirectoryExist ".build/profiles")
-    , profileDirectoryNode "cpp-imperative-pgo-profile" "cpp-imperative/pgo-profile"
-    , profileDirectoryNode "cpp-imperative-bolt-profile" "cpp-imperative/bolt-profile"
-    , profileDirectoryNode "cpp-functional-pgo-profile" "cpp-functional/pgo-profile"
-    , profileDirectoryNode "cpp-functional-bolt-profile" "cpp-functional/bolt-profile"
     , profileDirectoryNode "rust-pgo-profile" "rust/pgo-profile"
     , PrerequisiteNode
         "logical-backends"
@@ -135,24 +131,6 @@ prerequisiteRegistry =
         []
         (doesFileExist "test/golden/legacy/README.md")
     , PrerequisiteNode
-        "libmcts-cpp-legacy-built"
-        "cpp-legacy shared library exists for dynamic FFI smoke tests"
-        "run docker compose run --rm mcts mcts build cpp-legacy"
-        ["cxx"]
-        (doesFileExist "cpp-legacy/build/libmcts_cpp_legacy.so")
-    , PrerequisiteNode
-        "libmcts-cpp-imperative-built"
-        "cpp-imperative shared library exists for dynamic FFI smoke tests"
-        "run docker compose run --rm mcts mcts build cpp-imperative"
-        ["cxx"]
-        (doesFileExist "cpp-imperative/build/libmcts_cpp_imperative.so")
-    , PrerequisiteNode
-        "libmcts-cpp-functional-built"
-        "cpp-functional shared library exists for dynamic FFI smoke tests"
-        "run docker compose run --rm mcts mcts build cpp-functional"
-        ["cxx"]
-        (doesFileExist "cpp-functional/build/libmcts_cpp_functional.so")
-    , PrerequisiteNode
         "libmcts-rust-built"
         "Rust cdylib exists for dynamic FFI smoke tests"
         "run docker compose run --rm mcts mcts build rust"
@@ -165,10 +143,7 @@ prerequisitesForBuild backend =
     transitiveClosure prerequisiteRegistry $
         case backend of
             "rust" -> ["cargo", "rustc", "lld-linker", "pgo-profiles"]
-            "cpp-legacy" -> ["cxx"]
             "legacy-fixtures" -> ["cxx"]
-            "cpp-imperative" -> ["cxx", "llvm", "bolt", "pgo-profiles", "mimalloc"]
-            "cpp-functional" -> ["cxx", "llvm", "bolt", "pgo-profiles", "mimalloc"]
             _ -> []
 
 prerequisitesForTest :: [PrerequisiteNode]

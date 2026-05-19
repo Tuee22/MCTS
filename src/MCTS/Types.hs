@@ -10,9 +10,6 @@ module MCTS.Types
     , VerifyBackend (..)
     , toVerifyBackend
     , verifyBackendToBackend
-    , LegacyParityBackend (..)
-    , toLegacyParityBackend
-    , legacyParityBackendToBackend
     , Workload (..)
     , workloadName
     , RngSource (..)
@@ -81,16 +78,20 @@ backendRoman backend =
         Rust -> "(iv)"
         Haskell -> "(v)"
 
+-- | Live operator-selectable backends. Backends (i), (ii), and (iii)
+-- remain in the transcript wire format as archived backends, but they
+-- are retired from CLI selection after Sprints 8.4, 8.5, and 8.6.
 allBackends :: [Backend]
-allBackends = [minBound .. maxBound]
+allBackends =
+    [ Rust
+    , Haskell
+    ]
 
 parseBackend :: String -> Maybe Backend
 parseBackend raw =
     lookup (map toLower raw) [(backendIdentifier b, b) | b <- allBackends]
 
 data VerifyBackend where
-    VCppImperative :: VerifyBackend
-    VCppFunctional :: VerifyBackend
     VRust :: VerifyBackend
     VHaskell :: VerifyBackend
 
@@ -107,52 +108,16 @@ toVerifyBackend :: Backend -> Maybe VerifyBackend
 toVerifyBackend backend =
     case backend of
         CppLegacy -> Nothing
-        CppImperative -> Just VCppImperative
-        CppFunctional -> Just VCppFunctional
+        CppImperative -> Nothing
+        CppFunctional -> Nothing
         Rust -> Just VRust
         Haskell -> Just VHaskell
 
 verifyBackendToBackend :: VerifyBackend -> Backend
 verifyBackendToBackend backend =
     case backend of
-        VCppImperative -> CppImperative
-        VCppFunctional -> CppFunctional
         VRust -> Rust
         VHaskell -> Haskell
-
-data LegacyParityBackend where
-    LpCppLegacy :: LegacyParityBackend
-    LpCppImperative :: LegacyParityBackend
-    LpCppFunctional :: LegacyParityBackend
-    LpRust :: LegacyParityBackend
-    LpHaskell :: LegacyParityBackend
-
-instance Eq LegacyParityBackend where
-    left == right = legacyParityBackendToBackend left == legacyParityBackendToBackend right
-
-instance Ord LegacyParityBackend where
-    compare left right = compare (legacyParityBackendToBackend left) (legacyParityBackendToBackend right)
-
-instance Show LegacyParityBackend where
-    show = backendIdentifier . legacyParityBackendToBackend
-
-toLegacyParityBackend :: Backend -> LegacyParityBackend
-toLegacyParityBackend backend =
-    case backend of
-        CppLegacy -> LpCppLegacy
-        CppImperative -> LpCppImperative
-        CppFunctional -> LpCppFunctional
-        Rust -> LpRust
-        Haskell -> LpHaskell
-
-legacyParityBackendToBackend :: LegacyParityBackend -> Backend
-legacyParityBackendToBackend backend =
-    case backend of
-        LpCppLegacy -> CppLegacy
-        LpCppImperative -> CppImperative
-        LpCppFunctional -> CppFunctional
-        LpRust -> Rust
-        LpHaskell -> Haskell
 
 data Workload = Rollouts | Selfplay
     deriving (Eq, Ord, Show, Read)

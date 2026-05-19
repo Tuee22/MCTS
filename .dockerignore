@@ -1,6 +1,14 @@
 .git
 dist-newstyle
 .mcts-cache
+transcripts
+**/transcripts
+*.tr
+**/*.tr
+*.eq
+**/*.eq
+*.envelope
+**/*.envelope
 .build
 cpp-legacy/build
 cpp-imperative/build

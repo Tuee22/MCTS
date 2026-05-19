@@ -3,13 +3,11 @@ module MCTS.CLI.Command
     , BenchCommand (..)
     , VerifyCommand (..)
     , VerifyBackend (..)
-    , LegacyParityBackend (..)
     , verifyBackendToBackend
     , verifyBackendsToBackends
-    , legacyParityBackendToBackend
-    , legacyParityBackendsToBackends
     , InspectCommand (..)
     , TestCommand (..)
+    , RetirementAnchorOptions (..)
     , LintCommand (..)
     , DocsCommand (..)
     , BuildCommand (..)
@@ -27,13 +25,10 @@ import MCTS.Driver (RunInputs)
 import MCTS.Plan (PlanOptions)
 import MCTS.Types
     ( Backend
-    , LegacyParityBackend (..)
     , Side
     , SimBudget
     , Transcript
     , VerifyBackend (..)
-    , Workload
-    , legacyParityBackendToBackend
     , verifyBackendToBackend
     )
 
@@ -59,14 +54,10 @@ data BenchCommand
 data VerifyCommand
     = VerifyRollouts Bool [VerifyBackend] RunInputs
     | VerifySelfplay Bool [VerifyBackend] RunInputs
-    | VerifyLegacyParity Workload Bool [LegacyParityBackend] RunInputs
     deriving (Eq, Show)
 
 verifyBackendsToBackends :: [VerifyBackend] -> [Backend]
 verifyBackendsToBackends = map verifyBackendToBackend
-
-legacyParityBackendsToBackends :: [LegacyParityBackend] -> [Backend]
-legacyParityBackendsToBackends = map legacyParityBackendToBackend
 
 data InspectCommand
     = InspectList (Maybe FilePath)
@@ -83,7 +74,15 @@ data CacheCommand
 
 data TestCommand
     = TestAll PlanOptions
+    | TestRetirementAnchor RetirementAnchorOptions
     | TestStanza String
+    deriving (Eq, Show)
+
+data RetirementAnchorOptions = RetirementAnchorOptions
+    { retirementAnchorRetiring :: !Backend
+    , retirementAnchorSuccessor :: !Backend
+    , retirementAnchorPlanOptions :: !PlanOptions
+    }
     deriving (Eq, Show)
 
 data LintCommand
@@ -99,10 +98,7 @@ data DocsCommand
     deriving (Eq, Show)
 
 data BuildCommand
-    = BuildCppLegacy PlanOptions
-    | BuildCppImperative PlanOptions
-    | BuildCppFunctional PlanOptions
-    | BuildRust PlanOptions
+    = BuildRust PlanOptions
     | BuildLegacyFixtures LegacyFixtureOptions
     deriving (Eq, Show)
 

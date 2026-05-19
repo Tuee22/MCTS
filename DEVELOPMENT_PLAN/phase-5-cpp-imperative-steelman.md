@@ -100,15 +100,17 @@ backend-agnostic from the Haskell side.
 - `thread_local` scratch buffers for the multi-threaded driver (per-worker, not
   per-game).
 - Visit-count compression to `u16` when `per_move_sims < 65536`.
-- **Native RNG choice.** Under `--rng native`, backend (ii) uses
-  `xoshiro256++` (the
-  [project README → Compiler and runtime tuning item 15](../README.md)
-  candidate; `wyrand` is the alternative). The choice is recorded in
-  [../documents/engineering/determinism_contract.md → RNG Source Split → Per-Backend Native RNG Table](../documents/engineering/determinism_contract.md);
-  swapping to `wyrand` post-Sprint-5.3 profiling is allowed, but the table
-  must be updated in the same commit so the documented choice never lags the
-  implemented choice. Under `--rng cpp` the RNG is `std::mt19937_64` via the
-  shared `cpp_rng_*` C ABI; the native choice is irrelevant.
+- **Native RNG choice.** The current backend (ii) search kernel consumes the
+  Haskell-compatible splitmix seed schedule. `cpp-imperative/engine/search.hpp`
+  still carries a `RngBackend` selector and xoshiro256++ helper, but
+  `cpp-imperative/c-abi/mcts_cpp_imperative.cc` passes `RngBackend::Mt19937`
+  and `cpp-imperative/engine/search.cpp` currently ignores the selector. Under
+  `--rng native`, `MCTS.Rng.Mix.backendNativeSalt` distinguishes backend (ii)'s
+  benchmark streams; under `--rng cpp`, the salt is zero for verify parity.
+  Moving the live search path to xoshiro256++ or `wyrand` is future profiling
+  work and must update
+  [../documents/engineering/determinism_contract.md → RNG Source Split → Per-Backend Native RNG Table](../documents/engineering/determinism_contract.md)
+  in the same change.
 - `cpp-imperative/c-abi/mcts_cpp_imperative.{h,cc}` declares and implements the
   same C ABI shape as `cpp-legacy/c-abi/mcts_cpp_legacy.h` (Phase 4 Sprint 4.1)
   with the prefix `mcts_imperative_*`. Both backends expose `Board`, `Tree`,

@@ -23,9 +23,6 @@ import qualified MCTS.Engine.ForeignRecompute as ForeignRecompute
 import qualified MCTS.Engine.Recompute as Recompute
 import qualified MCTS.Env as Env
 import qualified MCTS.Error
-import MCTS.FFI.CppFunctional (cppFunctionalLibraryPath, withCppFunctionalRecomputeGame)
-import MCTS.FFI.CppImperative (cppImperativeLibraryPath, withCppImperativeRecomputeGame)
-import MCTS.FFI.CppLegacy (cppLegacyLibraryPath, withCppLegacyRecomputeGame)
 import MCTS.FFI.Rust (rustLibraryPath, withRustRecomputeGame)
 import MCTS.Notation (renderMove, renderWinner)
 import MCTS.Plan (Plan (..), PlanOptions (..), renderPlanWith, writePlanFile)
@@ -399,11 +396,20 @@ recomputeBackendOverlay hashValue transcript backend buildId =
                     Left err -> OverlayFailed err
                     Right stream -> OverlayReady stream
         CppLegacy ->
-            recomputeForeign CppLegacy cppLegacyLibraryPath withCppLegacyRecomputeGame
+            pure
+                ( OverlaySkipped
+                    "cpp-legacy is retired; use archived originator sidecars under test/golden/cpp-legacy/"
+                )
         CppImperative ->
-            recomputeForeign CppImperative cppImperativeLibraryPath withCppImperativeRecomputeGame
+            pure
+                ( OverlaySkipped
+                    "cpp-imperative is retired; use archived originator sidecars under test/golden/cpp-imperative/"
+                )
         CppFunctional ->
-            recomputeForeign CppFunctional cppFunctionalLibraryPath withCppFunctionalRecomputeGame
+            pure
+                ( OverlaySkipped
+                    "cpp-functional is retired; use archived originator sidecars under test/golden/cpp-functional/"
+                )
         Rust ->
             recomputeForeign Rust rustLibraryPath withRustRecomputeGame
   where
@@ -634,26 +640,6 @@ foreignRecomputeRows transcriptHash transcript origin = do
         mapM
             (tryForeignRow transcript origin)
             [
-                ( CppImperative
-                , cppImperativeLibraryPath
-                , ForeignRecompute.foreignRecomputeEqStream
-                    CppImperative
-                    transcriptHash
-                    "live"
-                    withCppImperativeRecomputeGame
-                    transcript
-                )
-            ,
-                ( CppFunctional
-                , cppFunctionalLibraryPath
-                , ForeignRecompute.foreignRecomputeEqStream
-                    CppFunctional
-                    transcriptHash
-                    "live"
-                    withCppFunctionalRecomputeGame
-                    transcript
-                )
-            ,
                 ( Rust
                 , rustLibraryPath
                 , ForeignRecompute.foreignRecomputeEqStream

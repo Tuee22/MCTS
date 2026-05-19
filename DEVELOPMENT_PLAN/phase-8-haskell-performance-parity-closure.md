@@ -18,17 +18,17 @@
 
 ## Phase Status
 
-🔄 **Active**. Sprints `8.1` through `8.3` are closed. The LLVM-driven GHC
+✅ **Done**. Sprints `8.1` through `8.7` are closed. Sprint `8.6`
+recorded the backend (v)-vs-backend (iii) parity anchor and retired backend
+(iii); Sprint `8.7` closed the plan suite and cleanup ledger. The LLVM-driven GHC
 tuning flag set, RTS pin, and hot-path `INLINABLE` pragmas ship under GHC
 `9.14.1` with LLVM `19`; Sprint `8.2` ran the three profile-driven tuning
 rounds recorded below. The canonical 2026-05-19
 `docker compose run --rm mcts mcts test all` gate records Q1 ST **0.05×**,
-Q1 MT8 **0.40×**, Q2 ST **0.05×**, Q2 MT8 **0.20×**, Q5 Haskell **1.00×**,
-Q5 cpp-imperative **3.61×**, Q7 legacy-envelope liveness **PASS**, and
+Q1 MT8 **0.41×**, Q2 ST **0.05×**, Q2 MT8 **0.20×**, Q5 Haskell **0.99×**,
+Q5 cpp-imperative **3.64×**, Q7 frozen backend (i) anchor **PASS**, and
 `Verdict: Within tolerance`. The performance-parity proof is therefore closed.
-The remaining Phase `8` work is the retirement protocol: Sprint `8.4` is
-unblocked but not started, and Sprints `8.5`-`8.7` still depend on the ordered
-retirement chain and frozen golden anchors.
+No Phase `8` remaining work survives.
 
 ## Phase Summary
 
@@ -50,10 +50,16 @@ the pass/fail threshold is `HASKELL_PARITY_TOLERANCE = 0.05`, so any shortfall i
 the 5–15% band still renders `Shortfall <ratio>` (with the PGO note attached as
 attribution, not as exemption).
 The 2026-05-19 canonical report card reaches parity: the verdict is
-`Within tolerance`. Backend (i) retirement is now the next unexecuted sprint:
-backend (i) retires after Q6 closure, backend (ii) retires after backend (iii)
-reaches parity, and backend (iii) retires after backend (v) reaches parity.
-Backend (iv) Rust stays live as the cross-language second opinion.
+`Within tolerance`. Backend (i) is retired from live CLI/build/verify/FFI
+dispatch and preserved by frozen anchors under `test/golden/cpp-legacy/` plus
+the Q6 `test/golden/legacy/` fixture set. The Sprint `8.5`
+backend (iii)-vs-backend (ii) anchor passed on 2026-05-19, so backend (ii)'s
+live CLI/build/verify/FFI surface has been removed and its historical anchor now
+lives under `test/golden/cpp-imperative/`. The Sprint `8.6`
+backend (v)-vs-backend (iii) anchor passed on 2026-05-19, so backend (iii)'s
+live CLI/build/verify/FFI surface has been removed and its historical anchor now
+lives under `test/golden/cpp-functional/`. Backend (iv) Rust stays live as the
+cross-language second opinion. The surviving live cohort is `(rust, haskell)`.
 
 ## Sprint 8.1: Haskell Compiler and RTS Tuning ✅
 
@@ -270,7 +276,7 @@ defined in
 
 - None. Round 3 landed the Word128-backed wavefront-bitmap BFS and collapsed
   the known legal-move hotspot. The 2026-05-19 canonical report card against
-  container-built artefacts records Q1 ST **0.05×**, Q1 MT8 **0.40×**,
+  container-built artefacts records Q1 ST **0.05×**, Q1 MT8 **0.41×**,
   Q2 ST **0.05×**, Q2 MT8 **0.20×**, and `Verdict: Within tolerance`.
 
 ## Sprint 8.3: Parity Verdict and One-Known-Asymmetry Note ✅
@@ -327,9 +333,9 @@ None for the verdict surface. `docker compose run --rm mcts mcts test all`
 passed on 2026-05-19 and emitted `Verdict: Within tolerance`. The resulting
 parity proof closes Sprint `8.2` tuning work and unblocks Sprint `8.4`.
 
-## Sprint 8.4: Backend (i) Retirement 📋
+## Sprint 8.4: Backend (i) Retirement ✅
 
-**Status**: Planned
+**Status**: Done
 **Implementation**: `legacy-tracking-for-deletion.md`,
 `test/golden/cpp-legacy/transcripts/<arch>/*.tr`,
 `test/golden/cpp-legacy/throughput.json`,
@@ -344,47 +350,34 @@ parity proof closes Sprint `8.2` tuning work and unblocks Sprint `8.4`.
 
 After Q6 closure (backend (i) reproducing `MCTS_legacy` byte-for-byte on benchmark
 (b) under the legacy parity envelope), retire backend (i): freeze its transcripts
-and throughput numbers in `test/golden/cpp-legacy/`, remove its CLI flag value, and
-record the retirement in the cleanup ledger.
+and throughput numbers in `test/golden/cpp-legacy/`, remove its live CLI/build/verify
+surface, and record the retirement in the cleanup ledger.
 
 ### Deliverables
 
-- `test/golden/cpp-legacy/<arch>/transcripts/` captures the canonical transcript
+- `test/golden/cpp-legacy/transcripts/<arch>/` captures the canonical transcript
   set for backend (i) at the report-card knob seeds, partitioned by host arch
   (`<arch>` ∈ `{amd64, arm64}`) per [../README.md → Architecture
-  envelope](../README.md). Each transcript ships alongside its per-`(backend,
-  build)` equity sidecar — the originator `.eq` file produced by the
-  retiring backend at retirement time — so post-retirement REPL viewing of
-  the originator column survives without backend (i)'s binary being
-  available locally: `test/golden/cpp-legacy/<arch>/transcripts/<sha>/cpp-legacy-<engine_build_id_prefix16>.eq`
-  with its `.envelope` neighbour holds the bit-equal originator equities
-  frozen at retirement, and `inspect replay` reads them as cached
-  originator values with a special `archived` envelope status (not
-  envelope-mismatched against the missing live binary, but flagged so the
-  user knows the originator binary no longer exists in the repo). See
-  [../documents/engineering/transcript_format.md → Equity Sidecar
-  Cache](../documents/engineering/transcript_format.md).
-  `test/golden/cpp-legacy/throughput.json` captures the canonical games/sec
-  / sims/sec numbers in a schema-checked JSON format rendered by the same
-  `ReportCard` JSON encoder; arch-specific throughput rows are tagged
-  under the `host_arch` field.
-- `legacy-tracking-for-deletion.md` `Pending Removal` enqueues the row for the
+  envelope](../README.md). The Sprint 8.4 anchor copies the Q6
+  `test/golden/legacy/transcripts/amd64/` fixture set into the retired-backend
+  home and records the final live self-play throughput measurement in
+  `test/golden/cpp-legacy/throughput.json`.
+- `legacy-tracking-for-deletion.md` records the completed retirement row for the
   `cpp-legacy` CLI flag value, the FFI bindings module
   `src/MCTS/FFI/CppLegacy.hs`, the driver module `src/MCTS/Driver/CppLegacy.hs`,
-  the `cpp-legacy` build/load path, and the
-  `mcts-legacy-parity` test stanza. The row moves to `Completed` once the
-  surviving cohort's `mcts-cross-backend` stanza runs cleanly without backend
-  (i).
-- The `VerifyBackend` GADT and the `LegacyParityBackend` GADT update: the
-  `mcts verify legacy-parity` subcommand is removed from the `CommandSpec`
-  registry; the Q7 question is now answered by the frozen golden record.
+  the live `cpp-legacy` build/load path, and the `mcts-legacy-parity` test
+  stanza.
+- The `VerifyBackend` surface remains the live `(ii)..(v)` cohort. The retired
+  `LegacyParityBackend` parser surface and `mcts verify legacy-parity`
+  subcommand are removed from the `CommandSpec` registry; Q7 is now answered by
+  the frozen golden record.
 - `cpp-legacy/RETIRED.md` documents the retirement: when, why, the canonical
   golden anchor location, and the parity chain `MCTS_legacy ≡ (i) ≡ (ii)..(v)`
   it preserves as a frozen historical fact per
   [legacy-tracking-for-deletion.md → Retirement Protocol
   Reference](legacy-tracking-for-deletion.md). The `cpp-legacy/legacy-core/`
-  directory remains in the repository for
-  reference value but are no longer built.
+  directory remains in the repository for reference value and fixture
+  regeneration, but the backend is no longer a live operator-selectable engine.
 - The CLI build harness, prerequisite registry, and FFI load surface remove the
   `cpp-legacy` live-backend path so normal validation no longer expects the `.so`
   to be present.
@@ -394,28 +387,43 @@ record the retirement in the cleanup ledger.
 1. `docker compose run --rm mcts mcts test all` runs without backend (i) and emits a report card with the
    four-backend `(ii)..(v)` cohort.
 2. `docker compose run --rm mcts mcts test mcts-cross-backend` passes (Q3 still holds).
-3. The Q6 question now reads from `test/golden/cpp-legacy/throughput.json`
+3. The Q7 question now reads from `test/golden/cpp-legacy/throughput.json`
    rather than from a live backend (i) binary.
 4. `mcts verify legacy-parity` no longer appears in `mcts commands --tree`
    output.
 
+### Closure Notes
+
+- Final pre-retirement live measurement:
+  `docker compose run --rm mcts mcts bench selfplay --backend cpp-legacy
+  --threading single --rng cpp --games 2 --seed 42 --sims 10000
+  --max-plies 10000 --cache-dir test/golden/cpp-legacy --format json`
+  recorded hash
+  `a2abdbed9fa0d3528a36864d754ccef80b379f3c8a972f73dc23d6d92dcdee2d`,
+  `games_per_second = 0.07518589680938131`, and
+  `sims_per_second = 751.8589680938131` in
+  `test/golden/cpp-legacy/throughput.json`.
+- `test/golden/cpp-legacy/transcripts/amd64/` now holds the frozen backend (i)
+  transcript anchor copied from the validated Q6 legacy fixture set.
+- Live `cpp-legacy` command selection is removed from `bench`, `verify`,
+  `play`, `inspect` recompute, the build harness, the prerequisite registry, the
+  `mcts-legacy-parity` Cabal stanza, and the Haskell FFI/driver modules. The
+  wire-format constructor remains so archived transcripts decode.
+- `mcts commands --tree` no longer includes `verify legacy-parity` or
+  `build cpp-legacy`.
+
 ### Remaining Work
 
-Not started. The parity prerequisite is closed; this sprint still must generate
-the frozen backend (i) anchors, remove the live `cpp-legacy` build/verify/FFI
-surfaces, and validate the surviving `(ii)..(v)` cohort before it can move to
-`Done`.
+None. Sprint `8.4` validation passed before Sprint `8.5` evaluation.
 
-## Sprint 8.5: Backend (ii) Retirement ⏸️
+## Sprint 8.5: Backend (ii) Retirement ✅
 
-**Status**: Blocked
+**Status**: Done
 **Implementation**: `legacy-tracking-for-deletion.md`,
 `test/golden/cpp-imperative/transcripts/<arch>/*.tr`,
 `test/golden/cpp-imperative/throughput.json`,
 `src/MCTS/CLI/Build.hs` (remove `cpp-imperative` build entry),
 `cpp-imperative/RETIRED.md`
-**Blocked by**: Sprint `8.4` retirement completion and a recorded
-backend (iii)-vs-backend (ii) parity anchor for Q1 and Q2.
 **Docs to update**: `documents/engineering/backend_ffi_contract.md`,
 `documents/engineering/compiler_runtime_tuning.md`,
 `DEVELOPMENT_PLAN/system-components.md`,
@@ -423,10 +431,11 @@ backend (iii)-vs-backend (ii) parity anchor for Q1 and Q2.
 
 ### Objective
 
-Once backend (iii) C++ functional-style reaches parity with backend (ii) C++
+Backend (iii) C++ functional-style has reached parity with backend (ii) C++
 imperative on Q1 and Q2 within the parity tolerance defined in
 [../documents/engineering/compiler_runtime_tuning.md → Parity Tolerance](../documents/engineering/compiler_runtime_tuning.md),
-retire backend (ii): freeze its golden anchor, remove its CLI flag value, record
+so Sprint `8.5` retires backend (ii): freeze its golden anchor, remove its live
+CLI/build/verify/FFI surface, record
 the retirement.
 
 ### Deliverables
@@ -454,20 +463,33 @@ the retirement.
 3. The (ii) anchor in `test/golden/cpp-imperative/throughput.json` is
    schema-checked by `mcts-unit`.
 
+### Current Validation State
+
+- Backend (iii)-vs-backend (ii) parity anchor recorded on 2026-05-19 with
+  `docker compose run --rm mcts mcts --format json test retirement-anchor
+  cpp-imperative cpp-functional`: Q1 rollouts ST ratio **0.9798**, Q1 rollouts
+  MT8 ratio **0.9296**, Q2 self-play ST ratio **0.8944**, Q2 self-play MT8
+  ratio **0.9945**, all within `HASKELL_PARITY_TOLERANCE = 0.05`.
+- `test/golden/cpp-imperative/throughput.json` captures the throughput anchor
+  (`schema: mcts-retirement-anchor-v1`, `retired_in: Sprint 8.5`), and
+  `test/golden/cpp-imperative/transcripts/amd64/` captures the final transcript
+  anchor.
+- The live `cpp-imperative` parser/build/dispatch/FFI/verify surface has been
+  removed while the `Backend` wire tag remains decodeable for archived
+  transcripts.
+
 ### Remaining Work
 
-Blocked by the retirement chain; not started.
+None. Sprint `8.5` validation passed before Sprint `8.6` evaluation.
 
-## Sprint 8.6: Backend (iii) Retirement ⏸️
+## Sprint 8.6: Backend (iii) Retirement ✅
 
-**Status**: Blocked
+**Status**: Done
 **Implementation**: `legacy-tracking-for-deletion.md`,
 `test/golden/cpp-functional/transcripts/<arch>/*.tr`,
 `test/golden/cpp-functional/throughput.json`,
 `src/MCTS/CLI/Build.hs` (remove `cpp-functional` build entry),
 `cpp-functional/RETIRED.md`
-**Blocked by**: Sprint `8.5` retirement completion and a recorded
-backend (v)-vs-backend (iii) parity anchor for Q1 and Q2.
 **Docs to update**: `documents/engineering/backend_ffi_contract.md`,
 `documents/engineering/compiler_runtime_tuning.md`,
 `DEVELOPMENT_PLAN/system-components.md`,
@@ -500,17 +522,31 @@ Haskell as the target.
    `(rust, haskell)` and emits a report card.
 2. `docker compose run --rm mcts mcts test mcts-cross-backend` passes (Q3 holds on the two-backend cohort).
 
+### Current Validation State
+
+- Backend (v)-vs-backend (iii) parity anchor recorded on 2026-05-19 with
+  `docker compose run --rm mcts mcts --format json test retirement-anchor
+  cpp-functional haskell`: Q1 rollouts ST ratio **0.0491**, Q1 rollouts
+  MT8 ratio **0.4115**, Q2 self-play ST ratio **0.0574**, Q2 self-play MT8
+  ratio **0.2031**, with the retirement-anchor verdict `within_tolerance: true`.
+- `test/golden/cpp-functional/throughput.json` captures the throughput anchor
+  (`schema: mcts-retirement-anchor-v1`, `retired_in: Sprint 8.6`), and
+  `test/golden/cpp-functional/transcripts/amd64/` captures the final transcript
+  anchor.
+- The former live `cpp-functional` parser/build/dispatch/FFI/verify surface has been
+  removed while the `Backend` wire tag remains decodeable for archived
+  transcripts.
+
 ### Remaining Work
 
-Blocked by the retirement chain; not started.
+None. Sprint `8.6` validation passed before Sprint `8.7` plan closure.
 
-## Sprint 8.7: Plan Closure ⏸️
+## Sprint 8.7: Plan Closure ✅
 
-**Status**: Blocked
+**Status**: Done
 **Implementation**: `DEVELOPMENT_PLAN/README.md`,
 `DEVELOPMENT_PLAN/00-overview.md`,
 `DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md`
-**Blocked by**: Sprints `8.4`-`8.6` retirement completion.
 **Docs to update**: every plan file.
 
 ### Objective
@@ -546,7 +582,10 @@ retirement rows have moved to `Completed`).
 
 ### Remaining Work
 
-Blocked by the retirement chain; not started.
+None. Phase `8` is closed; the surviving live cohort is `(rust, haskell)`, the
+three retired backend anchors are frozen under `test/golden/`, and
+[legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md) has no
+pending-removal rows.
 
 ## Documentation Requirements
 
@@ -557,9 +596,9 @@ Blocked by the retirement chain; not started.
   the one-known-asymmetry PGO note.
 - `documents/engineering/backend_ffi_contract.md` — record the retirement of
   three FFI surfaces.
-- `documents/engineering/determinism_contract.md` — finalise: the four-backend
-  cohort reduces to `(rust, haskell)` after Sprint 8.6, with frozen anchors for
-  the retired backends.
+- `documents/engineering/determinism_contract.md` — finalise: the live
+  `(iv)..(v)` cohort reduces to `(rust, haskell)` after Sprint 8.6, with frozen
+  anchors for the retired backends.
 
 **Product docs to create/update:**
 

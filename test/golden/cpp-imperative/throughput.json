@@ -1,0 +1,59 @@
+{
+  "schema": "mcts-retirement-anchor-v1",
+  "retiring": "cpp-imperative",
+  "retiring_roman": "(ii)",
+  "successor": "cpp-functional",
+  "successor_roman": "(iii)",
+  "status": "retired",
+  "retired_in": "Sprint 8.5",
+  "recorded_on": "2026-05-19",
+  "host_arch": "amd64",
+  "seed": 42,
+  "max_plies": 200,
+  "tolerance": 0.05,
+  "within_tolerance": true,
+  "shortfall": 0.0,
+  "rows": [
+    {
+      "question": "Q1",
+      "workload": "rollouts",
+      "threading": "ST",
+      "games": 1000,
+      "sims": 500,
+      "retiring_games_per_second": 26.0287,
+      "successor_games_per_second": 26.5662,
+      "time_ratio": 0.9798
+    },
+    {
+      "question": "Q1",
+      "workload": "rollouts",
+      "threading": "MT8",
+      "games": 1000,
+      "sims": 500,
+      "retiring_games_per_second": 185.8295,
+      "successor_games_per_second": 199.9080,
+      "time_ratio": 0.9296
+    },
+    {
+      "question": "Q2",
+      "workload": "selfplay",
+      "threading": "ST",
+      "games": 4,
+      "sims": 500,
+      "retiring_games_per_second": 0.0211,
+      "successor_games_per_second": 0.0236,
+      "time_ratio": 0.8944
+    },
+    {
+      "question": "Q2",
+      "workload": "selfplay",
+      "threading": "MT8",
+      "games": 4,
+      "sims": 500,
+      "retiring_games_per_second": 0.0779,
+      "successor_games_per_second": 0.0783,
+      "time_ratio": 0.9945
+    }
+  ],
+  "notes": "Measured with docker compose run --rm mcts mcts --format json test retirement-anchor cpp-imperative cpp-functional before removing the live backend (ii) surface."
+}

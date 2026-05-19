@@ -67,8 +67,11 @@ GCC only — Clang is not supported on the C++ side.
 
 ### Build Workflow
 
-The `mcts build cpp-imperative` (and `mcts build cpp-functional`) Plan/Apply
-commands run:
+The C++ Plan/Apply command surface is retired from the live CLI after Sprint
+8.6. The historical `mcts build cpp-functional` pipeline ran the surviving C++
+steelman pipeline until backend (iii)'s retirement; backend (ii)'s identical
+historical pipeline is frozen under `test/golden/cpp-imperative/`, and backend
+(iii)'s final anchor is frozen under `test/golden/cpp-functional/`.
 
 1. **Two-stage PGO.** Instrumented build via
    `-fprofile-generate=$(abspath $(PGO_DIR))`; each generated `_bench` and
@@ -83,22 +86,23 @@ commands run:
    copied as the `.bolted.so` fallback.
 3. **`mimalloc` link.** Static-linked (preferred for FFI determinism;
    `LD_PRELOAD` is acceptable for ad-hoc benchmark runs).
-4. **Install.** Copy `cpp-imperative/build/libmcts_cpp_imperative_bench.bolted.so`
-   to `cpp-imperative/build/libmcts_cpp_imperative.so` — the canonical FFI load
-   name pinned by the project [../../README.md → Repository layout
-   (target)](../../README.md). The `_instrumented.bolted.so` artefact is copied
-   to `cpp-imperative/build/libmcts_cpp_imperative_instrumented.so` for the
+4. **Install.** The historical backend (iii) pipeline copied
+   `cpp-functional/build/libmcts_cpp_functional_bench.bolted.so` to
+   `cpp-functional/build/libmcts_cpp_functional.so` — the canonical FFI load
+   name used before retirement. The `_instrumented.bolted.so` artefact was copied
+   to `cpp-functional/build/libmcts_cpp_functional_instrumented.so` for the
    verify/play/replay path. See
    [./backend_ffi_contract.md → Backends and Linkage](./backend_ffi_contract.md)
    for the full install-name vs build-intermediate table.
 
-Current implementation baseline: the C++ Plan/Apply surface uses the shared
-19-step `pgoBoltPlan` for both `cpp-imperative` and `cpp-functional`.
-`docker compose run --rm mcts mcts build cpp-functional` validates the canonical
-training/install path in the pinned amd64 container. C++ shared-library BOLT
-instrumentation can still produce no `.fdata` in that container; the build
-harness records that explicitly and installs the PGO artefact as the canonical
-fallback rather than treating the backend build as failed.
+Current implementation baseline: the C++ Plan/Apply surface has no live command
+entry. The shared 19-step `pgoBoltPlan` was validated for `cpp-functional` before
+Sprint 8.6 retirement; `cpp-imperative` used the same plan before Sprint 8.5
+retirement. C++ shared-library BOLT instrumentation could still produce no
+`.fdata` in the pinned container; the build harness recorded that explicitly and
+installed the PGO artefact as the canonical fallback rather than treating the
+backend build as failed. The frozen C++ evidence now lives under
+`test/golden/cpp-imperative/` and `test/golden/cpp-functional/`.
 
 ### Code-Level Requirements
 
@@ -157,11 +161,12 @@ required unless profiling shows the change is neutral or harmful.
 section: the engine core does not throw, so landing-pad cost is unconditional
 dead weight.
 
-**Native-RNG benchmark only** (not under `--rng cpp`, which is pinned to
-`std::mt19937_64` by the determinism contract):
+**Native-RNG benchmark only** (not under `--rng cpp`, which is pinned to the
+no-backend-salt verification schedule by the determinism contract):
 
-15. Replace `std::mt19937_64` with `xoshiro256++` or `wyrand` — smaller state,
-    faster `next_u64`, equivalent statistical quality for rollouts.
+15. Future profiling candidate: replace the current splitmix-compatible live
+    schedule with `xoshiro256++` or `wyrand` where it measurably helps — smaller
+    state, faster `next_u64`, equivalent statistical quality for rollouts.
 
 ### Backend (iii) Functional-Style Discipline
 
@@ -407,15 +412,15 @@ optimization beyond the `thread_local` move buffer.
 
 ### Sprint 6.4 / 8.3 PGO+BOLT Status
 
-The Phase 6 backend install surface is closed. On amd64,
+The live Phase 6 Rust backend install surface is closed. On amd64,
 `rustPgoBoltPlan` in `src/MCTS/CLI/Build.hs` completes cargo
 `-Cprofile-generate`, the one-game PGO training run,
 `llvm-profdata merge`, `-Cprofile-use`, BOLT instrumentation/training,
 canonical install, and post-link `engine_build_id` patching. The shared
-C++ `pgoBoltPlan` validates the canonical FFI training/install sequence
-for `cpp-functional`; if C++ BOLT instrumentation yields no `.fdata` in
-the pinned container, the plan installs the PGO artefact as the explicit
-fallback.
+C++ `pgoBoltPlan` previously validated the canonical FFI training/install
+sequence for `cpp-functional`; if C++ BOLT instrumentation yielded no `.fdata`
+in the pinned container, the plan installed the PGO artefact as the explicit
+fallback. That C++ surface is now retired and represented by frozen anchors.
 
 On aarch64, the container's `llvm-bolt-19` reports:
 
@@ -442,12 +447,12 @@ subprocesses.
 
 | Row | Ratio | Evidence |
 |-----|------:|----------|
-| Q1 rollouts ST | 0.05x | Haskell 551.1 games/s vs cpp-imperative 30.0 games/s |
-| Q1 rollouts MT8 | 0.40x | Haskell 511.9 games/s vs cpp-imperative 205.9 games/s |
+| Q1 rollouts ST | 0.05x | Haskell 546.7 games/s vs cpp-imperative 26.9 games/s |
+| Q1 rollouts MT8 | 0.41x | Haskell 503.8 games/s vs cpp-imperative 204.9 games/s |
 | Q2 self-play ST | 0.05x | Haskell 0.4 games/s vs cpp-imperative 0.0 games/s |
 | Q2 self-play MT8 | 0.20x | Haskell 0.4 games/s vs cpp-imperative 0.1 games/s |
-| Q5 Haskell MT scaling | 1.00x | 0.4 -> 0.4 games/s |
-| Q5 cpp-imperative MT scaling | 3.61x | 0.0 -> 0.1 games/s |
+| Q5 Haskell MT scaling | 0.99x | 0.4 -> 0.4 games/s |
+| Q5 cpp-imperative MT scaling | 3.64x | 0.0 -> 0.1 games/s |
 
 The final Sprint 8.3 verdict is **`Within tolerance`**. The PGO asymmetry remains
 documented as context for the comparison, but it is not needed as an exemption.

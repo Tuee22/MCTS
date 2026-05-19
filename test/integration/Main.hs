@@ -4,14 +4,12 @@ module Main where
 
 import Control.Monad (filterM)
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Char8 as BSC
 import Data.List (isInfixOf, isSuffixOf, sort, stripPrefix)
 import Data.Word (Word32, Word8)
 import MCTS.CLI.Test (buildMeasuredReportCardWith)
 import MCTS.Crypto.SHA256 (sha256Hex)
 import MCTS.Driver
-import MCTS.Driver.CppFunctional (runGameCppFunctional)
-import MCTS.Driver.CppImperative (runGameCppImperative)
-import MCTS.Driver.CppLegacy (runGameCppLegacy)
 import MCTS.Driver.Dispatch (runBatchDispatch)
 import MCTS.Driver.Rust (runGameRust)
 import MCTS.Engine.ForeignRecompute (foreignRecomputeEqStream)
@@ -19,9 +17,6 @@ import qualified MCTS.Engine.Recompute as Recompute
 import MCTS.Error (AppError (..), EnvelopeMismatchScope (..))
 import MCTS.FFI.Common (EngineEnvelope (..))
 import qualified MCTS.FFI.Common
-import MCTS.FFI.CppFunctional (loadCppFunctionalEnvelope, withCppFunctionalRecomputeGame)
-import MCTS.FFI.CppImperative (loadCppImperativeEnvelope, withCppImperativeRecomputeGame)
-import MCTS.FFI.CppLegacy (cppLegacyRecomputeMove, loadCppLegacyEnvelope, withCppLegacyGame)
 import MCTS.FFI.Rust (loadRustEnvelope, withRustRecomputeGame)
 import MCTS.ReportCard (ReportCard (..), ReportDivergenceRow (..), renderReportCardJson)
 import MCTS.Subprocess (ProcessOutput (..), Subprocess (..), capture)
@@ -45,91 +40,21 @@ main =
                 "real mcts binary determinism"
                 [ testCase "haskell" (binaryBenchDeterminism Nothing Haskell)
                 , testCase
-                    "cpp-legacy"
-                    (binaryBenchDeterminism (Just "cpp-legacy/build/libmcts_cpp_legacy.so") CppLegacy)
-                , testCase
-                    "cpp-imperative"
-                    ( binaryBenchDeterminism
-                        (Just "cpp-imperative/build/libmcts_cpp_imperative.so")
-                        CppImperative
-                    )
-                , testCase
-                    "cpp-functional"
-                    ( binaryBenchDeterminism
-                        (Just "cpp-functional/build/libmcts_cpp_functional.so")
-                        CppFunctional
-                    )
-                , testCase
                     "rust"
                     (binaryBenchDeterminism (Just "rust/target/release/libmcts_rust.so") Rust)
                 , testCase "integration subprocess boundary guard" integrationSubprocessBoundaryGuard
                 ]
             , testGroup
                 "foreign ffi smoke drivers"
-                [ testCase
-                    "cpp-legacy"
-                    (foreignFfiSmokeDriver "cpp-legacy/build/libmcts_cpp_legacy.so" CppLegacy runGameCppLegacy)
-                , testCase
-                    "cpp-imperative"
-                    ( foreignFfiSmokeDriver
-                        "cpp-imperative/build/libmcts_cpp_imperative.so"
-                        CppImperative
-                        runGameCppImperative
-                    )
-                , testCase
-                    "cpp-functional"
-                    ( foreignFfiSmokeDriver
-                        "cpp-functional/build/libmcts_cpp_functional.so"
-                        CppFunctional
-                        runGameCppFunctional
-                    )
-                , testCase "rust" (foreignFfiSmokeDriver "rust/target/release/libmcts_rust.so" Rust runGameRust)
+                [ testCase "rust" (foreignFfiSmokeDriver "rust/target/release/libmcts_rust.so" Rust runGameRust)
                 ]
             , testGroup
                 "foreign ffi live envelopes"
-                [ testCase
-                    "cpp-legacy"
-                    (foreignFfiEnvelope "cpp-legacy/build/libmcts_cpp_legacy.so" CppLegacy loadCppLegacyEnvelope)
-                , testCase
-                    "cpp-imperative"
-                    ( foreignFfiEnvelope
-                        "cpp-imperative/build/libmcts_cpp_imperative.so"
-                        CppImperative
-                        loadCppImperativeEnvelope
-                    )
-                , testCase
-                    "cpp-functional"
-                    ( foreignFfiEnvelope
-                        "cpp-functional/build/libmcts_cpp_functional.so"
-                        CppFunctional
-                        loadCppFunctionalEnvelope
-                    )
-                , testCase "rust" (foreignFfiEnvelope "rust/target/release/libmcts_rust.so" Rust loadRustEnvelope)
+                [ testCase "rust" (foreignFfiEnvelope "rust/target/release/libmcts_rust.so" Rust loadRustEnvelope)
                 ]
             , testGroup
                 "foreign ffi live envelope stamping"
                 [ testCase
-                    "cpp-legacy"
-                    ( foreignDispatchLiveEnvelope
-                        "cpp-legacy/build/libmcts_cpp_legacy.so"
-                        CppLegacy
-                        loadCppLegacyEnvelope
-                    )
-                , testCase
-                    "cpp-imperative"
-                    ( foreignDispatchLiveEnvelope
-                        "cpp-imperative/build/libmcts_cpp_imperative.so"
-                        CppImperative
-                        loadCppImperativeEnvelope
-                    )
-                , testCase
-                    "cpp-functional"
-                    ( foreignDispatchLiveEnvelope
-                        "cpp-functional/build/libmcts_cpp_functional.so"
-                        CppFunctional
-                        loadCppFunctionalEnvelope
-                    )
-                , testCase
                     "rust"
                     (foreignDispatchLiveEnvelope "rust/target/release/libmcts_rust.so" Rust loadRustEnvelope)
                 ]
@@ -138,28 +63,9 @@ main =
                 "report-card divergence and inspect sidecar integration"
                 reportCardDivergenceIntegration
             , testCase "legacy goldens decode and respect no-draw semantics" legacyGoldenCheck
-            , testCase "legacy parity pre-flight: S_LP=42 does not trip MAX_ROLLOUT_ITERS" legacyParityPreflight
-            , testCase "cpp-legacy recompute symbol returns visits and equity" legacyRecomputeSmoke
-            , testCase
-                "cpp-legacy envelope reports cpu_features bits and a non-zero engine_build_id"
-                legacyEnvelopeRuntime
             , testGroup
                 "foreign recompute EqStream"
                 [ testCase
-                    "cpp-imperative"
-                    ( foreignRecomputeSmoke
-                        "cpp-imperative/build/libmcts_cpp_imperative.so"
-                        CppImperative
-                        withCppImperativeRecomputeGame
-                    )
-                , testCase
-                    "cpp-functional"
-                    ( foreignRecomputeSmoke
-                        "cpp-functional/build/libmcts_cpp_functional.so"
-                        CppFunctional
-                        withCppFunctionalRecomputeGame
-                    )
-                , testCase
                     "rust"
                     ( foreignRecomputeSmoke
                         "rust/target/release/libmcts_rust.so"
@@ -345,7 +251,7 @@ reportCardDivergenceIntegration :: IO ()
 reportCardDivergenceIntegration = do
     reportResult <-
         buildMeasuredReportCardWith
-            [CppImperative, CppFunctional, Rust, Haskell]
+            [Rust, Haskell]
             defaultRunInputs
                 { inputWorkload = Selfplay
                 , inputRng = CppRng
@@ -360,10 +266,10 @@ reportCardDivergenceIntegration = do
             assertFailure ("measured report-card builder failed: " <> show err)
         Right card -> do
             map reportDivergenceOrigin (reportDivergenceRows card)
-                @?= map backendIdentifier [CppImperative, CppFunctional, Rust, Haskell]
+                @?= map backendIdentifier [Rust, Haskell]
             assertBool
-                "each measured divergence row has a four-backend cell set"
-                (all ((== 4) . length . reportDivergenceCells) (reportDivergenceRows card))
+                "each measured divergence row has a two-backend cell set"
+                (all ((== 2) . length . reportDivergenceCells) (reportDivergenceRows card))
             assertBool
                 "measured report-card JSON exposes divergence_matrix"
                 ("\"divergence_matrix\"" `isInfixOf` renderReportCardJson card)
@@ -473,10 +379,10 @@ foreignFfiEnvelope libraryPath backend loader = do
                     engineEnvBackend envelope @?= backend
                     engineEnvRngSource envelope @?= 1
                     engineEnvHostArch envelope @?= expectedHostArch
-                    -- Backends (i) and (ii) backfill `engine_build_id` from
-                    -- their post-link `.envelope_build_id` ELF section per
-                    -- Sprint 4.7 / Sprint 5.5. Backends (iii) and (iv) still
-                    -- report the zero-digest sentinel.
+                    -- The surviving foreign backend backfills
+                    -- `engine_build_id` from their post-link
+                    -- `.envelope_build_id` section where the build harness
+                    -- patches it.
                     -- Sprint 6.5: Rust now exposes a `.envelope_build_id`
                     -- ELF section that `mcts build rust` patches post-
                     -- link. A fresh `cargo build --release` leaves the
@@ -487,14 +393,6 @@ foreignFfiEnvelope libraryPath backend loader = do
                         CppLegacy ->
                             assertBool
                                 "cpp-legacy engine_build_id is patched"
-                                (engineEnvBuildId envelope /= replicate 64 '0')
-                        CppImperative ->
-                            assertBool
-                                "cpp-imperative engine_build_id is patched"
-                                (engineEnvBuildId envelope /= replicate 64 '0')
-                        CppFunctional ->
-                            assertBool
-                                "cpp-functional engine_build_id is patched"
                                 (engineEnvBuildId envelope /= replicate 64 '0')
                         Rust ->
                             -- Either zero (smoke cargo build) or
@@ -602,6 +500,11 @@ assertStaleCompilerVersion backend transcript = do
 legacyGoldenCheck :: IO ()
 legacyGoldenCheck = do
     let root = "test/golden/legacy/transcripts"
+        retiredThroughput = "test/golden/cpp-legacy/throughput.json"
+        retiredImperativeRoot = "test/golden/cpp-imperative/transcripts"
+        retiredImperativeThroughput = "test/golden/cpp-imperative/throughput.json"
+        retiredFunctionalRoot = "test/golden/cpp-functional/transcripts"
+        retiredFunctionalThroughput = "test/golden/cpp-functional/throughput.json"
     present <- doesDirectoryExist root
     if not present
         then assertFailure ("legacy fixture root missing: " <> root)
@@ -613,6 +516,58 @@ legacyGoldenCheck = do
             assertBool
                 ("legacy fixtures present below " <> root)
                 (sum counts > 0)
+    throughputPresent <- doesFileExist retiredThroughput
+    assertBool
+        ("cpp-legacy retirement throughput anchor missing: " <> retiredThroughput)
+        throughputPresent
+    throughput <- BS.readFile retiredThroughput
+    assertBool
+        "cpp-legacy retirement throughput anchor names backend"
+        ("\"backend\": \"cpp-legacy\"" `isInfixOf` BSC.unpack throughput)
+    imperativeThroughputPresent <- doesFileExist retiredImperativeThroughput
+    assertBool
+        ("cpp-imperative retirement throughput anchor missing: " <> retiredImperativeThroughput)
+        imperativeThroughputPresent
+    imperativeThroughput <- BS.readFile retiredImperativeThroughput
+    assertBool
+        "cpp-imperative retirement throughput anchor names retiring backend"
+        ("\"retiring\": \"cpp-imperative\"" `isInfixOf` BSC.unpack imperativeThroughput)
+    imperativeRootPresent <- doesDirectoryExist retiredImperativeRoot
+    assertBool
+        ("cpp-imperative retirement transcript root missing: " <> retiredImperativeRoot)
+        imperativeRootPresent
+    imperativeEntries <- sort <$> listDirectory retiredImperativeRoot
+    imperativeArchDirs <- filterM (doesDirectoryExist . (retiredImperativeRoot </>)) imperativeEntries
+    assertBool
+        ("cpp-imperative retirement transcript arch directories present in " <> retiredImperativeRoot)
+        (not (null imperativeArchDirs))
+    imperativeCounts <-
+        mapM (validateRetiredBackendDir retiredImperativeRoot CppImperative) imperativeArchDirs
+    assertBool
+        ("cpp-imperative retirement transcripts present below " <> retiredImperativeRoot)
+        (sum imperativeCounts > 0)
+    functionalThroughputPresent <- doesFileExist retiredFunctionalThroughput
+    assertBool
+        ("cpp-functional retirement throughput anchor missing: " <> retiredFunctionalThroughput)
+        functionalThroughputPresent
+    functionalThroughput <- BS.readFile retiredFunctionalThroughput
+    assertBool
+        "cpp-functional retirement throughput anchor names retiring backend"
+        ("\"retiring\": \"cpp-functional\"" `isInfixOf` BSC.unpack functionalThroughput)
+    functionalRootPresent <- doesDirectoryExist retiredFunctionalRoot
+    assertBool
+        ("cpp-functional retirement transcript root missing: " <> retiredFunctionalRoot)
+        functionalRootPresent
+    functionalEntries <- sort <$> listDirectory retiredFunctionalRoot
+    functionalArchDirs <- filterM (doesDirectoryExist . (retiredFunctionalRoot </>)) functionalEntries
+    assertBool
+        ("cpp-functional retirement transcript arch directories present in " <> retiredFunctionalRoot)
+        (not (null functionalArchDirs))
+    functionalCounts <-
+        mapM (validateRetiredBackendDir retiredFunctionalRoot CppFunctional) functionalArchDirs
+    assertBool
+        ("cpp-functional retirement transcripts present below " <> retiredFunctionalRoot)
+        (sum functionalCounts > 0)
 
 validateLegacyFixtureDir :: FilePath -> FilePath -> IO Int
 validateLegacyFixtureDir root arch = do
@@ -623,80 +578,24 @@ validateLegacyFixtureDir root arch = do
     mapM_ (validateLegacyFixture dir) files
     pure (length files)
 
--- | Sprint 4.6 validation #3 pre-flight: assert that backend (i) at the
--- pinned report-card legacy-parity envelope (seed = S_LP = 42, single
--- game, single-threaded, --rng cpp, max_plies = 10000) plays a full
--- game without surfacing `AppError LegacyParityRolloutOverflow`. Runs
--- only when the cpp-legacy shared library is built.
-legacyParityPreflight :: IO ()
-legacyParityPreflight = do
-    present <- doesFileExist "cpp-legacy/build/libmcts_cpp_legacy.so"
-    if not present
-        then pure ()
-        else do
-            let inputs =
-                    defaultRunInputs
-                        { inputBackend = CppLegacy
-                        , inputWorkload = Selfplay
-                        , inputRng = CppRng
-                        , inputThreading = SingleThreaded
-                        , inputGames = 1
-                        , inputSeed = 42
-                        , inputMaxPlies = 10000
-                        , inputSims = FixedSims 200
-                        }
-            result <- runGameCppLegacy inputs 0
-            case result of
-                Right game ->
-                    assertBool
-                        "legacy parity pre-flight game has at least one move"
-                        (not (null (gameMoves game)))
-                Left err ->
-                    assertFailure
-                        ( "legacy parity pre-flight failed at S_LP=42 with: "
-                            <> show err
-                        )
+validateRetiredBackendDir :: FilePath -> Backend -> FilePath -> IO Int
+validateRetiredBackendDir root backend arch = do
+    let dir = root </> arch
+    files <- sort . filter (".tr" `isSuffixOf`) <$> listDirectory dir
+    assertBool ("retired backend transcripts present in " <> dir) (not (null files))
+    mapM_ (validateRetiredBackendTranscript dir backend) files
+    pure (length files)
 
--- | Sprint 4.7 recompute smoke: call `mcts_legacy_recompute_move` and
--- assert the visit vector is populated. The equity slot may be NaN at
--- the very first move so we only require it is reported.
-legacyRecomputeSmoke :: IO ()
-legacyRecomputeSmoke = do
-    present <- doesFileExist "cpp-legacy/build/libmcts_cpp_legacy.so"
-    if not present
-        then pure ()
-        else do
-            result <- withCppLegacyGame $ \game -> cppLegacyRecomputeMove game 42 16
-            case result of
-                Left err ->
-                    assertFailure ("recompute outer FFI failed: " <> show err)
-                Right (Left err) ->
-                    assertFailure ("recompute inner FFI failed: " <> show err)
-                Right (Right (_chosen, visits, _equity)) ->
-                    assertBool
-                        "recompute returned a non-empty visit vector"
-                        (not (null visits))
-
--- | Sprint 4.7 envelope smoke: confirm the runtime CPU/FP probes
--- populate non-zero `cpu_features` on a supported host and that the
--- `engine_build_id` byte slot is no longer all-zero once the post-link
--- patch lands. The post-link patch is optional in the smoke build (it
--- depends on `objcopy` + a 32-byte ELF section); when absent, the
--- check is downgraded to the cpu_features assertion only.
-legacyEnvelopeRuntime :: IO ()
-legacyEnvelopeRuntime = do
-    present <- doesFileExist "cpp-legacy/build/libmcts_cpp_legacy.so"
-    if not present
-        then pure ()
-        else do
-            result <- loadCppLegacyEnvelope
-            case result of
-                Left err -> assertFailure ("envelope load failed: " <> show err)
-                Right envelope -> do
-                    let cpu = engineEnvCpuFeatures envelope
-                    assertBool
-                        ("cpu_features must be non-zero (got " <> show cpu <> ")")
-                        (cpu /= 0)
+validateRetiredBackendTranscript :: FilePath -> Backend -> FilePath -> IO ()
+validateRetiredBackendTranscript dir backend file = do
+    bytes <- BS.readFile (dir </> file)
+    let actualHash = sha256Hex bytes
+    takeBaseName file @?= actualHash
+    case decodeTranscript bytes of
+        Left err ->
+            assertFailure ("retired backend transcript failed to decode: " <> file <> " " <> show err)
+        Right transcript ->
+            runBackend (transcriptConfig transcript) @?= backend
 
 validateLegacyFixture :: FilePath -> FilePath -> IO ()
 validateLegacyFixture dir file = do

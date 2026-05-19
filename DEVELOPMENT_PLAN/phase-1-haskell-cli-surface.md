@@ -183,12 +183,12 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
 
   > **Ownership note.** `CheckCode` lands in Sprint 1.4 alongside the
   > `src/MCTS/CheckCode.hs` dispatcher. The `Build BuildCommand` family is
-  > filled in by the per-backend sprints: `BuildCppLegacy` in Phase 4
-  > Sprint 4.1 (legacy-flags subset; no PGO/BOLT/mimalloc),
-  > `BuildCppImperative` in Phase 5 Sprint 5.3, `BuildCppFunctional` and
-  > `BuildRust` in Phase 6 Sprints 6.2 and 6.4. Sprint 1.2's obligation is
-  > the eleven top-level constructors above; the `BuildCommand` family is
-  > extended incrementally by the owning sprints.
+  > filled in by the per-backend sprints and then reduced by the Phase 8
+  > retirement protocol. The current live build leaves are `BuildRust` and
+  > `BuildLegacyFixtures`; retired C++ build leaves remain historical Phase
+  > 4-6 evidence only. Sprint 1.2's obligation is the eleven top-level
+  > constructors above; the `BuildCommand` family is extended incrementally by
+  > owning sprints and pruned by retirement sprints.
 
   Subcommand families:
 
@@ -201,7 +201,6 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
   data VerifyCommand
     = VerifyRollouts     VerifyOptions          -- cross-backend determinism, rollouts
     | VerifySelfplay     VerifyOptions          -- cross-backend determinism, self-play
-    | VerifyLegacyParity LegacyParityOptions    -- 5-backend legacy-parity envelope
     deriving stock (Show, Eq)
 
   data InspectCommand
@@ -223,9 +222,7 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
     deriving stock (Show, Eq)
 
   data BuildCommand
-    = BuildCppLegacy                 -- legacy-flags subset (no PGO/BOLT/mimalloc); Phase 4 Sprint 4.1
-    | BuildCppImperative             -- steelman: two-stage PGO + BOLT + mimalloc; Phase 5 Sprint 5.3
-    | BuildCppFunctional             -- functional-style; same stack as cpp-imperative; Phase 6 Sprint 6.2
+    = BuildLegacyFixtures            -- Q6 fixture generator retained after backend (i) retirement
     | BuildRust                      -- cdylib; rustc PGO + BOLT + mimalloc; Phase 6 Sprint 6.4
     deriving stock (Show, Eq)
 
@@ -245,26 +242,11 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
                     deriving stock (Show, Eq)
 
   data VerifyBackend where
-    VCppImperative :: VerifyBackend
-    VCppFunctional :: VerifyBackend
     VRust          :: VerifyBackend
     VHaskell       :: VerifyBackend
-    -- (i) excluded at the type level per
+    -- (i), (ii), and (iii) excluded at the type level per
     -- [../README.md → Cross-backend verification](../README.md)
     -- and [00-overview.md → Hard Constraints item 7](00-overview.md).
-
-  data LegacyParityBackend where
-    LpCppLegacy     :: LegacyParityBackend
-    LpCppImperative :: LegacyParityBackend
-    LpCppFunctional :: LegacyParityBackend
-    LpRust          :: LegacyParityBackend
-    LpHaskell       :: LegacyParityBackend
-    -- LpCppLegacy required at parse time per
-    -- [00-overview.md → Hard Constraints item 8](00-overview.md);
-    -- cohorts without it fail with AppError VerifyCohortTooSmall.
-
-  data LegacyParityWorkload = LpRollouts | LpSelfplay
-                              deriving stock (Show, Eq)
 
   data RngSource  = NativeRng | CppRng
                     deriving stock (Show, Eq)
@@ -868,13 +850,13 @@ Implement the single `AppError` ADT, the `renderError` boundary, and the `--form
 ### Deliverables
 
 - `src/MCTS/Error.hs` declares the single `AppError` ADT covering the canonical
-  15-variant set:
+  17-variant set:
   `TranscriptNotFound`, `TranscriptAmbiguous`, `TranscriptFormatUnsupported`,
   `VerifyMismatch`, `VerifyCohortTooSmall`, `RecomputeMismatch`,
   `LegacyParityRolloutOverflow`,
   `ArchEnvelopeMismatch`, `EngineEnvelopeMismatch`, `PrerequisiteUnmet`,
   `SubprocessFailed`, `FFIFailure`, `DocsCheckDrift`, `UnknownCommand`,
-  `InvalidMove`, plus the generic catchalls per
+  `InvalidMove`, `ParseError`, `IOErrorText` per
   [../HASKELL_CLI_TOOL.md → Error Handling](../HASKELL_CLI_TOOL.md). The set
   matches [../README.md → Output and error discipline](../README.md) exactly;
   `SubprocessFailed`, `FFIFailure`, `DocsCheckDrift`, and
@@ -908,6 +890,10 @@ Implement the single `AppError` ADT, the `renderError` boundary, and the `--form
     [../documents/engineering/determinism_contract.md → Engine Envelope](../documents/engineering/determinism_contract.md).
   - `DocsCheckDrift` is raised by `mcts docs check` when a marker region's
     on-disk slice differs from the renderer's output.
+  - `ParseError` is raised by parser and option validation paths that need to
+    render through the same `AppError` boundary as runtime failures.
+  - `IOErrorText` carries textual IO failures at command boundaries where the
+    lower-level exception cannot be kept as a typed project error.
   - `RecomputeMismatch` is raised by `src/MCTS/Engine/Recompute.hs` when a
     `mcts inspect show` / `inspect replay` recompute under `--rng cpp`
     disagrees with the transcript's recorded visits at a move; payload is

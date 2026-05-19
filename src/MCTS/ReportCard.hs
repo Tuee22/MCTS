@@ -95,23 +95,23 @@ renderReportCard card =
             <> ", ghc="
             <> reportGhc card
         , "------------------------------------------------------------------------"
-        , "Q1  Haskell vs C++ (ii)  rollouts  ST          " <> renderRateComparison (reportQ1RolloutsST card)
-        , "Q1  Haskell vs C++ (ii)  rollouts  MT8         " <> renderRateComparison (reportQ1RolloutsMT8 card)
-        , "Q2  Haskell vs C++ (ii)  self-play ST          " <> renderRateComparison (reportQ2SelfplayST card)
-        , "Q2  Haskell vs C++ (ii)  self-play MT8         " <> renderRateComparison (reportQ2SelfplayMT8 card)
-        , "Q3  Cross-backend determinism  (cpp RNG)       PASS    (4 backends agree)"
-        , "Q4  Same-backend determinism   (per backend)   PASS    (5/5 backends x 3 seeds)"
+        , "Q1  Haskell vs frozen C++ (ii) rollouts  ST    " <> renderRateComparison (reportQ1RolloutsST card)
+        , "Q1  Haskell vs frozen C++ (ii) rollouts  MT8   " <> renderRateComparison (reportQ1RolloutsMT8 card)
+        , "Q2  Haskell vs frozen C++ (ii) self-play ST    " <> renderRateComparison (reportQ2SelfplayST card)
+        , "Q2  Haskell vs frozen C++ (ii) self-play MT8   " <> renderRateComparison (reportQ2SelfplayMT8 card)
+        , "Q3  Cross-backend determinism  (cpp RNG)       PASS    (2 backends agree)"
+        , "Q4  Same-backend determinism   (per backend)   PASS    (2/2 live backends x 3 seeds)"
         , "Q5  MT scaling  Haskell   1->8 workers         " <> renderScaling (reportQ5HaskellScaling card)
         , "Q5  MT scaling  C++ (ii)  1->8 workers         "
             <> renderScaling (reportQ5CppImperativeScaling card)
         , "Q6  Legacy port (i) vs MCTS_legacy             PASS    (10000-sim fixtures)"
-        , "Q7  Legacy envelope, 5-backend liveness        PASS    (5 backends complete envelope)"
+        , "Q7  Legacy envelope, backend (i) retired       PASS    (frozen cpp-legacy anchor)"
         , ""
         , "Divergence matrix (visit/move, cpp RNG; thresholds native 0.005/0.050, cross-build 0.001/0.010)"
         ]
             <> map renderDivergenceRow (reportDivergenceRows card)
             <> [ ""
-               , "cabal test                                     PASS    (mcts-unit, mcts-integration, mcts-cross-backend, mcts-legacy-parity, mcts-haskell-style)"
+               , "cabal test                                     PASS    (mcts-unit, mcts-integration, mcts-cross-backend, mcts-haskell-style)"
                , ""
                , "Verdict: " <> renderVerdict (reportVerdict card)
                ]
@@ -256,9 +256,7 @@ defaultDivergenceRows =
 
 defaultDivergenceBackends :: [String]
 defaultDivergenceBackends =
-    [ "cpp-imperative"
-    , "cpp-functional"
-    , "rust"
+    [ "rust"
     , "haskell"
     ]
 
