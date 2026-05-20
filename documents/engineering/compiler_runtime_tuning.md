@@ -67,13 +67,10 @@ GCC only — Clang is not supported on the C++ side.
 
 ### Build Workflow
 
-The C++ Plan/Apply command surface is retired from the live CLI after Sprint
-8.6. The historical `mcts build cpp-functional` pipeline ran the surviving C++
-steelman pipeline until backend (iii)'s retirement; backend (ii)'s identical
-historical pipeline is recorded as Sprint 8.5 evidence, and backend
-(iii)'s final evidence is recorded in Sprint 8.6. Optional external artifacts may
-be regenerated for audit, but normal validation does not require checked-in
-generated data.
+The C++ Plan/Apply command surface is first-class. `mcts build cpp-imperative` and
+`mcts build cpp-functional` run the shared steelman PGO/BOLT pipeline for both C++
+backends. Optional audit artifacts may be regenerated, but normal validation does not
+require checked-in generated data.
 
 1. **Two-stage PGO.** Instrumented build via
    `-fprofile-generate=$(abspath $(PGO_DIR))`; each generated `_bench` and
@@ -88,23 +85,20 @@ generated data.
    copied as the `.bolted.so` fallback.
 3. **`mimalloc` link.** Static-linked (preferred for FFI determinism;
    `LD_PRELOAD` is acceptable for ad-hoc benchmark runs).
-4. **Install.** The historical backend (iii) pipeline copied
+4. **Install.** The backend (iii) pipeline copies
    `cpp-functional/build/libmcts_cpp_functional_bench.bolted.so` to
    `cpp-functional/build/libmcts_cpp_functional.so` — the canonical FFI load
-   name used before retirement. The `_instrumented.bolted.so` artefact was copied
+   name. The `_instrumented.bolted.so` artefact is copied
    to `cpp-functional/build/libmcts_cpp_functional_instrumented.so` for the
    verify/play/replay path. See
    [./backend_ffi_contract.md → Backends and Linkage](./backend_ffi_contract.md)
    for the full install-name vs build-intermediate table.
 
-Current implementation baseline: the C++ Plan/Apply surface has no live command
-entry. The shared 19-step `pgoBoltPlan` was validated for `cpp-functional` before
-Sprint 8.6 retirement; `cpp-imperative` used the same plan before Sprint 8.5
-retirement. C++ shared-library BOLT instrumentation could still produce no
-`.fdata` in the pinned container; the build harness recorded that explicitly and
-installed the PGO artefact as the canonical fallback rather than treating the
-backend build as failed. The retired C++ evidence is historical plan/doc data or
-optional external artifacts, not repository validation input.
+Current implementation baseline: the C++ Plan/Apply surface is live. The shared
+19-step `pgoBoltPlan` applies to `cpp-functional` and `cpp-imperative`. C++ shared-library BOLT
+instrumentation can produce no `.fdata` in the pinned container; the build harness
+records that explicitly and installs the PGO artefact as the canonical fallback rather
+than treating the backend build as failed.
 
 ### Code-Level Requirements
 
@@ -164,7 +158,7 @@ section: the engine core does not throw, so landing-pad cost is unconditional
 dead weight.
 
 **Native-RNG benchmark only** (not under `--rng cpp`, which is pinned to the
-no-backend-salt verification schedule by the determinism contract):
+C++-generated verification-seed contract by the determinism contract):
 
 15. Future profiling candidate: replace the current splitmix-compatible live
     schedule with `xoshiro256++` or `wyrand` where it measurably helps — smaller
@@ -314,8 +308,9 @@ applies to backends (ii), (iii), (iv) only — see
 
 ### Sprint 8.2 — Profile-Driven Hot-Path Tuning Rounds
 
-The `mcts-criterion` benchmark stanza in `mcts.cabal` measures per-call cost for
-the four hot primitives. Run with `cabal bench mcts-criterion`.
+The historical `mcts-criterion` benchmark stanza in `mcts.cabal` records per-call
+cost for the four hot primitives. Normal supported benchmarking enters through the
+Compose-wrapped `mcts bench` command surface.
 
 | Round | Date | Change | Module | Before (μs/op) | After (μs/op) | Outcome |
 |-------|------|--------|--------|---------------:|--------------:|---------|
@@ -326,7 +321,7 @@ the four hot primitives. Run with `cabal bench mcts-criterion`.
 The legal-moves cost falls because `legalMoves` invokes `pathExists` once per
 candidate wall placement (up to 12 per move) — the per-call BFS dominates the
 search inner loop. Round 1 takes the rollout's per-step cost from ~1 ms to
-~160 μs without changing API or correctness; `cabal test all` stays green.
+~160 μs without changing API or correctness; `mcts test all` stays green.
 
 ### Code-Level Requirements
 
@@ -374,7 +369,7 @@ section below, with the gap attributed to this asymmetry where appropriate.
 ### Sprint 8.3 — Measured Q1 Snapshot
 
 After Sprint 8.2 round 3 (wavefront-bitmap BFS, 2026-05-16):
-`mcts bench rollouts --threading single --rng cpp --games 100 --seed 42`
+`mcts bench rollouts --threading single --rng native --games 100 --seed 42`
 inside the pinned container, wall-clock median of three runs:
 
 | Backend | Q1 ST wall (s) — round-1 baseline | Q1 ST wall (s) — round-3 wavefront | Q1 ratio vs cpp-imperative (round-3) |
@@ -393,7 +388,7 @@ than the non-PGO cpp-imperative smoke library — well within the
 
 ### Sprint 8.3 — Measured Q2 Selfplay Snapshot
 
-`mcts bench selfplay --threading single --rng cpp --games 4 --seed 42 --sims N`
+`mcts bench selfplay --threading single --rng native --games 4 --seed 42 --sims N`
 inside the pinned container, wall-clock single-run:
 
 | Sims  | cpp-imperative (s) | haskell (s) | Ratio (haskell / cpp-imperative) |
@@ -409,7 +404,7 @@ to 13%, in the 5–15% PGO-attributable band per
 
 ### Sprint 8.3 — Measured Q1 MT8 Snapshot
 
-`mcts bench rollouts --threading multi --workers 8 --rng cpp --games N --seed 42`
+`mcts bench rollouts --threading multi --workers 8 --rng native --games N --seed 42`
 inside the pinned container, wall-clock median:
 
 | Games | cpp-imperative (s) | haskell (s) | Ratio (haskell / cpp-imperative) |
@@ -432,10 +427,9 @@ The live Phase 6 Rust backend install surface is closed. On amd64,
 the one-game PGO training run, `llvm-profdata merge`, `-Cprofile-use` with the
 same target CPU and linker flags, BOLT instrumentation/training, canonical
 install, and post-link `engine_build_id` patching. The shared
-C++ `pgoBoltPlan` previously validated the canonical FFI training/install
-sequence for `cpp-functional`; if C++ BOLT instrumentation yielded no `.fdata`
-in the pinned container, the plan installed the PGO artefact as the explicit
-fallback. That C++ surface is now retired and represented by historical evidence.
+C++ `pgoBoltPlan` validates the canonical FFI training/install sequence for
+`cpp-functional`; if C++ BOLT instrumentation yields no `.fdata` in the pinned
+container, the plan installs the PGO artefact as the explicit fallback.
 
 On aarch64, the container's `llvm-bolt-19` reports:
 

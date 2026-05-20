@@ -9,6 +9,9 @@ module MCTS.Verify.Envelope
 import MCTS.Driver (makeLogicalEnvelope)
 import MCTS.Error (AppError (..), EnvelopeMismatchScope (..))
 import MCTS.FFI.Common (engineEnvelopeToEnvelope)
+import MCTS.FFI.CppFunctional (cppFunctionalLibraryPath, loadCppFunctionalEnvelope)
+import MCTS.FFI.CppImperative (cppImperativeLibraryPath, loadCppImperativeEnvelope)
+import MCTS.FFI.CppLegacy (cppLegacyLibraryPath, loadCppLegacyEnvelope)
 import MCTS.FFI.Rust (loadRustEnvelope, rustLibraryPath)
 import MCTS.Types
 import System.Directory (doesFileExist)
@@ -164,18 +167,25 @@ checkTranscriptLive allowStale transcript = do
 
 loadExpectedEnvelope :: Envelope -> IO (Either AppError Envelope)
 loadExpectedEnvelope envelope =
-    case envelopeBackend envelope of
-        CppLegacy -> pure (Right envelope)
-        CppImperative -> pure (Right envelope)
-        CppFunctional -> pure (Right envelope)
-        Rust -> loadForeign rustLibraryPath loadRustEnvelope
-        Haskell -> pure (Right (makeLogicalEnvelope Haskell (envelopeRngSource envelope)))
+    if isLogicalEnvelope envelope
+        then pure (Right (makeLogicalEnvelope (envelopeBackend envelope) (envelopeRngSource envelope)))
+        else case envelopeBackend envelope of
+            CppLegacy -> loadForeign cppLegacyLibraryPath loadCppLegacyEnvelope
+            CppImperative -> loadForeign cppImperativeLibraryPath loadCppImperativeEnvelope
+            CppFunctional -> loadForeign cppFunctionalLibraryPath loadCppFunctionalEnvelope
+            Rust -> loadForeign rustLibraryPath loadRustEnvelope
+            Haskell -> pure (Right (makeLogicalEnvelope Haskell (envelopeRngSource envelope)))
   where
     loadForeign libraryPath loader = do
         present <- doesFileExist libraryPath
         if present
             then fmap engineEnvelopeToEnvelope <$> loader
             else pure (Right (makeLogicalEnvelope (envelopeBackend envelope) (envelopeRngSource envelope)))
+
+isLogicalEnvelope :: Envelope -> Bool
+isLogicalEnvelope envelope =
+    envelopeBuildId envelope == backendIdentifier (envelopeBackend envelope) <> "-logical"
+        && envelopeEngineBuildId envelope == zeroDigest
 
 compareField :: String -> (Envelope -> String) -> Envelope -> Envelope -> Either AppError ()
 compareField field getValue expected actual =

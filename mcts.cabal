@@ -40,6 +40,9 @@ library
         MCTS.Env
         MCTS.Error
         MCTS.FFI.Common
+        MCTS.FFI.CppFunctional
+        MCTS.FFI.CppImperative
+        MCTS.FFI.CppLegacy
         MCTS.FFI.Rust
         MCTS.Generated.Paths
         MCTS.Generated.Sections
@@ -47,6 +50,7 @@ library
         MCTS.Plan
         MCTS.Prerequisite
         MCTS.ReportCard
+        MCTS.Rng.Cpp
         MCTS.Rng.Mix
         MCTS.Search.Arena
         MCTS.Search.UCT
@@ -164,6 +168,23 @@ test-suite mcts-cross-backend
     type:             exitcode-stdio-1.0
     main-is:          Main.hs
     hs-source-dirs:   test/cross-backend
+    default-language: Haskell2010
+    ghc-options:
+        -Wall -Wcompat -O2 -funbox-strict-fields -fspecialise-aggressively
+        -fexpose-all-unfoldings -flate-dmd-anal
+        -fmax-simplifier-iterations=20 -fworker-wrapper
+        -fstatic-argument-transformation
+
+    build-depends:
+        base >=4.20 && <5,
+        mcts,
+        tasty,
+        tasty-hunit
+
+test-suite mcts-legacy-parity
+    type:             exitcode-stdio-1.0
+    main-is:          Main.hs
+    hs-source-dirs:   test/legacy-parity
     default-language: Haskell2010
     ghc-options:
         -Wall -Wcompat -O2 -funbox-strict-fields -fspecialise-aggressively

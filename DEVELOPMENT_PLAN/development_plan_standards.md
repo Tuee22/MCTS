@@ -20,7 +20,8 @@
 
 > **Purpose**: Define the maintenance rules for the MCTS development plan so the repository
 > keeps one coherent, execution-ordered plan and one explicit ledger of cleanup work
-> across the bootstrap, five-backend buildout, and Haskell performance parity proof.
+> across the bootstrap, five-backend buildout, cross-backend equivalence proof, and
+> Haskell performance parity proof.
 
 ## Core Principles
 
@@ -31,8 +32,8 @@ repository end state — one Haskell CLI driving five backends, bit-for-bit cros
 verification, and pure Haskell matching maximally-optimised C++ on both POC workloads.
 
 - Every phase assumes the previous phase has already closed.
-- The plan flows from documentation topology to CLI scaffolding to engine to FFI backends
-  in retirement order, then cross-backend verification, then Haskell performance parity.
+- The plan flows from documentation topology to CLI scaffolding to engine to all five FFI
+  or in-process backends, then cross-backend verification, then Haskell performance parity.
 - A reader unfamiliar with the repository must be able to follow the plan top to bottom
   without reconstructing hidden dependencies from multiple documents.
 - If a previously closed phase reopens because the repository end state expands later, the
@@ -140,8 +141,8 @@ validation data to run its normal test suite.
 - Test stanzas synthesize transcripts, sidecars, report cards, and renderer examples in
   memory or under temporary directories during the test run.
 - Runtime/operator caches live under ignored cache roots such as `.mcts-cache/`.
-- Historical retired-backend evidence may be described in docs or stored as optional
-  external/ignored artifacts, but it is not a clean-clone test prerequisite.
+- Historical audit evidence may be described in docs or stored as optional external/ignored
+  artifacts, but it is not a clean-clone test prerequisite.
 - Generated documentation artefacts are the exception owned by the generated-section and
   tracked-generated-path registries; they are deterministic source documentation, not
   validation fixtures.
@@ -208,11 +209,11 @@ paths, duplicate surfaces, and stale tooling residue that still need removal.
   appear in the ledger.
 - Each ledger item must name its location, why it is slated for removal, and the sprint
   that owns the cleanup.
-- The retirement protocol (i)→(ii)→(iii)→(v) named in
-  [00-overview.md](00-overview.md) is itself a cleanup ledger: each retiring backend's
-  build artefacts and CLI flag values move from `Pending Removal` to `Completed` when the
-  surviving cohort's evidence is recorded without requiring generated validation data in
-  the repository.
+- Backend removal is not part of the supported plan. All five backend identifiers,
+  build surfaces, and verification roles remain first-class unless a future plan
+  revision explicitly changes the project hypothesis. Any stale documentation or code
+  path that describes `(i)`, `(ii)`, or `(iii)` as inactive or removed is cleanup residue and belongs
+  in this ledger until corrected.
 - When the cleanup lands, move the item from `Pending Removal` to `Completed`.
 - Phase docs reference the owning sprint, not duplicate the full cleanup ledger.
 
@@ -270,8 +271,8 @@ registry`, `Test Organization`, `Output Rules`, `Error Handling`, `Toolchain pin
   honor and the section is in scope, the gap is scheduled through a sprint deliverable in
   the appropriate phase. Closing the gap silently without a sprint binding is forbidden.
 - Doctrine-driven removals — superseded helpers, deprecated CLI flags, parallel workflow
-  surfaces — flow through [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md)
-  like any other cleanup.
+  surfaces, and stale two-backend wording — flow through
+  [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md) like any other cleanup.
 - If a doctrine section changes, the same change updates every governed doc that
   references it.
 

@@ -7,15 +7,17 @@ module MCTS.CLI.Test
     ) where
 
 import Control.Monad.IO.Class (liftIO)
-import Data.List (find)
 import Data.Word (Word64)
 import MCTS.CLI.Bench (monotonicNanos)
-import MCTS.CLI.Command (RetirementAnchorOptions (..), TestCommand (..))
+import MCTS.CLI.Command (ParityAnchorOptions (..), TestCommand (..))
 import MCTS.CLI.Output (OutputFormat (..), OutputOptions (..), outputLine, renderErrorString)
 import MCTS.Driver (BatchResult (..), RunInputs (..), defaultRunInputs)
 import MCTS.Driver.Dispatch (runBatchNoWriteDispatch)
 import qualified MCTS.Env as Env
 import MCTS.Error (AppError (..))
+import MCTS.FFI.CppFunctional (cppFunctionalLibraryPath)
+import MCTS.FFI.CppImperative (cppImperativeLibraryPath)
+import MCTS.FFI.CppLegacy (cppLegacyLibraryPath)
 import MCTS.FFI.Rust (rustLibraryPath)
 import MCTS.Plan
 import MCTS.Prerequisite (checkPrerequisites, prerequisitesForTest)
@@ -28,34 +30,22 @@ import System.Directory (doesFileExist)
 import System.Exit (ExitCode (..))
 import Text.Printf (printf)
 
-data RetirementAnchorResult = RetirementAnchorResult
-    { anchorRetiring :: !Backend
-    , anchorSuccessor :: !Backend
-    , anchorRows :: ![RetirementAnchorRow]
+data ParityAnchorResult = ParityAnchorResult
+    { anchorBaseline :: !Backend
+    , anchorCandidate :: !Backend
+    , anchorRows :: ![ParityAnchorRow]
     }
     deriving (Eq, Show)
 
-data RetirementAnchorRow = RetirementAnchorRow
+data ParityAnchorRow = ParityAnchorRow
     { anchorQuestion :: !String
     , anchorWorkload :: !Workload
     , anchorThreading :: !Threading
     , anchorGames :: !Int
     , anchorSims :: !Int
-    , anchorRetiringGamesPerSecond :: !Double
-    , anchorSuccessorGamesPerSecond :: !Double
+    , anchorBaselineGamesPerSecond :: !Double
+    , anchorCandidateGamesPerSecond :: !Double
     , anchorTimeRatio :: !Double
-    }
-    deriving (Eq, Show)
-
-data FrozenRetirementAnchor = FrozenRetirementAnchor
-    { frozenAnchorRows :: ![FrozenRetirementAnchorRow]
-    }
-    deriving (Eq, Show)
-
-data FrozenRetirementAnchorRow = FrozenRetirementAnchorRow
-    { frozenAnchorWorkload :: !Workload
-    , frozenAnchorThreading :: !Threading
-    , frozenAnchorRetiringGamesPerSecond :: !Double
     }
     deriving (Eq, Show)
 
@@ -96,20 +86,20 @@ runWithOutput output command =
                                                 )
                                                 >> pure ExitSuccess
                                 else pure code
-        TestRetirementAnchor opts -> do
-            let plan = retirementAnchorPlan opts
+        TestParityAnchor opts -> do
+            let plan = parityAnchorPlan opts
                 rendered = renderPlan plan
-            liftIO (writePlanFile (planFile (retirementAnchorPlanOptions opts)) rendered)
-            if planDryRun (retirementAnchorPlanOptions opts)
+            liftIO (writePlanFile (planFile (parityAnchorPlanOptions opts)) rendered)
+            if planDryRun (parityAnchorPlanOptions opts)
                 then liftIO (outputLine rendered) >> pure ExitSuccess
                 else
-                    if retirementAnchorRetiring opts == retirementAnchorSuccessor opts
+                    if parityAnchorBaseline opts == parityAnchorCandidate opts
                         then do
                             liftIO
                                 ( outputLine
                                     ( renderErrorString
                                         output
-                                        (ParseError "retirement-anchor requires distinct retiring and successor backends")
+                                        (ParseError "parity-anchor requires distinct baseline and candidate backends")
                                     )
                                 )
                             pure (ExitFailure 1)
@@ -119,10 +109,10 @@ runWithOutput output command =
                                 then do
                                     anchor <-
                                         liftIO
-                                            ( buildRetirementAnchor
+                                            ( buildParityAnchor
                                                 monotonicNanos
-                                                (retirementAnchorRetiring opts)
-                                                (retirementAnchorSuccessor opts)
+                                                (parityAnchorBaseline opts)
+                                                (parityAnchorCandidate opts)
                                             )
                                     case anchor of
                                         Left err ->
@@ -132,12 +122,12 @@ runWithOutput output command =
                                             liftIO
                                                 ( outputLine
                                                     ( if outputFormat output == JsonFormat
-                                                        then renderRetirementAnchorJson result
-                                                        else renderRetirementAnchor result
+                                                        then renderParityAnchorJson result
+                                                        else renderParityAnchor result
                                                     )
                                                 )
                                             pure $
-                                                if retirementAnchorWithinTolerance result
+                                                if parityAnchorWithinTolerance result
                                                     then ExitSuccess
                                                     else ExitFailure 1
                                 else pure code
@@ -158,16 +148,20 @@ testAllPlan =
             [ mctsStep ["lint", "files"]
             , mctsStep ["lint", "docs"]
             , Subprocess "cabal" ["build", "all"] Nothing Nothing
+            , mctsStep ["build", "cpp-legacy"]
+            , mctsStep ["build", "cpp-imperative"]
+            , mctsStep ["build", "cpp-functional"]
             , mctsStep ["build", "rust"]
             , Subprocess "cabal" ["test", "mcts-haskell-style"] Nothing Nothing
             , Subprocess "cabal" ["test", "mcts-unit"] Nothing Nothing
             , Subprocess "cabal" ["test", "mcts-integration"] Nothing Nothing
             , Subprocess "cabal" ["test", "mcts-cross-backend"] Nothing Nothing
+            , Subprocess "cabal" ["test", "mcts-legacy-parity"] Nothing Nothing
             , mctsStep
                 [ "verify"
                 , "rollouts"
                 , "--backend"
-                , "rust,haskell"
+                , "cpp-imperative,cpp-functional,rust,haskell"
                 , "--threading"
                 , "single"
                 , "--games"
@@ -181,7 +175,7 @@ testAllPlan =
                 [ "verify"
                 , "selfplay"
                 , "--backend"
-                , "rust,haskell"
+                , "cpp-imperative,cpp-functional,rust,haskell"
                 , "--threading"
                 , "single"
                 , "--games"
@@ -193,27 +187,40 @@ testAllPlan =
                 , "--sims"
                 , show reportCardVerifySims
                 ]
+            , mctsStep
+                [ "verify"
+                , "legacy-parity"
+                , "selfplay"
+                , "--backend"
+                , "cpp-legacy,cpp-imperative,cpp-functional,rust,haskell"
+                , "--games"
+                , show reportCardLegacyParityGames
+                , "--seed"
+                , "42"
+                , "--sims"
+                , show reportCardLegacyParitySims
+                ]
             ]
         }
 
-retirementAnchorPlan :: RetirementAnchorOptions -> Plan Subprocess
-retirementAnchorPlan opts =
+parityAnchorPlan :: ParityAnchorOptions -> Plan Subprocess
+parityAnchorPlan opts =
     Plan
         { planName =
-            "test retirement-anchor "
-                <> backendIdentifier (retirementAnchorRetiring opts)
+            "test parity-anchor "
+                <> backendIdentifier (parityAnchorBaseline opts)
                 <> " "
-                <> backendIdentifier (retirementAnchorSuccessor opts)
+                <> backendIdentifier (parityAnchorCandidate opts)
         , planSteps =
             Subprocess "cabal" ["build", "all"] Nothing Nothing
-                : concatMap buildStep (uniqueBackends [retirementAnchorRetiring opts, retirementAnchorSuccessor opts])
+                : concatMap buildStep (uniqueBackends [parityAnchorBaseline opts, parityAnchorCandidate opts])
         }
   where
     buildStep backend =
         case backend of
-            CppLegacy -> []
-            CppImperative -> []
-            CppFunctional -> []
+            CppLegacy -> [mctsStep ["build", "cpp-legacy"]]
+            CppImperative -> [mctsStep ["build", "cpp-imperative"]]
+            CppFunctional -> [mctsStep ["build", "cpp-functional"]]
             Rust -> [mctsStep ["build", "rust"]]
             Haskell -> []
 
@@ -310,45 +317,45 @@ buildReportPerformance
         )
 buildReportPerformance clock = do
     q1ST <-
-        measureFrozenComparison
+        measureLiveComparison
             clock
-            frozenCppImperativeAnchor
+            CppImperative
             Rollouts
             SingleThreaded
             reportCardRolloutGames
             reportCardBenchSims
     q1MT8 <-
-        measureFrozenComparison
+        measureLiveComparison
             clock
-            frozenCppImperativeAnchor
+            CppImperative
             Rollouts
             (MultiThreaded 8)
             reportCardRolloutGames
             reportCardBenchSims
     q2ST <-
-        measureFrozenComparison
+        measureLiveComparison
             clock
-            frozenCppImperativeAnchor
+            CppImperative
             Selfplay
             SingleThreaded
             reportCardSelfplayGames
             reportCardBenchSims
     q2MT8 <-
-        measureFrozenComparison
+        measureLiveComparison
             clock
-            frozenCppImperativeAnchor
+            CppImperative
             Selfplay
             (MultiThreaded 8)
             reportCardSelfplayGames
             reportCardBenchSims
     pure $ (,,,) <$> q1ST <*> q1MT8 <*> q2ST <*> q2MT8
 
-buildRetirementAnchor
+buildParityAnchor
     :: IO Word64
     -> Backend
     -> Backend
-    -> IO (Either AppError RetirementAnchorResult)
-buildRetirementAnchor clock retiring successor = do
+    -> IO (Either AppError ParityAnchorResult)
+buildParityAnchor clock baseline candidate = do
     q1ST <-
         measureAnchorRow clock "Q1" Rollouts SingleThreaded reportCardRolloutGames reportCardBenchSims
     q1MT8 <-
@@ -358,25 +365,25 @@ buildRetirementAnchor clock retiring successor = do
     q2MT8 <-
         measureAnchorRow clock "Q2" Selfplay (MultiThreaded 8) reportCardSelfplayGames reportCardBenchSims
     pure $
-        RetirementAnchorResult retiring successor
+        ParityAnchorResult baseline candidate
             <$> sequence [q1ST, q1MT8, q2ST, q2MT8]
   where
     measureAnchorRow clockSource question workload threading games sims = do
-        retiringRate <- measureBackend clockSource (inputs workload threading games sims) retiring
-        successorRate <- measureBackend clockSource (inputs workload threading games sims) successor
+        baselineRate <- measureBackend clockSource (inputs workload threading games sims) baseline
+        candidateRate <- measureBackend clockSource (inputs workload threading games sims) candidate
         pure $ do
-            retiringGamesPerSecond <- retiringRate
-            successorGamesPerSecond <- successorRate
+            baselineGamesPerSecond <- baselineRate
+            candidateGamesPerSecond <- candidateRate
             Right
-                RetirementAnchorRow
+                ParityAnchorRow
                     { anchorQuestion = question
                     , anchorWorkload = workload
                     , anchorThreading = threading
                     , anchorGames = games
                     , anchorSims = sims
-                    , anchorRetiringGamesPerSecond = retiringGamesPerSecond
-                    , anchorSuccessorGamesPerSecond = successorGamesPerSecond
-                    , anchorTimeRatio = safeRatio retiringGamesPerSecond successorGamesPerSecond
+                    , anchorBaselineGamesPerSecond = baselineGamesPerSecond
+                    , anchorCandidateGamesPerSecond = candidateGamesPerSecond
+                    , anchorTimeRatio = safeRatio baselineGamesPerSecond candidateGamesPerSecond
                     }
     inputs workload threading games sims =
         defaultRunInputs
@@ -389,18 +396,19 @@ buildRetirementAnchor clock retiring successor = do
             , inputSims = FixedSims sims
             }
 
-measureFrozenComparison
+measureLiveComparison
     :: IO Word64
-    -> FrozenRetirementAnchor
+    -> Backend
     -> Workload
     -> Threading
     -> Int
     -> Int
     -> IO (Either AppError ReportRateComparison)
-measureFrozenComparison clock frozen workload threading games sims = do
+measureLiveComparison clock cppBackend workload threading games sims = do
+    cpp <- measureBackend clock baseInputs cppBackend
     haskell <- measureBackend clock baseInputs Haskell
     pure $ do
-        cppRate <- retiredRate frozen workload threading
+        cppRate <- cpp
         haskellRate <- haskell
         Right
             ReportRateComparison
@@ -420,23 +428,6 @@ measureFrozenComparison clock frozen workload threading games sims = do
             , inputMaxPlies = 200
             , inputSims = FixedSims sims
             }
-
-retiredRate :: FrozenRetirementAnchor -> Workload -> Threading -> Either AppError Double
-retiredRate frozen workload threading =
-    case find matches (frozenAnchorRows frozen) of
-        Just row -> Right (frozenAnchorRetiringGamesPerSecond row)
-        Nothing ->
-            Left $
-                IOErrorText
-                    ( "retired backend throughput anchor missing row for "
-                        <> workloadName workload
-                        <> "/"
-                        <> threadingName threading
-                    )
-  where
-    matches row =
-        frozenAnchorWorkload row == workload
-            && frozenAnchorThreading row == threading
 
 measureBackend :: IO Word64 -> RunInputs -> Backend -> IO (Either AppError Double)
 measureBackend clock inputs backend = do
@@ -477,7 +468,7 @@ verdictFromRatios ratios =
 
 requireReportCardArtifacts :: IO (Either AppError ())
 requireReportCardArtifacts =
-    go [rustLibraryPath]
+    go [cppLegacyLibraryPath, cppImperativeLibraryPath, cppFunctionalLibraryPath, rustLibraryPath]
   where
     go [] = pure (Right ())
     go (path : rest) = do
@@ -510,86 +501,83 @@ reportCardVerifyGames = 4
 reportCardVerifySims :: Int
 reportCardVerifySims = 500
 
-frozenCppImperativeAnchor :: FrozenRetirementAnchor
-frozenCppImperativeAnchor =
-    FrozenRetirementAnchor
-        [ FrozenRetirementAnchorRow Rollouts SingleThreaded 26.0287
-        , FrozenRetirementAnchorRow Rollouts (MultiThreaded 8) 185.8295
-        , FrozenRetirementAnchorRow Selfplay SingleThreaded 0.0211
-        , FrozenRetirementAnchorRow Selfplay (MultiThreaded 8) 0.0779
-        ]
+reportCardLegacyParityGames :: Int
+reportCardLegacyParityGames = 2
+
+reportCardLegacyParitySims :: Int
+reportCardLegacyParitySims = 10000
 
 haskellParityTolerance :: Double
 haskellParityTolerance = 0.05
 
-retirementAnchorWithinTolerance :: RetirementAnchorResult -> Bool
-retirementAnchorWithinTolerance result =
+parityAnchorWithinTolerance :: ParityAnchorResult -> Bool
+parityAnchorWithinTolerance result =
     all ((<= 1.0 + haskellParityTolerance) . anchorTimeRatio) (anchorRows result)
 
-renderRetirementAnchor :: RetirementAnchorResult -> String
-renderRetirementAnchor result =
+renderParityAnchor :: ParityAnchorResult -> String
+renderParityAnchor result =
     unlines $
-        [ "retirement anchor: "
-            <> backendIdentifier (anchorRetiring result)
+        [ "parity anchor: "
+            <> backendIdentifier (anchorBaseline result)
             <> " "
-            <> backendRoman (anchorRetiring result)
+            <> backendRoman (anchorBaseline result)
             <> " -> "
-            <> backendIdentifier (anchorSuccessor result)
+            <> backendIdentifier (anchorCandidate result)
             <> " "
-            <> backendRoman (anchorSuccessor result)
-        , "question  workload  threading  retiring games/s  successor games/s  ratio"
+            <> backendRoman (anchorCandidate result)
+        , "question  workload  threading  baseline games/s  candidate games/s  ratio"
         ]
-            <> map renderRetirementAnchorRow (anchorRows result)
+            <> map renderParityAnchorRow (anchorRows result)
             <> [ "Verdict: "
-                    <> if retirementAnchorWithinTolerance result
+                    <> if parityAnchorWithinTolerance result
                         then "Within tolerance"
-                        else "Shortfall " <> fixed4 (retirementAnchorShortfall result)
+                        else "Shortfall " <> fixed4 (parityAnchorShortfall result)
                ]
 
-renderRetirementAnchorRow :: RetirementAnchorRow -> String
-renderRetirementAnchorRow row =
+renderParityAnchorRow :: ParityAnchorRow -> String
+renderParityAnchorRow row =
     anchorQuestion row
         <> "  "
         <> workloadName (anchorWorkload row)
         <> "  "
         <> threadingName (anchorThreading row)
         <> "  "
-        <> fixed4 (anchorRetiringGamesPerSecond row)
+        <> fixed4 (anchorBaselineGamesPerSecond row)
         <> "  "
-        <> fixed4 (anchorSuccessorGamesPerSecond row)
+        <> fixed4 (anchorCandidateGamesPerSecond row)
         <> "  "
         <> fixed4 (anchorTimeRatio row)
 
-renderRetirementAnchorJson :: RetirementAnchorResult -> String
-renderRetirementAnchorJson result =
+renderParityAnchorJson :: ParityAnchorResult -> String
+renderParityAnchorJson result =
     "{"
-        <> "\"schema\":\"mcts-retirement-anchor-v1\""
-        <> ",\"retiring\":\""
-        <> backendIdentifier (anchorRetiring result)
+        <> "\"schema\":\"mcts-parity-anchor-v1\""
+        <> ",\"baseline\":\""
+        <> backendIdentifier (anchorBaseline result)
         <> "\""
-        <> ",\"retiring_roman\":\""
-        <> backendRoman (anchorRetiring result)
+        <> ",\"baseline_roman\":\""
+        <> backendRoman (anchorBaseline result)
         <> "\""
-        <> ",\"successor\":\""
-        <> backendIdentifier (anchorSuccessor result)
+        <> ",\"candidate\":\""
+        <> backendIdentifier (anchorCandidate result)
         <> "\""
-        <> ",\"successor_roman\":\""
-        <> backendRoman (anchorSuccessor result)
+        <> ",\"candidate_roman\":\""
+        <> backendRoman (anchorCandidate result)
         <> "\""
         <> ",\"seed\":42"
         <> ",\"max_plies\":200"
         <> ",\"tolerance\":"
         <> fixed4 haskellParityTolerance
         <> ",\"within_tolerance\":"
-        <> renderBool (retirementAnchorWithinTolerance result)
+        <> renderBool (parityAnchorWithinTolerance result)
         <> ",\"shortfall\":"
-        <> fixed4 (retirementAnchorShortfall result)
+        <> fixed4 (parityAnchorShortfall result)
         <> ",\"rows\":["
-        <> joinWith "," (map renderRetirementAnchorRowJson (anchorRows result))
+        <> joinWith "," (map renderParityAnchorRowJson (anchorRows result))
         <> "]}"
 
-renderRetirementAnchorRowJson :: RetirementAnchorRow -> String
-renderRetirementAnchorRowJson row =
+renderParityAnchorRowJson :: ParityAnchorRow -> String
+renderParityAnchorRowJson row =
     "{"
         <> "\"question\":\""
         <> anchorQuestion row
@@ -604,16 +592,16 @@ renderRetirementAnchorRowJson row =
         <> show (anchorGames row)
         <> ",\"sims\":"
         <> show (anchorSims row)
-        <> ",\"retiring_games_per_second\":"
-        <> fixed4 (anchorRetiringGamesPerSecond row)
-        <> ",\"successor_games_per_second\":"
-        <> fixed4 (anchorSuccessorGamesPerSecond row)
+        <> ",\"baseline_games_per_second\":"
+        <> fixed4 (anchorBaselineGamesPerSecond row)
+        <> ",\"candidate_games_per_second\":"
+        <> fixed4 (anchorCandidateGamesPerSecond row)
         <> ",\"time_ratio\":"
         <> fixed4 (anchorTimeRatio row)
         <> "}"
 
-retirementAnchorShortfall :: RetirementAnchorResult -> Double
-retirementAnchorShortfall result =
+parityAnchorShortfall :: ParityAnchorResult -> Double
+parityAnchorShortfall result =
     max 0.0 (maximum (1.0 : map anchorTimeRatio (anchorRows result)) - 1.0)
 
 fixed4 :: Double -> String
@@ -630,7 +618,9 @@ joinWith separator (x : xs) = x <> separator <> joinWith separator xs
 
 reportCardBackends :: [Backend]
 reportCardBackends =
-    [ Rust
+    [ CppImperative
+    , CppFunctional
+    , Rust
     , Haskell
     ]
 

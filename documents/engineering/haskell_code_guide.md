@@ -52,13 +52,15 @@ forbidden-primitives list.
 
 The MCTS commands that consume the `Plan / Apply` pattern are:
 
-- `mcts test all` — Plan/Apply over the four live Cabal stanzas plus the report-card
+- `mcts test all` — Plan/Apply over the five live Cabal stanzas plus the report-card
   workload (Phase 7 Sprint 7.3).
+- `mcts build cpp-legacy`, `mcts build cpp-imperative`, and
+  `mcts build cpp-functional` — Plan/Apply over the C++ backend build pipelines
+  (Phase 4/5/6; Phase 8 restoration).
 - `mcts build rust` — Plan/Apply over
   the live foreign backend two-stage PGO + BOLT post-link + `mimalloc` link pipeline
-- `mcts build legacy-fixtures` — Plan/Apply over the retired backend (i)
-  optional external evidence generator (Phase 4 Sprint 4.5; backend (i) retired
-  in Sprint 8.4). Its outputs belong in ignored/external artifact roots, not in
+- `mcts build legacy-fixtures` — Plan/Apply over the backend (i) optional external
+  evidence generator. Its outputs belong in ignored/external artifact roots, not in
   normal test inputs.
 - `mcts docs generate` — internally Plan/Apply over the rendered marker
   substitutions and the `trackingGeneratedPaths` writes (Phase 1 Sprint 1.3).
@@ -184,17 +186,15 @@ rules enforce this boundary by keeping direct terminal output out of command mod
 
 ### GADT-Indexed State Machines
 
-Two project state machines use phantom-type indices per the doctrine's "more
-than two states ⇒ GADT-indexed" rule, with backend cohort membership encoded
-at the type level:
+The Q3 backend cohort uses a phantom-indexed shape per the doctrine's "more
+than two states ⇒ GADT-indexed" rule:
 
-- `VerifyBackend` — type-level exclusion of backend (i) from the default
-  `verify` cohort, extended in Sprints `8.5` and `8.6` to exclude retired
-  backends (ii) and (iii). Constructors: `VRust | VHaskell`. See
+- `VerifyBackend` — type-level Q3 cohort `(ii)..(v)`. Constructors:
+  `VCppImperative | VCppFunctional | VRust | VHaskell`. See
   [determinism_contract.md → Cross-Backend Determinism (Q3)](./determinism_contract.md).
-- The former `LegacyParityBackend` parser surface retired with backend (i) in
-  Sprint 8.4. Q7 is now represented by historical backend (i) liveness evidence;
-  the wire-format `CppLegacy` constructor remains so archived transcripts decode. See
+- `mcts verify legacy-parity` — Q7 validates the complete backend list `(i)..(v)`
+  under the legacy envelope. The runtime parser rejects incomplete cohorts and pins
+  `max_plies = 10000`, `--rng cpp`, and single-threaded execution. See
   [determinism_contract.md → Legacy Parity Envelope](./determinism_contract.md).
 
 Phase 7 Sprint 7.2 implements these GADT-shaped parser surfaces per

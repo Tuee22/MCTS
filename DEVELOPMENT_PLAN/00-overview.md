@@ -50,18 +50,19 @@ simultaneously:
 **Long-term horizon (out of scope for this plan).** The project
 [../README.md](../README.md) declares an eventual AlphaZero-style ANN evaluation goal.
 Phases `0`–`8` own the rollout-based MCTS hypothesis only; no ANN, no learned
-evaluator, and no Python ML stack appears on the supported path. The retirement
-protocol's recorded historical evidence (Phase `8`) leaves the door open for a
-successor effort to inherit a parity-proven Haskell engine; that work is a future
+evaluator, and no Python ML stack appears on the supported path. The intended
+handoff is a parity-proven five-backend CLI that a successor effort can inherit
+without reconstructing C++ or Rust comparison evidence; that work is a future
 plan, not a deliverable here.
 
 ## Current Handoff Status
 
-The 2026-05-19 report card proves the performance-parity target for the
-surviving `(rust, haskell)` live cohort, backend retirements `(i)` through
-`(iii)` remain recorded as historical evidence, and the Phase `8`
-compiler-runtime plan alignment plus no-generated-validation-data doctrine
-cleanup are closed.
+The 2026-05-19 report card proves the performance-parity target as audit
+evidence, and the Phase `8` compiler-runtime plan alignment plus
+no-generated-validation-data doctrine cleanup are closed. The five-backend
+surface is restored: `cpp-legacy`, `cpp-imperative`, `cpp-functional`, `rust`,
+and `haskell` are first-class parser/build/verify/FFI participants. Phase `8`
+is closed on that restored baseline.
 
 Phase `1` reclosed on its owned CLI-scaffold and lint-stack surfaces during the
 2026-05-19 alignment sweep. Phase `2` reclosed on the transcript/cache/envelope
@@ -69,48 +70,40 @@ surface after one-game cache keys, the envelope wire payload, and `inspect show`
 sidecar/envelope behavior were aligned. Phase `6` reclosed after the Rust PGO
 build harness adopted the documented `lld` linker flag. Phase `7` reclosed after
 the verifier comparator, `play`, replay overlay, and cross-backend stanza
-alignment. Phase `8` reclosed after the tuning-doc and generated-validation-data
-cleanup. Phases `3`, `4`, and `5` remain `Done` on their owned engine and
-retired-backend surfaces.
+alignment. Phase `8` reclosed after restoring the five-backend surface and aligning
+the tuning-doc, determinism, FFI, and generated-validation-data documentation.
+Phases `3`, `4`, and `5` remain `Done` on their owned engine and C++ backend
+buildout surfaces.
 
 ## Target Outcome
 
-One `mcts` Haskell CLI binary, built by Cabal under GHC `9.14.1` and Cabal `3.16.1.0`,
-drives the live backend cohort behind a uniform command surface. Backend (i)
-`cpp-legacy/` is a strictly verbatim re-port of `MCTS_legacy` retained as a retired
-reference and optional local evidence-generation home. Backend (ii)
-`cpp-imperative/` is the retired maximally-tuned imperative C++23 performance
-ceiling, preserved as source plus recorded historical evidence.
-Backend (iii) `cpp-functional/` is the retired maximally-tuned modern C++23
-functional-style anchor under the same PGO+BOLT+`mimalloc` optimisation stack,
-preserved as source plus recorded historical evidence; backend (iv) `rust/` is
-the live cross-language baseline; backend (v) is the pure Haskell engine running
+One `mcts` Haskell CLI binary, built by Cabal under GHC `9.14.1` and Cabal
+`3.16.1.0`, drives all five backend slots behind a uniform command surface.
+Backend (i) `cpp-legacy/` is a strictly verbatim re-port of `MCTS_legacy` used
+for legacy compatibility and Q6/Q7 evidence. Backend (ii) `cpp-imperative/` is
+the maximally-tuned imperative C++23 performance ceiling. Backend (iii)
+`cpp-functional/` uses the same PGO+BOLT+`mimalloc` optimisation stack so the
+comparison with (ii) isolates C++ style. Backend (iv) `rust/` is the
+cross-language systems baseline. Backend (v) is the pure Haskell engine running
 natively in the same process, with `ST`-monad mutable arena internally and pure
 search API externally.
 
 Two POC benchmark workloads exercise the cohort: (a) random rollouts and (b) adversarial
-MCTS self-play with rollout evaluations. Each runs single-threaded and on 8 workers under
-both `--rng native` (the current backend-salted deterministic schedule used for
-benchmark stream separation) and `--rng cpp` (all backends draw from the canonical
-C++-RNG seed schedule with no backend-native salt). `mcts verify` round-robin-compares
-visit counts under `--rng cpp` across the current live cohort `(iv)..(v)`, with
-retired backends excluded by the `VerifyBackend` type. The former live
-`mcts verify legacy-parity` gate retired with backend (i) in Sprint 8.4; Q7 is
-now answered by recorded historical backend (i) evidence.
+MCTS self-play with rollout evaluations. Performance benchmarks run single-threaded and
+on 8 workers under `--rng native`, where each backend uses its own fast/native
+deterministic RNG contract and no cross-backend transcript identity is expected.
+Logical-equivalence verification uses the same workloads under `--rng cpp`, where
+equivalence tests consume C++-generated verification seeds through the shared C++ RNG
+bridge so MCTS transcripts can be compared exactly. `mcts verify` round-robin-compares
+visit counts under `--rng cpp` across `(ii)..(v)`. `mcts verify legacy-parity` supplies
+the Q7 legacy-envelope liveness/overflow check across all five backend slots.
 `mcts test all`
 emits the tidy POC report-card summary block answering Q1–Q7 in one screenful, with all
 live workload constants implemented in `MCTS.CLI.Test` and mirrored in
-`cabal.project` comments. Retired legacy-envelope knobs remain historical
-evidence metadata rather than current validation inputs.
-
-Following the retirement protocol, backend (i) retired once it demonstrated faithful
-reproduction of `MCTS_legacy` (Q6 closure), and backend (ii) retired once
-functional-style C++ (iii) demonstrated parity with imperative C++ on Q1/Q2.
-Backend (iii) retired after pure Haskell (v) demonstrated parity with
-functional C++. Each retiring backend's evidence is recorded in plan/docs or
-optional external/ignored artifacts; normal validation never depends on
-checked-in generated transcripts, throughput JSON, or snapshot files. Backend
-(iv) Rust remains live throughout as a long-running cross-language second opinion.
+`cabal.project` comments. Legacy-envelope knobs remain live report-card metadata.
+Normal validation never depends on checked-in generated transcripts, throughput
+JSON, or snapshot files; tests synthesize or explicitly generate evidence in
+temporary or operator-provided roots.
 
 ## Architecture Overview
 
@@ -144,24 +137,25 @@ checked-in generated transcripts, throughput JSON, or snapshot files. Backend
 - **Backend (i) C++ legacy port and FFI bridge.** Verbatim re-port from `~/MCTS_legacy`
   with only the FFI shims required to expose a C ABI; inherits the legacy's
   `std::shared_ptr<uct_node>` trees, `std::mt19937_64` RNG, single-threaded design, and
-  no draw rule (`is_terminal()` ↔ `hero_wins() || villain_wins()`). Excluded from the
-  default `verify` cohort by the `VerifyBackend` type and retired from live
-  CLI/build/verify/FFI dispatch in Sprint 8.4. Owned by
+  no draw rule (`is_terminal()` ↔ `hero_wins() || villain_wins()`). It remains live for
+  Q6 byte-for-byte legacy reproduction and Q7 legacy-envelope liveness/overflow evidence;
+  it is not part of the default Q3 `(ii)..(v)` visit-vector identity cohort because its
+  legacy tree semantics intentionally differ from the steelman cohort. Owned by
   [phase-4-cpp-legacy-port-and-ffi-bridge.md](phase-4-cpp-legacy-port-and-ffi-bridge.md)
-  and retired by [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md).
-- **Backend (ii) C++ imperative steelman.** The retired performance ceiling. C++23 with `-O3
+  and Phase `8` restoration.
+- **Backend (ii) C++ imperative steelman.** The performance ceiling. C++23 with `-O3
   -march=native -mtune=native -flto -fno-plt -fno-semantic-interposition
   -fvisibility=hidden -fvisibility-inlines-hidden -fno-exceptions`, no `-ffast-math`;
   two-stage PGO via `-fprofile-generate` / `-fprofile-use`, BOLT post-link, `mimalloc`
   static link; arena tree, per-rollout scratch board with undo, flat children layout,
   move-list buffer reuse, branch hints, `__builtin_prefetch`, `__builtin_popcountll` /
   `__builtin_ctzll`, `alignas(64)`, `thread_local` scratch. Owned by
-  [phase-5-cpp-imperative-steelman.md](phase-5-cpp-imperative-steelman.md) and
-  retired by [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md).
+  [phase-5-cpp-imperative-steelman.md](phase-5-cpp-imperative-steelman.md) and Phase
+  `8` parity closure.
 - **Backends (iii) C++ functional-style and (iv) Rust.** Backend (iii) ran the same
-  optimisation stack as (ii) so the (ii)-vs-(iii) comparison isolated *style* as the
-  variable; it is now a retired Sprint 8.6 source/evidence archive.
-  Backend (iv) Rust on the latest stable compiler with the
+  optimisation stack as (ii) so the (ii)-vs-(iii) comparison isolates *style* as the
+  variable while keeping C++ performance steelmanned. Backend (iv) Rust runs on the
+  latest stable compiler with the
   pinned `[profile.release]` (`opt-level = 3`, `lto = "fat"`, `codegen-units = 1`,
   `panic = "abort"`, `strip = "symbols"`), `RUSTFLAGS=-C target-cpu=native -C
   link-arg=-fuse-ld=lld`, `mimalloc` as `#[global_allocator]`, two-stage rustc PGO, BOLT
@@ -175,7 +169,7 @@ checked-in generated transcripts, throughput JSON, or snapshot files. Backend
   report-card measurements plus verify cohorts, and emits the tidy summary
   block. Owned by
   [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md).
-- **Haskell performance parity closure and retirement protocol.** GHC `-O2 -fllvm`,
+- **Haskell performance parity closure.** GHC `-O2 -fllvm`,
   `-funbox-strict-fields`, `-fspecialise-aggressively`,
   `-fexpose-all-unfoldings`, `-flate-dmd-anal`, `-fmax-simplifier-iterations=20`,
   `-fworker-wrapper`, `-fstatic-argument-transformation`, RTS `-A64m -n4m -qg1 -qb -T`,
@@ -183,9 +177,9 @@ checked-in generated transcripts, throughput JSON, or snapshot files. Backend
   `Maybe`/`Either` in the rollout inner loop, until backend (v) matches backend (ii) on
   Q1 and Q2 within the parity tolerance per
   [../documents/engineering/compiler_runtime_tuning.md → Parity Tolerance](../documents/engineering/compiler_runtime_tuning.md)
-  (`HASKELL_PARITY_TOLERANCE = 0.05`). The retirement protocol then closes
-  (i)→(ii)→(iii)→(v) with recorded historical evidence and no generated validation
-  data checked into git. Owned by
+  (`HASKELL_PARITY_TOLERANCE = 0.05`). Phase `8` also keeps all five backends live while
+  removing stale two-backend drift and preserving the rule that generated validation data
+  is not checked into git. Owned by
   [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md).
 
 ## Doctrine Scope
@@ -226,7 +220,7 @@ inherits that split verbatim. No sprint may schedule adoption of an out-of-scope
   pinned formatter-tools GHC `9.12.4` into `/opt/mcts-style-tools/bin/` inside the
   container; the project compiler remains GHC `9.14.1`. Ambient host fallback is
   not supported.
-- Testing Doctrine and Test Organization — four live Cabal stanzas, each
+- Testing Doctrine and Test Organization — five live Cabal stanzas, each
   `type: exitcode-stdio-1.0`, each with its own `tasty` tree; a single `tasty` tree
   spanning all tiers is forbidden. Parser tests use `execParserPure`. Canonical property
   invariants `decode . encode == id`, `render is deterministic`, `parser roundtrips` are
@@ -262,8 +256,8 @@ inherits that split verbatim. No sprint may schedule adoption of an out-of-scope
   `ParseError` and `IOErrorText` carry parser/validation and textual IO failures
   that must still pass through the same render boundary — the variants are kept
   semantically distinct.
-- GADT-indexed state machines where naturally indicated (`VerifyBackend`; the
-  retired `LegacyParityBackend` parser surface is preserved only in Phase 7 history);
+- GADT-indexed state machines where naturally indicated (`VerifyBackend`; Q7
+  legacy-parity validates the complete backend list under the legacy envelope);
   the `RngSource` axis encoded so that `--rng cpp` is the
   parse-time default for `verify`. `SimBudget`, `Threading`, and `Side` remain plain
   ADTs — the doctrine's GADT mandate applies only to state machines with more than
@@ -330,31 +324,31 @@ referenceability.
 4. Per-game RNG streams are seeded by `splitmix64(master_seed, game_index)` so per-game
    output is independent of worker count, scheduling order, and worker-to-game
    assignment.
-5. Two RNG sources are supported: `--rng native` (the current backend-salted
-   deterministic schedule; benchmark streams are intentionally backend-distinct
-   and not cross-backend bit-equal) and `--rng cpp` (the verification cohort uses
-   the canonical C++-RNG seed schedule with no backend-native salt; retired
-   backend (i) always used `std::mt19937_64` and silently ignored
-   `--rng native`).
+5. Two RNG sources are supported and intentionally serve different goals:
+   `--rng native` is for performance benchmarks and operator play, where each backend
+   uses its own fastest deterministic RNG contract and benchmark streams are not
+   expected to be cross-backend bit-equal. `--rng cpp` is for logical-equivalence
+   verification, where every participating backend consumes C++-generated
+   verification seeds from the shared RNG bridge so game transcripts, visit tables,
+   and chosen moves can be compared exactly.
 6. `--rng cpp` is the implicit default for `verify` and is not user-overridable on the
    `mcts verify` subtree. The native RNG cannot validate cross-backend bit equality.
-7. `VerifyBackend` excludes retired backends (i) and (ii) at the type level
-   from the default `verify` cohort; backend (i)'s terminal-state semantics lack
-   the ply-cap draw rule (see constraint 9), and backend (ii) is now preserved by
-   its Sprint `8.5` recorded retirement evidence.
-8. The legacy-parity parser surface retired with backend (i) in Sprint 8.4. Q7
-   is now recorded historical evidence, not a checked-in generated validation input.
+7. `VerifyBackend` covers the Q3 logical-equivalence cohort `(ii)..(v)`:
+   `cpp-imperative`, `cpp-functional`, `rust`, and `haskell`. Backend (i) is excluded
+   from Q3 because its terminal-state and tree semantics are deliberately verbatim legacy
+   behavior, not because it is unsupported.
+8. The legacy-parity parser surface covers Q7 across all five backend slots under the
+   legacy envelope. Q7 is a liveness/overflow and chosen-envelope check; Q3 remains the
+   visit-vector identity proof for the steelman cohort `(ii)..(v)`.
 9. Backends (ii)–(v) carry a `Word16` ply counter in board state and add the ply-cap
    draw rule: `is_terminal` ↔ `hero_wins || villain_wins || ply_count >= max_plies`;
    `get_terminal_eval` returns `0.0` on ply-cap termination. Default `max_plies = 200`,
    pinned in the transcript header. Backend (i) lacks the ply cap and is verbatim from
    `MCTS_legacy`.
 10. The legacy parity envelope pins `max_plies = 10000` (= `MAX_ROLLOUT_ITERS` in the
-    legacy). Before Sprint 8.4, Q7 used that envelope as a five-backend
-    liveness/overflow gate, while Q3 owned visit-vector equality across the
-    then-live `(ii)..(v)` cohort and Q6 owned byte-for-byte legacy evidence.
-    After Sprint 8.4, the live subcommand is retired and Q7 reads the frozen
-    backend (i) historical evidence.
+    legacy). Q7 uses that envelope as a five-backend liveness/overflow gate, while Q3
+    owns visit-vector equality across `(ii)..(v)` and Q6 owns byte-for-byte legacy
+    evidence against `MCTS_legacy`.
 11. The transcript wire format is little-endian binary with no schema-library
     dependency. No protobuf, no flatbuffers, no Cap'n Proto, no CBOR. The header carries
     the run config; per-move records are sparse `(action_id, visits)` pairs sorted
@@ -375,22 +369,21 @@ referenceability.
 15. Equity is recomputed by the same backend on `inspect replay` and
     `inspect show --with-equity`. Cross-backend equity bit-equality is not asserted; the
     Q3 determinism contract is on visit counts (integer, order-independent) only.
-    Float drift across the current live verification cohort that changes UCT child selection or the
+    Float drift across the Q3 verification cohort `(ii)..(v)` that changes UCT child selection or the
     final highest-visit root action surfaces as a visit-count mismatch on the next
     move and is caught by `mcts verify`.
 16. The toolchain is pinned at GHC `9.14.1` and Cabal `3.16.1.0`. `mcts.cabal` declares
     `tested-with: ghc ==9.14.1`; `cabal.project` declares `with-compiler: ghc-9.14.1`.
-17. Backend (i) `cpp-legacy/` is strictly verbatim from `~/MCTS_legacy/backend/` and
-    retired from live CLI dispatch. Only FFI shims are permitted in the retained
-    reference source. The historical build flags are `-std=c++17 -O3 -fPIC -Wall`.
+17. Backend (i) `cpp-legacy/` is strictly verbatim from `~/MCTS_legacy/backend/`. Only
+    FFI shims are permitted around the imported legacy source. The build flags are
+    `-std=c++17 -O3 -fPIC -Wall`.
     It uses `std::shared_ptr<uct_node>` trees and `std::mt19937_64` unchanged.
 18. Backends (ii) and (iii) compile with `-std=c++23 -O3 -march=native -mtune=native
     -flto -fno-plt -fno-semantic-interposition -fvisibility=hidden
     -fvisibility-inlines-hidden -fno-exceptions`. `-fno-exceptions` is mandatory
     (the engine core does not throw, so landing-pad cost is unconditional dead
-    weight). No `-ffast-math` and no `-Ofast`. Backend (ii) is now retired but
-    retains this historical contract in source and recorded evidence. PGO+BOLT pipeline plus `mimalloc`
-    static link required. `g++` only — Clang is not supported on the C++ side.
+    weight). No `-ffast-math` and no `-Ofast`. The PGO+BOLT pipeline plus `mimalloc`
+    static link is required. `g++` only — Clang is not supported on the C++ side.
 19. Backend (iv) Rust uses `[profile.release]` with `opt-level = 3`, `lto = "fat"`,
     `codegen-units = 1`, `panic = "abort"`, `strip = "symbols"`. `RUSTFLAGS=-C
     target-cpu=native -C link-arg=-fuse-ld=lld`. `mimalloc` as `#[global_allocator]`.
@@ -423,7 +416,8 @@ referenceability.
     hlint-forbidden outside `src/MCTS/CLI/Output.hs`.
 27. `mcts test all` is the doctrine-mandatory canonical test command. The live Cabal
     stanzas are `mcts-unit`, `mcts-integration`, `mcts-cross-backend`,
-    `mcts-haskell-style`. A single `tasty` tree spanning all tiers is forbidden.
+    `mcts-legacy-parity`, and `mcts-haskell-style`. A single `tasty` tree spanning all
+    tiers is forbidden.
 28. `fourmolu.yaml` at repo root pins the twelve doctrine-mandated settings; the
     `mcts-haskell-style` stanza enforces them plus `cabal format` temp-file round-trip
     byte-equality through the separate formatter-tools install (`ghc-9.12.4`,
@@ -431,13 +425,13 @@ referenceability.
     container. Host `PATH` fallback is never allowed.
 29. Report-card live workload constants are implemented in `MCTS.CLI.Test` and
     mirrored in `cabal.project` comments: `G_R = 1_000`, `G_S = 4`,
-    `G_V = 4`, `S_BENCH = 500`, `S_VERIFY = 500`. Retired legacy-envelope
-    knobs (`G_LP`, `S_LP_SIMS`, `S_LP`) are historical evidence metadata.
-30. The retirement protocol is (i)→(ii)→(iii)→(v). Each retiring backend's evidence is
-    recorded in plan/docs or optional external/ignored artifacts; checked-in generated
-    transcripts, throughput JSON, report-card schemas, and renderer snapshots are not
-    part of the normal validation surface. Backend (iv) Rust remains live as the
-    cross-language second opinion.
+    `G_V = 4`, `G_LP = 2`, `S_BENCH = 500`, `S_VERIFY = 500`,
+    `S_LP_SIMS = 10_000`, and `S_LP = 42`.
+30. All five backend identifiers, build leaves, transcript wire tags, and verification
+    roles remain first-class. Checked-in generated transcripts, throughput JSON,
+    report-card schemas, and renderer snapshots are not part of the normal validation
+    surface; evidence is generated in memory, in temporary roots, or through explicit
+    operator-provided artifact directories.
 31. The Docker development environment provides a single LLVM pinned in
     `docker/Dockerfile` shared by GHC's `-fllvm` backend and BOLT post-link. The base
     is `ubuntu:24.04`; the C++ toolchain is GCC (latest stable on 24.04); Rust is
@@ -521,8 +515,8 @@ referenceability.
     throughput anchors, report-card schemas, renderer snapshots, or other generated
     validation data. Tests generate transcripts, sidecars, report-card values, and
     renderer examples in memory or under temporary directories. Runtime/operator cache
-    files live under ignored roots such as `.mcts-cache/`; retired-backend evidence is
-    historical or optional external/local data.
+    files live under ignored roots such as `.mcts-cache/`; optional audit artifacts live
+    in explicit external or ignored local roots.
 
 ## Dependency Chain
 
@@ -535,8 +529,8 @@ referenceability.
 | 4 | Phase 3 | The C ABI FFI bridge from Haskell to backend (i) reuses the `Subprocess` boundary and `Env` record established by Phases 1 and 3, and validates against the same transcript codec |
 | 5 | Phase 3 | Backend (ii) likewise builds on the FFI bridge pattern; it is independent of (i) once the pattern is established, so Phases 4 and 5 may proceed in parallel after Phase 3 closes |
 | 6 | Phase 5 | Backend (iii) shares (ii)'s optimisation stack and must be developed against the validated steelman; backend (iv) Rust is independent of (iii) but conventionally bundled in the same phase for scheduling |
-| 7 | Phases 4, 5, 6 | The pre-retirement cross-backend `verify` cohort and the POC report card required all five backend slots to produce evidence |
-| 8 | Phase 7 | Performance parity closure requires the report-card numbers from Phase 7 to measure Haskell against backend (ii); the retirement protocol then runs the (i)→(ii)→(iii)→(v) chain |
+| 7 | Phases 4, 5, 6 | Cross-backend `verify`, legacy parity, and the POC report card require all five backend slots to produce evidence |
+| 8 | Phase 7 | Performance parity closure requires the report-card numbers from Phase 7 to measure Haskell against backend (ii), and now owns restoration of the five-backend live surface after the stale two-backend drift |
 
 ## Current Baseline
 
@@ -550,19 +544,19 @@ transcript/cache/envelope alignment sweep, and Phase `6` is closed again after
 the Rust build-harness tuning alignment. Phase `7` is closed again after the
 digest-first verifier comparator, length-aware mismatch surfaces, `mcts play`
 side/opponent runtime contract, and replay overlay row contract were aligned.
-Phase `8` has closed the performance-parity proof and retired backends (i),
-(ii), and (iii) from the live surface, but remains active for the final
-compiler-runtime plan alignment and no-generated-validation-data sweep.
+Phase `8` has closed the performance-parity proof, the no-generated-validation-data
+sweep, the five-backend restoration work, and the shared FFI/RNG loading contract;
+only final aggregate validation remains active.
 
 | Surface | Current Repo State | Intended End State |
 |---------|--------------------|--------------------|
 | Repository layout | `app/`, `src/MCTS/`, `src/MCTS/Generated/`, `cpp-legacy/`, `cpp-imperative/`, `cpp-functional/`, `rust/`, `bench/`, `test/`, `docker/`, root `compose.yaml`, `cabal.project`, `fourmolu.yaml`, `.hlint.yaml`, `.gitignore`, `mcts.cabal`, generated-artefact targets `documents/cli/commands.md`, `share/man/man1/mcts.1`, and `share/completion/{bash,zsh,fish}/` | Same layout, with no generated validation data required under `test/` |
-| Build artefacts | `mcts.cabal` declares the `mcts` binary, live Haskell test stanzas, and the doctrine-standard dependency envelope; host validation enters through `docker compose run --rm mcts mcts check-code` under the pinned toolchain. The live foreign backend tree is `rust/src/`; `cpp-legacy/` is retained for reference and `legacy-to-wire` fixture generation, `cpp-imperative/` is retained as a retired backend (ii) reference, and `cpp-functional/` is retained as a retired backend (iii) reference. The Rust crate carries the full Corridors gameplay port (board.rs + rollout.rs + search.rs); the Rust PGO/BOLT install pipeline ships via the typed `Subprocess` boundary. Haskell loads the live Rust shared library dynamically through `MCTS.FFI.Common`; the link-time-bound `extra-libraries` policy is ledger residue. | Container-image `mcts` binary produced by `docker/Dockerfile`, plus the container-local live backend shared library (`rust/target/release/libmcts_rust.so`) |
-| CLI surface | The complete live command family is wired: `bench`, `verify`, `inspect`, `test`, `lint`, `docs`, `commands`, `help`, `check-code`, `build`, and `play`. Generated command docs are checked against the renderer, tracked generated-file drift fails `mcts lint files`, generated path/section registries live under `src/MCTS/Generated/`, and `mcts test all` routes recursive CLI calls through `cabal exec mcts -- ...`. The bench/play/inspect paths dispatch through real FFI for backend (iv) whenever the Rust shared library is present in the build tree; Q3 `verify` uses `runBatchDispatch` and the live FFI engine when the cdylib is present and the run is compatible with the fixed 60-ply foreign search horizon, with an in-process fallback when it is absent or a lower search cap is requested. The `mcts verify legacy-parity` and C++ build leaves retired in Sprints 8.4-8.6. Verify command constructors carry typed `VerifyBackend` backend lists, with parser-boundary guards excluding retired backends from default verify. `mcts play` and `mcts inspect replay` dispatch to `brick` TUIs on TTY and non-interactive fallbacks on pipes; `mcts play :save` writes hand-play transcripts addressed by `sha256(run_config || move_history)`, AI turns use the selected backend's dynamic FFI search path when its shared library is present, and replay fills a missing originator `.eq` overlay before TUI start. Renderer tests assert layout semantically rather than via checked-in goldens. | Same surface backed by real Haskell and Rust engines, with C++ backends retained as retired source/evidence archives |
-| Test stanzas | Four live Cabal stanzas exist: `mcts-unit`, `mcts-integration`, `mcts-cross-backend`, `mcts-haskell-style`; each stanza has its own `tasty` runner, and `docker compose run --rm mcts mcts test all` is the host validation gate under the pinned container toolchain. `mcts-unit` uses semantic/property/temp-dir checks instead of `tasty-golden`; `mcts-integration` synthesizes retired-backend evidence in temporary roots. | Same live stanzas and fine-grained `tasty` organization; all validation data is generated in memory or temporary directories during the run, so clean-clone validation has no `test/golden/` prerequisite |
+| Build artefacts | `mcts.cabal` declares the `mcts` binary, live Haskell test stanzas, and the doctrine-standard dependency envelope; host validation enters through `docker compose run --rm mcts mcts check-code` under the pinned toolchain. The foreign backend tree is live for `cpp-legacy/`, `cpp-imperative/`, `cpp-functional/`, and `rust/`; C++ and Rust build leaves install canonical shared libraries through `mcts build <backend>`. | Container-image `mcts` binary produced by `docker/Dockerfile`, plus container-local shared libraries for `cpp-legacy`, `cpp-imperative`, `cpp-functional`, and `rust` built through `mcts build <backend>` |
+| CLI surface | The complete command family is wired: `bench`, `verify`, `verify legacy-parity`, `inspect`, `test`, `lint`, `docs`, `commands`, `help`, `check-code`, `build`, and `play`. Generated command docs are checked against the renderer, tracked generated-file drift fails `mcts lint files`, generated path/section registries live under `src/MCTS/Generated/`, and `mcts test all` routes recursive CLI calls through `cabal exec mcts -- ...`. | Same surface backed by real C++/Rust/Haskell engines: bench/play/inspect dispatch through each selected backend when its shared library is present, Q3 covers `(ii)..(v)`, Q7 covers all five, and build leaves exist for `cpp-legacy`, `cpp-imperative`, `cpp-functional`, `rust`, and `legacy-fixtures` |
+| Test stanzas | Five live Cabal stanzas currently exist: `mcts-unit`, `mcts-integration`, `mcts-cross-backend`, `mcts-legacy-parity`, `mcts-haskell-style`; each stanza has its own `tasty` runner, `mcts-cross-backend` invokes real `mcts verify` subprocesses serially around the process-pinned dynamic-library and shared C++ RNG bridge path, and `docker compose run --rm mcts mcts test all` is the host validation gate under the pinned container toolchain. `mcts-unit` uses semantic/property/temp-dir checks instead of `tasty-golden`. | Keep all validation data generated in memory or temporary directories during the run, so clean-clone validation has no `test/golden/` prerequisite |
 | Toolchain | `mcts.cabal` pins `tested-with: ghc ==9.14.1`; `cabal.project` pins `with-compiler: ghc-9.14.1` and mirrors the report-card constants as comments. The style-tool policy pins GHC `9.12.4` only for Fourmolu/HLint installation inside the container. | GHC `9.14.1`, Cabal `3.16.1.0`, style GHC `9.12.4` for `fourmolu-0.19.0.1` / `hlint-3.10`, GCC latest stable on `ubuntu:24.04`, Rust latest stable with pinned minor, LLVM pinned in the Dockerfile |
-| Determinism contract | The live Rust foreign backend (iv) dispatches through the real FFI engine under `bench`, `play`, `inspect divergence`, integration smokes, and Q3 `verify` when its shared library is present and the fixed search-horizon ABI can represent the run. Transcript codec, full v1 envelope, SHA-256 content addressing, cache root resolution, prefix lookup, binary `MEQ1` equity sidecars, layered envelope checks, `divergenceVsEqStream`, live foreign-recompute divergence rows, cached Rust `read_visits`, canonical search-side 12-wall child caps across the live cohort, decoded real-binary transcript determinism, and hard-fail `VerifyMismatch` rollout/self-play cohorts in `mcts-cross-backend` are implemented. Backend (i) legacy visit-count or chosen-move divergence from the steelman cohort is outside the live Q3 comparison contract. | Enforced by live-FFI-capable cross-backend `mcts verify {rollouts,selfplay}`, decoded same-backend transcript checks, live FFI-envelope cases under `mcts-integration`, and synthetic legacy-envelope checks generated during tests |
-| Performance parity | Proven against backend (ii)'s recorded steelman evidence. The historical 2026-05-19 `docker compose run --rm mcts mcts test all` run recorded Q1 ST 0.05×, Q1 MT8 0.41×, Q2 ST 0.05×, Q2 MT8 0.20×, Q5 Haskell 0.99×, Q5 cpp-imperative 3.64×, Q7 liveness PASS, and `Verdict: Within tolerance`; the current report-card path compares live Haskell timings to the frozen backend (ii) throughput anchor and reports Q6/Q7 as `HIST`. Sprint `8.4` retired backend (i); Sprint `8.5` recorded backend (iii)-vs-backend (ii) parity; Sprint `8.6` recorded backend (v)-vs-backend (iii) parity. | Haskell (v) within tolerance of C++ (ii) on Q1 and Q2, single-threaded and on 8 workers, recorded as historical report-card evidence rather than a checked-in generated throughput anchor |
+| Determinism contract | Live C++ and Rust foreign backends dispatch through real FFI engines under `bench`, `play`, `inspect divergence`, integration smokes, Q3 `verify` when shared libraries are present and the fixed search-horizon ABI can represent the run, and Q7 `verify legacy-parity`. Transcript codec, full v1 envelope, process-pinned envelope and C++ RNG dynamic handles, SHA-256 content addressing, cache root resolution, prefix lookup, binary `MEQ1` equity sidecars, layered envelope checks, `divergenceVsEqStream`, live foreign-recompute divergence rows, foreign `read_visits`, canonical search-side 12-wall child caps across the current live cohort, decoded real-binary transcript determinism, and hard-fail `VerifyMismatch` rollout/self-play cohorts in `mcts-cross-backend` are implemented. | Enforced by live-FFI-capable cross-backend `mcts verify {rollouts,selfplay}` over `(ii)..(v)`, decoded same-backend transcript checks, live FFI-envelope cases under `mcts-integration`, and Q7 legacy-envelope checks across all five |
+| Performance parity | Audit evidence exists against backend (ii)'s steelman evidence. The 2026-05-19 `docker compose run --rm mcts mcts test all` run recorded Q1 ST 0.05×, Q1 MT8 0.41×, Q2 ST 0.05×, Q2 MT8 0.20×, Q5 Haskell 0.99×, Q5 cpp-imperative 3.64×, Q7 liveness PASS, and `Verdict: Within tolerance`; the current report-card path measures Haskell against the live backend (ii) shared library when available. | Haskell (v) within tolerance of live C++ (ii) on Q1 and Q2, single-threaded and on 8 workers, without checked-in generated throughput anchors |
 
 ## Related Documents
 

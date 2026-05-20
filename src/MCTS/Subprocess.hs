@@ -55,7 +55,17 @@ capture subprocess = do
                         , processStderr = ByteString.unpack err
                         , processExitCode = code
                         }
-            ExitFailure n -> Left (SubprocessFailed (renderSubprocess subprocess <> "\n" <> ByteString.unpack err) n)
+            ExitFailure n ->
+                Left
+                    ( SubprocessFailed
+                        ( renderSubprocess subprocess
+                            <> "\nstdout:\n"
+                            <> ByteString.unpack out
+                            <> "\nstderr:\n"
+                            <> ByteString.unpack err
+                        )
+                        n
+                    )
 
 processConfig :: Subprocess -> IO (Process.ProcessConfig () () ())
 processConfig subprocess = do

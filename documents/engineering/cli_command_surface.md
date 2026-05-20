@@ -46,8 +46,10 @@ From the host, run any listed logical command as
 |---------|---------|
 | `mcts bench rollouts [opts]` | Random-rollouts benchmark across the requested backend cohort |
 | `mcts bench selfplay [opts]` | Self-play benchmark across the requested backend cohort |
-| `mcts verify rollouts [opts]` | Round-robin visit-count equality across `(iv)..(v)` under `--rng cpp` |
-| `mcts verify selfplay [opts]` | Round-robin self-play visit-count equality across `(iv)..(v)` |
+| `mcts verify rollouts [opts]` | Round-robin visit-count equality across `(ii)..(v)` under `--rng cpp` |
+| `mcts verify selfplay [opts]` | Round-robin self-play visit-count equality across `(ii)..(v)` |
+| `mcts verify legacy-parity rollouts [opts]` | Legacy-envelope rollout liveness across all five backend slots |
+| `mcts verify legacy-parity selfplay [opts]` | Legacy-envelope self-play liveness across all five backend slots |
 | `mcts play [opts]` | Interactive `brick` TUI; human vs AI or AI vs AI spectate |
 | `mcts inspect list` | Non-interactive enumeration of the local transcript cache |
 | `mcts inspect show <hash-prefix> [opts]` | Non-interactive transcript dump in legacy notation |
@@ -56,7 +58,7 @@ From the host, run any listed logical command as
 | `mcts inspect cache prune [--keep-current] [--dry-run] [--plan-file <path>]` | Delete stale equity-sidecar entries |
 | `mcts inspect divergence <hash-prefix>` | Emit the cross-backend divergence-rate matrix for a single transcript |
 | `mcts test all [--dry-run] [--plan-file <path>]` | Plan/Apply: backend builds, every Cabal stanza, and pinned report card |
-| `mcts test retirement-anchor <retiring> <successor> [--dry-run] [--plan-file <path>]` | Plan/Apply: measure a Q1/Q2 parity anchor for currently parseable backend pairs; retired C++ anchors are historical evidence |
+| `mcts test parity-anchor <baseline> <candidate> [--dry-run] [--plan-file <path>]` | Plan/Apply: measure a Q1/Q2 parity anchor for explicit backend pairs |
 | `mcts test <stanza>` | Run a named Cabal test-suite stanza |
 | `mcts lint files [--write]` | Check whitespace, final newlines, forbidden paths, and tracked generated-file drift |
 | `mcts lint docs [--write]` | Run the generated-docs drift gate |
@@ -67,6 +69,9 @@ From the host, run any listed logical command as
 | `mcts commands [--tree\|--json]` | Flat, tree, or JSON rendering of the command registry |
 | `mcts help <subcommand>` | Focused help pointer for a target command |
 | `mcts check-code` | Doctrine alignment, formatter, HLint, warning-clean build, docs check |
+| `mcts build cpp-legacy [--dry-run] [--plan-file <path>]` | Plan/Apply: C++ legacy backend build harness |
+| `mcts build cpp-imperative [--dry-run] [--plan-file <path>]` | Plan/Apply: C++ imperative steelman backend build harness |
+| `mcts build cpp-functional [--dry-run] [--plan-file <path>]` | Plan/Apply: C++ functional-style backend build harness |
 | `mcts build rust [--dry-run] [--plan-file <path>]` | Plan/Apply: Rust backend build harness |
 | `mcts build legacy-fixtures --output-dir <dir> [--seed <u64>] [--games <n>] [--sims <n>] [--dry-run] [--plan-file <path>]` | Plan/Apply: generate external legacy Q6 evidence |
 <!-- mcts:command-matrix:end -->
@@ -86,20 +91,23 @@ transcript-pair metrics from `MCTS.Verify.Divergence`. `mcts verify ...
 foreign cdylib is present, FFI-produced transcripts are stamped with
 `mcts_<backend>_get_envelope()` and compared through
 `checkTranscriptEnvelopesLive`. JSON verify output includes
-`warning_details` for downgraded `--allow-stale` backend-slot warnings. The report-card renderer now emits
+`warning_details` for downgraded `--allow-stale` backend-slot warnings. `mcts verify
+legacy-parity {rollouts,selfplay}` pins `--rng cpp`, single-threading, and
+`max_plies = 10000`, then checks all five backend slots for legacy-envelope
+liveness/overflow without requiring backend (i)'s historical search tree to match
+the steelman visit vectors. The report-card renderer now emits
 explicit Q1/Q2/Q5 evidence fields and the cross-backend divergence matrix in
 table and JSON form; semantic unit tests use a constructed zero-matrix baseline,
-and the live `mcts test all` path requires the live Rust artefact, measures
+and the live `mcts test all` path requires the live C++ and Rust artefacts, measures
 Haskell Q1/Q2/Q5 with the production monotonic clock through the no-write batch
-runner, compares those rates against the frozen backend (ii) throughput anchor,
-and populates divergence rows from the measured live `G_V` verify cohort.
+runner, compares those rates against live backend (ii) where its shared library is
+available, and populates divergence rows from the measured live `G_V` verify cohort
+over backends (ii)..(v).
 `mcts build legacy-fixtures` remains the supported Q6 evidence-generation path
 for explicit audit runs; it builds `cpp-legacy/build/legacy-to-wire` and passes
 output root, seed, game count, and simulation count as explicit flags. Its output
 must be directed to an external or ignored artifact root and is not a normal
-`mcts test all` input. Backends (i), (ii), and (iii) are retired from live CLI
-selection; their retirement evidence is recorded in the plan/docs and optional
-external artifacts, not checked-in generated validation data.
+`mcts test all` input. All five backend identifiers remain first-class CLI values.
 
 ## Typed Source of Truth
 
@@ -148,9 +156,9 @@ CLI flag values and the human-readable Roman numerals used in prose:
 
 | Identifier (CLI flag) | Roman | Path | Role |
 |------------------------|-------|------|------|
-| `cpp-legacy` | (i) | `cpp-legacy/` | Retired live backend; historical `MCTS_legacy` reproduction evidence |
-| `cpp-imperative` | (ii) | `cpp-imperative/` | Retired maximally-tuned imperative C++23 performance evidence |
-| `cpp-functional` | (iii) | `cpp-functional/` | Retired functional-style C++23 evidence |
+| `cpp-legacy` | (i) | `cpp-legacy/` | Verbatim `MCTS_legacy` reproduction and Q7 legacy-envelope evidence |
+| `cpp-imperative` | (ii) | `cpp-imperative/` | Maximally-tuned imperative C++23 performance ceiling |
+| `cpp-functional` | (iii) | `cpp-functional/` | Functional-style C++23 steelman under the same optimization stack as (ii) |
 | `rust` | (iv) | `rust/` | Rust `cdylib`; cross-language second opinion |
 | `haskell` | (v) | `src/MCTS/Engine/`, `src/MCTS/Search/` | Native Haskell engine; the target |
 
@@ -208,7 +216,7 @@ The replay status line follows the literal layout asserted by the unit suite:
 
 The message row below the overlay table carries navigation hints and
 cache/recompute outcomes such as originator sidecar recomputation, loaded
-on-demand backend columns, skipped retired backends, absent shared libraries, and
+on-demand backend columns, missing backend libraries, absent shared libraries, and
 recompute failures. The current TUI is synchronous: while a backend column is
 being recomputed the event loop waits for the result and then renders either the
 loaded column or an unavailable/error status.
@@ -240,7 +248,7 @@ Conventions:
   recorded and overlay actions. Replay sidecars do not carry visit tables, so
   visit-rate percentages remain an `inspect divergence` / report-card surface
   rather than a replay-row cell.
-- `unavailable` rows record retired backends, missing shared libraries, or
+- `unavailable` rows record missing shared libraries, stale backend bindings, or
   recompute failures encountered after pressing `r`.
 
 ### Lazy Compute Trigger

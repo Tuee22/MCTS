@@ -23,6 +23,9 @@ import qualified MCTS.Engine.ForeignRecompute as ForeignRecompute
 import qualified MCTS.Engine.Recompute as Recompute
 import qualified MCTS.Env as Env
 import qualified MCTS.Error
+import MCTS.FFI.CppFunctional (cppFunctionalLibraryPath, withCppFunctionalRecomputeGame)
+import MCTS.FFI.CppImperative (cppImperativeLibraryPath, withCppImperativeRecomputeGame)
+import MCTS.FFI.CppLegacy (cppLegacyLibraryPath, withCppLegacyRecomputeGame)
 import MCTS.FFI.Rust (rustLibraryPath, withRustRecomputeGame)
 import MCTS.Notation (renderMove, renderWinner)
 import MCTS.Plan (Plan (..), PlanOptions (..), renderPlanWith, writePlanFile)
@@ -441,20 +444,11 @@ recomputeBackendOverlay hashValue transcript backend buildId =
                     Left err -> OverlayFailed err
                     Right stream -> OverlayReady stream
         CppLegacy ->
-            pure
-                ( OverlaySkipped
-                    "cpp-legacy is retired; generate archived sidecars as explicit external evidence"
-                )
+            recomputeForeign CppLegacy cppLegacyLibraryPath withCppLegacyRecomputeGame
         CppImperative ->
-            pure
-                ( OverlaySkipped
-                    "cpp-imperative is retired; generate archived sidecars as explicit external evidence"
-                )
+            recomputeForeign CppImperative cppImperativeLibraryPath withCppImperativeRecomputeGame
         CppFunctional ->
-            pure
-                ( OverlaySkipped
-                    "cpp-functional is retired; generate archived sidecars as explicit external evidence"
-                )
+            recomputeForeign CppFunctional cppFunctionalLibraryPath withCppFunctionalRecomputeGame
         Rust ->
             recomputeForeign Rust rustLibraryPath withRustRecomputeGame
   where

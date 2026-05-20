@@ -60,7 +60,7 @@ main =
             , testCase
                 "report-card divergence and inspect sidecar integration"
                 reportCardDivergenceIntegration
-            , testCase "retired backend evidence is synthetic and no-draw" retiredBackendEvidenceCheck
+            , testCase "generated C++ parity evidence is synthetic and no-draw" cppParityEvidenceCheck
             , testGroup
                 "foreign recompute EqStream"
                 [ testCase
@@ -496,17 +496,17 @@ assertStaleCompilerVersion backend transcript = do
             got @?= staleVersion
         other -> assertFailure ("expected allow-stale compiler_version warning, got " <> show other)
 
--- | Sprint 8.8 replacement for committed retired-backend fixtures. The
--- integration gate validates the Phase 2 wire shape with in-memory transcripts
--- so a clean clone has no `test/golden/` prerequisite.
-retiredBackendEvidenceCheck :: IO ()
-retiredBackendEvidenceCheck =
-    withSystemTempDirectory "mcts-retired-evidence" $ \cacheRoot ->
-        mapM_ (validateRetiredBackendTranscript cacheRoot) [CppLegacy, CppImperative, CppFunctional]
+-- | Sprint 8.8 replacement for committed C++ fixture files. The integration
+-- gate validates the Phase 2 wire shape with in-memory transcripts so a clean
+-- clone has no `test/golden/` prerequisite.
+cppParityEvidenceCheck :: IO ()
+cppParityEvidenceCheck =
+    withSystemTempDirectory "mcts-cpp-parity-evidence" $ \cacheRoot ->
+        mapM_ (validateCppParityTranscript cacheRoot) [CppLegacy, CppImperative, CppFunctional]
 
-validateRetiredBackendTranscript :: FilePath -> Backend -> IO ()
-validateRetiredBackendTranscript cacheRoot backend = do
-    let transcript = syntheticRetiredTranscript cacheRoot backend
+validateCppParityTranscript :: FilePath -> Backend -> IO ()
+validateCppParityTranscript cacheRoot backend = do
+    let transcript = syntheticCppParityTranscript cacheRoot backend
         bytes = encodeTranscript transcript
     assertBool (backendIdentifier backend <> " transcript bytes are non-empty") (BS.length bytes > 48)
     case decodeTranscript bytes of
@@ -541,8 +541,8 @@ validateRetiredBackendTranscript cacheRoot backend = do
             assertFailure
                 (backendIdentifier backend <> " expected one temporary transcript write, got " <> show (length other))
 
-syntheticRetiredTranscript :: FilePath -> Backend -> Transcript
-syntheticRetiredTranscript cacheRoot backend =
+syntheticCppParityTranscript :: FilePath -> Backend -> Transcript
+syntheticCppParityTranscript cacheRoot backend =
     let inputs =
             defaultRunInputs
                 { inputBackend = backend

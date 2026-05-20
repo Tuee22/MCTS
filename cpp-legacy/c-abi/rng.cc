@@ -29,6 +29,21 @@ extern "C" cpp_rng* cpp_rng_split(uint64_t master_seed, uint64_t game_index) {
     return cpp_rng_new(cpp_rng_split_seed(master_seed, game_index));
 }
 
+extern "C" int cpp_rng_fill_u64(
+    uint64_t master_seed,
+    uint64_t game_index,
+    uint64_t* out,
+    uint64_t count) {
+    if (!out && count > 0) {
+        return -1;
+    }
+    std::mt19937_64 gen(cpp_rng_split_seed(master_seed, game_index));
+    for (uint64_t i = 0; i < count; ++i) {
+        out[i] = gen();
+    }
+    return 0;
+}
+
 extern "C" void cpp_rng_free(cpp_rng* rng) {
     delete rng;
 }

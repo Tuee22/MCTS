@@ -9,6 +9,8 @@ mcts bench rollouts
 mcts bench selfplay
 mcts verify rollouts
 mcts verify selfplay
+mcts verify legacy\-parity rollouts
+mcts verify legacy\-parity selfplay
 mcts play
 mcts inspect list
 mcts inspect show
@@ -17,7 +19,7 @@ mcts inspect cache list
 mcts inspect cache prune
 mcts inspect divergence
 mcts test all
-mcts test retirement\-anchor
+mcts test parity\-anchor
 mcts test <stanza>
 mcts lint files
 mcts lint docs
@@ -28,5 +30,8 @@ mcts docs generate
 mcts commands
 mcts help
 mcts check\-code
+mcts build cpp\-legacy
+mcts build cpp\-imperative
+mcts build cpp\-functional
 mcts build rust
 mcts build legacy\-fixtures

@@ -42,6 +42,11 @@ runWithOutput output command =
                 "verify selfplay"
                 "agree on visit counts"
                 (verifyRunDetailed allowStale Selfplay (verifyBackendsToBackends backends) inputs)
+        VerifyLegacyParity allowStale workload backends inputs ->
+            run
+                ("verify legacy-parity " <> workloadName workload)
+                "complete the legacy envelope"
+                (legacyParityRunDetailed allowStale workload backends inputs)
   where
     run label agreement action = do
         result <- liftIO action

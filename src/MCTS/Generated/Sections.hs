@@ -49,19 +49,24 @@ renderCommandCell path =
         "mcts bench selfplay" -> path <> " [opts]"
         "mcts verify rollouts" -> path <> " [opts]"
         "mcts verify selfplay" -> path <> " [opts]"
+        "mcts verify legacy-parity rollouts" -> path <> " [opts]"
+        "mcts verify legacy-parity selfplay" -> path <> " [opts]"
         "mcts play" -> path <> " [opts]"
         "mcts inspect show" -> path <> " <hash-prefix> [opts]"
         "mcts inspect replay" -> path <> " <hash-prefix> [opts]"
         "mcts inspect cache prune" -> path <> " [--keep-current] [--dry-run] [--plan-file <path>]"
         "mcts inspect divergence" -> path <> " <hash-prefix>"
         "mcts test all" -> path <> " [--dry-run] [--plan-file <path>]"
-        "mcts test retirement-anchor" -> path <> " <retiring> <successor> [--dry-run] [--plan-file <path>]"
+        "mcts test parity-anchor" -> path <> " <baseline> <candidate> [--dry-run] [--plan-file <path>]"
         "mcts lint files" -> path <> " [--write]"
         "mcts lint docs" -> path <> " [--write]"
         "mcts lint haskell" -> path <> " [--write]"
         "mcts docs generate" -> path <> " [--dry-run] [--plan-file <path>]"
         "mcts commands" -> path <> " [--tree\\|--json]"
         "mcts help" -> path <> " <subcommand>"
+        "mcts build cpp-legacy" -> path <> " [--dry-run] [--plan-file <path>]"
+        "mcts build cpp-imperative" -> path <> " [--dry-run] [--plan-file <path>]"
+        "mcts build cpp-functional" -> path <> " [--dry-run] [--plan-file <path>]"
         "mcts build rust" -> path <> " [--dry-run] [--plan-file <path>]"
         "mcts build legacy-fixtures" ->
             path
@@ -73,8 +78,10 @@ renderPurpose path spec =
     case path of
         "mcts bench rollouts" -> "Random-rollouts benchmark across the requested backend cohort"
         "mcts bench selfplay" -> "Self-play benchmark across the requested backend cohort"
-        "mcts verify rollouts" -> "Round-robin visit-count equality across `(iv)..(v)` under `--rng cpp`"
-        "mcts verify selfplay" -> "Round-robin self-play visit-count equality across `(iv)..(v)`"
+        "mcts verify rollouts" -> "Round-robin visit-count equality across `(ii)..(v)` under `--rng cpp`"
+        "mcts verify selfplay" -> "Round-robin self-play visit-count equality across `(ii)..(v)`"
+        "mcts verify legacy-parity rollouts" -> "Legacy-envelope rollout liveness across all five backend slots"
+        "mcts verify legacy-parity selfplay" -> "Legacy-envelope self-play liveness across all five backend slots"
         "mcts play" -> "Interactive `brick` TUI; human vs AI or AI vs AI spectate"
         "mcts inspect list" -> "Non-interactive enumeration of the local transcript cache"
         "mcts inspect show" -> "Non-interactive transcript dump in legacy notation"
@@ -83,7 +90,7 @@ renderPurpose path spec =
         "mcts inspect cache prune" -> "Delete stale equity-sidecar entries"
         "mcts inspect divergence" -> "Emit the cross-backend divergence-rate matrix for a single transcript"
         "mcts test all" -> "Plan/Apply: backend builds, every Cabal stanza, and pinned report card"
-        "mcts test retirement-anchor" -> "Plan/Apply: measure a Q1/Q2 parity anchor for currently parseable backend pairs; retired C++ anchors are historical evidence"
+        "mcts test parity-anchor" -> "Plan/Apply: measure a Q1/Q2 parity anchor for explicit backend pairs"
         "mcts test <stanza>" -> "Run a named Cabal test-suite stanza"
         "mcts lint files" -> "Check whitespace, final newlines, forbidden paths, and tracked generated-file drift"
         "mcts lint docs" -> "Run the generated-docs drift gate"
@@ -94,6 +101,9 @@ renderPurpose path spec =
         "mcts commands" -> "Flat, tree, or JSON rendering of the command registry"
         "mcts help" -> "Focused help pointer for a target command"
         "mcts check-code" -> "Doctrine alignment, formatter, HLint, warning-clean build, docs check"
+        "mcts build cpp-legacy" -> "Plan/Apply: C++ legacy backend build harness"
+        "mcts build cpp-imperative" -> "Plan/Apply: C++ imperative steelman backend build harness"
+        "mcts build cpp-functional" -> "Plan/Apply: C++ functional-style backend build harness"
         "mcts build rust" -> "Plan/Apply: Rust backend build harness"
         "mcts build legacy-fixtures" -> "Plan/Apply: generate external legacy Q6 evidence"
         _ -> summary spec
@@ -130,9 +140,18 @@ applyGeneratedSection source rule =
 
 checkGeneratedSection :: String -> GeneratedSectionRule -> Either AppError ()
 checkGeneratedSection source rule =
-    case applyGeneratedSection source rule of
-        Left err -> Left err
-        Right rendered ->
-            if rendered == source
+    case markerBodyLines (sectionStartMarker rule) (sectionEndMarker rule) source of
+        Nothing -> Left (DocsCheckDrift (sectionPath rule) (sectionKey rule))
+        Just bodyLines ->
+            if bodyLines == lines (sectionRender rule)
                 then Right ()
                 else Left (DocsCheckDrift (sectionPath rule) (sectionKey rule))
+
+markerBodyLines :: String -> String -> String -> Maybe [String]
+markerBodyLines start end source =
+    case break (start `isPrefixOf`) (lines source) of
+        (_, []) -> Nothing
+        (_, _startLine : afterStart) ->
+            case break (end `isPrefixOf`) afterStart of
+                (_, []) -> Nothing
+                (bodyLines, _endLine : _) -> Just bodyLines

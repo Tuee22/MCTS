@@ -31,11 +31,11 @@ originator `.eq` sidecar before recomputing, and `inspect show --envelope`
 renders every logical v1 envelope field in plain and JSON output.
 
 Focused Phase `2` validation passed with
-`cabal --builddir=/tmp/mcts-cabal-build test mcts-unit` and
-`cabal --builddir=/tmp/mcts-cabal-build run mcts -- docs check`; canonical
-container validation passed with `docker compose run --rm mcts mcts check-code`.
+`docker compose run --rm mcts mcts test mcts-unit`,
+`docker compose run --rm mcts mcts docs check`, and
+`docker compose run --rm mcts mcts check-code`.
 Sprint `8.8` later removed checked-in transcript, renderer, report-card, and
-retired-backend fixture dependencies from the normal clean-clone suite; Phase `2`
+backend-fixture dependencies from the normal clean-clone suite; Phase `2`
 now relies on in-memory and temporary-root codec/cache tests.
 
 ## Phase Summary
@@ -159,8 +159,8 @@ records of `(action_id, visits)` sorted ascending by action ID, equity excluded.
   `MCTS.Transcript.Cache`, `MCTS.Transcript.Hash`, and `MCTS.Transcript.Lookup`
   wrapper modules preserving the planned public ownership boundaries without duplicating
   parser state.
-- Legacy-envelope (`max_plies = 10000`) generated evidence belongs to the retired
-  backend (i) optional evidence path; Phase `2` owns only the codec shape and tests it
+- Legacy-envelope (`max_plies = 10000`) generated evidence belongs to the backend (i)
+  optional evidence path; Phase `2` owns only the codec shape and tests it
   with generated in-memory/temporary transcripts.
 
 ## Sprint 2.2: Content-Addressed Cache and Cache Root Resolution ✅
@@ -391,7 +391,7 @@ consumer is wired in Phase 4 once the FFI bridge exists.
 - The `verify` subtree defaults to `--rng cpp` and rejects `--rng native` during
   parser validation; the parsed `VerifyCommand` carries `RunInputs` plus the
   live `[VerifyBackend]` cohort and `allow-stale` flag.
-- Retired backend (i)'s native RNG asymmetry is historical evidence only. The current
+- Backend (i)'s native RNG asymmetry is legacy compatibility behavior. The current
   live operator surface accepts `--rng native` for `rust` and `haskell` benchmarks/play,
   and requires `--rng cpp` for `verify`.
 
@@ -419,10 +419,10 @@ consumer is wired in Phase 4 once the FFI bridge exists.
   bounded bijection check (`mix 42 i` is unique for `i ∈ [0, 1023]`). The
   full `Word64`-range bijection property remains scheduled for Sprint 7.1's
   property-based coverage.
-- The former C++ `cpp_rng_split_seed` shim retired with backend (i)'s live FFI
-  surface. Current unit and cross-backend tests pin the Haskell splitmix values,
-  assert per-backend native salts in `MCTS.Rng.Mix`, and exercise the live
-  Rust/Haskell `--rng cpp` schedule without relying on committed fixture data.
+- The C++ `cpp_rng_split_seed` / verification-seed bridge belongs to the live
+  equivalence path. Current unit and cross-backend tests pin the Haskell splitmix
+  values, assert per-backend native salts in `MCTS.Rng.Mix`, and exercise the live
+  `(ii)..(v)` `--rng cpp` schedule without relying on committed fixture data.
 - Baseline parser coverage rejects user-supplied `--rng native` on `verify` at parse
   time rather than silently overriding the parsed run inputs.
 
@@ -476,7 +476,7 @@ layered cohort-invariant vs per-backend-slot semantics.
 - `mcts-unit`: envelope round-trip, version-tolerance, hash-stability,
   sidecar-cache-hit, and full-envelope rendering coverage.
 - `mcts-integration`: live-envelope stamping and stale-cache coverage when the
-  Rust shared library is present; retired-backend evidence is synthesized in
+  Rust shared library is present; backend-equivalence fixture shapes are synthesized in
   temporary roots.
 
 ### Closure Notes

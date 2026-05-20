@@ -18,6 +18,7 @@ import MCTS.Driver (RunInputs (..))
 import MCTS.Engine (Board, applyMove, boardSideToMove, initialBoard, legalMoves, terminalWinner)
 import MCTS.Error (AppError (..))
 import MCTS.FFI.Common (DynamicSearchGame (..))
+import MCTS.Rng.Cpp (cppMoveSeedsIfAvailable)
 import MCTS.Rng.Mix (backendNativeSalt, mix)
 import MCTS.Types
 
@@ -28,9 +29,9 @@ type ForeignSearchOpener =
     forall a. (DynamicSearchGame -> IO a) -> IO (Either AppError a)
 
 -- | Run a single game through a `DynamicSearchGame` opener. Mirrors
--- the retired backend (i) coordinate convention and applies the same
+-- backend (i)'s legacy coordinate convention and applies the same
 -- legacy-coordinate flip when the side-to-move (in Haskell) is Hero,
--- because the surviving foreign engines keep the backend (ii)/(iii)
+-- because the foreign engines keep the backend (ii)/(iii)
 -- legacy-coordinate C ABI convention.
 runForeignSearchGame
     :: ForeignSearchOpener
@@ -38,9 +39,17 @@ runForeignSearchGame
     -> Word32
     -> IO (Either AppError GameTranscript)
 runForeignSearchGame openGame inputs gid = do
-    outer <- openGame $ \game -> do
-        let gameSeed = mix (inputSeed inputs) (fromIntegral gid)
-        go game gameSeed initialBoard (0 :: Int) []
+    let gameSeed = mix (inputSeed inputs) (fromIntegral gid)
+    cppSeeds <-
+        if inputRng inputs == CppRng
+            then
+                cppMoveSeedsIfAvailable
+                    (inputSeed inputs)
+                    (fromIntegral gid)
+                    (fromIntegral (inputMaxPlies inputs))
+            else pure Nothing
+    outer <- openGame $ \game ->
+        go game gameSeed cppSeeds initialBoard (0 :: Int) []
     case outer of
         Left err -> pure (Left err)
         Right (Left err) -> pure (Left err)
@@ -65,11 +74,12 @@ runForeignSearchGame openGame inputs gid = do
     go
         :: DynamicSearchGame
         -> Word64
+        -> Maybe [Word64]
         -> Board
         -> Int
         -> [MoveRecord]
         -> IO (Either AppError ([MoveRecord], Board))
-    go game seed board moveNo acc
+    go game seed cppSeeds board moveNo acc
         | moveNo >= legacyMaxRolloutIters =
             pure $
                 Left $
@@ -86,7 +96,11 @@ runForeignSearchGame openGame inputs gid = do
                     Nothing -> do
                         let budget = moveBudget inputs
                             salt = backendNativeSalt (inputRng inputs) (inputBackend inputs)
-                            effectiveSeed = seed `xor` salt `xor` fromIntegral (moveNo * 257 + 1)
+                            effectiveSeed =
+                                maybe
+                                    (seed `xor` salt `xor` fromIntegral (moveNo * 257 + 1))
+                                    id
+                                    (cppSeedAt cppSeeds moveNo)
                         searched <- searchGameSearchMove game effectiveSeed budget
                         case searched of
                             Left err -> pure (Left err)
@@ -101,7 +115,14 @@ runForeignSearchGame openGame inputs gid = do
                                             , moveVisits = visits
                                             }
                                     nextBoard = applyMove chosen board
-                                 in go game seed nextBoard (moveNo + 1) (record : acc)
+                                 in go game seed cppSeeds nextBoard (moveNo + 1) (record : acc)
+
+cppSeedAt :: Maybe [Word64] -> Int -> Maybe Word64
+cppSeedAt Nothing _ = Nothing
+cppSeedAt (Just seeds) moveNo =
+    case drop moveNo seeds of
+        seed : _ -> Just seed
+        [] -> Nothing
 
 -- | Search one move from an arbitrary Haskell `Board` by rebuilding a
 -- fresh foreign board from the already-played move history, then

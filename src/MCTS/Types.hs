@@ -78,12 +78,13 @@ backendRoman backend =
         Rust -> "(iv)"
         Haskell -> "(v)"
 
--- | Live operator-selectable backends. Backends (i), (ii), and (iii)
--- remain in the transcript wire format as archived backends, but they
--- are retired from CLI selection after Sprints 8.4, 8.5, and 8.6.
+-- | All five first-class backend identifiers in project order.
 allBackends :: [Backend]
 allBackends =
-    [ Rust
+    [ CppLegacy
+    , CppImperative
+    , CppFunctional
+    , Rust
     , Haskell
     ]
 
@@ -92,6 +93,8 @@ parseBackend raw =
     lookup (map toLower raw) [(backendIdentifier b, b) | b <- allBackends]
 
 data VerifyBackend where
+    VCppImperative :: VerifyBackend
+    VCppFunctional :: VerifyBackend
     VRust :: VerifyBackend
     VHaskell :: VerifyBackend
 
@@ -108,14 +111,16 @@ toVerifyBackend :: Backend -> Maybe VerifyBackend
 toVerifyBackend backend =
     case backend of
         CppLegacy -> Nothing
-        CppImperative -> Nothing
-        CppFunctional -> Nothing
+        CppImperative -> Just VCppImperative
+        CppFunctional -> Just VCppFunctional
         Rust -> Just VRust
         Haskell -> Just VHaskell
 
 verifyBackendToBackend :: VerifyBackend -> Backend
 verifyBackendToBackend backend =
     case backend of
+        VCppImperative -> CppImperative
+        VCppFunctional -> CppFunctional
         VRust -> Rust
         VHaskell -> Haskell
 

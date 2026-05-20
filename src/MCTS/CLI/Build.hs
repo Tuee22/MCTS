@@ -47,6 +47,9 @@ runBuild command = do
                 "legacy-fixtures"
                 (legacyFixturePlanOptions fixtureOptions)
                 (legacyFixturePlan fixtureOptions)
+        BuildCppLegacy planOptions -> runBackendBuild env "cpp-legacy" planOptions
+        BuildCppImperative planOptions -> runBackendBuild env "cpp-imperative" planOptions
+        BuildCppFunctional planOptions -> runBackendBuild env "cpp-functional" planOptions
         BuildRust planOptions -> runBackendBuild env "rust" planOptions
 
 runBackendBuild :: Env.Env -> String -> PlanOptions -> Env.App ExitCode
@@ -116,7 +119,7 @@ legacyFixturePlan options =
 -- per the backend (ii)/(iii) steelman build sprints:
 --
 --   1. PGO-instrumented bench + instrumented artefacts.
---   2. Training run (self-play under `--rng cpp`) writes
+--   2. Training run (self-play under `--rng native`) writes
 --      `<backend>/pgo-profile/*.gcda`.
 --   3. PGO-optimized rebuild of both artefacts with `-fprofile-use`.
 --   4. BOLT instrument pass for both artefacts (writes
@@ -284,7 +287,7 @@ trainingRunFor backend games sims =
         , "--threading"
         , "single"
         , "--rng"
-        , "cpp"
+        , "native"
         , "--games"
         , show games
         , "--seed"

@@ -84,7 +84,7 @@ where the source of truth lives.
   `3` backend (v) Haskell engine, Phase `4` backend (i) C++ legacy port + FFI bridge,
   Phase `5` backend (ii) C++ imperative steelman, Phase `6` backends (iii) C++
   functional and (iv) Rust, Phase `7` cross-backend verify + report card, Phase `8`
-  Haskell performance parity closure plus retirement protocol.
+  Haskell performance parity closure plus five-backend restoration.
 - [development_plan_standards.md](development_plan_standards.md) declares rules A–L,
   including the CLI Doctrine Alignment rule L that requires phase docs to cite
   [../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md) sections by name on
@@ -97,8 +97,8 @@ where the source of truth lives.
   codec components, CLI doctrine components, test stanzas, toolchain pins, and state
   locations with owning sprint / status for each row.
 - [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md) is empty in both
-  sections at write time, with the retirement-protocol reference table populated so
-  Phase `8` can enqueue rows without schema churn.
+  sections at write time, with the cleanup ledger schema populated so Phase `8` can
+  enqueue rows without schema churn.
 - `documents/documentation_standards.md` carries the six doctrine-mandated Generated
   Sections elements per [../HASKELL_CLI_TOOL.md → Project-level documentation
   standards](../HASKELL_CLI_TOOL.md): marker convention with literal
@@ -261,7 +261,7 @@ rule L.
     `MCTS magic`, `sim_budget_kind`, `ramped_per_move_sims`, `action_enum_version`
     — must produce **zero** hits.
   - **RNG FFI contract**: `cpp_rng_new`, `cpp_rng_next_u64`, `cpp_rng_split`,
-    `cpp_rng_free` (all four functions present per README §6.10).
+    `cpp_rng_fill_u64`, `cpp_rng_free` (all five functions present per README §6.10).
   - **Paired build targets**: `*-bench`, `*-instrumented` (or the project-specific
     `_bench` / `_instrumented` suffix), with at least one owning sprint per
     non-exempt backend (ii, iii, iv, v).
@@ -350,7 +350,7 @@ engineering docs: `MCTR`, `c_param`, `flags u32`, `initial_sims`,
 returns zero hits outside this audit's own enumeration of the forbidden list.
 
 **RNG FFI contract** (`cpp_rng_new`, `cpp_rng_next_u64`, `cpp_rng_split`,
-`cpp_rng_free`) is fully covered in
+`cpp_rng_fill_u64`, `cpp_rng_free`) is fully covered in
 [phase-4-cpp-legacy-port-and-ffi-bridge.md](phase-4-cpp-legacy-port-and-ffi-bridge.md)
 Sprint `4.2` and
 [../documents/engineering/backend_ffi_contract.md](../documents/engineering/backend_ffi_contract.md).
@@ -426,8 +426,8 @@ doctrine — are:
   application environment, and error handling.
 - `documents/engineering/determinism_contract.md` — project-specific: the RNG split,
   per-game `splitmix64(master_seed, game_index)` seed derivation, ply-cap draw rule,
-  visit-count vs equity asymmetry, the historical legacy parity envelope, and the
-  current `VerifyBackend` GADT that excludes retired backend tags from live verify.
+  visit-count vs equity asymmetry, the legacy parity envelope, and the intended
+  `VerifyBackend` GADT for Q3 `(ii)..(v)`.
 - `documents/engineering/transcript_format.md` — project-specific: little-endian
   binary wire format, single-byte action enumeration, content addressing,
   hash-prefix lookup, header layout.

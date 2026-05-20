@@ -7,7 +7,7 @@ module MCTS.CLI.Command
     , verifyBackendsToBackends
     , InspectCommand (..)
     , TestCommand (..)
-    , RetirementAnchorOptions (..)
+    , ParityAnchorOptions (..)
     , LintCommand (..)
     , DocsCommand (..)
     , BuildCommand (..)
@@ -31,6 +31,7 @@ import MCTS.Types
     , SimBudget
     , Transcript
     , VerifyBackend (..)
+    , Workload
     , verifyBackendToBackend
     )
 
@@ -56,6 +57,7 @@ data BenchCommand
 data VerifyCommand
     = VerifyRollouts Bool [VerifyBackend] RunInputs
     | VerifySelfplay Bool [VerifyBackend] RunInputs
+    | VerifyLegacyParity Bool Workload [Backend] RunInputs
     deriving (Eq, Show)
 
 verifyBackendsToBackends :: [VerifyBackend] -> [Backend]
@@ -76,14 +78,14 @@ data CacheCommand
 
 data TestCommand
     = TestAll PlanOptions
-    | TestRetirementAnchor RetirementAnchorOptions
+    | TestParityAnchor ParityAnchorOptions
     | TestStanza String
     deriving (Eq, Show)
 
-data RetirementAnchorOptions = RetirementAnchorOptions
-    { retirementAnchorRetiring :: !Backend
-    , retirementAnchorSuccessor :: !Backend
-    , retirementAnchorPlanOptions :: !PlanOptions
+data ParityAnchorOptions = ParityAnchorOptions
+    { parityAnchorBaseline :: !Backend
+    , parityAnchorCandidate :: !Backend
+    , parityAnchorPlanOptions :: !PlanOptions
     }
     deriving (Eq, Show)
 
@@ -100,7 +102,10 @@ data DocsCommand
     deriving (Eq, Show)
 
 data BuildCommand
-    = BuildRust PlanOptions
+    = BuildCppLegacy PlanOptions
+    | BuildCppImperative PlanOptions
+    | BuildCppFunctional PlanOptions
+    | BuildRust PlanOptions
     | BuildLegacyFixtures LegacyFixtureOptions
     deriving (Eq, Show)
 

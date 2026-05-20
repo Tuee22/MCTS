@@ -115,7 +115,7 @@ uctSearchWithEquity board seed nSims maxPlies = runST $ do
     -- Sprint 7.2 cohort agreement: the final choice picks the highest
     -- visit count with action-id tiebreak only. C++/Rust backends do
     -- the same (`if (child.visit_count > best_visits) { ... }` in
-    -- the retired C++ search loops and live Rust loop); aligning the
+    -- the C++ and Rust search loops); aligning the
     -- Haskell side here drops the previous `nonTerminalRank`-then-
     -- equity tiebreak so the live cohort stays uniform.
     finalChoiceKey (action, visits, _equity) =
@@ -228,7 +228,7 @@ pickByUctIndex
 -- emitting pawn moves with smaller-y-bias for the side-to-move (the
 -- canonical action enumeration already orders pawn moves by y*9+x so
 -- the first emitted move at the initial position is `Pawn 3 0`, in
--- agreement with the retired C++ smoke runs).
+-- agreement with the C++ smoke runs).
 pickByUctIndex arena firstChild numKids np _board = do
     scored <- mapM scoreIdx [0 .. numKids - 1]
     case sortOn scoreKey scored of

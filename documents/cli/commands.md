@@ -11,6 +11,8 @@
 - `mcts bench selfplay` - Self-play benchmark
 - `mcts verify rollouts` - Verify rollout visit counts
 - `mcts verify selfplay` - Verify self-play visit counts
+- `mcts verify legacy-parity rollouts` - Verify legacy-envelope rollout liveness
+- `mcts verify legacy-parity selfplay` - Verify legacy-envelope self-play liveness
 - `mcts play` - Play or spectate a game
 - `mcts inspect list` - List cached transcripts
 - `mcts inspect show` - Show one transcript
@@ -20,7 +22,7 @@
 - `mcts inspect cache prune` - Prune stale sidecars
 - `mcts inspect divergence` - Show divergence matrix
 - `mcts test all` - Run full suite and report card
-- `mcts test retirement-anchor` - Measure backend parity anchor
+- `mcts test parity-anchor` - Measure backend parity anchor
 - `mcts test <stanza>` - Run one cabal stanza
 - `mcts lint files` - Lint files
 - `mcts lint docs` - Lint docs
@@ -31,5 +33,8 @@
 - `mcts commands` - Show command registry
 - `mcts help <subcommand>` - Focused help
 - `mcts check-code` - Run code-quality gate
+- `mcts build cpp-legacy` - Build C++ legacy backend
+- `mcts build cpp-imperative` - Build C++ imperative backend
+- `mcts build cpp-functional` - Build C++ functional backend
 - `mcts build rust` - Build Rust backend
 - `mcts build legacy-fixtures` - Generate external legacy Q6 evidence

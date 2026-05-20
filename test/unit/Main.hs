@@ -264,7 +264,9 @@ exerciseCommandParserSurface = do
     assert "all leaves have examples" (all (not . null . examples) (leafSpecs commandSpec))
     assert
         "backend parser"
-        (parseBackends "rust,haskell" == Right [Rust, Haskell])
+        ( parseBackends "cpp-legacy,cpp-imperative,cpp-functional,rust,haskell"
+            == Right [CppLegacy, CppImperative, CppFunctional, Rust, Haskell]
+        )
     assert
         "command parser"
         ( parsesBenchCohort
@@ -276,8 +278,21 @@ exerciseCommandParserSurface = do
         "bench requires an explicit backend cohort"
         (isLeft (parseCommand ["bench", "selfplay", "--games", "1", "--seed", "42"]))
     assert
-        "legacy parity command retired"
-        (isLeft (parseCommand ["verify", "legacy-parity", "rollouts", "--backend", "cpp-legacy,haskell"]))
+        "legacy parity command parses all five backend slots"
+        ( parsesLegacyParityCohort
+            ( parseCommand
+                [ "verify"
+                , "legacy-parity"
+                , "rollouts"
+                , "--backend"
+                , "cpp-legacy,cpp-imperative,cpp-functional,rust,haskell"
+                , "--games"
+                , "1"
+                , "--seed"
+                , "42"
+                ]
+            )
+        )
     assert
         "allow stale parser"
         ( parsesAllowStale
@@ -365,24 +380,43 @@ exerciseCommandParserSurface = do
             (parseCommand ["verify", "selfplay", "--backend", "haskell", "--games", "1", "--seed", "42"])
         )
     assert
-        "verify rejects retired cpp-legacy at parser boundary"
+        "verify rejects cpp-legacy at parser boundary"
         ( isLeft
             ( parseCommand
                 ["verify", "selfplay", "--backend", "cpp-legacy,haskell", "--games", "1", "--seed", "42"]
             )
         )
     assert
-        "verify rejects retired cpp-imperative at parser boundary"
-        ( isLeft
-            ( parseCommand
-                ["verify", "selfplay", "--backend", "cpp-imperative,haskell", "--games", "1", "--seed", "42"]
+        "verify accepts cpp-imperative at parser boundary"
+        ( not
+            ( isLeft
+                ( parseCommand
+                    ["verify", "selfplay", "--backend", "cpp-imperative,haskell", "--games", "1", "--seed", "42"]
+                )
             )
         )
     assert
-        "verify rejects retired cpp-functional at parser boundary"
-        ( isLeft
+        "verify accepts cpp-functional at parser boundary"
+        ( not
+            ( isLeft
+                ( parseCommand
+                    ["verify", "selfplay", "--backend", "cpp-functional,haskell", "--games", "1", "--seed", "42"]
+                )
+            )
+        )
+    assert
+        "verify accepts full Q3 cohort at parser boundary"
+        ( parsesFullVerifyCohort
             ( parseCommand
-                ["verify", "selfplay", "--backend", "cpp-functional,haskell", "--games", "1", "--seed", "42"]
+                [ "verify"
+                , "selfplay"
+                , "--backend"
+                , "cpp-imperative,cpp-functional,rust,haskell"
+                , "--games"
+                , "1"
+                , "--seed"
+                , "42"
+                ]
             )
         )
     exerciseOptparseParser
@@ -572,6 +606,23 @@ parsesVerifyDefaultThreading parsed =
     case parsed of
         Right (Verify (VerifySelfplay False [VRust, VHaskell] inputs)) ->
             inputThreading inputs == SingleThreaded
+        _ -> False
+
+parsesFullVerifyCohort :: Either AppError Command -> Bool
+parsesFullVerifyCohort parsed =
+    case parsed of
+        Right (Verify (VerifySelfplay False [VCppImperative, VCppFunctional, VRust, VHaskell] inputs)) ->
+            inputThreading inputs == SingleThreaded
+        _ -> False
+
+parsesLegacyParityCohort :: Either AppError Command -> Bool
+parsesLegacyParityCohort parsed =
+    case parsed of
+        Right (Verify (VerifyLegacyParity False Rollouts backends inputs)) ->
+            backends == [CppLegacy, CppImperative, CppFunctional, Rust, Haskell]
+                && inputThreading inputs == SingleThreaded
+                && inputRng inputs == CppRng
+                && inputMaxPlies inputs == 10000
         _ -> False
 
 parsesBenchCohort :: Either AppError Command -> Bool
@@ -985,13 +1036,20 @@ exercisePlanOptionMetadata :: IO ()
 exercisePlanOptionMetadata = do
     let planApplyLeaves =
             [ "mcts test all"
-            , "mcts test retirement-anchor"
+            , "mcts test parity-anchor"
             , "mcts docs generate"
             , "mcts inspect cache prune"
+            , "mcts build cpp-legacy"
+            , "mcts build cpp-imperative"
+            , "mcts build cpp-functional"
             , "mcts build rust"
             , "mcts build legacy-fixtures"
             ]
-    assert "Plan/Apply leaves declare --dry-run and --plan-file" (all hasPlanOptions planApplyLeaves)
+    assert
+        ( "Plan/Apply leaves declare --dry-run and --plan-file; missing "
+            <> show (filter (not . hasPlanOptions) planApplyLeaves)
+        )
+        (all hasPlanOptions planApplyLeaves)
   where
     hasPlanOptions path =
         case lookup path commandRows of
@@ -1302,9 +1360,8 @@ exercisePerGameTranscriptWriter = do
                 )
     removePathForcibly cacheRoot
 
--- | Validate the surviving Rust PGO+BOLT plan as a typed
--- `[Subprocess]` sequence. The retired C++ functional build plan is no longer
--- reachable from the CLI; Rust remains the live foreign build harness.
+-- | Validate the Rust PGO+BOLT plan as a typed `[Subprocess]` sequence.
+-- C++ backend build harnesses are covered through the Plan/Apply command surface.
 exerciseRustBuildPlan :: IO ()
 exerciseRustBuildPlan = do
     let plan = buildBackendPlan "rust"
@@ -1332,17 +1389,18 @@ exerciseRustBuildPlan = do
             ]
         )
     assert
-        "Rust PGO training step invokes bench selfplay --rng cpp"
+        "Rust PGO training step invokes bench selfplay --rng native"
         ( commands !! 1 == "cabal"
             && "selfplay" `elem` argsOf !! 1
-            && "cpp" `elem` argsOf !! 1
+            && "native" `elem` argsOf !! 1
             && show pgoTrainingGames `elem` argsOf !! 1
             && show pgoTrainingSims `elem` argsOf !! 1
         )
     assert
-        "Rust BOLT training step invokes bench selfplay --rng cpp"
+        "Rust BOLT training step invokes bench selfplay --rng native"
         ( commands !! 7 == "cabal"
             && "selfplay" `elem` argsOf !! 7
+            && "native" `elem` argsOf !! 7
             && show boltTrainingGames `elem` argsOf !! 7
             && show boltTrainingSims `elem` argsOf !! 7
         )
@@ -1770,9 +1828,18 @@ exerciseOptparseParser = do
     case OA.execParserPure
         OA.defaultPrefs
         commandParserInfo
-        ["verify", "legacy-parity", "rollouts", "--backend", "cpp-legacy,haskell"] of
-        OA.Failure _ -> pure ()
-        _ -> error "execParserPure accepted retired legacy parity command"
+        [ "verify"
+        , "legacy-parity"
+        , "rollouts"
+        , "--backend"
+        , "cpp-legacy,cpp-imperative,cpp-functional,rust,haskell"
+        , "--games"
+        , "1"
+        , "--seed"
+        , "42"
+        ] of
+        OA.Success command -> assert "execParserPure parses legacy parity cohort" (parsesLegacyParityCohort (Right command))
+        _ -> error "execParserPure failed to parse legacy parity cohort"
     case OA.execParserPure
         OA.defaultPrefs
         commandParserInfo

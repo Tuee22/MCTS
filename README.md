@@ -9,17 +9,17 @@
 
 A high-performance runtime for Monte Carlo Tree Search (MCTS), targeting the Corridors board game. The long-term goal is AlphaZero-style ANN evaluation; the first phase is rollout-based MCTS only.
 
-This repository is the successor to `MCTS_legacy`, a hand-tuned imperative C++ implementation. The goal here is to **progressively refactor that codebase, maintaining multiple parallel implementations side-by-side, until a pure Haskell version equals the original C++ in throughput**. The proof of concept is that purely functional Haskell can rival C++ on a workload this performance-sensitive, using only the game engine and rollout-based MCTS.
+This repository continues from `MCTS_legacy`, a hand-tuned imperative C++ implementation. The goal here is to keep five parallel implementations alive behind one CLI until a pure Haskell version equals a deliberately steelmanned C++ implementation in throughput. The proof of concept is that purely functional Haskell can rival C++ on a workload this performance-sensitive, using only the game engine and rollout-based MCTS.
 
-> **Current status:** The repository has moved past bootstrap into a
-> two-live-backend implementation baseline. Backends (i) `cpp-legacy`,
-> (ii) `cpp-imperative`, and (iii) `cpp-functional` are retired from live
-> CLI/build/verify/FFI dispatch. The 2026-05-19 report card records
-> `Verdict: Within tolerance`; normal tests pass from a clean clone without
-> checked-in transcripts, throughput anchors, snapshots, or other generated
-> validation data. Historical retired-backend evidence is documented or kept as
-> optional external/ignored artifacts, not as repository inputs. The authoritative
-> phase-by-phase status remains
+> **Current status:** The supported architecture is a five-backend implementation
+> baseline behind one Haskell CLI: three C++ backends, Rust, and Haskell all remain
+> first-class benchmark and verification participants. The POC is not just a
+> throughput race; it must show that pure Haskell matches a deliberately
+> steelmanned imperative C++ baseline while the five implementations preserve the
+> same MCTS logic under the controlled C++-RNG verification mode. Normal tests pass
+> from a clean clone without checked-in transcripts, throughput anchors, snapshots,
+> or other generated validation data. The authoritative phase-by-phase status
+> remains
 > [`DEVELOPMENT_PLAN/README.md`](DEVELOPMENT_PLAN/README.md).
 
 > **Plan and doctrine:** The authoritative execution-ordered plan lives at [`DEVELOPMENT_PLAN/README.md`](DEVELOPMENT_PLAN/README.md); the authoritative CLI doctrine lives at [`HASKELL_CLI_TOOL.md`](HASKELL_CLI_TOOL.md); the documentation-topology rules live at [`documents/documentation_standards.md`](documents/documentation_standards.md).
@@ -36,25 +36,25 @@ We want a runtime that is:
 2. **Purely functional at the API surface** in its final form, so that algorithmic changes (search policies, evaluators, prior shaping) are local edits rather than rewrites. Internally, the engine is free to use `ST`-monad mutable unboxed arrays — that is the only realistic way to match optimised imperative C++, and the local-reasoning property is preserved as long as the public types and operations stay pure.
 3. **Bit-for-bit deterministic**: given a seed, an RNG source, and a sequence of moves, every implementation produces identical visit counts, identical action orderings, identical rollouts. Reproducibility is a first-class invariant, not a debugging aid.
 
-The contest is rigged in favour of imperative C++ and Rust. Backends (ii), (iii), and (iv) are or were compiled and linked with every reasonable optimisation — `-O3`, `-march=native`, full LTO, two-stage PGO, BOLT post-link, `mimalloc`, arena-allocated tree nodes, scratch-board rollouts, branch hints. Backend (i) is preserved as a retired strictly verbatim port to confirm faithful reproduction of the legacy engine; (ii) is the frozen performance ceiling against which (v) Haskell must compete. The hypothesis is only meaningful when tested against a maximally-tuned imperative baseline rather than a strawman.
+The contest is rigged in favour of imperative C++ and Rust. Backends (ii), (iii), and (iv) are compiled and linked with every reasonable optimisation — `-O3`, `-march=native`, full LTO, two-stage PGO, BOLT post-link, `mimalloc`, arena-allocated tree nodes, scratch-board rollouts, branch hints. Backend (i) is a strictly verbatim port used to prove faithful reproduction of the legacy engine; backend (ii) is the performance ceiling against which (v) Haskell must compete. The hypothesis is only meaningful when tested against a maximally-tuned imperative baseline rather than a strawman.
 
 To get there without a single big-bang rewrite, we keep multiple implementations alive in the same repo, expose them through a single tool, and benchmark them against each other on every change.
 
 ---
 
-## One CLI, Backend Cohort
+## One CLI, Five Backends
 
-There is exactly one user-facing binary: a Haskell CLI built with Cabal, written in accordance with [`HASKELL_CLI_TOOL.md`](HASKELL_CLI_TOOL.md). Backends (iv) and (v) are reachable as live backends behind the same command surface; backends (i), (ii), and (iii) remain source archives with decodeable wire tags and historical evidence, but normal validation does not require pre-existing transcripts or generated anchor files.
+There is exactly one user-facing binary: a Haskell CLI built with Cabal, written in accordance with [`HASKELL_CLI_TOOL.md`](HASKELL_CLI_TOOL.md). All five implementations are reachable as first-class backends behind the same command surface.
 
 | # | Backend                           | Linkage                | Purpose                                                                                                                                                                                                                                                                          |
 |---|-----------------------------------|------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| i   | **C++ (legacy port)**             | Retired; archived C ABI source | Strictly verbatim re-port of the original imperative C++. Retired from live CLI/build/verify/FFI dispatch in Sprint 8.4 after Q6 closure; preserved under `cpp-legacy/` as source and optional local evidence-generation tooling. Regression sanity check only; **not** the performance ceiling. |
-| ii  | **C++ (imperative, max-optimised)** | Retired; archived source and documented evidence | Imperative C++, rewritten with every reasonable modern optimisation (see [Compiler and runtime tuning](#compiler-and-runtime-tuning)): arena-allocated tree nodes, scratch-board rollouts, PGO+BOLT, `mimalloc`, branch hints. **The actual performance ceiling.** Sprint 8.5 recorded the target; normal tests no longer read a checked-in throughput or transcript anchor. |
-| iii | **C++ (functional-style)**        | Retired; archived source and documented evidence | Same algorithms as (ii), same optimisation stack, rewritten in a more functional style with modern C++ idiom. Sprint 8.6 recorded the stepping-stone target after Haskell reached parity with it; normal tests no longer read checked-in generated anchors.                                          |
+| i   | **C++ (legacy port)**             | C ABI via Haskell FFI | Strictly verbatim re-port of the original imperative C++. Only FFI shims and the minimum changes needed to expose a C ABI are allowed. Inherits the legacy's tree representation, `std::mt19937_64` RNG, and single-threaded design unchanged. Regression sanity check only; **not** the performance ceiling. |
+| ii  | **C++ (imperative, max-optimised)** | C ABI via Haskell FFI | Imperative C++, rewritten with every reasonable modern optimisation (see [Compiler and runtime tuning](#compiler-and-runtime-tuning)): arena-allocated tree nodes, scratch-board rollouts, PGO+BOLT, `mimalloc`, branch hints. **The actual performance ceiling.** If pure Haskell matches this, the hypothesis is proven. |
+| iii | **C++ (functional-style)**        | C ABI via Haskell FFI | Same algorithms as (ii), same optimisation stack, rewritten in a more functional style with modern C++ idiom. Tests whether functional-style C++ pays a tax against imperative C++ *in the same language*. Stepping stone to Haskell. |
 | iv  | **Rust**                          | C ABI via Haskell FFI  | Modern, functional-leaning Rust on the latest stable compiler, same maximal-optimisation stance as (ii)/(iii). Independent cross-language check on the C++ numbers.                                                                                                            |
 | v   | **Haskell**                       | Native (in-process)    | Pure Haskell, the eventual target. **Must match (ii)** — not (i) — on both benchmarks. Pure at the API; `ST` + unboxed mutable arena internally.                                                                                                                              |
 
-The live foreign backend (iv) is compiled to a shared library with a stable C ABI and called from Haskell through the FFI; backend (v) runs in-process. There is no separate Python entry point, no separate Rust entry point — every measurement, every determinism check, every game runs out of one process driven by one binary. This keeps the clock, the threading model, and the input encoding identical across measurements.
+Backends (i), (ii), (iii), and (iv) are compiled to shared libraries with stable C ABIs and called from Haskell through the FFI; backend (v) runs in-process. There is no separate Python entry point, no separate Rust entry point — every measurement, every determinism check, every game runs out of one process driven by one binary. This keeps the clock, the threading model, and the input encoding identical across measurements.
 
 ---
 
@@ -67,36 +67,25 @@ The two modes:
 - **Single-threaded.** Games run sequentially on one worker. The per-game wall-clock from this mode is the basic "how fast is one game" measurement, with no scheduling overhead attached.
 - **Multi-threaded.** Default **8 workers** (`--workers N` to override). The batch of games is dispatched into a pool of workers; each worker plays one game at a time, single-threaded internally, and picks up the next when done. The point of this mode is to measure how each implementation's runtime *scales* — how `games/sec` changes as the worker count grows. Different runtimes (GHC's RTS, Tokio, raw pthreads, ...) have very different concurrency overheads, allocator-contention behaviour, and locality characteristics; the MT benchmark is what surfaces them.
 
-Each game's RNG stream is seeded by `splitmix64(master_seed, game_index)`, so per-game output is independent of worker count, scheduling order, and worker-to-game assignment. Running `--games 32 --threading single` and `--games 32 --threading multi --workers 8` must produce the same 32 determinism payloads; only the wall-clock and provenance metadata differ. Every live backend is single-threaded internally per game and is dispatched into the same worker pool as the others, so all live backends measure under identical scheduling semantics.
+Each game's RNG stream is seeded by `splitmix64(master_seed, game_index)` or by the C++-RNG equivalent under the verification mode, so per-game output is independent of worker count, scheduling order, and worker-to-game assignment. Running `--games 32 --threading single` and `--games 32 --threading multi --workers 8` must produce the same 32 determinism payloads for the same backend, seed, RNG source, and logical inputs; only the wall-clock and provenance metadata differ. Every backend is single-threaded internally per game and is dispatched into the same worker pool as the others, so all five backends measure under identical scheduling semantics.
 
 ---
 
 ## RNG strategy
 
-Different RNG algorithms cannot be expected to produce identical byte streams, so we cannot assert cross-implementation equality under each language's native RNG. Every live backend supports **two RNG sources**:
+Different RNG algorithms cannot be expected to produce identical byte streams, so the project deliberately separates performance benchmarking from logical-equivalence verification. Backends (ii), (iii), (iv), and (v) support **two RNG sources**; backend (i) uses the legacy C++ RNG by definition:
 
-- **`--rng native`** — the current live search path uses the same splitmix-compatible seed schedule as the verification path, but applies a deterministic backend salt with `MCTS.Rng.Mix.backendNativeSalt`. This keeps benchmark transcripts backend-distinct without claiming cross-backend bit equality. The C++ and Rust trees still contain xoshiro256++ helper modules, but the live FFI search path currently ignores the RNG-kind selector; fastest per-language RNG swaps are future profiling work, not the current contract.
-- **`--rng cpp`** — the verification cohort uses the canonical C++-RNG seed
-  schedule so all backend slots run without native-RNG salt. When the compiled
-  cdylibs are present, `mcts verify` reaches the live foreign search engines;
-  when they are absent, the in-process fallback keeps the Cabal stanzas
-  self-contained.
+- **`--rng native`** — each backend uses the fastest RNG it can defend statistically. Backends (ii)/(iii) may use xoshiro/wyrand-class generators instead of `std::mt19937_64`; Rust uses its native fast RNG; Haskell uses splitmix or its chosen native generator. This mode is for performance benchmarks and operator play. Cross-backend transcript identity is not expected here.
+- **`--rng cpp`** — equivalence tests use random numbers generated by the C++ RNG bridge. The bridge splits `(master_seed, game_index)` in the legacy-compatible C++ path and supplies the controlled per-move search seeds used by the participating backends. Backends (ii) and (iii) run their C++ search kernels from that seed contract; Rust and Haskell reach the same controlled stream through the Haskell FFI. This mode is for MCTS logical-equivalence tests, not headline performance.
 
-Backend (i) is verbatim from `MCTS_legacy`, always uses `std::mt19937_64`, and is now archived. Its RNG behaviour is preserved by source plus optional local/external Q6 evidence rather than a live CLI selection or checked-in fixture data.
+Backend (i) is verbatim from `MCTS_legacy` and always uses `std::mt19937_64`; it has no separate native/cpp axis. When (i) appears in a mixed benchmark command that passes `--rng native`, the flag is ignored for (i): it draws from the legacy C++ RNG while the other backends draw from their native RNGs.
+
+The dedicated C++ RNG bridge library (`cpp-legacy/build/libmcts_cpp_rng.so` on Linux) is loaded only for equivalence verification and is kept open for the process lifetime once loaded. Native-RNG benchmark paths do not use it.
 
 The split is deliberate:
 
-- **Native RNG** keeps benchmark streams backend-distinct. We do **not** assert cross-backend bit equality here.
-- **C++ RNG** factors RNG choice out of the verification cohort. Under
-  `--rng cpp`, `mcts verify` requires identical visit counts and chosen moves
-  for the same seed and move history across the live cohort `(iv)..(v)`.
-  Backend (i) is excluded from the default `verify` cohort because its
-  terminal-state semantics and legacy search kernel differ (see
-  [Draw rule](#draw-rule)); backend (ii) is excluded because it retired in
-  Sprint 8.5 and is now represented by historical evidence. The former live
-  legacy-parity gate retired with backend (i), and Q7 is historical evidence
-  rather than a checked-in validation input. Backend (iii) retired in Sprint 8.6
-  and is now represented by source plus documented/external evidence.
+- **Native RNG** isolates language/runtime overhead from RNG unification overhead and gives each implementation a fair throughput measurement. We do **not** assert cross-backend bit equality here.
+- **C++ RNG** factors RNG choice out of the equivalence proof. Under `--rng cpp`, backends (ii), (iii), (iv), and (v) must produce identical visit counts and chosen moves for the same seed and move history. Backend (i) is excluded from the default `verify` cohort because its terminal-state semantics and legacy search kernel differ (see [Draw rule](#draw-rule)); it participates in the dedicated legacy-parity envelope where those differences are intentionally bounded.
 
 Same-language determinism (same backend, same master seed, same RNG source, same logical game inputs ⇒ same set of game determinism payloads) is required unconditionally. Each game's RNG stream is seeded by `splitmix64(master_seed, game_index)` (or the C++-RNG equivalent under `--rng cpp`), so worker count, scheduling order, and worker-to-game assignment never affect any individual game's output — only the total wall-clock and provenance metadata.
 
@@ -104,17 +93,13 @@ Same-language determinism (same backend, same master seed, same RNG source, same
 
 ## Cross-backend verification
 
-The `mcts verify` subcommands run the requested backend slots under `--rng cpp`
-through `runBatchDispatch` and check that their determinism payloads agree.
-When the foreign shared libraries are present, verification uses the live
-C/Rust engines and live envelope payloads; when a cdylib is absent, the
-in-process fallback keeps the local test stanzas runnable.
+The `mcts verify` subcommands run the requested backend slots under `--rng cpp` and check that their determinism payloads agree. Verification uses the live C++/Rust foreign engines when their shared libraries are present and the in-process Haskell backend for (v); any fallback behavior exists only to keep local development stanzas runnable and is not accepted as headline cross-language evidence.
 
 **Round-robin, no oracle.** Every requested backend produces a transcript; decoded determinism payloads are compared pairwise. Any mismatched pair fails the test. No backend is privileged as "truth" — disagreement between any two backends is a bug somewhere.
 
 **Operator cache is local.** Runtime transcripts live in a local `.mcts-cache/transcripts/` directory which is `.gitignore`'d. Files are content-addressed by `sha256(run_config)`, where `run_config` includes the backend, workload, threading/workers, RNG source, master seed, sim params, `max_plies`, per-game index, and `c_param` bits, so the same backend/game run reuses prior output across runs. Cross-backend verification compares a canonical determinism payload decoded from those backend-specific files; it does not require different backends to share a filename. The repository has no checked-in transcript fixture exception: tests synthesize transcripts and sidecars in temporary directories.
 
-**Compile-time toggle for instrumentation.** The live Rust foreign backend and the in-process Haskell backend keep the paired-target discipline: `*-bench` (no instrumentation — the binary is byte-identical to one where the feature doesn't exist) and `*-instrumented` (transcript writer plus hooks that expose per-move tree state; used by `verify`, `play`, and `inspect replay`). The toggle is a template / type-level flag on the self-play driver, not a runtime branch in the hot loop. Backend (i) `cpp-legacy`, backend (ii) `cpp-imperative`, and backend (iii) `cpp-functional` are archived source/reference surfaces; any historical transcripts or throughput captures are optional local/external artifacts, not repository validation data. The MCTS engine itself (search, rollout, board, RNG) is one shared artefact between paired targets; only the small driver compiles twice. Because the bench binary has nothing to disable, no benchmark phase is needed to demonstrate zero overhead — the instrumentation code literally does not exist in it.
+**Compile-time toggle for instrumentation.** Backends (ii), (iii), (iv), and (v) keep the paired-target discipline: `*-bench` (no instrumentation — the binary is byte-identical to one where the feature does not exist) and `*-instrumented` (transcript writer plus hooks that expose per-move tree state; used by `verify`, `play`, and `inspect replay`). Backend (i) is the only exemption: it remains line-level faithful to the legacy engine, with transcript writing and instrumentation layered around the C ABI boundary. The toggle is a template / type-level flag on the self-play driver, not a runtime branch in the hot loop. The MCTS engine itself (search, rollout, board, RNG) is one shared artefact between paired targets; only the small driver compiles twice. Because the bench binary has nothing to disable, no benchmark phase is needed to demonstrate zero overhead — the instrumentation code literally does not exist in it.
 
 **Format: dense binary, fully owned.** No schema-library dependency: protobuf, flatbuffers, Cap'n Proto, and CBOR all have library-version-dependent encoding latitude that would have to be imported into the determinism contract. The header carries the run config; per-move records are sparse `(action_id, visits)` pairs sorted ascending by action ID.
 
@@ -166,23 +151,28 @@ Field semantics:
 
 Each game is single-threaded internally regardless of the batch's `--threading` setting, so the per-move record carries exactly one `(action, visits)` list — there are no per-worker blocks. A `--games N` batch writes N backend-specific transcript files, one per `game_id`; the header's `threading` / `workers` fields record the batch dispatcher that produced that game. Typical sizes: ~30 bytes per move, ~2 KB per game; a thousand game transcripts is in the low megabytes. Verification first compares an in-memory SHA-256 over the decoded canonical determinism payload, then runs a length-aware scan to report extra games, extra moves, terminator disagreement, or the first divergent record.
 
-**RNG FFI contract.** The Phase 4 C ABI exposes the legacy C++ seed splitter so
-the Haskell splitmix implementation can be checked against the C++ side:
+**RNG FFI contract.** The Phase 4 C ABI exposes the legacy C++ seed splitter and
+a bulk-fill helper so the Haskell verification path can consume C++-generated
+per-move seeds without owning a C++ RNG object across the FFI boundary:
 
 ```c
 cpp_rng* cpp_rng_new(uint64_t seed);
 uint64_t cpp_rng_next_u64(cpp_rng*);
 uint64_t cpp_rng_split_seed(uint64_t master_seed, uint64_t game_index);
 cpp_rng* cpp_rng_split(uint64_t master_seed, uint64_t game_index);
+int      cpp_rng_fill_u64(uint64_t master_seed, uint64_t game_index,
+                          uint64_t* out, uint64_t count);
 void     cpp_rng_free(cpp_rng*);
 ```
 
-The live verify cohort uses the no-backend-salt splitmix-compatible schedule;
-it does not route every backend through a shared `std::mt19937_64` byte stream.
-Per-game sub-seeds are derived via `splitmix64(master_seed, game_index)` rather
-than mutating any parent generator's state, so each game's RNG stream is
-independent and reproducible from the master seed and its index alone. Workers
-don't have RNG identities — they execute games, and the seed lives with the game.
+In `--rng cpp` mode, per-game C++ RNG streams are derived from `(master_seed,
+game_index)` rather than mutating any parent generator's state. Each game's RNG
+stream is independent and reproducible from the master seed and its index alone.
+The live Haskell bridge loads `cpp_rng_fill_u64` from the dedicated RNG shared
+object and treats the resulting `u64` values as per-move search seeds.
+Workers do not have RNG identities — they execute games, and the seed lives with
+the game. Native-RNG benchmark mode may use backend-specific generators, but it
+must preserve the same per-game independence property.
 
 **Byte-consumption order is itself the contract.** Every backend draws the same number of `u64`s per rollout, reinterprets the consumed word with Haskell's signed machine-`Int` modulo semantics for legal-move selection, and consumes RNG bits at the same logical points in the search. There is no rejection sampling unless every backend rejects identically. The verify test enforces this implicitly: any backend that drifts off the contract fails on its first divergent rollout.
 
@@ -195,7 +185,7 @@ don't have RNG identities — they execute games, and the seed lives with the ga
 Re-running the deterministic search recovers equity values; the bit-exactness of those values depends on whether the *substrate* — backend, arch, and the engine-build envelope — matches what produced the transcript.
 
 - **Same substrate** (same backend, same arch, same engine envelope — i.e., same compiled binary, same hardware, same libm, same compiler flags): equities are bit-identical to those the original search computed. The chain that guarantees this: the seed fixes the RNG state; RNG plus the deterministic engine fixes the simulation order; identical simulation order produces identical value backups in identical float-accumulation order; identical float arithmetic on identical hardware and binaries produces identical bits. Tree persistence carries this property across moves because the inherited tree at move M is itself a deterministic function of moves 0..M-1. Detection of this state is automatic: every transcript carries an [engine envelope](#engine-envelope) and the REPL hard-compares it against the live binary.
-- **Same backend, different envelope** (the user has rebuilt — different commit, different optimisation flags, or a libm point upgrade): equities recomputed by the rebuilt binary are *not* bit-equal to the originally-recorded engine's. Visit counts under `--rng cpp` remain bit-equal (integer arithmetic, byte-consumption contract); only the floats drift, typically by a few ULPs. `inspect replay` shows a persistent yellow `envelope: BUILD MISMATCH` banner whenever this happens, so the user is never silently shown drifted numbers as if they were the originator's.
+- **Same backend, different envelope** (the user has rebuilt — different commit, different optimisation flags, or a libm point upgrade): equities recomputed by the rebuilt binary are *not* bit-equal to the originally-recorded engine's. Visit counts under `--rng cpp` remain bit-equal when the same controlled C++ verification seeds and logical inputs are used; only the floats drift, typically by a few ULPs. `inspect replay` shows a persistent yellow `envelope: BUILD MISMATCH` banner whenever this happens, so the user is never silently shown drifted numbers as if they were the originator's.
 - **Different backend** (foreign-engine view): equities are not bit-equal to *any* originator's numbers — they are the foreign backend's own view of the position. This is the multi-backend overlay's intended use: cross-engine comparison. `inspect replay` marks the originator column with ★ and shows a persistent orange `envelope: FOREIGN VIEW` banner whenever the live binary is a different backend than the originator.
 
 This asymmetry is why the wire format and determinism payload exclude equity: visit counts (integer) are bit-equal across the live verification cohort and form the Q3 determinism contract; equities (float) are not, and requiring float bit-equality would force every backend to fix a canonical summation order and a canonical libm — a much bigger contract. The recomputed-per-substrate floats are cached out-of-band in the [equity sidecar cache](#multi-backend-replay) instead.
@@ -208,7 +198,7 @@ Every transcript carries an **engine envelope** block (immediately after the fix
 
 The envelope is layered:
 
-- **Cohort-invariant fields** (`host_arch`, `rng_source`, `shared_rng_build_id`, `cohort_config_hash`) must match across every transcript in a `verify` cohort. `cohort_config_hash` is the SHA-256 of the backend-independent logical inputs, not the backend-specific cache filename hash. In the current no-shared-byte-stream baseline, `shared_rng_build_id` is normally all-zero except for optional legacy-envelope evidence generated outside the clean-clone test suite. Cohort-level mismatch is meaningless for bit-equality and `verify` hard-fails with `AppError EngineEnvelopeMismatch CohortLevel ...`. Not overridable.
+- **Cohort-invariant fields** (`host_arch`, `rng_source`, `shared_rng_build_id`, `cohort_config_hash`) must match across every transcript in a `verify` cohort. `cohort_config_hash` is the SHA-256 of the backend-independent logical inputs, not the backend-specific cache filename hash. `shared_rng_build_id` records the shared verification-RNG provenance when available and is all-zero for deterministic logical fallback transcripts. Cohort-level mismatch is meaningless for bit-equality and `verify` hard-fails with `AppError EngineEnvelopeMismatch CohortLevel ...`. Not overridable.
 - **Per-backend-slot fields** (`engine_build_id`, `compiler_id`/`compiler_version`, `fp_flags`, `libm_id`, `cpu_features`, `fp_env`, plus informational `engine_git_commit`) legitimately differ across backends in a cohort — that's the whole point of cross-backend `verify`. They must match between a *cached transcript* and the *current live binary* for the same backend slot; per-backend-slot mismatch is the stale-cache case and `verify` hard-fails with `AppError EngineEnvelopeMismatch (BackendSlot b) ...`. Overridable by `--allow-stale` for forensic comparisons that knowingly accept envelope drift; `--format json` reports downgraded warnings under `warning_details`.
 
 See [`documents/engineering/determinism_contract.md`](documents/engineering/determinism_contract.md) §Engine Envelope for the authoritative contract, [`documents/engineering/transcript_format.md`](documents/engineering/transcript_format.md) §Envelope Block for the wire format, and [`documents/engineering/backend_ffi_contract.md`](documents/engineering/backend_ffi_contract.md) §Engine Envelope Surface for the FFI capture protocol.
@@ -244,7 +234,7 @@ The game's terminal-state semantics differ between backend (i) and backends (ii)
 
 The wire format's `winner u8` field is a 3-value enum: `0 = hero`, `1 = villain`, `2 = draw`. The decoder reports draws in `inspect show` / `inspect replay` as `<draw>` in the same position move notation otherwise occupies.
 
-**Legacy parity envelope.** The new draw rule is the only thing keeping backend (i) out of the cross-backend `verify` cohort. Setting `max_plies = MAX_ROLLOUT_ITERS = 10000` creates the envelope where backend (i) can be driven at its native no-draw horizon while the steelman engines retain a transcript-visible cap. Before Sprint 8.4, `mcts verify legacy-parity` drove this cohort with `max_plies` and `--rng cpp` pinned, under a fixture seed chosen so that (i) never tripped `MAX_ROLLOUT_ITERS`. Sprint 8.4 retired that live subcommand; its evidence is historical or optional external/local data. Normal validation from a clean clone does not read checked-in legacy transcripts. This complements Q6: Q6 asks "does (i) reproduce `MCTS_legacy`?", while Q7 records whether the final no-overflow legacy-envelope measurement existed at retirement time. Q7 intentionally does not require backend (i)'s legacy search tree to match the steelman visit vectors or chosen moves.
+**Legacy parity envelope.** The new draw rule is the only thing keeping backend (i) out of the default cross-backend `verify` cohort. Setting `max_plies = MAX_ROLLOUT_ITERS = 10000` creates the envelope where backend (i) can be driven at its native no-draw horizon while the steelman engines retain a transcript-visible cap. `mcts verify legacy-parity` drives this cohort with `max_plies` and `--rng cpp` pinned, under a fixture seed chosen so that (i) never trips `MAX_ROLLOUT_ITERS`. This complements Q6: Q6 asks "does (i) reproduce `MCTS_legacy`?", while Q7 asks whether all five backend slots complete the legacy envelope without backend (i) overflow or envelope failure. Q7 intentionally does not require backend (i)'s legacy search tree to match the steelman visit vectors or chosen moves outside that envelope.
 
 ---
 
@@ -255,7 +245,7 @@ Two workloads define "fast enough":
 - **(a) Random rollouts.** Pure stress test of the game engine: legal-move generation, move application, terminal detection. No tree, no UCT — just play random games end-to-end as fast as the engine allows.
 - **(b) Adversarial MCTS self-play with rollout evaluations.** Full UCT search with random-rollout leaf evaluation, played as adversarial self-play. Exercises the engine, the tree representation, and the search policy together. Each game is single-threaded internally; in multi-threaded mode the workload is a batch of independent self-play games dispatched across `--workers N` workers, with each worker playing one game at a time.
 
-Each benchmark runs the live cross product of `{backend} × {single-threaded, multi-threaded} × {native RNG, C++ RNG}`, reporting wall-clock time and throughput (games/sec, simulations/sec) from a single Cabal-driven measurement clock. The clock is `GHC.Clock.getMonotonicTimeNSec` (monotonic, ns-resolution), started inside the Haskell driver just before the first game is dispatched and stopped just after the last game returns through the FFI; all live backends are timed by the same clock so cross-backend numbers are directly comparable.
+The load-bearing performance benchmarks run the cross product of `{backend} × {single-threaded, multi-threaded}` under `--rng native`, reporting wall-clock time and throughput (games/sec, simulations/sec) from a single Cabal-driven measurement clock. That means every backend is measured with its own fast RNG. `--rng cpp` may be used for diagnostic overhead experiments, but those rows are not the performance comparison. The clock is `GHC.Clock.getMonotonicTimeNSec` (monotonic, ns-resolution), started inside the Haskell driver just before the first game is dispatched and stopped just after the last game returns through the FFI; all five backends are timed by the same clock so cross-backend numbers are directly comparable.
 
 Backend (i)'s throughput is published for reference only and is **not on the same basis** as (ii)–(v) under any `max_plies` other than `MAX_ROLLOUT_ITERS = 10000`: (i) has no game-level ply cap (see [Draw rule](#draw-rule)), so its games run to a positional win and are on average longer than the ply-capped games of (ii)–(v). The load-bearing comparison in Q1/Q2 is Haskell vs (ii), where both backends terminate identically.
 
@@ -265,16 +255,15 @@ Backend (i)'s throughput is published for reference only and is **not on the sam
 
 The doctrine-mandatory canonical test command. `mcts test all` is the developer-facing entrypoint that proves whether the POC's hypotheses hold. It does three things, in order:
 
-1. **Builds the live foreign backend artefact.** The same short-lived container runs
-   `mcts build rust` before any FFI-sensitive tests or report-card measurements.
-   Retired-backend evidence is not read from checked-in generated files; normal
-   validation depends only on live builds, code, and data generated inside the
-   current run.
+1. **Builds canonical backend artefacts.** The same short-lived container runs
+   `mcts build cpp-legacy`, `mcts build cpp-imperative`,
+   `mcts build cpp-functional`, and `mcts build rust` before any FFI-sensitive
+   tests or report-card measurements.
 2. **Delegates to `cabal test`.** Runs every `test-suite` stanza below, each
    `type: exitcode-stdio-1.0`, with `tasty` as the in-stanza runner.
 3. **Executes a fixed POC report-card workload.** Q1/Q2/Q5 use bounded
-   no-transcript timing measurements over the pinned game counts, Q3 uses
-   explicit live `verify` cohorts, and Q7 is historical retired-backend evidence.
+   no-transcript native-RNG timing measurements over the pinned game counts, and
+   Q3/Q7 use explicit C++-RNG `verify` cohorts.
 4. **Prints a single tidy summary block** on stdout that answers the POC's
    headline questions (Q1–Q7 below) in one screenful.
 
@@ -287,8 +276,9 @@ Per doctrine §Test Organization, each tier is a separate cabal stanza:
 | Stanza | Tier | Scope |
 |---|---|---|
 | `mcts-unit` | pure logic | engine invariants, parser tests (`execParserPure`), property/semantic tests for `CommandSpec` output and `inspect show` rendering, transcript codec roundtrips using in-memory or temporary data, RNG mixer properties |
-| `mcts-integration` | subprocess | exercises the real `mcts` binary across the FFI to every live backend; same-backend determinism (same seed and logical game inputs ⇒ same determinism payloads, three seeds per backend); decoded real-binary transcript determinism generated during the test run; bounded report-card divergence and cached recompute-sidecar checks using temporary cache roots; live-envelope stamping/stale-cache coverage when the Rust shared library is present |
-| `mcts-cross-backend` | round-robin verify | live FFI-capable `verify` cohort under `--rng cpp` covering backends (iv), (v); retired backends excluded by the `VerifyBackend` type |
+| `mcts-integration` | subprocess | exercises the real `mcts` binary across the FFI to every backend; same-backend determinism (same seed and logical game inputs ⇒ same determinism payloads, three seeds per backend); decoded real-binary transcript determinism generated during the test run; bounded report-card divergence and cached recompute-sidecar checks using temporary cache roots; live-envelope stamping/stale-cache coverage when foreign shared libraries are present |
+| `mcts-cross-backend` | round-robin verify | real `mcts verify` subprocesses for the live FFI-capable `--rng cpp` cohort covering backends (ii), (iii), (iv), (v); backend (i) excluded by the `VerifyBackend` type; test cases run serially around the process-pinned foreign-library and C++ RNG bridge path |
+| `mcts-legacy-parity` | legacy-envelope verify | live FFI-capable `verify legacy-parity` across all five backend slots with `max_plies = 10000` pinned and a fixture seed; Q7 checks liveness/overflow rather than backend (i)-vs-steelman visit-vector equality |
 | `mcts-haskell-style` | lint | pinned style-tool `fourmolu --mode check`, `hlint --with-group=default --with-group=extra + .hlint.yaml` with only `Error:` findings blocking, `cabal format` round-trip equality |
 
 A single `tasty` tree spanning all tiers is forbidden by doctrine; the stanza split gives Cabal-native parallelism and lets contributors target one tier (`docker compose run --rm mcts mcts test mcts-unit`).
@@ -299,11 +289,11 @@ The report-card workload runs *after* `cabal test` succeeds and answers:
 
 1. **Q1.** Does pure Haskell match maximally-optimised C++ (backend ii) on benchmark (a) random rollouts, single-threaded and on 8 workers?
 2. **Q2.** Does pure Haskell match backend (ii) on benchmark (b) self-play, single-threaded and on 8 workers?
-3. **Q3.** Do live backend slots (iv), (v) produce bit-for-bit identical determinism payloads under `--rng cpp` (round-robin verify on both rollouts and self-play)?
+3. **Q3.** Do backend slots (ii), (iii), (iv), (v) produce bit-for-bit identical determinism payloads under `--rng cpp` (round-robin verify on both rollouts and self-play)?
 4. **Q4.** Does same-backend determinism hold across runs (same backend, same seed, same logical game inputs ⇒ identical determinism payloads) for every backend?
-5. **Q5.** How do the Haskell and frozen C++ (ii) anchors scale from `--threading single` to `--threading multi --workers 8`? The text and JSON summaries expose those two anchor rows.
+5. **Q5.** How does each backend scale from `--threading single` to `--threading multi --workers 8`? The text summary block highlights Haskell and C++ (ii) as the two anchors; JSON exposes the full per-backend scaling table.
 6. **Q6.** Does the verbatim port (i) faithfully reproduce `MCTS_legacy` on benchmark (b)?
-7. **Q7.** Is backend (i)'s retired legacy-envelope measurement recorded as historical evidence after the live no-overflow gate passed?
+7. **Q7.** Can all five backend slots complete the legacy-parity envelope (`max_plies = 10000`, fixture seed where live (i) does not throw) without overflow or envelope errors?
 
 ### Report-card workload
 
@@ -317,16 +307,19 @@ subprocess plan covers the deterministic verification cohorts:
 ```bash
 # Q3 — cross-backend determinism, backend (i) excluded by the VerifyBackend type
 docker compose run --rm mcts mcts verify rollouts \
-    --backend rust,haskell \
+    --backend cpp-imperative,cpp-functional,rust,haskell \
     --threading single --games $G_V --seed 42 --max-plies 200
 docker compose run --rm mcts mcts verify selfplay \
-    --backend rust,haskell \
+    --backend cpp-imperative,cpp-functional,rust,haskell \
     --threading single --games $G_V --seed 42 --max-plies 200 --sims $S_VERIFY
 
-# Q7 — retired backend (i), historical evidence; not a clean-clone test input
+# Q7 — legacy parity, all five backends, max_plies and RNG pinned by the subcommand
+docker compose run --rm mcts mcts verify legacy-parity selfplay \
+    --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell \
+    --games $G_LP --seed $S_LP --sims $S_LP_SIMS
 ```
 
-Game counts (`$G_R`, `$G_S`, `$G_V`), per-move sim budgets (`$S_BENCH`, `$S_VERIFY`), and the retired legacy-envelope knobs (`$G_LP`, `$S_LP_SIMS`, `$S_LP`) are implemented in `MCTS.CLI.Test` and mirrored in `cabal.project` comments. The pinned values are: `G_R = 1_000`, `G_S = 4`, `G_V = 4`, `G_LP = 2`, `S_BENCH = 500`, `S_VERIFY = 500`, `S_LP_SIMS = 10_000`, `S_LP = 42`. `mcts test all` measures live Haskell rows with the production monotonic clock through `runBatchNoWriteDispatch`, compares them against the frozen C++ (ii) throughput anchor, and uses temporary cache roots for any transcript-producing checks. Q3 uses `runBatchDispatch`, so the headline determinism rows exercise live FFI engines when cdylibs are present and fall back to the in-process runner only when needed for self-contained local stanzas. Q3 compares nonzero visit vectors for backends (iv)..(v). Q4 (same-backend determinism) is covered by the `mcts-integration` stanza, including decoded real-binary transcript determinism generated during the test run. Q6/Q7 retired-backend evidence is historical or optional external/local data; the clean-clone suite validates decoder semantics and legacy-envelope invariants using synthetic transcripts generated in temporary directories, not committed fixture files.
+Game counts (`$G_R`, `$G_S`, `$G_V`, `$G_LP`), per-move sim budgets (`$S_BENCH`, `$S_VERIFY`, `$S_LP_SIMS`), and the legacy-parity seed (`$S_LP`) are implemented in `MCTS.CLI.Test` and mirrored in `cabal.project` comments. The pinned values are: `G_R = 1_000`, `G_S = 4`, `G_V = 4`, `G_LP = 2`, `S_BENCH = 500`, `S_VERIFY = 500`, `S_LP_SIMS = 10_000`, `S_LP = 42`. `mcts test all` measures Q1/Q2/Q5 with the production monotonic clock through `runBatchNoWriteDispatch`, uses native RNG for headline throughput rows, and requires canonical backend artefacts built earlier in the same container. Q3/Q7 use `runBatchDispatch` under `--rng cpp`, so the headline determinism rows exercise live FFI engines when cdylibs are present and fall back to the in-process runner only when needed for self-contained local stanzas. Q3 compares nonzero visit vectors for backends (ii)..(v). Q7 is a legacy-envelope liveness/overflow gate for all five backend slots; it intentionally does not require the steelman engines to reproduce backend (i)'s tree visit counts or chosen moves outside the envelope. Q4 (same-backend determinism) is covered by the `mcts-integration` stanza, including decoded real-binary transcript determinism generated during the test run. Q6 decodes backend (i) evidence generated during the test run or under an explicit temporary artifact root, not checked-in transcript fixtures.
 
 ### Tidy summary block
 
@@ -338,22 +331,26 @@ render `Verdict: Within tolerance` when the parity gate passes.
 ```
 MCTS POC report card - seed=42, max-plies=200, host=amd64, ghc=9.14.1
 ------------------------------------------------------------------------
-Q1  Haskell vs frozen C++ (ii) rollouts  ST    1.00x   (logical baseline)
-Q1  Haskell vs frozen C++ (ii) rollouts  MT8   1.00x   (logical baseline)
-Q2  Haskell vs frozen C++ (ii) self-play ST    1.00x   (logical baseline)
-Q2  Haskell vs frozen C++ (ii) self-play MT8   1.00x   (logical baseline)
-Q3  Cross-backend determinism  (cpp RNG)       PASS    (2 backends agree)
-Q4  Same-backend determinism   (per backend)   PASS    (2/2 live backends x 3 seeds)
+Q1  Haskell vs C++ (ii)  rollouts  ST          1.00x   (logical baseline)
+Q1  Haskell vs C++ (ii)  rollouts  MT8         1.00x   (logical baseline)
+Q2  Haskell vs C++ (ii)  self-play ST          1.00x   (logical baseline)
+Q2  Haskell vs C++ (ii)  self-play MT8         1.00x   (logical baseline)
+Q3  Cross-backend determinism  (cpp RNG)       PASS    (4 backends agree)
+Q4  Same-backend determinism   (per backend)   PASS    (5/5 backends x 3 seeds)
 Q5  MT scaling  Haskell   1->8 workers         1.00x   (logical baseline)
 Q5  MT scaling  C++ (ii)  1->8 workers         1.00x   (logical baseline)
-Q6  Legacy port (i) vs MCTS_legacy             HIST    (retired evidence, external)
-Q7  Legacy envelope, backend (i) retired       HIST    (retirement evidence recorded)
+Q6  Legacy port (i) vs MCTS_legacy             PASS    (10000-sim fixtures)
+Q7  Legacy envelope, 5-backend liveness        PASS    (5 backends complete envelope)
 
 Divergence matrix (visit/move, cpp RNG; thresholds native 0.050/0.005, cross-build 0.010/0.001)
-rust            0.0000/0.0000  0.0000/0.0000
-haskell         0.0000/0.0000  0.0000/0.0000
+cpp-imperative  0.0000/0.0000  0.0000/0.0000  0.0000/0.0000  0.0000/0.0000
+cpp-functional  0.0000/0.0000  0.0000/0.0000  0.0000/0.0000  0.0000/0.0000
+rust            0.0000/0.0000  0.0000/0.0000  0.0000/0.0000  0.0000/0.0000
+haskell         0.0000/0.0000  0.0000/0.0000  0.0000/0.0000  0.0000/0.0000
 
-cabal test                                     PASS    (mcts-unit, mcts-integration, mcts-cross-backend, mcts-haskell-style)
+cabal test                                     PASS    (mcts-unit, mcts-integration,
+                                                        mcts-cross-backend, mcts-legacy-parity,
+                                                        mcts-haskell-style)
 
 Verdict: Evidence pending (logical baseline; performance parity evidence pending)
 ```
@@ -406,11 +403,15 @@ data BenchCommand
 data VerifyCommand
   = VerifyRollouts     VerifyOptions          -- cross-backend determinism on rollouts
   | VerifySelfplay     VerifyOptions          -- cross-backend determinism on self-play
+  | VerifyLegacyParity LegacyParityOptions    -- all five backends under the legacy envelope
   deriving stock (Show, Eq)
 
 data BuildCommand
-  = BuildLegacyFixtures            -- optional local Q6 evidence generator from the retired legacy port
+  = BuildCppLegacy                 -- verbatim port: legacy flags only
+  | BuildCppImperative             -- steelman ceiling: PGO + BOLT + mimalloc
+  | BuildCppFunctional             -- functional-style C++ with the same optimisation stack
   | BuildRust                      -- cdylib: rustc PGO + BOLT + mimalloc #[global_allocator]
+  | BuildLegacyFixtures            -- Q6 evidence generator from the legacy port
   deriving stock (Show, Eq)
 
 data InspectCommand
@@ -454,8 +455,14 @@ newtype HelpOptions = HelpOptions { helpTarget :: [Text] }
 data Backend    = CppLegacy | CppImperative | CppFunctional | Rust | Haskell
                   deriving stock (Show, Eq)
 
-data VerifyBackend = VRust | VHaskell
-                     deriving stock (Show, Eq)        -- retired backends excluded at the type level
+data VerifyBackend = VCppImperative | VCppFunctional | VRust | VHaskell
+                     deriving stock (Show, Eq)        -- backend (i) excluded at the type level
+
+data VerifyCommand
+  = VerifyRollouts Bool [VerifyBackend] RunInputs
+  | VerifySelfplay Bool [VerifyBackend] RunInputs
+  | VerifyLegacyParity Bool Workload [Backend] RunInputs
+                           deriving stock (Show, Eq)  -- backend (i) is allowed here and required
 
 data RngSource  = NativeRng | CppRng
                   deriving stock (Show, Eq)
@@ -536,9 +543,9 @@ This gives a typed surface that the parser, the help text, and the test suite al
 Concrete invocations:
 
 ```bash
-# (a) Random rollouts, live backends, single-threaded, native RNG, 100k games
+# (a) Random rollouts, all five backends, single-threaded, native RNG, 100k games
 docker compose run --rm mcts mcts bench rollouts \
-    --backend rust,haskell \
+    --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell \
     --threading single --rng native --games 100000 --seed 42
 
 # (b) Self-play, multi-threaded with 8 workers (default), native RNG
@@ -551,7 +558,7 @@ docker compose run --rm mcts mcts bench selfplay \
 
 # Cross-backend determinism check: C++-RNG cohort
 docker compose run --rm mcts mcts verify selfplay \
-    --backend rust,haskell \
+    --backend cpp-imperative,cpp-functional,rust,haskell \
     --threading single --games 50 --seed 42 --max-plies 200 --sims 10000
 
 # Interactive game: human plays hero against the haskell backend, 10k sims/move
@@ -559,7 +566,7 @@ docker compose run --rm mcts mcts play --backend haskell --side hero \
     --rng native --max-plies 200 --sims 10000
 
 # Backend-vs-backend spectate (no human input; watch a self-play game render live)
-docker compose run --rm mcts mcts play --backend haskell --side villain --vs rust \
+docker compose run --rm mcts mcts play --backend haskell --side villain --vs cpp-imperative \
     --rng native --max-plies 200 --sims 10000
 
 # What's in my local transcript cache?
@@ -602,7 +609,7 @@ Per doctrine §Output Rules and §Error Handling: stdout carries primary output,
 
 ### Doctrine scope
 
-This project adopts the following sections of `HASKELL_CLI_TOOL.md` as binding: Command Topology, CommandSpec + Generated Artifacts (marker discipline, paired check/write, `forbiddenPathRegistry`), Progressive Introspection, Subprocesses as Typed Values (the PGO+BOLT build harness invokes `g++`, `rustc`, `llvm-bolt` through the typed `Subprocess` boundary), Plan/Apply (notably for `mcts test all` and the build harness, with `--dry-run` and `--plan-file <path>` on every Plan/Apply command), Prerequisites as Typed Effects (toolchain prereqs across the live backends, encoded as one `prerequisiteRegistry`), Application Environment (`ReaderT Env IO` with a single `Env` record), Lint, Format, and Code-Quality Stack (`fourmolu` + `hlint` + `cabal format`, with `fourmolu.yaml` committed at repo root and the `mcts-haskell-style` test-suite), Testing Doctrine and Test Organization (one `test-suite` stanza per tier), Output Rules, Error Handling, and GADT-indexed state machines where naturally indicated. The project also treats repository `.sh` scripts and `bootstrap/` helpers as forbidden workflow surfaces; supported work enters through `docker compose run --rm mcts mcts <command>`.
+This project adopts the following sections of `HASKELL_CLI_TOOL.md` as binding: Command Topology, CommandSpec + Generated Artifacts (marker discipline, paired check/write, `forbiddenPathRegistry`), Progressive Introspection, Subprocesses as Typed Values (the PGO+BOLT build harness invokes `g++`, `rustc`, `llvm-bolt` through the typed `Subprocess` boundary), Plan/Apply (notably for `mcts test all` and the build harness, with `--dry-run` and `--plan-file <path>` on every Plan/Apply command), Prerequisites as Typed Effects (toolchain prereqs across all five backends, encoded as one `prerequisiteRegistry`), Application Environment (`ReaderT Env IO` with a single `Env` record), Lint, Format, and Code-Quality Stack (`fourmolu` + `hlint` + `cabal format`, with `fourmolu.yaml` committed at repo root and the `mcts-haskell-style` test-suite), Testing Doctrine and Test Organization (one `test-suite` stanza per tier), Output Rules, Error Handling, and GADT-indexed state machines where naturally indicated. The project also treats repository `.sh` scripts and `bootstrap/` helpers as forbidden workflow surfaces; supported work enters through `docker compose run --rm mcts mcts <command>`.
 
 Explicitly **out of scope**: Long-Running Daemons in the Same Binary (the CLI is short-running only — this also covers the daemon-internal "Configuration: Dhall file with mandatory hot reload" subsection), Capability Classes and Service Errors (no external subsystems), Retry Policy as First-Class Values (no external subsystems), At-Least-Once Event Processing (no event stream), Reconcilers: Idempotent Mutation as a Single Command (no managed state in the world), Smart Constructors for Paired Resources (no paired resources), and Pulumi-Orchestrated Infrastructure Tests (no cloud surface). These sections of `HASKELL_CLI_TOOL.md` are read as informational context, not as binding constraints on this project.
 
@@ -657,19 +664,17 @@ Default `--top 10`; `--top 0` shows all legal moves. With `--with-equity`, the c
 
 The first concrete deliverable is the **Cabal-centric benchmark harness** described by the CLI topology above:
 
-- `mcts bench rollouts` and `mcts bench selfplay` running across all live backends, both threading modes, both RNG sources.
-- `mcts verify rollouts` and `mcts verify selfplay` enforcing cross-backend determinism under the C++-RNG seed schedule.
-- All measurements taken from a single Cabal-driven clock; live backend (iv) reached through the FFI from the same Haskell process, with (v) Haskell running natively in that same process and backend (ii)'s target preserved as documented historical evidence rather than a checked-in generated anchor.
+- `mcts bench rollouts` and `mcts bench selfplay` running across all five backends, both threading modes, and both RNG sources where applicable.
+- `mcts verify rollouts` and `mcts verify selfplay` enforcing cross-backend determinism under the shared C++ RNG byte contract.
+- All measurements taken from a single Cabal-driven clock; backends (i), (ii), (iii), and (iv) reached through the FFI from the same Haskell process, with (v) Haskell running natively in that same process.
 - No ANN evaluation. No Python. No web frontend. Just engine, rollouts, MCTS, numbers.
 
-Subsequent milestones retire (iii) in favour of (v) once pure Haskell has demonstrated parity with functional C++. Backend (i) has already retired in favour of the surviving steelman cohort after the verbatim port demonstrated faithful reproduction of the legacy, and backend (ii) has retired after functional-style C++ demonstrated Q1/Q2 parity with imperative C++. Retiring a backend records historical evidence in the plan/docs or in optional external artifacts; it does not add generated transcripts or throughput JSON to the repository. Backend (iv) Rust is kept as a long-running second opinion throughout.
-
-Q7 and the `mcts-legacy-parity` test stanza retired alongside (i), since both
-existed to preserve the legacy-parity envelope. The transitive anchor
-`MCTS_legacy ≡ (i)` (see [Draw rule](#draw-rule)) becomes historical evidence
-rather than a continuously re-run clean-clone check.
-Q3 and the `mcts-cross-backend` stanza continue with whatever subset of the
-steelman-to-Haskell cohort remains live.
+The C++ backends are not stepping stones to delete. Backend (i) proves the
+legacy port is faithful, backend (ii) is the maximally optimised performance
+target, backend (iii) isolates functional style inside C++, backend (iv) is a
+cross-language systems implementation, and backend (v) is the pure Haskell
+target. The project succeeds only if these backends remain comparable through the
+same CLI, the same measurement clock, and the same C++-RNG equivalence harness.
 
 ---
 
@@ -788,7 +793,7 @@ Exempt from this section. (i) is strictly verbatim from `MCTS_legacy`; only FFI 
 13. `alignas(64)` on the tree-node arena base; struct-of-arrays where measurement supports it.
 14. `thread_local` scratch buffers for the MT pool (per-worker, not per-game).
 
-*Native-RNG benchmark only* (not under `--rng cpp`, which is pinned to the no-backend-salt verification schedule by the determinism contract):
+*Native-RNG benchmark only* (not under `--rng cpp`, which is pinned to the C++-generated verification-seed contract by the determinism contract):
 
 15. Future native-RNG profiling candidate: replace the current splitmix-compatible live schedule with `xoshiro256++` or `wyrand` where it measurably helps — smaller state, faster `next_u64`, equivalent statistical quality for rollouts.
 
@@ -884,9 +889,9 @@ Move notation matches the legacy engine: `*(x,y)` for pawn moves, `H(x,y)` / `V(
 MCTS/
   app/                 -- Haskell CLI entry point (thin)
   src/                 -- Haskell library: engine, MCTS, CommandSpec, FFI bindings
-  cpp-legacy/          -- (i)   retired verbatim port, retained for optional Q6 evidence/reference
-  cpp-imperative/      -- (ii)  retired imperative C++ reference
-  cpp-functional/      -- (iii) retired functional-style C++ reference
+  cpp-legacy/          -- (i)   verbatim port of the original C++, exposed via C ABI
+  cpp-imperative/      -- (ii)  imperative C++, max-optimised, exposed via C ABI
+  cpp-functional/      -- (iii) functional-style C++, exposed via C ABI
   rust/                -- (iv)  Rust implementation, exposed via C ABI (cdylib)
   bench/               -- Cabal benchmark targets (criterion / tasty-bench)
   test/                -- deterministic, property, integration, and cross-backend tests

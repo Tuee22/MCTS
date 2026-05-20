@@ -190,12 +190,11 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
 
   > **Ownership note.** `CheckCode` lands in Sprint 1.4 alongside the
   > `src/MCTS/CheckCode.hs` dispatcher. The `Build BuildCommand` family is
-  > filled in by the per-backend sprints and then reduced by the Phase 8
-  > retirement protocol. The current live build leaves are `BuildRust` and
-  > `BuildLegacyFixtures`; retired C++ build leaves remain historical Phase
-  > 4-6 evidence only. Sprint 1.2's obligation is the eleven top-level
-  > constructors above; the `BuildCommand` family is extended incrementally by
-  > owning sprints and pruned by retirement sprints.
+  > filled in by the per-backend sprints. The intended live build leaves are
+  > `BuildCppLegacy`, `BuildCppImperative`, `BuildCppFunctional`, `BuildRust`, and
+  > `BuildLegacyFixtures`. Sprint 1.2's obligation is the eleven top-level
+  > constructors above; the per-backend phases and Phase `8` restoration own the
+  > backend leaves.
 
   Subcommand families:
 
@@ -233,7 +232,7 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
   data BuildCommand
     = BuildRust PlanOptions          -- cdylib; rustc PGO + BOLT + mimalloc; Phase 6 Sprint 6.4
     | BuildLegacyFixtures LegacyFixtureOptions
-                                      -- external Q6 evidence generator retained after backend (i) retirement
+                                      -- external Q6 evidence generator
     deriving stock (Show, Eq)
 
   data CommandsOptions = CommandsOptions
@@ -250,14 +249,16 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
   ```haskell
   data Backend    = CppLegacy | CppImperative | CppFunctional | Rust | Haskell
                     deriving stock (Show, Eq)
-  -- Wire/archive tags keep all five constructors. Live operator selection is
-  -- `Rust | Haskell`; `parseBackend` and `VerifyBackend` exclude retired C++
-  -- backends after Sprints 8.4-8.6.
+  -- All five constructors remain first-class. Q3 VerifyBackend covers
+  -- cpp-imperative, cpp-functional, rust, and haskell; Q7 verifies all five
+  -- through `mcts verify legacy-parity`.
 
   data VerifyBackend where
+    VCppImperative :: VerifyBackend
+    VCppFunctional :: VerifyBackend
     VRust          :: VerifyBackend
     VHaskell       :: VerifyBackend
-    -- (i), (ii), and (iii) excluded at the type level per
+    -- (i) excluded at the type level per
     -- [../README.md → Cross-backend verification](../README.md)
     -- and [00-overview.md → Hard Constraints item 7](00-overview.md).
 
@@ -287,8 +288,7 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
   -- Bench and verify both lower parsed options into the shared RunInputs record.
   -- Bench stores the parsed `[Backend]` cohort next to those inputs. Verify stores
   -- `allow-stale`, a `[VerifyBackend]` cohort, and the same `RunInputs`; parser
-  -- validation requires `--rng cpp`, at least two live verify backends, and no
-  -- retired C++ backend tags.
+  -- validation requires `--rng cpp` and at least two Q3 verify backends.
 
   data PlayOptions = PlayOptions
     { playBackend  :: Backend
@@ -328,10 +328,10 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
     } deriving stock (Show, Eq)
   ```
 
-  `TestCommand = TestAll PlanOptions | TestRetirementAnchor RetirementAnchorOptions
-  | TestStanza Text` is declared by
+  `TestCommand = TestAll PlanOptions | TestStanza Text` plus any neutral parity/audit
+  helper needed by Phase `8` is declared by
   [phase-7-cross-backend-verify-and-report-card.md → Sprint 7.3](phase-7-cross-backend-verify-and-report-card.md)
-  alongside the `mcts test all` runner and the historical retirement-anchor helper;
+  alongside the `mcts test all` runner and report-card helper surfaces;
   the top-level `Command` constructor `Test TestCommand` above is the Phase 1
   registry/parser obligation.
 
@@ -351,10 +351,12 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
   all carry them. Sprint 7.1's `mcts-unit` semantic renderer assertions over
   `mcts commands --json` pin the invocations into the externally-stable schema.
   The invocations are:
-  `bench rollouts --backend rust,haskell` (live cohort, ST, native RNG);
+  `bench rollouts --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell`
+  (live cohort, ST, native RNG);
   `bench selfplay --backend haskell` (default 8 workers);
   `bench selfplay --workers 32`;
-  `verify selfplay --backend rust,haskell` (cross-backend);
+  `verify selfplay --backend cpp-imperative,cpp-functional,rust,haskell`
+  (cross-backend);
   `play --backend haskell --side hero --sims 10000` (human vs AI);
   `play --backend haskell --side villain --vs rust --sims 10000`
   (Haskell-vs-Rust spectate);
@@ -391,7 +393,7 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
   `src/MCTS/CLI/Tree.hs`, with pure renderers delegated to the same
   `CommandSpec` registry value.
 - Parser tests via the doctrine-required `execParserPure` path now cover the
-  bench cohort, retired-backend parser exclusions, `inspect show
+  bench cohort, backend parser coverage, `inspect show
   --with-equity`, and the unhappy `verify --rng native` path; semantic
   renderer/schema coverage for `mcts commands --json` lives in `mcts-unit`.
 - The 2026-05-19 alignment sweep made `bench` require an explicit backend
@@ -401,11 +403,11 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
   `--max-plies`, and `--cache-dir` for both batch and interactive execution.
   `mcts-unit` pins these parser invariants and the updated `commands --json`
   structure with semantic assertions.
-- Current implementation note: the concrete `VerifyCommand` constructors now
-  carry typed `[VerifyBackend]` lists. Phase 8 removed the former
-  `LegacyParityBackend` parser surface with `mcts verify legacy-parity`, and
-  the current parser rejects `cpp-legacy`, `cpp-imperative`, and
-  `cpp-functional` as live operator-selected backends. The Phase 1
+- Current implementation note: the concrete `VerifyCommand` constructors carry
+  typed `[VerifyBackend]` lists for Q3, and `mcts verify legacy-parity` validates
+  the complete all-five backend list for Q7. The current parser rejects
+  `cpp-legacy` only at the default Q3 `verify` boundary; it remains valid for
+  bench, build, play, inspect, and legacy-parity surfaces. The Phase 1
   registry/parser surface remains closed.
 - The README's full concrete invocation set wraps the same leaf `Example` entries in
   the Compose entrypoint. Validated on 2026-05-15 through the root Compose entrypoint
@@ -617,9 +619,8 @@ forbidden-symbol HLint rules behind the `mcts-haskell-style` test stanza plus th
   `read` were replaced with total helpers or `readMaybe`; the
   `mcts-haskell-style` source walker now rejects the documented partial-function
   set under `src/` and `app/` while keeping tests free to use fixture indexing.
-  Local validation passed `cabal --builddir=/tmp/mcts-cabal-build test
-  mcts-unit`, `cabal --builddir=/tmp/mcts-cabal-build run mcts -- docs check`,
-  and `git diff --check`; canonical container validation passed
+  Validation passed `docker compose run --rm mcts mcts test mcts-unit`,
+  `docker compose run --rm mcts mcts docs check`, `git diff --check`, and
   `docker compose run --rm mcts mcts check-code`.
 - Extend `mcts-haskell-style` and `.hlint.yaml` coverage so the same rule is
   checked by both the container-pinned HLint path and the conservative source
@@ -968,7 +969,7 @@ Implement the single `AppError` ADT, the `renderError` boundary, and the `--form
   `docker compose run --rm mcts mcts inspect list --format json`,
   `docker compose run --rm mcts mcts inspect list --format table`,
   `docker compose run --rm mcts mcts commands --format plain`,
-  `docker compose run --rm mcts mcts --color always verify selfplay --backend rust,haskell --rng native`,
+  `docker compose run --rm mcts mcts --color always verify selfplay --backend cpp-imperative,cpp-functional,rust,haskell`,
   and a synthetic `/tmp/HlintPrintSynthetic.hs` using `print` rejected by the
   container-pinned HLint as `Error: Use output boundary`.
 

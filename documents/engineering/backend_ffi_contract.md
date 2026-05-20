@@ -2,7 +2,7 @@
 
 **Status**: Authoritative source
 **Supersedes**: N/A
-**Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md, ../../DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md, ../../DEVELOPMENT_PLAN/phase-6-cpp-functional-and-rust.md, ../documentation_standards.md, ./README.md, ./determinism_contract.md, ./compiler_runtime_tuning.md
+**Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md, ../../DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md, ../../DEVELOPMENT_PLAN/phase-6-cpp-functional-and-rust.md, ../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, ../documentation_standards.md, ./README.md, ./determinism_contract.md, ./compiler_runtime_tuning.md
 **Generated sections**: none
 
 > **Purpose**: Authoritative spec of the C ABI shape exposed by the live FFI-linked
@@ -14,36 +14,34 @@ project-specific.
 
 ## Backends and Linkage
 
-Five backend slots exist. Backends (i), (ii), and (iii) are retired from live
-Haskell FFI dispatch; the live C ABI surface is backend (iv):
+Five backend slots exist. Backends (i), (ii), (iii), and (iv) are live foreign
+participants behind the Haskell CLI. Backend (v) is the in-process Haskell engine.
+The canonical C ABI surface is:
 
 | Backend | Linkage | FFI load name (canonical) | Build-time intermediate | Symbol prefix |
 |---------|---------|---------------------------|-------------------------|----------------|
-| (i) `cpp-legacy` | Retired archive | no live FFI load | `cpp-legacy/` reference + optional external `legacy-to-wire` evidence generator | `mcts_legacy_*` (historical) |
-| (ii) `cpp-imperative` | Retired archive | no live FFI load | `cpp-imperative/` reference | `mcts_imperative_*` (historical) |
-| (iii) `cpp-functional` | Retired archive | no live FFI load | `cpp-functional/` reference | `mcts_functional_*` (historical) |
+| (i) `cpp-legacy` | C ABI via Haskell FFI | `cpp-legacy/build/libmcts_cpp_legacy.so` | `cpp-legacy/build/libmcts_cpp_legacy_*` | `mcts_legacy_*` |
+| (ii) `cpp-imperative` | C ABI via Haskell FFI | `cpp-imperative/build/libmcts_cpp_imperative.so` | `cpp-imperative/build/libmcts_cpp_imperative_*` | `mcts_imperative_*` |
+| (iii) `cpp-functional` | C ABI via Haskell FFI | `cpp-functional/build/libmcts_cpp_functional.so` | `cpp-functional/build/libmcts_cpp_functional_*` | `mcts_functional_*` |
 | (iv) `rust` | C ABI via Haskell FFI, `cdylib` | `rust/target/release/libmcts_rust.so` | `rust/target/release/libmcts_rust.pgo.so` / `rust/target/release/libmcts_rust.bolted.so` | `mcts_rust_*` |
 | (v) `haskell` | Native (in-process) | (compiled into `mcts`) | n/a | (no FFI surface) |
 
-Backend (iv) exposes a shared-library C ABI to Haskell. The current baseline
+Each foreign backend exposes a shared-library C ABI to Haskell. The FFI baseline
 loads board lifecycle symbols with `dlopen` / `dlsym` and converts them to typed
 function pointers via `foreign import ccall "dynamic"`; this keeps Cabal builds
 independent of platform-specific `extra-libraries` paths while the backend build
-harness is active. The Rust canonical load name is Cargo's release cdylib path.
+harness is active. The C++ and Rust loaders share that dynamic-load policy.
 
-The current Haskell driver
-(`src/MCTS/Driver/Rust.hs`) dynamically loads
-the board lifecycle, visit-vector search, recompute, read-visits, and envelope
-symbols when the shared library is present. Chosen-action smoke helpers
-remain as compatibility residue for Cabal builds without local shared libraries; the
-operator-facing bench/play/divergence paths and integration smokes use the real
-visit-vector and recompute ABIs for the live foreign backend. Q3 `verify`
-uses the live visit-vector ABI for visit-count equality across `(iv)..(v)`,
-and Q7 is now recorded historical backend (i) liveness evidence.
-Backend (ii)'s Q1/Q2 target and backend (iii)'s retirement evidence are recorded
-as historical plan/doc facts or optional external artifacts, not live FFI load
-targets. Q3 uses
-the live cdylib when the matching
+The Haskell driver dynamically loads board lifecycle, visit-vector search,
+recompute, read-visits, and envelope symbols through `src/MCTS/FFI/Cpp*.hs`,
+`src/MCTS/FFI/Rust.hs`, `src/MCTS/Driver/Dispatch.hs`, and
+`src/MCTS/Driver/ForeignSearch.hs` when the matching shared library is present.
+Chosen-action smoke helpers remain as compatibility residue for Cabal builds
+without local shared libraries; the operator-facing bench/play/divergence paths
+and integration smokes use the real visit-vector and recompute ABIs for
+available foreign backends. Q3 `verify` uses live visit-vector ABI for
+visit-count equality across `(ii)..(v)`, and Q7 uses live backend slots
+`(i)..(v)` under the legacy envelope. Q3 uses the live cdylib when the matching
 library is present and the requested batch can use the fixed 60-ply foreign
 search horizon; otherwise it falls back to the in-process runner so Cabal
 stanzas stay self-contained.
@@ -55,8 +53,8 @@ PGO+BOLT harness in Phase 6 produces under `<backend>/build/`; the install
 step (last step of `mcts build <backend>`) copies the live `_bench`
 variant of the bolted-or-PGO-fallback intermediate to the canonical FFI load
 name. The `_bench` artefact is what the benchmark report card measures; the parallel
-`_instrumented` artefact (behind the Rust `instrumentation` feature; historical
-C++ retired targets used `<backend>/build/libmcts_<backend>_instrumented.so`) carries the
+`_instrumented` artefact (behind the Rust `instrumentation` feature; C++ targets use
+`<backend>/build/libmcts_<backend>_instrumented.so`) carries the
 transcript-writer and `read_visits` symbols and is loaded by `mcts play`,
 `mcts inspect replay`, `mcts inspect divergence`, and integration smokes — see
 [Paired Build Targets](#paired-build-targets) for the toggle semantics.
@@ -92,12 +90,11 @@ mcts_<backend>_rng   *mcts_<backend>_new_rng(uint64_t seed, int rng_kind);
 void                  mcts_<backend>_free_rng(mcts_<backend>_rng *r);
 ```
 
-`rng_kind` is `0 = native` or `1 = cpp`. Backend (i) always returns the
-`std::mt19937_64` generator regardless of `rng_kind`. The current live search
-ABI does not route rollout selection through these RNG handles; foreign search
-uses the splitmix-compatible seed schedule described in
-[determinism_contract.md → Per-Backend Native RNG Table](./determinism_contract.md).
-Profiling-driven swaps must update that table in the same change.
+`rng_kind` is `0 = native` or `1 = cpp`. Native performance runs use each backend's
+own deterministic RNG contract. Equivalence verification uses C++-generated
+verification seeds from the shared RNG bridge so `(ii)..(v)` transcripts can be
+compared exactly. Profiling-driven native RNG swaps must update the determinism table in
+the same change.
 
 ### Engine Operations
 
@@ -141,7 +138,7 @@ caps until a future ABI revision adds an explicit per-run search-cap parameter.
 ### Instrumentation Surface (Instrumented Build Only)
 
 For `inspect replay`, `inspect divergence`, integration smoke, and optional Q6
-audit comparisons, each live or archived backend implementation
+audit comparisons, each live backend implementation
 provides a read-only instrumentation surface:
 
 ```c
@@ -199,13 +196,20 @@ non-length-prefixed fields plus length-prefixed copies of
 `compiler_version[0..compiler_version_len)` and
 `libm_id[0..libm_id_len)`.
 
+The Haskell dynamic envelope loader keeps the `dlopen` handle pinned for the
+process lifetime after resolving `mcts_<backend>_get_envelope`. That is
+intentional: the returned pointer names process-static storage owned by the
+shared object, and verify/recompute flows can immediately reuse the same
+backend for search. Closing and reopening C++ DSOs around this static storage is
+not part of the contract.
+
 Current baseline: `src/MCTS/FFI/Common.hs` dynamically loads
 `mcts_<backend>_get_envelope` via `dlopen` / `dlsym`, marshals the C/Rust
 process-static struct into `EngineEnvelope`, and the per-backend modules expose
 `loadRustEnvelope`. The integration stanza validates the live envelope path for
 the live foreign library when its shared
 artefacts are present, including transcript stamping and backend-slot stale
-hard-fail/`--allow-stale` warning behavior. The retired C++ backends patched
+hard-fail/`--allow-stale` warning behavior. The C++ backends patch
 `engine_build_id` after link through their Makefile `envelope-build-id` targets;
 Rust stamps `compiler_version` from
 `rustc --version` through `rust/build.rs` / `MCTS_RUSTC_VERSION` and patches the
@@ -297,6 +301,9 @@ Haskell bindings live under `src/MCTS/FFI/`:
   surfaced through the FFI bridge (see [Error Rendering](#error-rendering)
   below). Distinct from `AppError SubprocessFailed`, which is reserved for the
   typed `Subprocess` boundary.
+- `src/MCTS/FFI/CppLegacy.hs` — backend (i) bindings.
+- `src/MCTS/FFI/CppImperative.hs` — backend (ii) bindings.
+- `src/MCTS/FFI/CppFunctional.hs` — backend (iii) bindings.
 - `src/MCTS/FFI/Rust.hs` — backend (iv) bindings.
 
 The live baseline modules (Phase 5 Sprint 5.2 / Phase 6
@@ -338,11 +345,9 @@ Per-symbol:
 
 ## `--rng cpp` Plumbing
 
-For the Q3 verification cohort, the `--rng cpp` flag selects the
-canonical C++-RNG seed schedule and suppresses backend-native salt. The legacy
-backend still exposes its `std::mt19937_64` wrapper, but the live verification
-path for backends (iv)..(v) relies on the no-backend-salt splitmix-compatible
-schedule. The legacy RNG fixture lives in `cpp-legacy/c-abi/rng.{h,cc}` and
+For the Q3 verification cohort, the `--rng cpp` flag selects C++-generated
+verification seeds and suppresses backend-native benchmark RNGs. The
+legacy RNG fixture lives in `cpp-legacy/c-abi/rng.{h,cc}` and
 exposes the canonical symbols required by
 [../../README.md → Cross-backend verification → RNG FFI contract](../../README.md):
 
@@ -352,17 +357,29 @@ cpp_rng* cpp_rng_new(uint64_t seed);
 uint64_t cpp_rng_next_u64(cpp_rng*);
 uint64_t cpp_rng_split_seed(uint64_t master_seed, uint64_t game_index);
 cpp_rng* cpp_rng_split(uint64_t master_seed, uint64_t game_index);
+int      cpp_rng_fill_u64(uint64_t master_seed, uint64_t game_index,
+                          uint64_t* out, uint64_t count);
 void     cpp_rng_free(cpp_rng*);
 ```
 
-These are the unprefixed canonical fixture symbols retained in the retired
-legacy source tree. The current backend
-search ABIs receive an effective seed from Haskell; they do not all consume a
-shared `cpp_rng_*` byte stream.
+These are the unprefixed canonical fixture symbols retained in the legacy source tree.
+The Haskell `MCTS.Rng.Cpp` bridge loads `cpp_rng_fill_u64` dynamically from the
+dedicated `cpp-legacy/build/libmcts_cpp_rng.so` shared object when it is present.
 
-**Per-game seeding.** Under `--rng cpp`, per-game sub-seeds are derived from
-the splitmix-compatible `mix(master_seed, game_index)` schedule. The C fixture's
-`cpp_rng_split_seed(master_seed, game_index)` must agree with the Haskell mixer.
+The C++ RNG bridge also keeps the dedicated RNG shared-library handle pinned for
+the process lifetime. The bridge is used specifically by equivalence
+verification to generate controlled per-move search seeds before live backend
+search; it is not part of native-RNG performance measurement. Keeping the handle
+open avoids cycling C++ shared-object constructors/destructors around every
+verification seed stream.
+
+**Per-game seeding.** Under `--rng cpp`, per-game streams are derived from
+the same schedule as `cpp_rng_split(master_seed, game_index)` and consumed by the
+Haskell driver as per-move search seeds for equivalence participants. The live path
+uses `cpp_rng_fill_u64(master_seed, game_index, out, count)` so Haskell owns the
+destination buffer and does not keep a heap-owned C++ RNG object across the FFI
+boundary. The C fixture's `cpp_rng_split_seed(master_seed, game_index)` is kept as a
+seed-level sanity check for integrations that need it.
 Each game's RNG stream is independent and reproducible from
 `(master_seed, game_index)` alone; workers do not carry RNG identities, so
 worker-to-game assignment never affects a game's output.
@@ -372,7 +389,7 @@ game_index`. The Haskell wire-format discriminator `runConfigGameIndex` is
 `Word32` (matching the README's `game_id u32` wire-format pin); the Haskell
 caller widens it to `Word64` with `fromIntegral` at the FFI call site. The
 Haskell `mix :: Word64 -> Word64 -> Word64` mixer must agree byte-for-byte
-with `cpp_rng_split_seed` for any widened pair in the archived fixture code.
+with `cpp_rng_split_seed` for any widened pair in the fixture code.
 
 The per-backend lifecycle symbols (`mcts_<backend>_new_rng` / `_free_rng`) from
 the per-backend ABI remain part of the C ABI shape, but the current live search
@@ -381,13 +398,11 @@ handles.
 
 ## Paired Build Targets
 
-Backend (i) `cpp-legacy` was the historical exemption: it shipped a single
-shared library because the verbatim legacy engine had no instrumentation to
-disable. Sprint 8.4 retired that live path and preserved its evidence in the
-plan/docs and optional external artifacts.
+Backend (i) `cpp-legacy` is the exception: it ships a single shared library because the
+verbatim legacy engine has no separate instrumentation build to disable.
 
-For the live steelman backends — (iv) `rust` and (v) `haskell` (the in-process
-Haskell backend's two stanzas):
+For the steelman foreign backends — (ii) `cpp-imperative`, (iii) `cpp-functional`, and
+(iv) `rust`:
 
 - `*-bench` — no instrumentation. The binary is byte-identical to one where the
   instrumentation feature does not exist. Used for benchmark runs where any

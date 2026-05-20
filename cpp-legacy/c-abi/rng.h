@@ -13,6 +13,7 @@ cpp_rng* cpp_rng_new(uint64_t seed);
 uint64_t cpp_rng_next_u64(cpp_rng*);
 uint64_t cpp_rng_split_seed(uint64_t master_seed, uint64_t game_index);
 cpp_rng* cpp_rng_split(uint64_t master_seed, uint64_t game_index);
+int cpp_rng_fill_u64(uint64_t master_seed, uint64_t game_index, uint64_t* out, uint64_t count);
 void cpp_rng_free(cpp_rng*);
 
 #ifdef __cplusplus

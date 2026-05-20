@@ -2,11 +2,12 @@
 
 **Status**: Authoritative source
 **Supersedes**: N/A
-**Referenced by**: ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, ../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md, ../documentation_standards.md, ./README.md, ./code_quality.md
+**Referenced by**: ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, ../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md, ../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, ../documentation_standards.md, ./README.md, ./code_quality.md
 **Generated sections**: none
 
-> **Purpose**: Describe the four live Cabal test stanzas (`mcts-unit`,
-> `mcts-integration`, `mcts-cross-backend`, `mcts-haskell-style`), the
+> **Purpose**: Describe the five live Cabal test stanzas (`mcts-unit`,
+> `mcts-integration`, `mcts-cross-backend`, `mcts-legacy-parity`,
+> `mcts-haskell-style`), the
 > `mcts test all` Plan/Apply command, and the pinned POC report-card workload.
 > Defers to [../../HASKELL_CLI_TOOL.md](../../HASKELL_CLI_TOOL.md) for Testing
 > Doctrine, Test Categories, and Test Organization.
@@ -31,18 +32,19 @@
 
 This project applies a stricter rule than the generic CLI testing doctrine:
 normal validation must not require generated data checked into git. A clean clone
-must be able to run `mcts-unit`, `mcts-integration`, `mcts-cross-backend`, and
-`mcts test all` without pre-existing transcripts, byte snapshots, generated JSON
-schemas, retired-backend throughput anchors, or other generated validation files.
+must be able to run `mcts-unit`, `mcts-integration`, `mcts-cross-backend`,
+`mcts-legacy-parity`, and `mcts test all` without pre-existing transcripts, byte
+snapshots, generated JSON schemas, throughput anchors, or other generated validation
+files.
 
 Tests may generate data during the test run, but only in memory or under
 temporary directories owned by the test. Runtime/operator caches such as
-`.mcts-cache/` remain ignored local state. Historical retired-backend evidence may
-be recorded in docs or stored in explicit external/ignored artifact roots for
-audit, but it is not a normal `mcts test all` input.
+`.mcts-cache/` remain ignored local state. Optional audit evidence may be recorded in
+docs or stored in explicit external/ignored artifact roots, but it is not a normal
+`mcts test all` input.
 
 The repository does not depend on `tasty-golden` or checked-in generated golden
-files. Renderer, codec, schema, and retired-backend evidence checks use semantic
+files. Renderer, codec, schema, and backend-equivalence evidence checks use semantic
 assertions, property tests, in-memory values, or temporary directories owned by
 the test process.
 
@@ -55,7 +57,8 @@ Stanzas](../../DEVELOPMENT_PLAN/system-components.md):
 |--------|------|-------|
 | `mcts-unit` | Pure logic | Engine invariants, parser tests via `execParserPure`, property invariants (`decode . encode == id`, `render is deterministic`, `parser roundtrips`), semantic renderer tests for `CommandSpec`, report-card, TUI, and `inspect show` output, transcript codec roundtrips, RNG mixer properties, per-leaf `Example` presence |
 | `mcts-integration` | Subprocess | Real `mcts` binary across the FFI to every live backend; same-backend determinism (Q4) at 3 seeds per backend; bounded report-card divergence plus cached recompute-sidecar `inspect divergence` coverage; foreign-backend FFI smoke-driver, live-envelope stamping, and backend-slot stale hard-fail/`--allow-stale` warning coverage when shared libraries are present; synthetic legacy-envelope coverage generated in temporary roots |
-| `mcts-cross-backend` | Round-robin verify | live FFI-capable `verify` cohort under `--rng cpp` covering `(iv)..(v)`; retired backends excluded by the `VerifyBackend` GADT |
+| `mcts-cross-backend` | Round-robin verify | real `mcts verify` subprocess coverage for the live FFI-capable Q3 `--rng cpp` cohort covering `(ii)..(v)`; runs serially around the process-pinned dynamic-library and C++ RNG bridge path |
+| `mcts-legacy-parity` | Legacy-envelope verify | Q7 liveness/overflow coverage across all five backend slots under the legacy envelope |
 | `mcts-haskell-style` | Lint | `cabal format` temp-file round-trip byte-equality, pinned style-tool `fourmolu --mode check` and `hlint`, plus the source-walker guard for tabs and the conservative forbidden-symbol subset |
 
 Each stanza declares `type: exitcode-stdio-1.0`, the `tasty` dependencies, and a
@@ -75,17 +78,19 @@ covers live C ABI envelope conversion plus hard-fail vs `--allow-stale` behavior
 for `compiler_version` and `shared_rng_build_id` mismatches, plus structured JSON
 `warning_details` for downgraded stale warnings. `tasty-quickcheck` now covers
 transcript roundtrips. The current Phase 7 verification baseline uses
-`runBatchDispatch` for Q3, so live foreign shared libraries are exercised
-when present and the in-process fallback keeps the stanzas self-contained when
-they are absent. The integration tier also runs real `mcts` binary same-backend determinism checks through
+real `mcts verify` subprocesses for Q3, so live foreign shared libraries are exercised
+when present by the same operator surface used outside the test runner, while the
+in-process fallback keeps the stanza self-contained when they are absent. The integration tier also runs real `mcts` binary same-backend determinism checks through
 `MCTS.Subprocess.capture` for Haskell and every built live foreign backend, a bounded
 measured report-card builder check, a cached recompute-sidecar
 `mcts inspect divergence` subprocess check, plus bounded foreign-backend smoke games through
-`src/MCTS/Driver/Rust.hs` when the
-container-built shared libraries are present. The cross-backend stanza asserts
-`Right` results without `VerifyMismatch` for its focused rollout and self-play
-smoke cohorts. Q7 is reported as historical retired backend (i) liveness evidence,
-not as a checked-in generated-data dependency. The single-tree-across-stanzas
+foreign backend drivers when the container-built shared libraries are present. The cross-backend stanza asserts
+successful `verify rollouts` and `verify selfplay` subprocess output for its
+focused Q3 smoke cohorts. Its `tasty` tree uses `NumThreads 1` so the Q3
+subprocess cases do not concurrently exercise the same process-pinned shared
+libraries or C++ RNG bridge.
+Q7 runs through `mcts-legacy-parity` and remains independent of
+checked-in generated-data dependencies. The single-tree-across-stanzas
 pattern is forbidden.
 
 ## Property Invariants
@@ -135,8 +140,9 @@ needed. Internally, the plan is a typed `[Subprocess]` sequence run via
    drift on the `GeneratedSectionRule` registry).
 3. Inside the container, `cabal build all` warning-clean under the pinned
    toolchain.
-4. Build the live foreign backend artefact through the supported build harness:
-   `mcts build rust`.
+4. Build the live foreign backend artefacts through the supported build harness:
+   `mcts build cpp-legacy`, `mcts build cpp-imperative`,
+   `mcts build cpp-functional`, and `mcts build rust`.
 5. Inside the container, `cabal test mcts-haskell-style` (`cabal format`
    temp-file round-trip,
    `/opt/mcts-style-tools/bin/fourmolu --mode check`,
@@ -147,14 +153,15 @@ needed. Internally, the plan is a typed `[Subprocess]` sequence run via
 6. Inside the container, `cabal test mcts-unit`.
 7. Inside the container, `cabal test mcts-integration`.
 8. Inside the container, `cabal test mcts-cross-backend`.
-9. Pinned report-card workload — Q1/Q2/Q5 are measured inside the report-card
+9. Inside the container, `cabal test mcts-legacy-parity`.
+10. Pinned report-card workload — Q1/Q2/Q5 are measured inside the report-card
    builder through the no-write batch runner, while Q3/Q7 are rendered as
    explicit checks through `cabal exec mcts -- ...` so the
    command does not depend on a separate `mcts` executable on `PATH`. Q3 is the
-   live visit-vector equality gate for `(iv)..(v)`; Q7 is historical backend
-   (i) liveness evidence. Q1/Q2 preserve backend (ii)'s target through recorded
-   historical performance evidence rather than a checked-in throughput file.
-10. Render the tidy summary block from the collected `ReportCard` value,
+   live visit-vector equality gate for `(ii)..(v)`; Q7 is the all-five
+   legacy-envelope liveness/overflow gate. Q1/Q2 measure Haskell against backend (ii)
+   without relying on a checked-in throughput file.
+11. Render the tidy summary block from the collected `ReportCard` value,
     including the `visit/move` divergence matrix populated from the measured
     `G_V` verify transcripts on the live `mcts test all` path.
 
@@ -172,19 +179,18 @@ The report card answers seven questions, verbatim from
    benchmark (a) random rollouts, single-threaded and on 8 workers?
 2. **Q2.** Does pure Haskell match backend (ii) on benchmark (b) self-play,
    single-threaded and on 8 workers?
-3. **Q3.** Do live backends (iv), (v) produce bit-for-bit identical
+3. **Q3.** Do live backends (ii)..(v) produce bit-for-bit identical
    determinism payloads under `--rng cpp` (round-robin verify on both rollouts and
    self-play)?
 4. **Q4.** Does same-backend determinism hold across runs (same backend, same
    seed, same logical game inputs ⇒ identical determinism payloads) for every
    backend?
-5. **Q5.** How do the Haskell and frozen C++ (ii) anchors scale from
+5. **Q5.** How do the Haskell and live C++ (ii) anchors scale from
    `--threading single` to `--threading multi --workers 8`? The text and JSON
    summaries expose those two anchor rows.
 6. **Q6.** Does the verbatim port (i) faithfully reproduce `MCTS_legacy` on
    benchmark (b)?
-7. **Q7.** Was backend (i)'s retired legacy-envelope liveness evidence recorded
-   after the live no-overflow gate passed?
+7. **Q7.** Do all five backend slots pass the legacy-envelope liveness/overflow gate?
 
 **Backend (i) basis caveat.** Backend (i) `cpp-legacy` is a verbatim port and
 inherits the legacy's lack of a game-level ply cap (see
@@ -194,12 +200,11 @@ throughput numbers are therefore **not on the same basis** as backends
 (ii)–(v) under any `max_plies` other than `MAX_ROLLOUT_ITERS = 10000`: (i)'s
 games run to a positional win and are on average longer than the ply-capped
 games of (ii)–(v), so directly comparing games/sec misreads the engine
-budget. Current `mcts test all` no longer publishes live backend (i)
-throughput rows; Q6/Q7 are historical evidence labels and the load-bearing
-Q1 / Q2 comparison is Haskell (v)
+budget. `mcts test all` does not use backend (i) for Q1/Q2 throughput rows; Q6/Q7 are
+legacy-compatibility evidence and the load-bearing Q1 / Q2 comparison is Haskell (v)
 versus C++ (ii), where both backends terminate identically; backend (i) is
-otherwise exercised through historical legacy-parity envelope evidence (Q7), where
-the ply cap is pinned to `10000` and the historical gate checked
+otherwise exercised through legacy-parity envelope evidence (Q7), where
+the ply cap is pinned to `10000` and the gate checks
 liveness/overflow rather than throughput or visit-count equality. See
 [compiler_runtime_tuning.md](./compiler_runtime_tuning.md) for the
 backend (i) build flags that make the verbatim port non-comparable on raw
@@ -215,14 +220,12 @@ Knobs](../../DEVELOPMENT_PLAN/system-components.md): `G_R = 1_000`, `G_S =
 4`, `G_V = 4`, `G_LP = 2`, `S_BENCH = 500`, `S_VERIFY = 500`,
 `S_LP_SIMS = 10_000`, `S_LP = 42`.
 
-`mcts test all` builds the live Rust artefact before running the Cabal stanzas
-and final report card. The measured report-card builder requires that artefact,
-uses the production monotonic clock for live Haskell Q1/Q2/Q5 throughput through
-`runBatchNoWriteDispatch`, compares those rates against the frozen backend (ii)
-throughput anchor, and renders `Evidence pending` only in deterministic
-semantic unit values, not in a live full run. Current validation keeps the Cabal
-stanzas green. Q7 is intentionally rendered from historical backend (i)
-evidence, while Q3 carries the visit-count equality assertion for `(iv)..(v)`.
+`mcts test all` builds the live foreign artefacts before running the Cabal stanzas and
+final report card. The measured report-card builder uses the production monotonic clock
+for live Haskell Q1/Q2/Q5 throughput through `runBatchNoWriteDispatch`, compares those
+rates against live backend (ii) where available, and renders `Evidence pending` only in
+deterministic semantic unit values, not in a live full run. Q7 is the all-five
+legacy-envelope gate, while Q3 carries the visit-count equality assertion for `(ii)..(v)`.
 
 Summary block format pinned in the project [../../README.md → Tidy summary
 block](../../README.md). Renderer is pure; wall-clock numbers render to fixed
@@ -232,7 +235,7 @@ dependent wrapping.
 
 `mcts-unit` asserts the rendered tidy summary block semantically with sentinel
 placeholders substituted for live wall-clock numbers and host arch. The tests
-cover row order, labels, ratio fields, Q1–Q7 presence, and the two-backend
+cover row order, labels, ratio fields, Q1–Q7 presence, and the
 `visit/move` divergence matrix without reading a snapshot. Paired JSON tests
 assert the evidence-pending Q1/Q2/Q5 fields, `divergence_matrix`, and required
 keys directly so schema drift fails in `mcts-unit`. The README's tidy summary

@@ -1,23 +1,25 @@
 module Main where
 
+import Data.List (isInfixOf)
 import MCTS.Driver
 import MCTS.Error (AppError (..), EnvelopeMismatchScope (..))
+import MCTS.Subprocess (ProcessOutput (..), Subprocess (..), capture)
 import MCTS.Types
 import MCTS.Verify
 import MCTS.Verify.Envelope (checkBackendSlot, checkCohortInvariant)
-import Test.Tasty (defaultMain, testGroup)
-import Test.Tasty.HUnit (assertBool, assertFailure, testCase, (@?=))
+import Test.Tasty (defaultMain, localOption, testGroup)
+import Test.Tasty.HUnit (assertBool, assertEqual, assertFailure, testCase)
+import Test.Tasty.Runners (NumThreads (..))
 
--- | Phase 8 Sprint 8.6 leaves a two-backend `(iv)..(v)` round-robin under
--- `--rng cpp` as the canonical cross-backend cohort. Retired backends must be
--- rejected at the verify boundary; the cohort minimum is two backends.
+-- | Q3 verifies the steelman cohort `(ii)..(v)` under `--rng cpp`.
+-- Backend (i) remains outside Q3 and is covered by legacy parity.
 main :: IO ()
 main =
-    defaultMain $
+    defaultMain . localOption (NumThreads 1) $
         testGroup
             "mcts-cross-backend"
-            [ testCase "two-backend rollout cohort" rolloutsCheck
-            , testCase "two-backend selfplay cohort" selfplayCheck
+            [ testCase "Q3 rollout cohort" rolloutsCheck
+            , testCase "Q3 selfplay cohort" selfplayCheck
             , testCase "length-aware verifier mismatches" comparatorMismatchCheck
             , testCase "cohort constraints" cohortConstraintsCheck
             , testCase "envelope: cohort host_arch mismatch hard-fails" envelopeCohortHostArchCheck
@@ -26,44 +28,45 @@ main =
             ]
 
 rolloutsCheck :: IO ()
-rolloutsCheck = do
-    let inputs =
-            defaultRunInputs
-                { inputGames = 2
-                , inputSeed = 42
-                , inputSims = FixedSims 16
-                , inputMaxPlies = 60
-                , inputCacheDir = Just "/tmp/mcts-cross-backend-rollouts"
-                }
-    detailed <-
-        verifyRunDetailed
-            False
-            Rollouts
-            [Rust, Haskell]
-            inputs{inputThreading = SingleThreaded}
-    case detailed of
-        Right result -> length (verifyBatches result) @?= 2
-        Left err -> assertFailure ("cross-backend verify failed: " <> show err)
+rolloutsCheck =
+    verifyCli "rollouts" "verify rollouts PASS" 2 "/tmp/mcts-cross-backend-rollouts"
 
 selfplayCheck :: IO ()
-selfplayCheck = do
-    let inputs =
-            defaultRunInputs
-                { inputGames = 1
-                , inputSeed = 42
-                , inputSims = FixedSims 16
-                , inputMaxPlies = 60
-                , inputCacheDir = Just "/tmp/mcts-cross-backend-selfplay"
-                }
-    detailed <-
-        verifyRunDetailed
-            False
-            Selfplay
-            [Rust, Haskell]
-            inputs{inputThreading = SingleThreaded}
-    case detailed of
-        Right result -> length (verifyBatches result) @?= 2
-        Left err -> assertFailure ("cross-backend selfplay verify failed: " <> show err)
+selfplayCheck =
+    verifyCli "selfplay" "verify selfplay PASS" 1 "/tmp/mcts-cross-backend-selfplay"
+
+verifyCli :: String -> String -> Int -> FilePath -> IO ()
+verifyCli workload expected games cacheRoot = do
+    result <-
+        capture
+            ( Subprocess
+                "mcts"
+                [ "verify"
+                , workload
+                , "--backend"
+                , "cpp-imperative,cpp-functional,rust,haskell"
+                , "--threading"
+                , "single"
+                , "--games"
+                , show games
+                , "--seed"
+                , "42"
+                , "--sims"
+                , "16"
+                , "--max-plies"
+                , "60"
+                , "--cache-dir"
+                , cacheRoot
+                ]
+                Nothing
+                Nothing
+            )
+    case result of
+        Left err -> assertFailure ("cross-backend " <> workload <> " subprocess failed: " <> show err)
+        Right output ->
+            assertBool
+                ("cross-backend " <> workload <> " output should contain `" <> expected <> "`")
+                (expected `isInfixOf` processStdout output)
 
 comparatorMismatchCheck :: IO ()
 comparatorMismatchCheck = do
@@ -107,19 +110,15 @@ alternateWinner winner =
 cohortConstraintsCheck :: IO ()
 cohortConstraintsCheck = do
     let inputs = defaultRunInputs{inputGames = 1, inputSeed = 42, inputSims = FixedSims 4, inputMaxPlies = 20}
-    -- Retired backends are excluded from `mcts verify`; the runner must reject them.
+    -- Backend (i) is excluded from Q3 verify; the steelman cohort is (ii)..(v).
     rejectsLegacy <- verifyRun Rollouts [CppLegacy, Rust, Haskell] inputs
     case rejectsLegacy of
         Left (VerifyCohortTooSmall _) -> pure ()
         other -> assertFailure ("expected VerifyCohortTooSmall rejecting cpp-legacy, got " <> show other)
-    rejectsImperative <- verifyRun Rollouts [CppImperative, Rust, Haskell] inputs
-    case rejectsImperative of
-        Left (VerifyCohortTooSmall _) -> pure ()
-        other -> assertFailure ("expected VerifyCohortTooSmall rejecting cpp-imperative, got " <> show other)
-    rejectsFunctional <- verifyRun Rollouts [CppFunctional, Rust, Haskell] inputs
-    case rejectsFunctional of
-        Left (VerifyCohortTooSmall _) -> pure ()
-        other -> assertFailure ("expected VerifyCohortTooSmall rejecting cpp-functional, got " <> show other)
+    acceptsSteelman <- verifyRun Rollouts [CppImperative, CppFunctional, Rust, Haskell] inputs
+    case acceptsSteelman of
+        Right results -> assertEqual "Q3 cohort size" 4 (length results)
+        other -> assertFailure ("expected Q3 steelman cohort to pass, got " <> show other)
     -- A single-backend cohort must fail the minimum-cohort check.
     rejectsSingle <- verifyRun Rollouts [Haskell] inputs
     case rejectsSingle of

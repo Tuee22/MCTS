@@ -136,6 +136,9 @@ prerequisitesForBuild :: String -> [PrerequisiteNode]
 prerequisitesForBuild backend =
     transitiveClosure prerequisiteRegistry $
         case backend of
+            "cpp-legacy" -> ["cxx"]
+            "cpp-imperative" -> ["cxx", "mimalloc"]
+            "cpp-functional" -> ["cxx", "mimalloc"]
             "rust" -> ["cargo", "rustc", "lld-linker", "pgo-profiles"]
             "legacy-fixtures" -> ["cxx"]
             _ -> []

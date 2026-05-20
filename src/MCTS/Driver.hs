@@ -5,6 +5,7 @@ module MCTS.Driver
     , makeRunConfig
     , makeLogicalEnvelope
     , runGame
+    , runGameWithMoveSeed
     , runBatch
     , runBatchNoWrite
     , runBatchWithGame
@@ -234,6 +235,11 @@ forceGame game =
 runGame :: RunInputs -> Word32 -> GameTranscript
 runGame inputs gid =
     let gameSeed = mix (inputSeed inputs) (fromIntegral gid)
+     in runGameWithMoveSeed inputs gid (defaultMoveSeed inputs gameSeed)
+
+runGameWithMoveSeed :: RunInputs -> Word32 -> (Int -> Word64) -> GameTranscript
+runGameWithMoveSeed inputs gid moveSeed =
+    let gameSeed = mix (inputSeed inputs) (fromIntegral gid)
         (records, finalBoard) = go gameSeed initialBoard 0 []
         winner =
             case terminalWinner (effectiveMaxPlies inputs) finalBoard of
@@ -253,11 +259,8 @@ runGame inputs gid =
                                 Rollouts -> FixedSims 1
                                 Selfplay -> inputSims inputs
                         (chosen, visits) =
-                            uctChooseMove
-                                (inputBackend inputs)
-                                (inputRng inputs)
-                                seed
-                                moveNo
+                            uctChooseMoveWithSeed
+                                (moveSeed moveNo)
                                 board
                                 budget
                                 (effectiveMaxPlies inputs)
@@ -269,6 +272,11 @@ runGame inputs gid =
                                 }
                         nextBoard = applyMove chosen board
                      in go seed nextBoard (moveNo + 1) (record : acc)
+
+defaultMoveSeed :: RunInputs -> Word64 -> Int -> Word64
+defaultMoveSeed inputs seed moveNo =
+    let backendSalt = backendNativeSalt (inputRng inputs) (inputBackend inputs)
+     in seed `xor` backendSalt `xor` fromIntegral (moveNo * 257 + 1)
 
 -- | Dispatch the per-move search through `MCTS.Search.UCT.uctSearch`.
 -- Under `--rng cpp` every backend uses an identical effective seed
@@ -285,14 +293,26 @@ uctChooseMove
     -> Word16
     -> (Action, [(Action, Word32)])
 uctChooseMove backend rng seed moveNo board budget maxPlies =
-    let backendSalt = backendNativeSalt rng backend
-        effectiveSeed = seed `xor` backendSalt `xor` fromIntegral (moveNo * 257 + 1)
-        sims = max 1 (simPerMove budget)
-        -- Rollout cap per simulation. The full game ply cap may be
-        -- 10_000 under the legacy parity envelope; that's intractable
-        -- as a rollout depth, so the rollout-only cap is 60.
-        rolloutCap = min 60 (fromIntegral maxPlies)
-     in UCT.uctSearch board effectiveSeed sims rolloutCap
+    uctChooseMoveWithSeed
+        (seed `xor` backendNativeSalt rng backend `xor` fromIntegral (moveNo * 257 + 1))
+        board
+        budget
+        maxPlies
+
+uctChooseMoveWithSeed
+    :: Word64
+    -> Board
+    -> SimBudget
+    -> Word16
+    -> (Action, [(Action, Word32)])
+uctChooseMoveWithSeed effectiveSeed board budget maxPlies =
+    UCT.uctSearch board effectiveSeed sims rolloutCap
+  where
+    sims = max 1 (simPerMove budget)
+    -- Rollout cap per simulation. The full game ply cap may be
+    -- 10_000 under the legacy parity envelope; that's intractable
+    -- as a rollout depth, so the rollout-only cap is 60.
+    rolloutCap = min 60 (fromIntegral maxPlies)
 
 effectiveMaxPlies :: RunInputs -> Word16
 effectiveMaxPlies inputs =

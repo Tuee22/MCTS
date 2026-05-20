@@ -3,6 +3,7 @@ module MCTS.Verify
     , VerifyResult (..)
     , verifyRun
     , verifyRunDetailed
+    , legacyParityRunDetailed
     ) where
 
 import qualified Data.ByteString.Builder as Builder
@@ -148,14 +149,45 @@ verifyRunDetailed :: Bool -> Workload -> [Backend] -> RunInputs -> IO (Either Ap
 verifyRunDetailed allowStale workload backends inputs
     | length backends < 2 =
         pure (Left (VerifyCohortTooSmall "at least two non-legacy backends are required"))
-    | any (`elem` [CppLegacy, CppImperative, CppFunctional]) backends =
+    | CppLegacy `elem` backends =
         pure
-            (Left (VerifyCohortTooSmall "retired backends are not live verify targets; use frozen anchors"))
+            (Left (VerifyCohortTooSmall "cpp-legacy is not in the Q3 verify cohort"))
     | otherwise = runAndCompare allowStale workload backends inputs{inputRng = CppRng}
+
+legacyParityRunDetailed
+    :: Bool -> Workload -> [Backend] -> RunInputs -> IO (Either AppError VerifyResult)
+legacyParityRunDetailed allowStale workload backends inputs
+    | hasDuplicates backends || not (all (`elem` backends) allBackends) =
+        pure
+            (Left (VerifyCohortTooSmall "legacy parity requires each of the five backend slots exactly once"))
+    | otherwise =
+        runLegacyEnvelope
+            allowStale
+            workload
+            backends
+            inputs
+                { inputRng = CppRng
+                , inputThreading = SingleThreaded
+                , inputMaxPlies = 10000
+                }
 
 runAndCompare :: Bool -> Workload -> [Backend] -> RunInputs -> IO (Either AppError VerifyResult)
 runAndCompare =
     runAndCompareWith compareTranscripts
+
+runLegacyEnvelope :: Bool -> Workload -> [Backend] -> RunInputs -> IO (Either AppError VerifyResult)
+runLegacyEnvelope allowStale workload backends inputs = do
+    results <-
+        mapM
+            ( \backend ->
+                runBatchDispatch inputs{inputBackend = backend, inputWorkload = workload}
+            )
+            backends
+    case sequence results of
+        Left message -> pure (Left (IOErrorText message))
+        Right batchResults -> do
+            envelopeResult <- checkTranscriptEnvelopesLive allowStale (map batchTranscript batchResults)
+            pure $ VerifyResult <$> envelopeResult <*> pure batchResults
 
 runAndCompareWith
     :: (Backend -> Transcript -> Backend -> Transcript -> Either AppError ())
@@ -195,3 +227,11 @@ compareAllWith compareOneTranscript (x : xs) = mapM_ (compareOne x) xs >> compar
             (batchTranscript left)
             (runBackend (transcriptConfig (batchTranscript right)))
             (batchTranscript right)
+
+hasDuplicates :: (Eq a) => [a] -> Bool
+hasDuplicates = go []
+  where
+    go _ [] = False
+    go seen (x : xs)
+        | x `elem` seen = True
+        | otherwise = go (x : seen) xs

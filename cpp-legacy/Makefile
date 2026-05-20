@@ -7,6 +7,9 @@ smoke:
 	$(CXX) -std=c++17 -O3 -fPIC -Wall -Wno-pessimizing-move -Ilegacy-core -shared \
 		legacy-core/board.cpp c-abi/mcts_cpp_legacy.cc c-abi/rng.cc \
 		-o build/libmcts_cpp_legacy.so
+	$(CXX) -std=c++17 -O3 -fPIC -Wall -Wno-pessimizing-move -shared \
+		c-abi/rng.cc \
+		-o build/libmcts_cpp_rng.so
 	$(MAKE) envelope-build-id
 
 # Post-link envelope patch per

@@ -178,8 +178,6 @@ search :: GameState -> Seed -> SearchBudget -> Tree -> (Move, Tree)
 
 Code examples must not use:
 
-- removed paths from retired backends (after retirement, examples must use the
-  surviving cohort).
 - unsupported toolchains or bridge layers.
 - stale commands that bypass the public `mcts` surface.
 - host-level validation fallbacks. Supported project work, including
@@ -246,11 +244,11 @@ flowchart TB
   [../HASKELL_CLI_TOOL.md → Architecture → Subprocesses as Typed
   Values](../HASKELL_CLI_TOOL.md).
 
-### Examples Pointing at Removed Paths
+### Examples Pointing at Unsupported Paths
 
-- BAD: After backend (i) retires, `See the cpp-legacy bench dispatch`.
-- GOOD: `See ../DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md for retirement
-  history`.
+- BAD: `See the old host-side bootstrap script`.
+- GOOD: `Run the supported CLI through
+  docker compose run --rm mcts mcts <command>`.
 
 ---
 
