@@ -52,11 +52,12 @@ backend slots complete the legacy envelope without backend (i) overflow or
 envelope errors.
 
 `MCTS.Verify` now dispatches through `MCTS.Driver.Dispatch.runBatchDispatch`
-and checks transcript envelopes with `checkTranscriptEnvelopesLive`, so Q3/Q7
-use live foreign cdylibs when present and the in-process runner only as the
-no-cdylib fallback. For backends (ii)–(iv), live batch search is used when
-`max_plies >= 60`; lower search caps fall back in-process until the fixed
-60-ply C/Rust search ABI grows an explicit per-run cap. Sprint 7.5 ships
+and checks transcript envelopes with `checkTranscriptEnvelopesLive`, so current
+Q3 uses the live Rust cdylib when present and the in-process runner only as the
+no-cdylib fallback. Q7 is historical backend (i) liveness evidence from before
+Sprint `8.4`; it is not a current live verify path. For backend (iv), live batch
+search is used when `max_plies >= 60`; lower search caps fall back in-process
+until the fixed 60-ply Rust search ABI grows an explicit per-run cap. Sprint 7.5 ships
 `divergenceVsEqStream`, foreign-FFI
 driver paths, live-envelope stamping for FFI-produced transcripts, structured
 `--allow-stale` warnings, and the report-card divergence matrix in table and JSON.
@@ -99,9 +100,10 @@ coverage generated during the run. The
 `mcts-unit` stanza covers pure logic, parser tests via `execParserPure`,
 QuickCheck-backed property tests, semantic renderer tests, transcript codec
 roundtrips, replay layout assertions, and RNG mixer properties. `mcts test all` is
-the Plan/Apply command that builds canonical foreign backend artefacts, runs every
-Cabal stanza in order, runs the pinned no-write report-card measurements plus
-verify cohorts, and emits the tidy summary block answering Q1–Q7. The `mcts play`
+the Plan/Apply command that builds the live Rust foreign artefact, runs every
+Cabal stanza in order, runs the pinned live verify cohorts, measures live
+Haskell rates against the frozen backend (ii) throughput anchor, and emits the
+tidy summary block answering Q1–Q7. The `mcts play`
 and `mcts inspect replay` interactive TUIs land here, completing the user-facing
 CLI surface.
 
@@ -183,13 +185,13 @@ the real `mcts` binary across the FFI to every backend.
 - None for the Phase `7` stanza surface. The remaining no-generated-validation
   data doctrine cleanup is tracked by Sprint `8.8`.
 
-## Sprint 7.2: `mcts-cross-backend` and `mcts-legacy-parity` Stanzas ✅
+## Sprint 7.2: `mcts-cross-backend` and Historical `mcts-legacy-parity` Stanzas ✅
 
 **Status**: Done
-**Implementation**: `mcts.cabal` (`mcts-cross-backend`, `mcts-legacy-parity`
-stanzas), `test/cross-backend/Main.hs`, `test/legacy-parity/Main.hs`,
-`src/MCTS/CLI/Verify.hs` (extend with the four-backend cohort dispatch),
-`src/MCTS/CLI/Spec.hs` (extend the `Verify` subtree)
+**Implementation**: `mcts.cabal` (`mcts-cross-backend` stanza),
+`test/cross-backend/Main.hs`, `src/MCTS/CLI/Verify.hs`,
+`src/MCTS/CLI/Spec.hs`; pre-retirement `mcts-legacy-parity` evidence is recorded
+in `legacy-tracking-for-deletion.md`
 **Docs to update**: `documents/engineering/determinism_contract.md`,
 `documents/engineering/unit_testing_policy.md`,
 `DEVELOPMENT_PLAN/system-components.md`
@@ -212,10 +214,11 @@ former `LegacyParityBackend` parser surface retired in Phase 8.
   `--threading single`, fixture seed `S_LP = 42`, and `G_LP = 2` games as a
   legacy-envelope liveness/overflow gate. Phase 8 retired the stanza and froze
   the evidence as historical/external retirement evidence.
-- `src/MCTS/CLI/Spec.hs` finalises the `Verify` subtree: `VerifyRollouts`,
-  `VerifySelfplay`, `VerifyLegacyParity` carrying `VerifyOptions` /
-  `LegacyParityOptions` at Sprint 7.2 closure. Phase 8 later removed
-  `VerifyLegacyParity`; the current `VerifyBackend` excludes all retired C++
+- `src/MCTS/CLI/Spec.hs` finalises the current `Verify` subtree:
+  `VerifyRollouts Bool [VerifyBackend] RunInputs` and
+  `VerifySelfplay Bool [VerifyBackend] RunInputs`. The pre-retirement
+  `VerifyLegacyParity` / `LegacyParityOptions` surface is historical evidence
+  after Sprint `8.4`; the current `VerifyBackend` excludes all retired C++
   backends at the type level and exposes `VRust | VHaskell` per
   [00-overview.md → Hard Constraints item 7](00-overview.md).
 - `src/MCTS/CLI/Verify.hs` finalises the Q3 round-robin pairwise comparison as
@@ -348,14 +351,18 @@ former `LegacyParityBackend` parser surface retired in Phase 8.
 ### Objective
 
 Land `mcts test all` as the doctrine-mandatory canonical test command: a Plan/Apply
-command that builds canonical backend artefacts, delegates to `cabal test`, runs the
-pinned no-write report-card measurements plus verify cohorts, and emits the tidy
-summary block answering Q1–Q7 in one screenful.
+command that builds the live Rust backend artefact, delegates to `cabal test`,
+runs the pinned live verify cohorts, measures live Haskell rates against the
+frozen backend (ii) throughput anchor, and emits the tidy summary block
+answering Q1–Q7 in one screenful.
 
 ### Deliverables
 
-- `src/MCTS/CLI/Spec.hs` declares `TestCommand = TestAll | TestStanza Text`. `mcts
-  test <stanza>` runs the named Cabal stanza (e.g. `mcts test mcts-unit`).
+- `src/MCTS/CLI/Spec.hs` declares `TestCommand = TestAll PlanOptions
+  | TestRetirementAnchor RetirementAnchorOptions | TestStanza Text`. `mcts
+  test <stanza>` runs the named Cabal stanza (e.g. `mcts test mcts-unit`), and
+  the retirement-anchor helper remains available for live parseable backend
+  pairs such as `rust haskell`.
 - `src/MCTS/CLI/Test.hs` owns `mcts test all` as a Plan/Apply command. The plan is
   a typed `[Subprocess]` sequence per the project
   [README → mcts test all](../README.md), with the lint-first prelude required by
@@ -382,9 +389,11 @@ summary block answering Q1–Q7 in one screenful.
   9. Sprint 8.4 retired the former `mcts-legacy-parity` stanza; Q7 is now
      reported from recorded historical backend (i) liveness evidence.
   10. Run the pinned report-card workload. Q1/Q2/Q5 timing rows execute inside
-     the report-card builder through `runBatchNoWriteDispatch`, using the
-     `G_R`, `G_S`, and `S_BENCH` knobs without retaining or writing the large
-     benchmark transcript batches. The rendered `--dry-run` plan therefore
+     the report-card builder through `runBatchNoWriteDispatch` for live
+     Haskell measurements and compare those rates against
+     `frozenCppImperativeAnchor`, using the `G_R`, `G_S`, and `S_BENCH` knobs
+     without retaining or writing the large benchmark transcript batches. The
+     rendered `--dry-run` plan therefore
      contains only the explicit deterministic verify subprocesses:
      1. `mcts verify rollouts --backend rust,haskell --threading single --games $G_V --seed 42 --max-plies 200`
      2. `mcts verify selfplay --backend rust,haskell --threading single --games $G_V --seed 42 --max-plies 200 --sims $S_VERIFY`
@@ -397,56 +406,49 @@ summary block answering Q1–Q7 in one screenful.
 - `--dry-run` renders the entire `[Subprocess]` plan and exits 0. `--plan-file
   <path>` writes the rendered plan to a file.
 - `src/MCTS/ReportCard.hs` declares the typed `ReportCard` record carrying the
-  Q1–Q7 results: per-backend wall-clock and games/sec / sims/sec for each
-  workload-threading combination; PASS/FAIL plus failing-pair payload for each
-  determinism cohort; the host `uname -m` and the GHC version string.
-- The `ReportCard` carries a `backendBasisFootnotes :: [Text]` field. Whenever a
-  Q1 / Q2 / Q5 row is computed for backend (i) under `max_plies != 10000`, the
-  renderer appends the footnote "(i) throughput shown for reference only; not on
-  the same basis as (ii)–(v) at this `max_plies`" per
-  [../README.md → Benchmarks → Backend (i) throughput caveat](../README.md). The
-  Haskell-vs-(ii) comparison is the load-bearing performance result; the (i)
-  row is informational unless the legacy-parity envelope is in force.
-- `src/MCTS/ReportCard/Render.hs` exposes a pure rendering function
-  `renderReportCard :: ReportCard -> Text` (and the `Aeson` JSON encoding for
-  `--format json`). The summary block matches the literal layout pinned at
+  Q1/Q2 Haskell-vs-frozen-C++ rate comparisons, Q5 Haskell and C++ (ii)
+  scaling anchors, Q3/Q4/Q6/Q7 summary labels, the host architecture, the GHC
+  version string, and `reportDivergenceRows`.
+- `src/MCTS/ReportCard.hs` exposes pure rendering functions
+  `renderReportCard :: ReportCard -> String` and
+  `renderReportCardJson :: ReportCard -> String`. The summary block matches
+  the literal layout pinned at
   [../README.md → mcts test all → Tidy summary block](../README.md) (README
   lines 255–273), reproduced here as the rendering contract:
 
   ```
-  MCTS POC report card — seed=42, max-plies=200, host=<uname -m>, ghc=9.14.1
-  ──────────────────────────────────────────────────────────────────────────
-  Q1  Haskell vs C++ (ii)  rollouts  ST          <ratio>×   (<hs> vs <ii> games/s)
-  Q1  Haskell vs C++ (ii)  rollouts  MT8         <ratio>×   (<hs> vs <ii> games/s)
-  Q2  Haskell vs C++ (ii)  self-play ST          <ratio>×   (<hs> vs <ii> games/s)
-  Q2  Haskell vs C++ (ii)  self-play MT8         <ratio>×   (<hs> vs <ii> games/s)
-  Q3  Cross-backend determinism  (cpp RNG)       <PASS|FAIL>    (2 backends × <G_V> games agree)
-  Q4  Same-backend determinism   (per backend)   <PASS|FAIL>    (2/2 live backends × 3 seeds)
-  Q5  MT scaling  Haskell   1→8 workers          <ratio>×    (linear ideal: 8×)
-  Q5  MT scaling  C++ (ii)  1→8 workers          <ratio>×
-  Q6  Legacy port (i) vs MCTS_legacy             HIST           (retired legacy evidence)
-  Q7  Legacy envelope anchor                     HIST           (retired liveness evidence)
+  MCTS POC report card - seed=42, max-plies=200, host=<host>, ghc=9.14.1
+  ------------------------------------------------------------------------
+  Q1  Haskell vs frozen C++ (ii) rollouts  ST    <ratio>x   (<hs> vs <ii> games/s)
+  Q1  Haskell vs frozen C++ (ii) rollouts  MT8   <ratio>x   (<hs> vs <ii> games/s)
+  Q2  Haskell vs frozen C++ (ii) self-play ST    <ratio>x   (<hs> vs <ii> games/s)
+  Q2  Haskell vs frozen C++ (ii) self-play MT8   <ratio>x   (<hs> vs <ii> games/s)
+  Q3  Cross-backend determinism  (cpp RNG)       PASS    (2 backends agree)
+  Q4  Same-backend determinism   (per backend)   PASS    (2/2 live backends x 3 seeds)
+  Q5  MT scaling  Haskell   1->8 workers         <ratio>x   (<st> -> <mt> games/s)
+  Q5  MT scaling  C++ (ii)  1->8 workers         <ratio>x   (<st> -> <mt> games/s)
+  Q6  Legacy port (i) vs MCTS_legacy             HIST    (retired evidence, external)
+  Q7  Legacy envelope, backend (i) retired       HIST    (retirement evidence recorded)
 
-  cabal test                                     <PASS|FAIL>    (mcts-unit, mcts-integration,
-                                                              mcts-cross-backend, mcts-haskell-style)
+  Divergence matrix (visit/move, cpp RNG; thresholds native 0.050/0.005, cross-build 0.010/0.001)
+  rust            <visit>/<move>  <visit>/<move>
+  haskell         <visit>/<move>  <visit>/<move>
+
+  cabal test                                     PASS    (mcts-unit, mcts-integration, mcts-cross-backend, mcts-haskell-style)
 
   Verdict: <verdict text>
   ```
 
-  Wall-clock numbers render to fixed precision (three significant figures for
-  ratios, one decimal for throughputs in kilogames/s); no timestamps, no
+  Wall-clock numbers render to fixed precision (two decimals for text ratios,
+  one decimal for text throughputs, four decimals in JSON); no timestamps, no
   locale-dependent ordering, no terminal-width-dependent wrapping. The
-  `<ratio>` / `<hs>` / `<ii>` / `<PASS|FAIL>` slots are filled from the typed
-  `ReportCard`; everything else in the layout above is literal text the
+  `<ratio>` / `<hs>` / `<ii>` slots are filled from the typed
+  `ReportCard`; the Q3/Q4/Q6/Q7 labels are current fixed summary labels, and
+  everything else in the layout above is literal text the
   renderer must emit byte-for-byte.
-- **Q5 two-anchor rule.** The text renderer emits only the Haskell and C++ (ii)
-  anchor rows for Q5 scaling ("`1→8 workers <ratio>×`"). The full per-backend
-  scaling matrix is included only in the `--format json` payload per
-  [../README.md → mcts test all → POC headline questions Q5](../README.md):
-  "The text summary block highlights Haskell and C++ (ii) as the two anchors;
-  the full per-backend scaling table is available via `mcts test all --format
-  json`." The asymmetry is enforced by `renderReportCard` returning only the
-  anchor rows while the JSON encoder emits the full `[BackendScalingRow]`.
+- **Q5 two-anchor rule.** The text and JSON renderers both expose the Haskell
+  and frozen C++ (ii) anchor rows for Q5 scaling. No full per-backend scaling
+  matrix exists in the current `ReportCard` type.
 - Semantic `mcts-unit` tests cover the renderer with sentinel placeholders
   replacing live throughputs. The tests assert the typed row order, labels,
   stable placeholders, and schema fields directly; README examples remain
@@ -459,8 +461,8 @@ summary block answering Q1–Q7 in one screenful.
 278–282); each is owned by a Sprint 7.3 deliverable above and cross-cited here
 so the contract is reviewable in one place:
 
-- **Plan / Apply.** `build :: TestInputs -> Either AppError TestPlan` produces
-  the typed list of backend builds, Cabal stanzas, and verify subprocesses
+- **Plan / Apply.** `MCTS.CLI.Test.testAllPlan :: Plan Subprocess` produces the
+  typed list of backend builds, Cabal stanzas, and verify subprocesses
   (modelled per
   [../HASKELL_CLI_TOOL.md → Architecture → Subprocesses as Typed
   Values](../HASKELL_CLI_TOOL.md)); `apply :: Env -> TestPlan -> IO ExitCode`
@@ -468,9 +470,10 @@ so the contract is reviewable in one place:
   `--dry-run` prints the rendered plan and exits 0; `--plan-file <path>` writes
   the rendered plan for out-of-band review per
   [../HASKELL_CLI_TOOL.md → Plan / Apply](../HASKELL_CLI_TOOL.md).
-- **Prerequisites as Typed Effects.** The live Rust artefact, optional external
-  historical evidence, `mimalloc`, and GHC/Cabal pinned versions on the
-  container `PATH` are encoded as one `prerequisiteRegistry` per
+- **Prerequisites as Typed Effects.** The pinned GHC/Cabal versions and logical
+  backend availability are checked before Cabal-backed tests; the Rust build
+  leaf checks Cargo, rustc, LLD, and profile-directory prerequisites before
+  applying its plan. These nodes live in one `prerequisiteRegistry` per
   [../HASKELL_CLI_TOOL.md → Prerequisites as Typed
   Effects](../HASKELL_CLI_TOOL.md). The transitive closure runs before `apply`;
   a single unmet node aborts with `AppError PrerequisiteUnmet` carrying the
@@ -480,7 +483,8 @@ so the contract is reviewable in one place:
   a typed `ReportCard` value. No timestamps, no locale-dependent ordering, no
   terminal-width-dependent wrapping. Wall-clock numbers are the only
   non-deterministic content and render to fixed precision (three significant
-  figures for ratios, one decimal for throughputs in kilogames/s). The block is
+  precision (two decimals for text ratios, one decimal for text throughputs).
+  The block is
   semantic-testable with sentinel placeholders for live throughputs; it does not
   require a checked-in snapshot.
 
@@ -503,12 +507,13 @@ so the contract is reviewable in one place:
 
 - None for the command surface. `mcts test all --dry-run`, `mcts test <stanza>`, the Plan/Apply runner,
   report-card rendering, and the pinned command sequence exist. The dry-run
-  renders fifteen typed `Subprocess` steps in order, including canonical backend
-  builds before Cabal stanzas and verify workload; recursive CLI steps route
+  renders ten typed `Subprocess` steps in order, including the live Rust build
+  before Cabal stanzas and verify workload; recursive CLI steps route
   through `cabal exec mcts -- ...`; Q1/Q2/Q5 report-card measurements use the
-  no-write dispatch path. `MCTS.CLI.Test.buildMeasuredReportCard` requires
-  canonical backend artefacts, measures Q1/Q2/Q5 through the production monotonic
-  clock, derives `Within tolerance` / `Shortfall <ratio>` from
+  no-write dispatch path. `MCTS.CLI.Test.buildMeasuredReportCard` requires the
+  live Rust artefact, measures live Haskell Q1/Q2/Q5 rows through the production
+  monotonic clock against `frozenCppImperativeAnchor`, derives
+  `Within tolerance` / `Shortfall <ratio>` from
   `HASKELL_PARITY_TOLERANCE = 0.05`, and populates the Sprint 7.5 divergence
   matrix from the measured live `G_V` verify cohort. Sprint `8.8` replaced the
   remaining renderer/schema residue with semantic assertions so this surface no
@@ -551,9 +556,8 @@ a stored transcript with cached or recomputed equity overlays.
   [00-overview.md → Doctrine Scope → Stack deviations](00-overview.md); no other
   module imports either library. The dependency check in Sprint 1.1's
   standardized library audit accepts these two as the documented exception.
-- `src/MCTS/CLI/Tui/Board.hs` renders the 9×9 Corridors board and pawn positions
-  using `brick`/`vty` widgets; wall-segment overlays remain sprint-owned active
-  work. `MCTS.CLI.Tui.Play` carries the input
+- `src/MCTS/CLI/Tui/Board.hs` renders the 9×9 Corridors board, pawn positions,
+  and wall segments using `brick`/`vty` widgets. `MCTS.CLI.Tui.Play` carries the input
   prompt and uses `MCTS.Notation.parseMove` for legacy move notation.
 - `src/MCTS/CLI/Tui/Play.hs` owns the interactive `mcts play` TTY path per the project
   [README → Interactive modes](../README.md):
@@ -735,14 +739,14 @@ and `--allow-stale` downgrading of backend-slot mismatches to warnings.
 the live `mcts_<backend>_get_envelope()` payload whenever the matching cdylib is
 present, while `checkTranscriptEnvelopesLive` falls back to the in-process
 Haskell envelope when no cdylib exists so the Cabal stanzas remain
-self-contained. `mcts verify` uses that live-envelope path for Q3/Q7. The
+self-contained. `mcts verify` uses that live-envelope path for current Q3; Q7 is
+historical retired backend (i) evidence after Sprint `8.4`. The
 `mcts-integration` stanza conditionally runs a
 live-stamping check for the live Rust foreign backend: it dispatches a small FFI self-play run, asserts the transcript envelope
 equals the C ABI live envelope, then mutates `compiler_version` to prove the
 live verifier hard-fails without `--allow-stale` and downgrades the same
-backend-slot mismatch with `--allow-stale`. The parser now carries
-`legacy-parity {rollouts|selfplay}` all the way to execution instead of
-collapsing it to self-play.
+backend-slot mismatch with `--allow-stale`. The former
+`legacy-parity {rollouts|selfplay}` parser surface retired in Sprint `8.4`.
 
 `src/MCTS/ReportCard.hs` carries typed Q1/Q2 throughput comparisons, Q5 scaling
 rows, and `reportDivergenceRows` as `ReportDivergenceRow` /
@@ -753,10 +757,11 @@ under `q1_*`, `q2_*`, `q5_*`, and `divergence_matrix`. The current default repor
 card keeps explicit `Evidence pending` placeholders for deterministic renderer
 tests, while `mcts test all` builds the final report card through
 `MCTS.CLI.Test.buildMeasuredReportCard`: after the typed plan succeeds, it
-requires the canonical backend artefacts built in that same container, measures
-Q1/Q2/Q5 with the production monotonic clock, runs the pinned `G_V = 4`
-self-play verify cohort for `(rust, haskell)`, and populates the matrix with
-`divergenceRowsFromTranscripts`. `MCTS.CLI.Test.buildMeasuredReportCardWith`
+requires the live Rust artefact built in that same container, measures live
+Haskell Q1/Q2/Q5 rates with the production monotonic clock against the frozen
+backend (ii) anchor, runs the pinned `G_V = 4` self-play verify cohort for
+`(rust, haskell)`, and populates the matrix with `divergenceRowsFromTranscripts`.
+`MCTS.CLI.Test.buildMeasuredReportCardWith`
 exposes the bounded divergence builder for integration coverage, and
 `mcts-integration` checks that path together with a cached recompute sidecar
 consumed through the real `mcts inspect divergence` subprocess.
@@ -779,32 +784,31 @@ consumers.
   binary's `mcts_<backend>_get_envelope()` value and emits
   `EngineEnvelopeMismatch (BackendSlot b) field expected got` on the
   first disagreement.
-- `VerifyOptions` gains `verifyAllowStale :: Bool` (CLI flag
-  `--allow-stale`). When set, `BackendSlot` mismatches are downgraded
+- The leading `Bool` in each current `VerifyCommand` stores the CLI
+  `--allow-stale` flag. When set, `BackendSlot` mismatches are downgraded
   to warnings rendered through `renderError` to stderr; verify
   continues on visits. JSON output also carries those warnings under
   `warning_details`. `CohortLevel` mismatches remain hard fails regardless.
 - `src/MCTS/Verify/Divergence.hs` — `divergenceRate :: Transcript ->
-  EqStream -> DivergenceMetrics` computes
-  `visit_disagreement_rate`, `move_disagreement_rate`, and
-  `equity_l2_drift` for a `(transcript, foreign-backend recompute)`
-  pair. The full divergence matrix is `forM
-  cohort_backends (recompute_then_score)`.
-- `cabal.project` gains four pinned thresholds:
+  Transcript -> DivergenceMetrics` computes transcript-pair visit/move
+  disagreement, and `divergenceVsEqStream :: Transcript -> EqStream ->
+  DivergenceMetrics` scores cached or recomputed equity streams for
+  `visit_disagreement_rate`, `move_disagreement_rate`, and `equity_l2_drift`.
+- `cabal.project` mirrors four calibrated threshold constants in comments:
   `MOVE_DELTA_NATIVE_MAX = 0.005`, `VISIT_DELTA_NATIVE_MAX = 0.05`,
   `MOVE_DELTA_CROSS_BUILD_MAX = 0.001`, `VISIT_DELTA_CROSS_BUILD_MAX
   = 0.01`. Phase 7 calibration runs may relax these; commits must
-  update both `cabal.project` and
+  update both the `cabal.project` comments and
   [../documents/engineering/determinism_contract.md → Divergence
   Smell → Thresholds](../documents/engineering/determinism_contract.md)
   in the same change.
 - `mcts test all` report-card workload extension: the tidy summary
-  block gains a per-backend-pair divergence matrix
+  block gains a two-backend `(rust, haskell)` divergence matrix
   (`visit_disagreement_rate` / `move_disagreement_rate` over the
   recorded `G_V = 4` games). Under `--rng cpp` every off-diagonal
-  element should read `0.0% / 0.0%`; anything else triggers a warn
-  banner in the summary.
-- `src/MCTS/CLI/Inspect/Divergence.hs` — `mcts inspect divergence
+  element should read `0.0 / 0.0`; anything else is visible in the
+  rendered matrix and JSON payload.
+- `src/MCTS/CLI/Inspect.hs` — `mcts inspect divergence
   <hash-prefix>` emits the divergence matrix for a single transcript
   across every cached `(backend, build)` slot, computed via the same
   `divergenceRate` helper. Forensic command; output renders through
@@ -832,9 +836,9 @@ consumers.
   populates instantly from cache (no FFI compute invoked, via a
   test-hook counter).
 - `mcts-integration` report-card divergence matrix: the `mcts test
-  all` summary contains a four-row matrix with `--rng cpp`
-  diagonals at zero and a footnote on the empirically-pinned
-  threshold values.
+  all` summary contains a two-row `(rust, haskell)` matrix with `--rng cpp`
+  diagonals at zero and the empirically-pinned threshold values in the matrix
+  heading.
 
 ### Remaining Work
 
@@ -897,10 +901,10 @@ Focused validation passed with
 `MCTS.ReportCard.ReportCard` now owns a typed `reportDivergenceRows` field. The
 table renderer prints the two-backend `(rust, haskell)` `visit/move` matrix in the
 tidy summary block, and the JSON renderer emits the same rows under
-`divergence_matrix`. The current `mcts-unit::exerciseReportCardGolden` still
-pins checked-in report-card files; Sprint `8.8` replaces that residue with
-semantic table/JSON assertions so matrix layout/schema drift fails without
-repository snapshots. Focused validation passed at the historical closure point with
+`divergence_matrix`. Sprint `8.8` replaced the former
+`mcts-unit::exerciseReportCardGolden` snapshot residue with semantic table/JSON
+assertions so matrix layout/schema drift fails without repository snapshots.
+Focused validation passed at the historical closure point with
 `docker compose run --rm --build mcts mcts test mcts-unit`.
 
 ### Closure Notes (measured report-card divergence rows)
@@ -953,7 +957,7 @@ then invokes it with explicit flags plus `--max-plies 10000`; the C++ tool parse
 those flags directly, rejects unknown options, rejects non-legacy `max_plies`, and
 no longer accepts environment-variable fixture overrides as an operator path.
 `mcts-unit::exerciseCommandParserSurface` and
-`mcts-unit::exerciseCppImperativeBuildPlan` cover the parser and rendered plan,
+`mcts-unit::exerciseRustBuildPlan` cover the parser and rendered plan,
 and the generated command docs include the new leaf.
 
 Focused validation passed with:
@@ -985,8 +989,8 @@ was removed during the earlier closure.
 
 ### Remaining Work
 
-- None. The canonical 2026-05-19 report-card run passed against
-  canonical backend artefacts, follow-up live Q3 validation through
+- None. The historical 2026-05-19 report-card run passed against the then-live
+  backend artefacts, follow-up live Q3 validation through
   `runBatchDispatch` passed for cross-backend rollouts and self-play, and Q7 is
   now recorded backend (i) legacy-envelope evidence. The
   2026-05-19 live comparison that showed backend (i) can diverge from the
@@ -1018,8 +1022,8 @@ was removed during the earlier closure.
 
 **Cross-references to add:**
 
-- `system-components.md` Test Stanzas section updates each row from
-  `📋 Planned` to `✅ Done` as each sprint lands.
+- `system-components.md` Test Stanzas section reflects the current four live
+  stanzas plus the retired legacy-parity stanza.
 - `legacy-tracking-for-deletion.md` Retirement Protocol Reference is consulted
   but not yet enqueued — Phase 8 owns the retirement.
 

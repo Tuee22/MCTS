@@ -8,7 +8,6 @@ module MCTS.CLI.Test
 
 import Control.Monad.IO.Class (liftIO)
 import Data.List (find)
-import Data.Version (showVersion)
 import Data.Word (Word64)
 import MCTS.CLI.Bench (monotonicNanos)
 import MCTS.CLI.Command (RetirementAnchorOptions (..), TestCommand (..))
@@ -27,7 +26,6 @@ import MCTS.Types
 import MCTS.Verify (VerifyResult (..), verifyRunDetailed)
 import System.Directory (doesFileExist)
 import System.Exit (ExitCode (..))
-import System.Info (compilerVersion)
 import Text.Printf (printf)
 
 data RetirementAnchorResult = RetirementAnchorResult
@@ -270,19 +268,34 @@ buildMeasuredReportCard = do
 
 buildMeasuredReportCardWith :: [Backend] -> RunInputs -> IO (Either AppError ReportCard)
 buildMeasuredReportCardWith backends inputs = do
+    ghcVersion <- currentGhcVersion
     result <- verifyRunDetailed False Selfplay backends inputs
     pure $
-        case result of
-            Left err -> Left err
-            Right verifyResult ->
+        case (ghcVersion, result) of
+            (Left err, _) -> Left err
+            (_, Left err) -> Left err
+            (Right version, Right verifyResult) ->
                 Right
                     defaultReportCard
                         { reportDivergenceRows =
                             divergenceRowsFromTranscripts
                                 (map batchTranscript (verifyBatches verifyResult))
                         , reportHost = hostArch
-                        , reportGhc = showVersion compilerVersion
+                        , reportGhc = version
                         }
+
+currentGhcVersion :: IO (Either AppError String)
+currentGhcVersion = do
+    result <- capture (Subprocess "ghc" ["--numeric-version"] Nothing Nothing)
+    pure $
+        case result of
+            Left err -> Left err
+            Right output -> Right (firstLine (processStdout output))
+  where
+    firstLine value =
+        case lines value of
+            [] -> ""
+            line : _ -> line
 
 buildReportPerformance
     :: IO Word64

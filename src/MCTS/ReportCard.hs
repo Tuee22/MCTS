@@ -107,7 +107,7 @@ renderReportCard card =
         , "Q6  Legacy port (i) vs MCTS_legacy             HIST    (retired evidence, external)"
         , "Q7  Legacy envelope, backend (i) retired       HIST    (retirement evidence recorded)"
         , ""
-        , "Divergence matrix (visit/move, cpp RNG; thresholds native 0.005/0.050, cross-build 0.001/0.010)"
+        , "Divergence matrix (visit/move, cpp RNG; thresholds native 0.050/0.005, cross-build 0.010/0.001)"
         ]
             <> map renderDivergenceRow (reportDivergenceRows card)
             <> [ ""

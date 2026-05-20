@@ -56,7 +56,7 @@ From the host, run any listed logical command as
 | `mcts inspect cache prune [--keep-current] [--dry-run] [--plan-file <path>]` | Delete stale equity-sidecar entries |
 | `mcts inspect divergence <hash-prefix>` | Emit the cross-backend divergence-rate matrix for a single transcript |
 | `mcts test all [--dry-run] [--plan-file <path>]` | Plan/Apply: backend builds, every Cabal stanza, and pinned report card |
-| `mcts test retirement-anchor <retiring> <successor> [--dry-run] [--plan-file <path>]` | Plan/Apply: measure a backend-retirement Q1/Q2 parity anchor |
+| `mcts test retirement-anchor <retiring> <successor> [--dry-run] [--plan-file <path>]` | Plan/Apply: measure a Q1/Q2 parity anchor for currently parseable backend pairs; retired C++ anchors are historical evidence |
 | `mcts test <stanza>` | Run a named Cabal test-suite stanza |
 | `mcts lint files [--write]` | Check whitespace, final newlines, forbidden paths, and tracked generated-file drift |
 | `mcts lint docs [--write]` | Run the generated-docs drift gate |
@@ -88,10 +88,11 @@ foreign cdylib is present, FFI-produced transcripts are stamped with
 `checkTranscriptEnvelopesLive`. JSON verify output includes
 `warning_details` for downgraded `--allow-stale` backend-slot warnings. The report-card renderer now emits
 explicit Q1/Q2/Q5 evidence fields and the cross-backend divergence matrix in
-table and JSON form; semantic unit tests use a constructed zero-matrix baseline, and the live
-`mcts test all` path requires canonical backend artefacts, measures Q1/Q2/Q5
-with the production monotonic clock through the no-write batch runner, and
-populates divergence rows from the measured live `G_V` verify cohort.
+table and JSON form; semantic unit tests use a constructed zero-matrix baseline,
+and the live `mcts test all` path requires the live Rust artefact, measures
+Haskell Q1/Q2/Q5 with the production monotonic clock through the no-write batch
+runner, compares those rates against the frozen backend (ii) throughput anchor,
+and populates divergence rows from the measured live `G_V` verify cohort.
 `mcts build legacy-fixtures` remains the supported Q6 evidence-generation path
 for explicit audit runs; it builds `cpp-legacy/build/legacy-to-wire` and passes
 output root, seed, game count, and simulation count as explicit flags. Its output

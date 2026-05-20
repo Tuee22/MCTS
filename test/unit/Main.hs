@@ -1814,6 +1814,9 @@ exerciseReportCardRenderer = do
     assert
         "report card text renders determinism section"
         ("Cross-backend determinism" `contains` renderedText)
+    assert
+        "report card text renders visit/move thresholds in matrix order"
+        ("thresholds native 0.050/0.005, cross-build 0.010/0.001" `contains` renderedText)
     assert "report card text renders verdict" ("Verdict:" `contains` renderedText)
     assert
         "report card JSON has required top-level keys"

@@ -20,7 +20,7 @@
 - `mcts inspect cache prune` - Prune stale sidecars
 - `mcts inspect divergence` - Show divergence matrix
 - `mcts test all` - Run full suite and report card
-- `mcts test retirement-anchor` - Measure backend retirement parity anchor
+- `mcts test retirement-anchor` - Measure backend parity anchor
 - `mcts test <stanza>` - Run one cabal stanza
 - `mcts lint files` - Lint files
 - `mcts lint docs` - Lint docs

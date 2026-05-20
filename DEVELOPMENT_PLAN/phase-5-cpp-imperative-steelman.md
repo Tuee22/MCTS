@@ -16,9 +16,9 @@
 
 ## Phase Status
 
-✅ **Done (sprint-owned surfaces)**. Sprints 5.1, 5.2, 5.3, 5.4, 5.5
-are closed on a *real engine* basis: `cpp-imperative/engine/` now
-hosts the arena-MCTS imperative-steelman engine
+✅ **Done (retired source/evidence surface)**. Sprints 5.1, 5.2, 5.3,
+5.4, and 5.5 closed on a *real engine* basis: `cpp-imperative/engine/` now
+hosts the retired arena-MCTS imperative-steelman engine
 (`state.hpp`/`arena.hpp`/`search.{hpp,cpp}`/`xoshiro256pp.hpp`) per
 Sprint 5.1's doctrine character — flat children, `Word16` ply
 counter + ply-cap terminal, `thread_local` move buffer,
@@ -27,32 +27,24 @@ on terminal branches, `alignas(64)` arena nodes. The C ABI exposes
 the full `mcts_imperative_search_move` / `mcts_imperative_recompute_move`
 / post-link `engine_build_id` patch / runtime CPU/FP probes, the
 bench / instrumented split lives in the same TU under
-`MCTS_IMPERATIVE_INSTRUMENTED`, and the Haskell dispatcher routes
-`--backend cpp-imperative` through the real FFI driver. Sprint 5.3
-ships the shared typed 19-step PGO+BOLT pipeline through `Subprocess`
-for both C++ steelman backends: each paired artefact is installed to
-the canonical FFI load name for its training run before profile data is
-copied back to the artefact-specific path. BOLT uses `-instrument` so
-`perf` is not a closure prerequisite, and missing BOLT data degrades to
-an explicit PGO artefact fallback. Idempotence, failure-mode, and
-backend-rewrite coverage live in `mcts-unit`. The former
-`-fno-exceptions` and per-rollout scratch-board residues are closed;
-the measured Q1+Q2 speedup ratio that PGO+BOLT enables ships through
-Phase 7's report-card workflow once the cohort runs against the BOLT
-output.
+`MCTS_IMPERATIVE_INSTRUMENTED`. Sprint `8.5` retired backend (ii) from live
+CLI/build/verify/FFI dispatch after backend (iii) reached parity with it; the
+Haskell `CppImperative` FFI/driver modules and `mcts build cpp-imperative`
+operator leaf are no longer present. The retained source tree and recorded
+throughput anchor remain historical evidence for the Phase `8` parity proof, and
+normal validation no longer depends on generated backend (ii) artefacts in the
+repository.
 
 ## Phase Summary
 
-Phase `5` writes the steelman. C++23 with the doctrine-named flag set, arena-allocated
-tree, per-rollout scratch board with undo, flat children layout, move-list buffer
-reuse, branch hints, `__builtin_prefetch`, `__builtin_popcountll` /
-`__builtin_ctzll`, `alignas(64)`, `thread_local` scratch, `-fno-exceptions`,
-`Word16` ply counter; two-stage PGO via `-fprofile-generate` / `-fprofile-use`
-training on benchmark (b), BOLT post-link binary reordering, `mimalloc` static-linked
-as the system allocator. The build harness is a Plan/Apply command built on the
-Phase 1 `Subprocess` boundary. Backend (ii) participates in the four-backend
-`(ii)..(v)` cross-backend `verify` cohort (Phase 7) and in the legacy parity envelope
-cohort (Phase 4).
+Phase `5` records the retired steelman. C++23 with the doctrine-named flag set,
+arena-allocated tree, per-rollout scratch board with undo, flat children layout,
+move-list buffer reuse, branch hints, `__builtin_prefetch`,
+`__builtin_popcountll` / `__builtin_ctzll`, `alignas(64)`, `thread_local`
+scratch, `-fno-exceptions`, and a `Word16` ply counter define the backend (ii)
+source archive. Its two-stage PGO / BOLT / `mimalloc` build harness is preserved
+as historical implementation evidence, while the live operator cohort has moved
+on to `(rust, haskell)` after the Phase `8` retirement protocol.
 
 ## Sprint 5.1: `cpp-imperative/` Source Tree and Build Flags ✅
 
@@ -73,15 +65,15 @@ backend-agnostic from the Haskell side.
 
 ### Deliverables
 
-- `cpp-imperative/src/` contains the imperative engine: `board.hpp/cc`
-  (`Word16` ply counter; `is_terminal` ↔ `hero_wins || villain_wins || ply_count
-  >= max_plies` per [00-overview.md → Hard Constraints item 9](00-overview.md);
-  `terminal_eval` returns `0.0` on ply-cap termination); `tree.hpp/cc` (arena-
-  allocated `std::vector<uct_node>` with `u32` child indices, freed in bulk at
-  game end per
-  [00-overview.md → Hard Constraints item 18](00-overview.md)); `search.hpp/cc`
-  (UCT child selection); `rollout.hpp/cc` (random-rollout leaf evaluation with
-  per-rollout scratch board reuse via undo or one snapshot per game).
+- `cpp-imperative/engine/` contains the imperative engine: `board.h` /
+  `board.cpp` (`Word16` ply counter; `is_terminal` ↔ `hero_wins || villain_wins
+  || ply_count >= max_plies` per
+  [00-overview.md → Hard Constraints item 9](00-overview.md); terminal eval
+  returns `0.0` on ply-cap termination), `arena.hpp` (flat arena nodes with
+  `u32` child indices, freed in bulk at game end per
+  [00-overview.md → Hard Constraints item 18](00-overview.md)), and
+  `search.hpp` / `search.cpp` (UCT child selection plus random-rollout leaf
+  evaluation with a forward-mutated per-rollout state snapshot).
 - Flat children layout: each parent records `first_child_idx: u32` and
   `n_children: u16`; no `std::vector<u32>` per node.
 - Move-list buffer reuse: move generators write into a `thread_local` or stack-SBO
@@ -123,9 +115,9 @@ backend-agnostic from the Haskell side.
   supported).
 - **Paired build targets** per
   [../README.md → Cross-backend verification → Compile-time toggle for
-  instrumentation](../README.md). The self-play driver in
-  `cpp-imperative/src/driver.cc` is a template parameterised by a
-  `Instrumentation` template type (`InstrumentedOn` / `InstrumentedOff`).
+  instrumentation](../README.md). The C ABI translation unit is compiled with
+  `MCTS_IMPERATIVE_INSTRUMENTED=0` or `1` so the visit-reading path is absent
+  from the bench artefact and present in the instrumented artefact.
   `cpp-imperative/Makefile` builds two artefacts in one pipeline:
   `libmcts_cpp_imperative_bench.{so,a}` (instantiates driver with
   `InstrumentedOff`; `read_visits` symbol absent) and
@@ -216,14 +208,12 @@ backend-agnostic from the Haskell side.
 
 ## Sprint 5.2: FFI Bindings for Backend (ii) ✅
 
-**Status**: Done (visit-vector FFI surface for `cpp-imperative` ships through
-`src/MCTS/FFI/CppImperative.hs` via `MCTS.FFI.Common.withDynamicSearchGame`;
-the `libmcts-cpp-imperative-built` prerequisite node is wired into
-`prerequisiteRegistry`; the dynamic-loader / `foreign import ccall` linkage
-substitution and the matching `mcts.cabal` `extra-libraries` directive remain
-ledger residue under "Dynamic FFI smoke loader and chosen-move-only smoke
-drivers")
-**Implementation**: `src/MCTS/FFI/CppImperative.hs`, `mcts.cabal`
+**Status**: Done (the visit-vector FFI surface for `cpp-imperative` landed
+pre-retirement; Sprint 8.5 later removed the live Haskell binding and preserved
+the C ABI source plus retirement evidence)
+**Implementation**: `cpp-imperative/c-abi/mcts_cpp_imperative.{h,cc}`,
+`legacy-tracking-for-deletion.md` (Sprint 8.5 retirement record for the removed
+`src/MCTS/FFI/CppImperative.hs` live binding)
 **Docs to update**: `documents/engineering/backend_ffi_contract.md`
 
 ### Objective
@@ -233,15 +223,12 @@ pattern as backend (i), reusing the `MCTS.FFI.Common` RAII wrappers from Phase 4
 
 ### Deliverables
 
-- `src/MCTS/FFI/CppImperative.hs` declares the per-symbol bindings from
+- At the pre-retirement closure point, `src/MCTS/FFI/CppImperative.hs` declared the per-symbol bindings from
   `cpp-imperative/c-abi/mcts_cpp_imperative.h`. Hot-path symbols use `unsafe`;
   lifecycle symbols use `safe`.
-- `mcts.cabal` declares the `cpp-imperative` extra-libraries entry plus the
-  `extra-lib-dirs: cpp-imperative/build` directive.
-- The `prerequisiteRegistry` gains a `libmcts-cpp-imperative-built` node with a
-  remedy hint that points at the PGO+BOLT build harness (Sprint 5.3); the
-  no-PGO smoke target remains an internal backend Makefile target, not a host
-  workflow.
+- The pre-retirement Cabal/prerequisite surface carried the `cpp-imperative`
+  library path and `libmcts-cpp-imperative-built` node. Sprint `8.5` removed
+  those live dependencies when backend (ii) retired.
 - A `cpp-imperative/Makefile` `smoke` target builds without PGO/BOLT for
   development; the canonical build through the build harness runs the full
   PGO+BOLT pipeline.
@@ -266,17 +253,14 @@ policy remains ledger-owned rather than sprint-owned.
 
 ## Sprint 5.3: PGO+BOLT+`mimalloc` Build Harness ✅
 
-**Status**: Done (typed Subprocess pipeline lands the shared 19-step PGO +
+**Status**: Done (the typed Subprocess pipeline landed the shared 19-step PGO +
 BOLT-instrument + BOLT-optimize + install sequence for the paired C++ artefacts;
-BOLT runs without `perf` via `llvm-bolt -instrument`; idempotence,
-failure-mode, and backend-rewrite tests live in `mcts-unit`)
-**Implementation**: `src/MCTS/CLI/Build.hs` (`cppImperativePgoBoltPlan`,
-`pgoTrainingGames` / `pgoTrainingSims` / `boltTrainingGames` /
-`boltTrainingSims`), `src/MCTS/CLI/Spec.hs` (Build subtree),
+Sprint 8.5 later retired the live `mcts build cpp-imperative` operator leaf)
+**Implementation**:
 `cpp-imperative/Makefile` (`pgo-bench-generate`, `pgo-instr-generate`,
 `pgo-bench-use`, `pgo-instr-use`, `bolt-bench-instrument`,
 `bolt-instr-instrument`, `bolt-bench-optimize`, `bolt-instr-optimize`,
-`install-bench`), `test/unit/Main.hs::exerciseCppImperativeBuildPlan`
+`install-bench`), `legacy-tracking-for-deletion.md`
 **Docs to update**: `documents/engineering/compiler_runtime_tuning.md`,
 `documents/engineering/backend_ffi_contract.md`
 
@@ -322,15 +306,17 @@ that backend (v) Haskell must match.
      `_instrumented.bolted.so` intermediate is copied to
      `cpp-imperative/build/libmcts_cpp_imperative_instrumented.so` for
      `mcts verify` / `play` / `inspect replay` loads.
-- `src/MCTS/CLI/Build.hs` builds and applies the plan, with `--dry-run` rendering
-  the typed `Subprocess` sequence and exiting 0.
-- `src/MCTS/CLI/Command.hs` gains the `BuildCppImperative` constructor on the
+- At the pre-retirement closure point, `src/MCTS/CLI/Build.hs` built and applied
+  the plan, with `--dry-run` rendering the typed `Subprocess` sequence and
+  exiting 0.
+- `src/MCTS/CLI/Command.hs` gained the `BuildCppImperative` constructor on the
   `BuildCommand` family per
   [phase-1-haskell-cli-surface.md → Sprint 1.2 ownership note](phase-1-haskell-cli-surface.md),
   with a matching `CommandSpec` leaf and at least one `Example`
   (`mcts build cpp-imperative --dry-run`) wired into the registry so the
   `mcts <subcommand> --help`, `documents/cli/commands.md`, and
-  `mcts commands --json` outputs all carry the new surface.
+  `mcts commands --json` outputs all carried the pre-retirement surface. Sprint
+  `8.5` later retired the live leaf.
 - The `prerequisiteRegistry` gains nodes for `llvm-bolt`, `perf` (for BOLT
   profile generation), `mimalloc-static`, and the PGO and BOLT profile
   directories.
@@ -352,8 +338,8 @@ that backend (v) Haskell must match.
 
 ### Closure Notes
 
-- `cppImperativePgoBoltPlan :: [Subprocess]` (in `src/MCTS/CLI/Build.hs`)
-  is the shared 19-step typed sequence: PGO-instrument `_bench` → install it to
+- The pre-retirement C++ PGO/BOLT plan was the shared 19-step typed sequence:
+  PGO-instrument `_bench` → install it to
   the canonical FFI load name → PGO training
   (`bench selfplay --backend cpp-imperative --rng cpp --games 1 --seed 42
   --sims 100`) → copy canonical `.gcda` files to `_bench` profile names; repeat
@@ -372,26 +358,22 @@ that backend (v) Haskell must match.
   the BOLT training run exercises the instrumented library. `perf` is
   no longer a closure-blocking prerequisite, matching the container
   image's tool set.
-- `mcts-unit::exerciseCppImperativeBuildPlan` covers idempotence
-  (`buildBackendPlan "cpp-imperative" == buildBackendPlan
-  "cpp-imperative"`), the step ordering, the training-run argument
-  shape, and the failure-mode behaviour for an unknown backend
-  identifier.
+- Pre-retirement unit coverage asserted idempotence, step ordering, training-run
+  argument shape, and failure-mode behavior for the C++ build plan. Current unit
+  coverage keeps those Plan/Apply checks on the live Rust build plan and optional
+  legacy-fixtures plan.
 - The build harness goes through the typed `Subprocess` boundary
   (`hlint` confirms no `callProcess` / `readCreateProcess` /
   `System.Process` smart constructors live in `MCTS.CLI.Build`).
 
 ## Sprint 5.4: Backend (ii) Game Driver and Transcript Output ✅
 
-**Status**: Done (visit-vector dispatch through `MCTS.Driver.CppImperative`
-+ `MCTS.Driver.ForeignSearch` + `mcts_imperative_search_move` lands
-end-to-end; cross-backend test exercises the
-`{cpp-imperative,cpp-functional,rust,haskell}` cohort)
-**Implementation**: `src/MCTS/Driver/CppImperative.hs`,
-`src/MCTS/Driver/ForeignSearch.hs`, `src/MCTS/Driver/Dispatch.hs`,
-`src/MCTS/FFI/Common.hs::withDynamicSearchGame`,
-`src/MCTS/FFI/CppImperative.hs::withCppImperativeSearchGame`,
-`src/MCTS/CLI/Bench.hs`, `src/MCTS/CLI/Verify.hs`
+**Status**: Done (visit-vector dispatch through `mcts_imperative_search_move`
+landed pre-retirement; Sprint 8.5 later removed the live Haskell driver and
+default verify cohort membership)
+**Implementation**: `cpp-imperative/c-abi/mcts_cpp_imperative.{h,cc}`,
+`src/MCTS/Driver/Dispatch.hs`, `legacy-tracking-for-deletion.md` (Sprint 8.5
+retirement record for the removed `src/MCTS/Driver/CppImperative.hs` live driver)
 **Docs to update**: `documents/engineering/backend_ffi_contract.md`,
 `documents/engineering/cli_command_surface.md`
 
@@ -403,17 +385,19 @@ rollouts/selfplay/legacy-parity` (where cohort includes (ii)) run end-to-end.
 
 ### Deliverables
 
-- `src/MCTS/Driver/CppImperative.hs` exposes `runGameCppImperative :: GameInputs
-  -> App Transcript`, mirroring the Phase 3 Haskell driver and the Phase 4
-  legacy-port driver but driving the FFI-backed backend (ii) tree.
+- At the pre-retirement closure point, `src/MCTS/Driver/CppImperative.hs`
+  exposed backend (ii) through the shared foreign-search driver, mirroring the
+  Phase 3 Haskell driver and the Phase 4 legacy-port driver but driving the
+  FFI-backed backend (ii) tree. Sprint `8.5` later removed that live Haskell
+  driver.
 - The driver respects backend (ii)'s ply-cap draw rule (the engine's `Word16`
   ply counter and the `is_terminal` ↔ `... || ply_count >= max_plies` semantic
   from Sprint 5.1).
-- `src/MCTS/CLI/Bench.hs` dispatch table adds `--backend cpp-imperative`.
-- `src/MCTS/CLI/Verify.hs` `VerifyBackend` GADT (Phase 4 Sprint 4.6 introduced
-  this) gains `VCppImperative`. The four-backend `(ii)..(v)` cohort is now
-  parseable, though full bit-equality requires Phases 6 + 7 closure to land the
-  remaining backends.
+- `src/MCTS/CLI/Bench.hs` dispatch table added `--backend cpp-imperative` for
+  the live backend (ii) interval; Sprint `8.5` removed that operator selection.
+- `src/MCTS/CLI/Verify.hs` `VerifyBackend` GADT gained `VCppImperative` for the
+  then-live `(ii)..(v)` cohort. Sprint `8.5` removed that constructor from the
+  live verify surface.
 
 ### Validation
 
@@ -429,15 +413,15 @@ rollouts/selfplay/legacy-parity` (where cohort includes (ii)) run end-to-end.
 
 ### Closure Notes
 
-- `MCTS.Driver.CppImperative.runGameCppImperative` reuses the shared
+- At the pre-retirement closure point, `MCTS.Driver.CppImperative.runGameCppImperative` reused the shared
   `MCTS.Driver.ForeignSearch.runForeignSearchGame` worker, which calls
   `searchGameSearchMove` on a `DynamicSearchGame` opener exposing the
   full `mcts_imperative_search_move` ABI (sorted `(action_id, visits)`
   vector + chosen action) — not the chosen-action-only smoke.
-- `MCTS.Driver.Dispatch.runBatchDispatch` routes `--backend cpp-imperative`
-  through `runGameCppImperative` whenever
-  `cpp-imperative/build/libmcts_cpp_imperative.so` is present;
-  `cabal build all` stays self-contained when the library is absent.
+- `MCTS.Driver.Dispatch.runBatchDispatch` routed `--backend cpp-imperative`
+  through `runGameCppImperative` during the live backend (ii) interval. It now
+  rejects `CppImperative` in live dispatch and preserves the wire tag only for
+  archived transcript decoding.
 - Cross-backend wiring smoke against Haskell rides through the
   `mcts-cross-backend` stanza's four-backend rollout cohort
   (`{cpp-imperative, cpp-functional, rust, haskell}`); transcript-output
@@ -453,7 +437,8 @@ PGO+BOLT-specific build-id refresh stays under Sprint 5.3 ledger)
 **Implementation**: `cpp-imperative/c-abi/mcts_cpp_imperative.{h,cc}`
 (envelope runtime probes + `mcts_imperative_recompute_move`),
 `cpp-imperative/Makefile` (post-link `envelope-build-id` target),
-`src/MCTS/FFI/CppImperative.hs` (`withCppImperativeSearchGame`)
+`legacy-tracking-for-deletion.md` (Sprint 8.5 retirement record for the removed
+live Haskell binding)
 **Docs to update**: `documents/engineering/determinism_contract.md`,
 `documents/engineering/backend_ffi_contract.md`,
 `documents/engineering/transcript_format.md`,
@@ -526,8 +511,8 @@ wiring that compares cached transcripts with live FFI envelopes.
 
 **Cross-references to add:**
 
-- `system-components.md` Backend (ii) row updates from `📋 Planned` to `🔄
-  Active` on Sprint 5.1 start and `✅ Done` on Sprint 5.4 closure.
+- `system-components.md` Backend (ii) row reflects the current retired
+  steelman-reference state and points to the Phase 8 retirement record.
 
 ## Related Documents
 

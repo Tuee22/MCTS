@@ -16,31 +16,28 @@
 
 ## Phase Status
 
-✅ **Done**. All seven sprints have closed under the pinned toolchain
-(`docker compose run --rm mcts mcts test all` +
-`docker compose run --rm mcts mcts check-code` green).
-Backend (i) drives real bench and fixture transcripts via the FFI, the Q6
-evidence was historically captured through generated transcripts, the
-post-link envelope patch fills `engine_build_id`, and the foreign-engine
-recompute symbol is exposed and bound. Full cross-backend bit-equality
-across (i)..(v) under the legacy parity envelope is owned by
-[phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md);
-the surviving Phase 4 ledger items live in
+✅ **Done (retired source/evidence surface)**. Phase `4` closed the original
+backend (i) port, C ABI, legacy RNG fixture, Q6 evidence generator, and
+pre-retirement legacy-envelope verification surface. Sprint `8.4` then retired
+backend (i) from live CLI/build/verify/FFI dispatch, removed the Haskell
+`CppLegacy` FFI/driver modules, and preserved the wire tag for archived
+transcripts. The current worktree keeps `cpp-legacy/` as a retired reference plus
+the optional `mcts build legacy-fixtures` evidence generator; normal validation
+does not require a live `cpp-legacy` shared library or checked-in legacy
+transcripts. The retirement history and any surviving cleanup facts live in
 [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md).
 
 ## Phase Summary
 
-Phase `4` ports `~/MCTS_legacy/backend/` verbatim into `cpp-legacy/` with only the
-minimum changes required to expose a C ABI. The legacy keeps its
-`std::shared_ptr<uct_node>` trees, `std::mt19937_64` RNG, single-threaded design, and
-its no-draw-rule terminal semantics (`is_terminal()` ↔ `hero_wins() ||
-villain_wins()`); the legacy is a strictly verbatim regression-sanity port, not a
-performance ceiling, and the default cross-backend `verify` cohort excludes it
-through the Phase 7 `VerifyBackend` parser surface. Phase 4 also lands the `--rng cpp` C++ generator the
-other backends will draw from in Phase 5+, the historical Q6 evidence generator
-from out-of-band `MCTS_legacy` runs, and the `mcts verify legacy-parity` cohort logic
-that pins `max_plies = 10000` for the five-backend legacy-envelope
-liveness/overflow gate.
+Phase `4` retains the verbatim `~/MCTS_legacy/backend/` port under `cpp-legacy/`
+with only the C ABI and optional fixture-generation shim needed for historical
+evidence. The legacy keeps its `std::shared_ptr<uct_node>` trees,
+`std::mt19937_64` RNG, single-threaded design, and no-draw-rule terminal
+semantics (`is_terminal()` ↔ `hero_wins() || villain_wins()`). Backend (i) is a
+retired regression-sanity reference, not a performance ceiling and not a live
+operator-selectable backend. The current live `verify` cohort excludes it through
+the Phase 7 `VerifyBackend` parser surface; Q6 and Q7 are historical or optional
+external evidence rather than clean-clone validation inputs.
 
 ## Sprint 4.1: `cpp-legacy/` Verbatim Re-Port ✅
 
@@ -86,13 +83,13 @@ add a C ABI shim layer (`cpp-legacy/c-abi/`); rename the build product to
 - The `prerequisiteRegistry` (Phase 1 Sprint 1.7) gains a `gcc-cpp17` node
   declaring the `g++` minimum version with a remedy hint pointing at the
   `docker compose` entrypoint.
-- `src/MCTS/CLI/Command.hs` gains the `BuildCppLegacy` constructor on the
+- At the pre-retirement closure point, `src/MCTS/CLI/Command.hs` gained the `BuildCppLegacy` constructor on the
   `BuildCommand` family per
   [phase-1-haskell-cli-surface.md → Sprint 1.2 ownership note](phase-1-haskell-cli-surface.md).
-  The matching `mcts build cpp-legacy` Plan/Apply runs `make -C cpp-legacy`
+  The matching `mcts build cpp-legacy` Plan/Apply ran `make -C cpp-legacy`
   (the legacy-flags subset only — no PGO/BOLT/mimalloc) as a typed
-  `[Subprocess]` sequence; the constructor exists for ADT symmetry rather
-  than to apply the steelman optimisation regime.
+  `[Subprocess]` sequence; Sprint `8.4` later retired that live build leaf and
+  left `mcts build legacy-fixtures` as the supported optional evidence path.
 
 ### Validation
 
@@ -123,8 +120,9 @@ add a C ABI shim layer (`cpp-legacy/c-abi/`); rename the build product to
 ## Sprint 4.2: Haskell FFI Bindings ✅
 
 **Status**: Done
-**Implementation**: `src/MCTS/FFI/CppLegacy.hs`, `src/MCTS/FFI/Common.hs`,
-`mcts.cabal`
+**Implementation**: `cpp-legacy/c-abi/mcts_cpp_legacy.{h,cc}`,
+`src/MCTS/FFI/Common.hs`, `legacy-tracking-for-deletion.md` (Sprint 8.4
+retirement record for the removed `src/MCTS/FFI/CppLegacy.hs` live binding)
 **Docs to update**: `documents/engineering/backend_ffi_contract.md`,
 `documents/engineering/haskell_code_guide.md`
 
@@ -145,7 +143,7 @@ wrappers that make every call safe (no leaked handles, no double-free).
   `Subprocess` boundary (`runStreaming` / `capture` non-zero exits). See
   [00-overview.md → Error Handling](00-overview.md) and
   [../documents/engineering/backend_ffi_contract.md → Error rendering](../documents/engineering/backend_ffi_contract.md).
-- `src/MCTS/FFI/CppLegacy.hs` loads the smoke shared library dynamically from
+- At the pre-retirement closure point, `src/MCTS/FFI/CppLegacy.hs` loaded the smoke shared library dynamically from
   `cpp-legacy/build/libmcts_cpp_legacy.so` through `dlopen` / `dlsym` and
   converts the resolved symbols with `foreign import ccall "dynamic"`. The
   final static per-symbol `foreign import ccall` bindings and Cabal
@@ -153,9 +151,8 @@ wrappers that make every call safe (no leaked handles, no double-free).
 - `mcts.cabal` remains independent of the foreign smoke shared-library path, so
   the `cabal build all` step inside `docker compose run --rm mcts mcts
   check-code` does not require a prebuilt `libmcts_cpp_legacy.so`.
-- The `prerequisiteRegistry` gains a `libmcts-cpp-legacy-built` node that
-  validates `cpp-legacy/build/libmcts_cpp_legacy.so` exists; the remedy hint is
-  `docker compose run --rm mcts mcts build cpp-legacy`.
+- The pre-retirement `prerequisiteRegistry` gained a `libmcts-cpp-legacy-built`
+  node. Sprint `8.4` removed the live prerequisite when backend (i) retired.
 
 ### Validation
 
@@ -176,18 +173,19 @@ wrappers that make every call safe (no leaked handles, no double-free).
   `mcts_<backend>_envelope` struct, and `liftFFI` that lifts every IO
   action into `Either AppError a` (converting any `SomeException` to
   `AppError FFIFailure backend symbol message`).
-  `src/MCTS/FFI/CppLegacy.hs`, `src/MCTS/FFI/CppImperative.hs`,
-  `src/MCTS/FFI/CppFunctional.hs`, and `src/MCTS/FFI/Rust.hs` declare
-  per-backend board handle wrappers. The stand-in unit handles have been
+  At the pre-retirement closure point, `src/MCTS/FFI/CppLegacy.hs`,
+  `src/MCTS/FFI/CppImperative.hs`, `src/MCTS/FFI/CppFunctional.hs`, and
+  `src/MCTS/FFI/Rust.hs` declared per-backend board handle wrappers. The live
+  worktree now keeps `src/MCTS/FFI/Rust.hs` plus the shared dynamic loader while
+  the C++ Haskell bindings are recorded as retired. The stand-in unit handles have been
   replaced by opaque `Ptr ()` newtypes allocated and freed through
   `withDynamicBoard`, which uses `dlopen` / `dlsym` plus
   `foreign import ccall "dynamic"` function pointers for the backend
   `mcts_<backend>_new_board` / `mcts_<backend>_free_board` symbols. This keeps
   Cabal builds independent of platform-specific shared-library paths while still
-  exercising the real C ABI. The prerequisite registry now includes
-  `libmcts-cpp-legacy-built` with a `cxx` dependency, and `mcts-unit` runs a
-  bounded dynamic board acquire/free smoke when
-  `cpp-legacy/build/libmcts_cpp_legacy.so` is present.
+  exercising the real C ABI. The pre-retirement prerequisite registry included
+  `libmcts-cpp-legacy-built` with a `cxx` dependency; Sprint `8.4` removed it
+  from live prerequisite closure.
 - The container does not currently ship `valgrind`; the high-count leak gate remains
   owned by the real backend-driver validation pass once the image includes that tool.
   The bounded dynamic board acquire/free smoke now runs when
@@ -227,9 +225,12 @@ stream.
   assignment never changes a game's output.
 - `cpp-legacy/c-abi/rng.cc` wraps the standard library generator and exposes
   `cpp_rng_split_seed` for direct cross-language seed checks.
-- `src/MCTS/Rng/Cpp.hs` exposes the Haskell-side `cppSplitSeed` helper, which
-  dynamically loads `cpp_rng_split_seed` and lets `mcts-unit` compare the C++
-  fixture against `MCTS.Rng.Mix.mix`.
+- At the pre-retirement closure point, `src/MCTS/Rng/Cpp.hs` exposed the
+  Haskell-side `cppSplitSeed` helper, dynamically loaded
+  `cpp_rng_split_seed`, and let `mcts-unit` compare the C++ fixture against
+  `MCTS.Rng.Mix.mix`. Sprint `8.4` removed that live Haskell loader with the
+  rest of backend (i)'s live FFI surface; the current unit suite pins the
+  Haskell splitmix vectors directly.
 - The `--rng cpp` flag is plumbed through `BenchOptions` (Phase 3 Sprint 3.5
   reserved the field). The `mcts bench rollouts/selfplay --backend cpp-legacy
   --rng cpp` invocation is end-to-end at Sprint 4.4 closure.
@@ -241,16 +242,19 @@ stream.
 2. Same-backend determinism: two runs of the Compose invocation
    `docker compose run --rm mcts mcts bench rollouts --backend cpp-legacy --rng cpp --games 4 --seed 42`
    produce identical determinism payloads.
-3. The `prerequisiteRegistry` `libmcts-cpp-legacy-built` node passes its check.
+3. At the pre-retirement closure point, the `prerequisiteRegistry`
+   `libmcts-cpp-legacy-built` node passed its check.
 
 ### Closure Notes
 
 - Baseline landed: `cpp-legacy/c-abi/rng.h` and `rng.cc` provide the legacy C++
   RNG fixture ABI, including `cpp_rng_split_seed(master_seed, game_index)` for direct
-  cross-language splitmix fixtures. `src/MCTS/Rng/Cpp.hs` dynamically calls that
-  symbol through `foreign import ccall "dynamic"`, and `mcts-unit` checks the
-  C++ split seed against the Haskell `MCTS.Rng.Mix.mix` vectors when the legacy
-  shared library is built.
+  cross-language splitmix fixtures. During backend (i)'s live interval,
+  `src/MCTS/Rng/Cpp.hs` dynamically called that symbol through
+  `foreign import ccall "dynamic"` and `mcts-unit` checked the C++ split seed
+  against the Haskell `MCTS.Rng.Mix.mix` vectors when the legacy shared library
+  was built. The current clean-clone suite keeps the Haskell splitmix vector
+  checks without requiring the retired legacy shared library.
 - The current real foreign backend drivers use the cross-language splitmix
   schedule validated by `cpp_rng_split_seed`; `--rng cpp` keeps
   `MCTS.Rng.Mix.backendNativeSalt` at zero instead of routing a live shared
@@ -261,8 +265,10 @@ stream.
 ## Sprint 4.4: Backend (i) Game Driver and Transcript Output ✅
 
 **Status**: Done
-**Implementation**: `src/MCTS/Driver/CppLegacy.hs`, `src/MCTS/Driver/Dispatch.hs`,
-`src/MCTS/Driver.hs`, `src/MCTS/CLI/Bench.hs`, `cpp-legacy/c-abi/mcts_cpp_legacy.{h,cc}`
+**Implementation**: `cpp-legacy/c-abi/mcts_cpp_legacy.{h,cc}`,
+`cpp-legacy/tools/legacy-to-wire.cc`, `src/MCTS/Driver/Dispatch.hs`,
+`legacy-tracking-for-deletion.md` (Sprint 8.4 retirement record for the removed
+`src/MCTS/Driver/CppLegacy.hs` live driver)
 **Docs to update**: `documents/engineering/backend_ffi_contract.md`
 
 ### Objective
@@ -274,9 +280,10 @@ backend (i)'s no-draw-rule terminal semantics.
 
 ### Deliverables
 
-- `src/MCTS/Driver/CppLegacy.hs` exposes `runGameCppLegacy :: GameInputs -> App
-  Transcript`, mirroring `MCTS.Driver.Game.runGame` (Phase 3 Sprint 3.4) but
-  driving the FFI-backed backend (i) tree.
+- At the pre-retirement closure point, `src/MCTS/Driver/CppLegacy.hs` exposed
+  backend (i) through the FFI-backed search driver, mirroring the Phase 3
+  Haskell driver but driving the legacy tree. Sprint `8.4` later removed that
+  live Haskell driver.
 - **Paired build-target exemption for backend (i).** The verbatim port has no
   instrumentation to disable: the legacy C++ engine has neither a transcript
   writer nor a `read_visits` symbol of its own, and the C ABI shim in
@@ -294,8 +301,9 @@ backend (i)'s no-draw-rule terminal semantics.
   [00-overview.md → Hard Constraints item 9](00-overview.md).
 - The transcript writer emits the wire format with `backend_id = cpp-legacy`,
   preserving the same `(action_id, visits)` sparse-record layout.
-- `src/MCTS/CLI/Bench.hs` (Phase 3 Sprint 3.5) gains `--backend cpp-legacy`
-  dispatch.
+- `src/MCTS/CLI/Bench.hs` (Phase 3 Sprint 3.5) gained `--backend cpp-legacy`
+  dispatch for the pre-retirement backend (i) surface; Sprint `8.4` removed that
+  operator selection.
 
 ### Validation
 
@@ -319,16 +327,17 @@ backend (i)'s no-draw-rule terminal semantics.
   block to fire again). When `choose_best_action` still throws — the
   late-game `check_non_terminal_eval()` race path — the shim falls back to
   the highest-visit child via `make_move(action_text, false)`.
-- `src/MCTS/FFI/CppLegacy.hs` adds `cppLegacySearchMove` and resolves
+- At the pre-retirement closure point, `src/MCTS/FFI/CppLegacy.hs` added `cppLegacySearchMove` and resolved
   `mcts_legacy_search_move` dynamically alongside the existing symbols.
   `src/MCTS/Driver/CppLegacy.hs` consumes it, flips the legacy's
   current-player-at-y=0 action ids back into Haskell's absolute coordinate
   enumeration (`applyFlip`, gated on `boardSideToMove`), and surfaces
   `AppError LegacyParityRolloutOverflow` when the hard internal cap
   `legacyMaxRolloutIters = 10000` fires.
-- `src/MCTS/Driver/Dispatch.hs` routes `--backend cpp-legacy` through
-  `runGameCppLegacy` whenever `cpp-legacy/build/libmcts_cpp_legacy.so` is
-  present; bench and verify call `runBatchDispatch` instead of `runBatch`.
+- `src/MCTS/Driver/Dispatch.hs` routed `--backend cpp-legacy` through
+  `runGameCppLegacy` during the live backend (i) interval. It now rejects
+  `CppLegacy` in live dispatch and points operators at explicit external
+  evidence.
 - The `--max-plies` flag is silently ignored for backend (i) per
   [00-overview.md → Hard Constraints item 9](00-overview.md): the driver
   derives the winner from `terminalWinner maxBound` and only the
@@ -423,15 +432,18 @@ the legacy parity envelope (`max_plies = 10000`, fixture seed pinned, `--rng cpp
 
 ### Deliverables
 
-- `src/MCTS/CLI/Spec.hs` adds the `Verify VerifyCommand` subtree carrying
-  `VerifyLegacyParity LegacyParityOptions` per the project [README → CLI command
-topology](../README.md). The current worktree carries the cohort as a parsed
-  `[LegacyParityBackend]` and rejects cohorts without `LpCppLegacy` at the parser
-  boundary with `AppError VerifyCohortTooSmall`.
-- `LegacyParityOptions` pins `RngSource = CppRng`, `Threading = SingleThreaded`,
-  `max_plies = MAX_ROLLOUT_ITERS = 10000` non-user-overridable. The
-  `lpSeed :: Word64` field defaults to the report-card knob `S_LP = 42`. The
-  workload is one of `LpRollouts` or `LpSelfplay`.
+- At the pre-retirement closure point, `src/MCTS/CLI/Spec.hs` added the
+  `Verify VerifyCommand` subtree carrying
+  `VerifyLegacyParity LegacyParityOptions` per the project
+  [README → CLI command topology](../README.md). That surface parsed a
+  `[LegacyParityBackend]` cohort and rejected cohorts without `LpCppLegacy` at
+  the parser boundary with `AppError VerifyCohortTooSmall`. Sprint `8.4`
+  removed the live parser surface.
+- The historical `LegacyParityOptions` pinned `RngSource = CppRng`,
+  `Threading = SingleThreaded`, and `max_plies = MAX_ROLLOUT_ITERS = 10000`
+  non-user-overridable. The `lpSeed :: Word64` field defaulted to the
+  report-card knob `S_LP = 42`. The workload was one of `LpRollouts` or
+  `LpSelfplay`.
 - `src/MCTS/CLI/Verify.hs` runs the cohort: for each requested backend, run
   `mcts bench {rollouts,selfplay}`-equivalent with the pinned envelope, collect
   the transcripts, and verify the live envelopes. If backend (i) throws or reaches
@@ -485,12 +497,10 @@ topology](../README.md). The current worktree carries the cohort as a parsed
 
 **Status**: Done (post-link envelope patch idempotent within a build;
 runtime CPU/FP probes populate `cpu_features` / `fp_env`; recompute
-ABI exposed and bound to Haskell; Phase 7 consumes the recompute ABI for
-sidecars, divergence rows, and verification helpers)
+ABI exposed pre-retirement; Sprint 8.4 later removed the live Haskell binding)
 **Implementation**: `cpp-legacy/c-abi/mcts_cpp_legacy.{h,cc}` (envelope
 runtime probes + `mcts_legacy_recompute_move`), `cpp-legacy/Makefile`
-(post-link `envelope-build-id` target), `src/MCTS/FFI/CppLegacy.hs`
-(`cppLegacyRecomputeMove`)
+(post-link `envelope-build-id` target), `legacy-tracking-for-deletion.md`
 **Docs to update**: `documents/engineering/determinism_contract.md`,
 `documents/engineering/backend_ffi_contract.md`,
 `documents/engineering/transcript_format.md`,
@@ -620,8 +630,8 @@ Envelope Surface](../documents/engineering/backend_ffi_contract.md).
 
 **Cross-references to add:**
 
-- `system-components.md` Backend (i) row updates from `📋 Planned` to `🔄 Active`
-  on Sprint 4.1 start and `✅ Done` on Sprint 4.6 closure.
+- `system-components.md` Backend (i) row reflects the current retired reference
+  state and points to the Phase 8 retirement record.
 
 ## Related Documents
 

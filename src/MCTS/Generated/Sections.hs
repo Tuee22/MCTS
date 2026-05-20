@@ -83,7 +83,7 @@ renderPurpose path spec =
         "mcts inspect cache prune" -> "Delete stale equity-sidecar entries"
         "mcts inspect divergence" -> "Emit the cross-backend divergence-rate matrix for a single transcript"
         "mcts test all" -> "Plan/Apply: backend builds, every Cabal stanza, and pinned report card"
-        "mcts test retirement-anchor" -> "Plan/Apply: measure a backend-retirement Q1/Q2 parity anchor"
+        "mcts test retirement-anchor" -> "Plan/Apply: measure a Q1/Q2 parity anchor for currently parseable backend pairs; retired C++ anchors are historical evidence"
         "mcts test <stanza>" -> "Run a named Cabal test-suite stanza"
         "mcts lint files" -> "Check whitespace, final newlines, forbidden paths, and tracked generated-file drift"
         "mcts lint docs" -> "Run the generated-docs drift gate"

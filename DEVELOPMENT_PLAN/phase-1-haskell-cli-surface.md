@@ -77,10 +77,10 @@ the reproducible Docker development environment that every later sprint builds o
   not enter the stack.
 - `cabal.project` declares `with-compiler: ghc-9.14.1` and `Cabal 3.16.1.0` per
   [../HASKELL_CLI_TOOL.md → Toolchain pinning](../HASKELL_CLI_TOOL.md). The current
-  file records the report-card knobs (`G_R`, `G_S`, `G_V`, `G_LP`, `S_BENCH`,
-  `S_VERIFY`, `S_LP_SIMS`, `S_LP`) as pinned comments consumed by the current
-  `MCTS.CLI.Test` baseline; making those knobs machine-readable remains part of
-  Sprint `7.3`'s final report-card closure.
+  file mirrors the report-card constants (`G_R`, `G_S`, `G_V`, `G_LP`,
+  `S_BENCH`, `S_VERIFY`, `S_LP_SIMS`, `S_LP`) as pinned comments. The current
+  `MCTS.CLI.Test` baseline owns the executable constants directly; making the
+  comments machine-readable is not part of the closed operator path.
 - `app/Main.hs` is the thin entrypoint per
   [../HASKELL_CLI_TOOL.md → Project Structure](../HASKELL_CLI_TOOL.md):
 
@@ -201,36 +201,39 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
 
   ```haskell
   data BenchCommand
-    = BenchRollouts BenchOptions
-    | BenchSelfplay BenchOptions
+    = BenchRollouts [Backend] RunInputs
+    | BenchSelfplay [Backend] RunInputs
     deriving stock (Show, Eq)
 
   data VerifyCommand
-    = VerifyRollouts     VerifyOptions          -- cross-backend determinism, rollouts
-    | VerifySelfplay     VerifyOptions          -- cross-backend determinism, self-play
+    = VerifyRollouts Bool [VerifyBackend] RunInputs -- allow-stale, cohort, run inputs
+    | VerifySelfplay Bool [VerifyBackend] RunInputs
     deriving stock (Show, Eq)
 
   data InspectCommand
-    = InspectList                    -- enumerate the local transcript cache
+    = InspectList (Maybe FilePath)   -- enumerate the local transcript cache
     | InspectShow   ShowOptions      -- dump one transcript, legacy notation
     | InspectReplay ReplayOptions    -- interactive TUI replay (Sprint 7.4)
+    | InspectCache  CacheCommand      -- sidecar cache list / prune
+    | InspectDivergence DivergenceOptions
     deriving stock (Show, Eq)
 
   data LintCommand
-    = LintFiles   { lintWrite :: Bool }  -- whitespace, final newline, forbidden paths
-    | LintDocs    { lintWrite :: Bool }  -- governed docs, generated sections
-    | LintHaskell { lintWrite :: Bool }  -- fourmolu + hlint + cabal format
+    = LintFiles Bool     -- whitespace, final newline, forbidden paths
+    | LintDocs Bool      -- governed docs, generated sections
+    | LintHaskell Bool   -- fourmolu + hlint + cabal format
     | LintAll                            -- runs every lint above
     deriving stock (Show, Eq)
 
   data DocsCommand
     = DocsCheck                      -- compare rendered output against on-disk markers
-    | DocsGenerate                   -- splice rendered output into markers (idempotent)
+    | DocsGenerate Bool (Maybe FilePath)
     deriving stock (Show, Eq)
 
   data BuildCommand
-    = BuildLegacyFixtures            -- external Q6 evidence generator retained after backend (i) retirement
-    | BuildRust                      -- cdylib; rustc PGO + BOLT + mimalloc; Phase 6 Sprint 6.4
+    = BuildRust PlanOptions          -- cdylib; rustc PGO + BOLT + mimalloc; Phase 6 Sprint 6.4
+    | BuildLegacyFixtures LegacyFixtureOptions
+                                      -- external Q6 evidence generator retained after backend (i) retirement
     deriving stock (Show, Eq)
 
   data CommandsOptions = CommandsOptions
@@ -238,7 +241,7 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
     , commandsJson :: Bool           -- --json
     } deriving stock (Show, Eq)
 
-  newtype HelpOptions = HelpOptions { helpTarget :: [Text] }
+  newtype HelpOptions = HelpOptions { helpTarget :: [String] }
                         deriving stock (Show, Eq)
   ```
 
@@ -247,6 +250,9 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
   ```haskell
   data Backend    = CppLegacy | CppImperative | CppFunctional | Rust | Haskell
                     deriving stock (Show, Eq)
+  -- Wire/archive tags keep all five constructors. Live operator selection is
+  -- `Rust | Haskell`; `parseBackend` and `VerifyBackend` exclude retired C++
+  -- backends after Sprints 8.4-8.6.
 
   data VerifyBackend where
     VRust          :: VerifyBackend
@@ -270,49 +276,19 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
   -- CLI syntax: `--sims N` parses as `FixedSims N`; `--sims N0:N1` parses as
   -- `RampedSims N0 N1` (initial-move budget N0, per-move budget N1 thereafter).
 
-  newtype TranscriptRef = TranscriptRef Text          -- sha256 prefix, git-style
-                          deriving stock (Show, Eq)
+  -- Hash-prefix references are stored as `String` fields in the parsed option
+  -- records and resolved by `MCTS.Transcript.Lookup`.
   ```
 
   Options records, with the README-pinned defaults and parse-time invariants
   documented inline:
 
   ```haskell
-  data BenchOptions = BenchOptions
-    { benchBackends  :: NonEmpty Backend
-    , benchRng       :: RngSource
-    , benchThreading :: Threading       -- default: MultiThreaded { workers = 8 }
-    , benchGames     :: Int
-    , benchSeed      :: Word64
-    , benchMaxPlies  :: Word16          -- default: 200; ignored for backend (i)
-    , benchSims      :: SimBudget       -- default: FixedSims 10_000; ignored by bench rollouts
-    } deriving stock (Show, Eq)
-
-  data VerifyOptions = VerifyOptions
-    { verifyBackends  :: NonEmpty VerifyBackend  -- (i) cannot appear (see VerifyBackend)
-    , verifyThreading :: Threading              -- default: SingleThreaded
-    , verifyGames     :: Int
-    , verifySeed      :: Word64
-    , verifyMaxPlies  :: Word16                 -- default: 200; pinned across the cohort
-    , verifySims      :: SimBudget              -- default: FixedSims 10_000; ignored by verify rollouts
-    , verifyAllowStale :: Bool                  -- default: False; backend-slot envelope warnings only
-    -- RngSource pinned to CppRng on the verify subtree (no verifyRng field);
-    -- attempting --rng native is rejected at parse time per Sprint 2.5.
-    -- "must include >= 2 backends" is parse-time, surfaced as AppError VerifyCohortTooSmall.
-    } deriving stock (Show, Eq)
-
-  data LegacyParityOptions = LegacyParityOptions
-    { lpBackends :: NonEmpty LegacyParityBackend  -- must include LpCppLegacy (parse-time check)
-    , lpWorkload :: LegacyParityWorkload          -- rollouts or self-play
-    , lpGames    :: Int
-    , lpSeed     :: Word64                        -- fixture seed; default S_LP = 42
-    , lpSims     :: SimBudget                     -- default: FixedSims 10_000; ignored for LpRollouts
-    , lpAllowStale :: Bool                        -- default: False; backend-slot envelope warnings only
-    -- max_plies pinned to MAX_ROLLOUT_ITERS = 10000 (not user-overridable).
-    -- RngSource pinned to CppRng. Threading pinned to SingleThreaded.
-    -- (i) throwing or its longest rollout reaching the cap → AppError
-    -- LegacyParityRolloutOverflow (seed, game_index, move_index).
-    } deriving stock (Show, Eq)
+  -- Bench and verify both lower parsed options into the shared RunInputs record.
+  -- Bench stores the parsed `[Backend]` cohort next to those inputs. Verify stores
+  -- `allow-stale`, a `[VerifyBackend]` cohort, and the same `RunInputs`; parser
+  -- validation requires `--rng cpp`, at least two live verify backends, and no
+  -- retired C++ backend tags.
 
   data PlayOptions = PlayOptions
     { playBackend  :: Backend
@@ -327,23 +303,37 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
     } deriving stock (Show, Eq)
 
   data ShowOptions = ShowOptions
-    { showRef        :: TranscriptRef
+    { showRef        :: String
     , showTopN       :: Int                -- default 10; 0 = all
     , showWithEquity :: Bool               -- default False; True re-runs search
     , showEnvelope   :: Bool               -- default False; True dumps the engine envelope
+    , showCacheDir   :: Maybe FilePath
     } deriving stock (Show, Eq)
 
   data ReplayOptions = ReplayOptions
-    { replayRef         :: TranscriptRef
+    { replayRef         :: String
     , replayTopN        :: Int             -- default 10; 0 = all; live-adjustable in-app
     , replayCacheStates :: Int             -- default 20; in-memory MCTS state cache size
+    , replayCacheDir    :: Maybe FilePath
+    } deriving stock (Show, Eq)
+
+  data CacheCommand
+    = CacheList (Maybe FilePath)
+    | CachePrune Bool (Maybe FilePath) PlanOptions
+    deriving stock (Show, Eq)
+
+  data DivergenceOptions = DivergenceOptions
+    { divergenceRef      :: String
+    , divergenceCacheDir :: Maybe FilePath
     } deriving stock (Show, Eq)
   ```
 
-  `TestCommand = TestAll | TestStanza Text` is declared by
+  `TestCommand = TestAll PlanOptions | TestRetirementAnchor RetirementAnchorOptions
+  | TestStanza Text` is declared by
   [phase-7-cross-backend-verify-and-report-card.md → Sprint 7.3](phase-7-cross-backend-verify-and-report-card.md)
-  alongside the `mcts test all` runner; the top-level `Command` constructor
-  `Test TestCommand` above is the only Phase 1 obligation.
+  alongside the `mcts test all` runner and the historical retirement-anchor helper;
+  the top-level `Command` constructor `Test TestCommand` above is the Phase 1
+  registry/parser obligation.
 
 - `src/MCTS/CLI/Parser.hs` generates the `optparse-applicative` `Parser` from the
   `CommandSpec` registry. The parser is **not** the source of truth.
@@ -361,21 +351,21 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
   all carry them. Sprint 7.1's `mcts-unit` semantic renderer assertions over
   `mcts commands --json` pin the invocations into the externally-stable schema.
   The invocations are:
-  `bench rollouts` (5-backend, ST, native RNG, 100k games);
+  `bench rollouts --backend rust,haskell` (live cohort, ST, native RNG);
   `bench selfplay --backend haskell` (default 8 workers);
   `bench selfplay --workers 32`;
-  `verify selfplay --backend cpp-imperative,rust,haskell` (cross-backend);
+  `verify selfplay --backend rust,haskell` (cross-backend);
   `play --backend haskell --side hero --sims 10000` (human vs AI);
-  `play --backend haskell --side villain --vs cpp-imperative --sims 10000`
-  (Haskell-vs-(ii) spectate);
+  `play --backend haskell --side villain --vs rust --sims 10000`
+  (Haskell-vs-Rust spectate);
   `inspect list`;
   `inspect show 7a2f --top 10 --with-equity`;
   `inspect replay 7a2f --top 15`;
   `check-code` (the canonical doctrine-alignment gate);
-  `build cpp-imperative --dry-run` (Plan/Apply prints the typed Subprocess
+  `build rust --dry-run` (Plan/Apply prints the typed Subprocess
   sequence and exits 0);
-  `build cpp-imperative` (Plan/Apply executes the plan and produces
-  `cpp-imperative/build/libmcts_cpp_imperative.so`).
+  `build legacy-fixtures --output-dir /tmp/mcts-legacy-fixtures --dry-run`
+  (Plan/Apply prints the optional external Q6 evidence generator).
 
 ### Validation
 
@@ -401,7 +391,7 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
   `src/MCTS/CLI/Tree.hs`, with pure renderers delegated to the same
   `CommandSpec` registry value.
 - Parser tests via the doctrine-required `execParserPure` path now cover the
-  bench cohort, retired legacy-parity parser exclusions, `inspect show
+  bench cohort, retired-backend parser exclusions, `inspect show
   --with-equity`, and the unhappy `verify --rng native` path; semantic
   renderer/schema coverage for `mcts commands --json` lives in `mcts-unit`.
 - The 2026-05-19 alignment sweep made `bench` require an explicit backend
@@ -412,9 +402,11 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
   `mcts-unit` pins these parser invariants and the updated `commands --json`
   structure with semantic assertions.
 - Current implementation note: the concrete `VerifyCommand` constructors now
-  carry typed `[VerifyBackend]` / `[LegacyParityBackend]` lists, with Phase 7
-  Sprint 7.2 parser-boundary guards for `cpp-legacy` exclusion and
-  `LpCppLegacy` membership. The Phase 1 registry/parser surface remains closed.
+  carry typed `[VerifyBackend]` lists. Phase 8 removed the former
+  `LegacyParityBackend` parser surface with `mcts verify legacy-parity`, and
+  the current parser rejects `cpp-legacy`, `cpp-imperative`, and
+  `cpp-functional` as live operator-selected backends. The Phase 1
+  registry/parser surface remains closed.
 - The README's full concrete invocation set wraps the same leaf `Example` entries in
   the Compose entrypoint. Validated on 2026-05-15 through the root Compose entrypoint
   with `docker compose run --rm mcts mcts test mcts-unit`,
@@ -662,9 +654,9 @@ for free.
 
 ### Validation
 
-1. A trivial Plan/Apply command (e.g. a stub Sprint-1.7 `mcts toolchain check`)
-   supports `--dry-run` and `--plan-file <path>` and round-trips through
-   semantic renderer tests.
+1. Current Plan/Apply leaves such as `mcts build rust --dry-run` and
+   `mcts test all --dry-run` support `--dry-run` and `--plan-file <path>` and
+   round-trip through semantic renderer tests.
 2. A property test (Sprint 7.1) asserts `render is deterministic` over the `Plan`
    renderer.
 
@@ -684,7 +676,7 @@ for free.
   `docker compose run --rm mcts mcts test mcts-unit`,
   `docker compose run --rm mcts mcts test all --dry-run --plan-file /tmp/mcts-test-plan.txt`,
   `docker compose run --rm mcts mcts docs generate --dry-run --plan-file /tmp/mcts-docs-plan.txt`,
-  and `docker compose run --rm mcts mcts build cpp-imperative --dry-run --plan-file /tmp/mcts-build-plan.txt`.
+  and `docker compose run --rm mcts mcts build rust --dry-run --plan-file /tmp/mcts-build-plan.txt`.
 
 ## Sprint 1.6: `Subprocess` ADT and Interpreter ✅
 
@@ -771,9 +763,11 @@ typed boundary and emits structured remedy hints on failure.
 - `src/MCTS/Prerequisite.hs` defines `PrerequisiteNode` with `nodeId`,
   `nodeDescription`, dependencies, and a remedy hint per
   [../HASKELL_CLI_TOOL.md → Prerequisites as Typed Effects](../HASKELL_CLI_TOOL.md).
-- The Phase `1` registry has stub nodes for the future toolchain prereqs; Phases
-  `3`–`6` populate the concrete nodes (`ghc-9.14.1`, `cabal-3.16.1.0`, `g++-23`,
-  `rustc-stable`, `mimalloc-static`, `bolt`, `pgo-profile-dirs`).
+- The prerequisite registry carries concrete nodes for the current
+  toolchain/build surfaces: exact GHC `9.14.1`, Cabal `3.16.1.0`,
+  LLVM/BOLT/LLD `19`, Rust `1.95.0`, `mimalloc`, live Rust shared-library
+  artefacts, optional legacy evidence prerequisites, and retained profile
+  directory checks.
 - The transitive closure runs before `apply`; a single unmet node emits
   `AppError PrerequisiteUnmet` carrying the failing `nodeId`, `nodeDescription`, and
   remedy hint.
@@ -862,7 +856,7 @@ Thread one shared `Env` record through every command runner via `ReaderT Env IO`
   `docker compose run --rm mcts mcts commands --tree`,
   `docker compose run --rm mcts mcts docs check`,
   `docker compose run --rm mcts mcts lint files`, and
-  `docker compose run --rm mcts mcts build cpp-legacy --dry-run`, plus a container
+  `docker compose run --rm mcts mcts build rust --dry-run`, plus a container
   signature check showing every public command runner returns `Env.App ExitCode`.
 
 ## Sprint 1.9: `AppError`, `renderError`, Output Discipline ✅
@@ -880,10 +874,10 @@ Implement the single `AppError` ADT, the `renderError` boundary, and the `--form
 ### Deliverables
 
 - `src/MCTS/Error.hs` declares the single `AppError` ADT covering the canonical
-  17-variant set:
+  19-variant set:
   `TranscriptNotFound`, `TranscriptAmbiguous`, `TranscriptFormatUnsupported`,
-  `VerifyMismatch`, `VerifyCohortTooSmall`, `RecomputeMismatch`,
-  `LegacyParityRolloutOverflow`,
+  `VerifyMismatch`, `VerifyLengthMismatch`, `VerifyTerminatorMismatch`,
+  `VerifyCohortTooSmall`, `RecomputeMismatch`, `LegacyParityRolloutOverflow`,
   `ArchEnvelopeMismatch`, `EngineEnvelopeMismatch`, `PrerequisiteUnmet`,
   `SubprocessFailed`, `FFIFailure`, `DocsCheckDrift`, `UnknownCommand`,
   `InvalidMove`, `ParseError`, `IOErrorText` per
@@ -946,7 +940,7 @@ Implement the single `AppError` ADT, the `renderError` boundary, and the `--form
 
 ### Validation
 
-1. Golden tests over `renderError` for each `AppError` variant.
+1. Semantic tests over `renderError` for each `AppError` variant.
 2. A synthetic violation (e.g. a `print` outside `Output.hs`) is rejected by
    `docker compose run --rm mcts mcts lint haskell`.
 3. `docker compose run --rm mcts mcts <subcommand> --format json` emits valid JSON;
@@ -974,7 +968,7 @@ Implement the single `AppError` ADT, the `renderError` boundary, and the `--form
   `docker compose run --rm mcts mcts inspect list --format json`,
   `docker compose run --rm mcts mcts inspect list --format table`,
   `docker compose run --rm mcts mcts commands --format plain`,
-  `docker compose run --rm mcts mcts --color always verify selfplay --backend cpp-imperative,haskell --rng native`,
+  `docker compose run --rm mcts mcts --color always verify selfplay --backend rust,haskell --rng native`,
   and a synthetic `/tmp/HlintPrintSynthetic.hs` using `print` rejected by the
   container-pinned HLint as `Error: Use output boundary`.
 

@@ -28,12 +28,14 @@ alignment pass. Sprint `8.8` closes the no-generated-validation-data doctrine
 cleanup. The LLVM-driven GHC
 tuning flag set, RTS pin, and hot-path `INLINABLE` pragmas ship under GHC
 `9.14.1` with LLVM `19`; Sprint `8.2` ran the three profile-driven tuning
-rounds recorded below. The canonical 2026-05-19
-`docker compose run --rm mcts mcts test all` gate records Q1 ST **0.05×**,
+rounds recorded below. The historical 2026-05-19
+`docker compose run --rm mcts mcts test all` gate recorded Q1 ST **0.05×**,
 Q1 MT8 **0.41×**, Q2 ST **0.05×**, Q2 MT8 **0.20×**, Q5 Haskell **0.99×**,
-Q5 cpp-imperative **3.64×**, Q7 historical backend (i) evidence **PASS**, and
-`Verdict: Within tolerance`. Normal validation no longer depends on checked-in
-generated validation data.
+Q5 cpp-imperative **3.64×**, Q7 historical backend (i) liveness evidence
+**PASS**, and `Verdict: Within tolerance`. The current report-card implementation
+uses a frozen backend (ii) throughput anchor from that evidence and reports Q6/Q7
+as `HIST`. Normal validation no longer depends on checked-in generated
+validation data.
 
 ## Remaining Work
 
@@ -281,21 +283,21 @@ defined in
   legal-moves** and **~200× on uct-search**).
   `docker compose run --rm mcts mcts test all` remains green. The Q1 ST snapshot collapses from `Shortfall 9.76`
   to **0.89×** (Haskell faster than the non-PGO cpp-imperative
-  smoke library). The later 2026-05-19 canonical report card against
+  smoke library). The later 2026-05-19 historical report card against
   container-built artefacts records `Verdict: Within tolerance`.
 
 ### Remaining Work
 
 - None. Round 3 landed the Word128-backed wavefront-bitmap BFS and collapsed
-  the known legal-move hotspot. The 2026-05-19 canonical report card against
+  the known legal-move hotspot. The 2026-05-19 historical report card against
   container-built artefacts records Q1 ST **0.05×**, Q1 MT8 **0.41×**,
-  Q2 ST **0.05×**, Q2 MT8 **0.20×**, and `Verdict: Within tolerance`.
+  Q2 ST **0.05×**, Q2 MT8 **0.20×**, and `Verdict: Within tolerance`; the
+  current report card carries that C++ (ii) rate basis as a frozen anchor.
 
 ## Sprint 8.3: Parity Verdict and One-Known-Asymmetry Note ✅
 
 **Status**: Done
 **Implementation**: `src/MCTS/ReportCard.hs`,
-`src/MCTS/ReportCard/Render.hs`,
 `documents/engineering/compiler_runtime_tuning.md`
 **Docs to update**: `documents/engineering/compiler_runtime_tuning.md`,
 `DEVELOPMENT_PLAN/README.md` (Closure Status),
@@ -475,7 +477,8 @@ retirement.
 
 ### Current Validation State
 
-- Backend (iii)-vs-backend (ii) parity anchor recorded on 2026-05-19 with
+- Backend (iii)-vs-backend (ii) parity anchor recorded on 2026-05-19 before
+  backend (ii)'s live parser/build/dispatch retirement, using
   `docker compose run --rm mcts mcts --format json test retirement-anchor
   cpp-imperative cpp-functional`: Q1 rollouts ST ratio **0.9798**, Q1 rollouts
   MT8 ratio **0.9296**, Q2 self-play ST ratio **0.8944**, Q2 self-play MT8
@@ -533,7 +536,8 @@ Haskell as the target.
 
 ### Current Validation State
 
-- Backend (v)-vs-backend (iii) parity anchor recorded on 2026-05-19 with
+- Backend (v)-vs-backend (iii) parity anchor recorded on 2026-05-19 before
+  backend (iii)'s live parser/build/dispatch retirement, using
   `docker compose run --rm mcts mcts --format json test retirement-anchor
   cpp-functional haskell`: Q1 rollouts ST ratio **0.0491**, Q1 rollouts
   MT8 ratio **0.4115**, Q2 self-play ST ratio **0.0574**, Q2 self-play MT8

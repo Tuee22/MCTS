@@ -751,18 +751,18 @@ For a pair `(backend_A, backend_B)` against the same transcript
 | Cross-backend live cohort, `--rng native` | ≤ 5% | ≤ 0.5% | Warn in report card if exceeded; not a test failure |
 | Cross-build same backend | ≤ 1% | ≤ 0.1% | Warn in REPL; not a test failure |
 
-The non-contract thresholds (the bottom two rows) are *empirically
-pinnable* — they're placeholders for the numbers we expect to see;
-the Phase 7 report-card workload pins them in `cabal.project`
-(`MOVE_DELTA_NATIVE_MAX`, `VISIT_DELTA_NATIVE_MAX`, etc.) once we have
-measurement runs to calibrate them.
+The non-contract thresholds (the bottom two rows) are empirically pinned in
+`cabal.project`: `VISIT_DELTA_NATIVE_MAX = 0.05`,
+`MOVE_DELTA_NATIVE_MAX = 0.005`, `VISIT_DELTA_CROSS_BUILD_MAX = 0.01`, and
+`MOVE_DELTA_CROSS_BUILD_MAX = 0.001`. The text report card renders threshold
+pairs in the same order as matrix cells: visit/move.
 
 ### Surface
 
 - **REPL** (`mcts inspect replay`): cached non-originator columns load at startup,
   and the `r` key recomputes/writes the next missing backend column on demand.
   The final divergence annotation (`move-Δ: x.x%  visit-Δ: y.y%` against the
-  originator, colour-coded against thresholds) remains part of the Sprint 7.5
+  originator, colour-coded against thresholds) belongs to the Sprint 7.5
   divergence-matrix surface.
 - **Report card** (`mcts test all`): the headline output includes a
   per-backend-pair divergence matrix. Under `--rng cpp` every
@@ -790,7 +790,7 @@ below.
 | 1 | (i) `cpp-legacy` vs steelman cohort | Terminal-state and search-kernel semantics: (i) has no game-level ply cap and retains the legacy search tree; steelman backends treat `ply_count >= max_plies` as a draw with eval `0.0` and use the steelman search contract | (i) is a verbatim port and inherits the legacy's behaviour; the ply-cap draw rule and steelman search shape are behavioural improvements adopted only by the steelman cohort | (i) is excluded from the default `verify` cohort by the `VerifyBackend` GADT and retired from live CLI selection. Historical Q7 evidence preserves the former `max_plies = MAX_ROLLOUT_ITERS = 10000` liveness/overflow result; backend (i) visit-count and chosen-move equality with the steelman cohort is not contractual. |
 | 2 | (i) | RNG: always `std::mt19937_64`; no `--rng native` axis | Verbatim port of the legacy's RNG choice; the legacy ships only `std::mt19937_64` | Retired backend evidence and Q6 temp-generated envelope assertions only; live `mcts verify` cohorts under `--rng cpp` are unaffected |
 | 3 | Live FFI engines under `--rng native` | RNG: backend-salted splitmix-compatible schedule rather than the no-salt verification schedule | Benchmark streams stay backend-distinct while preserving the current cross-language search-shape implementation. Faster per-language RNGs remain future profiling work. | Bench-only divergence: visit-count bit-equality is not asserted under `--rng native`; Q3 uses `--rng cpp` verification transcripts and Q7 uses historical backend (i) evidence |
-| 4 | (i) under any `max_plies != MAX_ROLLOUT_ITERS` | Q1 / Q2 / Q5 throughput basis: (i)'s games run to a positional win and are on average longer than the ply-capped games of (ii)–(v) | (i) has no ply cap (#1), so games/sec for (i) is not on the same engine-budget basis as (ii)–(v) | Throughput **is published** with a `backendBasisFootnotes` warning per [unit_testing_policy.md → Backend (i) basis caveat](./unit_testing_policy.md) and [../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md → Sprint 7.3](../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md); the load-bearing Q1 / Q2 comparison is Haskell (v) vs C++ (ii). |
+| 4 | (i) under any `max_plies != MAX_ROLLOUT_ITERS` | Q1 / Q2 / Q5 throughput basis: (i)'s games run to a positional win and are on average longer than the ply-capped games of (ii)–(v) | (i) has no ply cap (#1), so games/sec for (i) is not on the same engine-budget basis as (ii)–(v) | Current `mcts test all` does not publish live backend (i) throughput rows; Q6/Q7 are historical evidence labels, and the load-bearing Q1 / Q2 comparison is Haskell (v) vs frozen C++ (ii). |
 | 5 | All backends, amd64 ↔ arm64 | Full determinism evidence, especially equity float bits | `libm`, FMA, denormal handling, SIMD reduction, and runtime dispatch can differ across arches | Cross-arch cohorts are rejected by layered envelope verification with `AppError ArchEnvelopeMismatch`; per-arch cache partitioning makes accidental cross-arch comparison unlikely. No cross-arch bit-equality result is treated as contractual evidence. |
 | 6 | Same backend across different build envelopes | Equity float bits and (under `--rng native`) potentially visit counts | A rebuild changes `engine_build_id`, often `libm_id`/`compiler_version`, and may change `fp_flags`/`cpu_features`. Equity drift is unavoidable; visit drift can occur if FP differences swap a tie-break upstream of a subsequent rollout under `--rng native` | `checkTranscriptEnvelopesLive` hard-fails with `AppError EngineEnvelopeMismatch (BackendSlot b)` unless `--allow-stale` is passed. `mcts inspect replay` shows a persistent yellow banner `envelope: BUILD MISMATCH - recomputed locally; equities may drift at ULP from origin`; multi-build sidecar cache (one `.eq` per `(backend, build_prefix16)`) lets the user compare across builds. Visit drift under cross-build `--rng cpp` is expected to be zero; stale backend-slot envelopes must be explicitly acknowledged with `--allow-stale` before visits are compared |
 

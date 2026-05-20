@@ -34,9 +34,9 @@ Focused Phase `2` validation passed with
 `cabal --builddir=/tmp/mcts-cabal-build test mcts-unit` and
 `cabal --builddir=/tmp/mcts-cabal-build run mcts -- docs check`; canonical
 container validation passed with `docker compose run --rm mcts mcts check-code`.
-Repository-wide generated-validation-data cleanup remains active in Sprint
-`8.8`; that later sprint owns removing checked-in transcript/renderer/report-card
-fixtures from the normal clean-clone suite.
+Sprint `8.8` later removed checked-in transcript, renderer, report-card, and
+retired-backend fixture dependencies from the normal clean-clone suite; Phase `2`
+now relies on in-memory and temporary-root codec/cache tests.
 
 ## Phase Summary
 
@@ -388,28 +388,27 @@ consumer is wired in Phase 4 once the FFI bridge exists.
   modules by applying `MCTS.Rng.Mix.mix` to the master seed and game/move index.
   A separate native-RNG module is not present in the baseline; real per-backend
   native RNG streams remain owned by the backend-driver sprints.
-- The `verify` subtree pins `--rng cpp` at parse time (the `VerifyOptions` record
-  has no `verifyRng` field); attempting `--rng native` on `verify` is rejected at
-  parse time with `AppError ParseError` messaging.
-- Backend (i) silently ignores `--rng native` and always uses `std::mt19937_64`; the
-  `CommandSpec` documentation reflects this asymmetry.
+- The `verify` subtree defaults to `--rng cpp` and rejects `--rng native` during
+  parser validation; the parsed `VerifyCommand` carries `RunInputs` plus the
+  live `[VerifyBackend]` cohort and `allow-stale` flag.
+- Retired backend (i)'s native RNG asymmetry is historical evidence only. The current
+  live operator surface accepts `--rng native` for `rust` and `haskell` benchmarks/play,
+  and requires `--rng cpp` for `verify`.
 
 ### Validation
 
-1. Golden test pins `mix(42, 0) = <Word64>`, `mix(42, 1) = <Word64>` for a chosen
-   seed pair; the values come from the canonical splitmix64 spec.
+1. Unit tests pin `mix(42, 0) = <Word64>`, `mix(42, 1) = <Word64>` for a chosen
+   seed pair without checked-in generated fixture files; the values come from
+   the canonical splitmix64 spec.
 2. A property test asserts `mix master_seed n` is bijective in `n` for fixed
    `master_seed` over the first 1M values of `Word64`.
-3. Cross-language roundtrip: for a small generated table of `(master_seed, game_index)`
-   pairs, the Haskell `mix masterSeed gameIndex` must equal the initial-state
-   word produced by the C ABI `cpp_rng_split(masterSeed, gameIndex)` from
-   [phase-4-cpp-legacy-port-and-ffi-bridge.md → Sprint 4.3](phase-4-cpp-legacy-port-and-ffi-bridge.md).
-   The check is deferred to Phase 4 closure (the FFI shim must exist) but the
-   table is constructed inside the test so the assertion lands the moment the
-   shim is callable without committing generated validation data.
+3. Cross-language agreement is asserted through generated test data and the live
+   `(rust, haskell)` verify/recompute schedule. Historical C++ RNG split-seed
+   evidence remains recorded with backend (i), but the current clean-clone test suite
+   does not require a live `cpp-legacy` shared library or committed fixture table.
 4. `docker compose run --rm mcts mcts bench rollouts --rng native --backend haskell --games 8 --seed 42`
-   runs to completion once Phase 3 closure connects the engine to the CLI surface;
-   placeholder smoke test in this sprint asserts the CLI parses the flag matrix.
+   runs to completion through the Phase 3 engine wiring; parser and execution
+   coverage assert the flag matrix.
 
 ### Closure Notes
 
@@ -420,10 +419,10 @@ consumer is wired in Phase 4 once the FFI bridge exists.
   bounded bijection check (`mix 42 i` is unique for `i ∈ [0, 1023]`). The
   full `Word64`-range bijection property remains scheduled for Sprint 7.1's
   property-based coverage.
-- The C++ `cpp_rng_split_seed` shim is callable from Haskell through
-  `MCTS.Rng.Cpp`; when `cpp-legacy/build/libmcts_cpp_legacy.so` is present,
-  `mcts-unit` checks generated C++ split-seed values against the Haskell splitmix
-  mixer without relying on committed fixture data.
+- The former C++ `cpp_rng_split_seed` shim retired with backend (i)'s live FFI
+  surface. Current unit and cross-backend tests pin the Haskell splitmix values,
+  assert per-backend native salts in `MCTS.Rng.Mix`, and exercise the live
+  Rust/Haskell `--rng cpp` schedule without relying on committed fixture data.
 - Baseline parser coverage rejects user-supplied `--rng native` on `verify` at parse
   time rather than silently overriding the parsed run inputs.
 
@@ -670,8 +669,8 @@ and `castWord64ToDouble` round-trips.
 
 **Cross-references to add:**
 
-- `system-components.md` Transcript Codec rows update from `📋 Planned` to
-  `🔄 Active` / `✅ Done` as each sprint lands.
+- `system-components.md` Transcript Codec rows reflect the current `✅ Done`
+  transcript/cache/envelope baseline.
 
 ## Related Documents
 

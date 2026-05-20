@@ -20,8 +20,9 @@
 surfaces: Sprint 6.1 landed the arena-MCTS engine with the functional-style API
 surface (`std::optional<State>` move attempts, `std::variant<ChildIdx, NoChild>`
 select outcomes) on top of the same data layout as backend (ii); Sprint 6.2
-wired the visit-vector dispatch plus the typed `cppFunctionalPgoBoltPlan`
-pipeline; Sprint 8.6 later retired backend (iii)'s live CLI/build/verify/FFI
+wired the visit-vector dispatch plus the typed C++ PGO/BOLT pipeline that was
+live at that closure point; Sprint 8.6 later retired backend (iii)'s live
+CLI/build/verify/FFI
 surface and recorded its historical evidence outside normal validation. Backend
 (iv) Rust ships a real arena MCTS
 (`rust/src/{tree.rs,search.rs,xoshiro256pp.rs}`), a real Corridors gameplay
@@ -87,7 +88,7 @@ underneath so the optimisation stack still applies.
 
 ### Deliverables
 
-- `cpp-functional/src/` contains the functional-style engine. Same arena, same
+- `cpp-functional/engine/` contains the functional-style engine. Same arena, same
   scratch board, same `Word16` ply counter and ply-cap draw rule as backend
   (ii); the difference is API shape and data-flow style:
   - `Move` operations return `std::optional<Board>` instead of mutating in place
@@ -120,9 +121,9 @@ underneath so the optimisation stack still applies.
 - **Paired build targets** per
   [../README.md → Cross-backend verification → Compile-time toggle for
   instrumentation](../README.md), mirroring Phase 5 Sprint 5.1. The
-  functional-style self-play driver in `cpp-functional/src/driver.cc` is
-  parameterised by the same `Instrumentation` template type as the imperative
-  driver. Two artefacts are produced:
+  C ABI translation unit is compiled with `MCTS_FUNCTIONAL_INSTRUMENTED=0` or
+  `1`, mirroring the imperative backend's macro-selected instrumentation
+  surface. Two artefacts are produced:
   `libmcts_cpp_functional_bench.{so,a}` (driver instantiated with
   `InstrumentedOff`) and `libmcts_cpp_functional_instrumented.{so,a}` (driver
   instantiated with `InstrumentedOn`). The engine TU is shared; only the driver
@@ -190,15 +191,11 @@ underneath so the optimisation stack still applies.
 
 ## Sprint 6.2: FFI Bindings, Build Harness, Driver for Backend (iii) ✅
 
-**Status**: Done (visit-vector FFI binding +
-`cppFunctionalPgoBoltPlan` typed Subprocess pipeline shared with
-backend (ii) + dispatcher routing through real FFI when the shared
-library is present)
+**Status**: Done (visit-vector FFI binding and the C++ PGO/BOLT pipeline landed
+pre-retirement; Sprint 8.6 later removed the live `cpp-functional`
+CLI/build/verify/FFI surface)
 **Implementation**: `cpp-functional/c-abi/`, `cpp-functional/Makefile`,
-`src/MCTS/CLI/Build.hs::cppFunctionalPgoBoltPlan`,
-`src/MCTS/Driver/CppFunctional.hs`, `src/MCTS/Driver/ForeignSearch.hs`,
-`src/MCTS/Driver/Dispatch.hs`,
-`src/MCTS/CLI/Bench.hs`, `src/MCTS/CLI/Verify.hs`
+`cpp-functional/RETIRED.md`, `legacy-tracking-for-deletion.md`
 **Docs to update**: `documents/engineering/backend_ffi_contract.md`,
 `documents/engineering/cli_command_surface.md`
 
@@ -213,8 +210,9 @@ backend (iii) anchor.
 
 - At Sprint 6.2 closure, `src/MCTS/FFI/CppFunctional.hs` declared the per-symbol bindings; same `unsafe`
   / `safe` split as (i) and (ii).
-- At Sprint 6.2 closure, `src/MCTS/Driver/CppFunctional.hs` exposed `runGameCppFunctional :: GameInputs
-  -> App Transcript`.
+- At Sprint 6.2 closure, `src/MCTS/Driver/CppFunctional.hs` exposed the
+  functional backend through the shared foreign-search driver. Sprint `8.6`
+  later removed that live Haskell driver.
 - At Sprint 6.2 closure, `src/MCTS/CLI/Build.hs` extended the Plan/Apply build harness with
   `mcts build cpp-functional`; the plan structure (instrumented build →
   training run → optimised build → BOLT post-link → `mimalloc` link) mirrors
@@ -254,15 +252,13 @@ backend (iii) anchor.
   (ii), now calling `mcts_functional_search_move` over the visit-vector
   ABI (sorted `(action_id, visits)` + chosen action) rather than the
   chosen-action-only smoke.
-- `cppFunctionalPgoBoltPlan` (in `src/MCTS/CLI/Build.hs`) reuses the
-  shared `pgoBoltPlan` builder so the (iii) pipeline is the (ii)
-  pipeline with the backend identifier rewritten — the (ii)-vs-(iii)
-  style-isolation discipline applies at the build harness level. The
-  `mcts-unit::exerciseCppImperativeBuildPlan` test enforces this
-  invariant.
-- `MCTS.Driver.Dispatch.runBatchDispatch` routes `--backend cpp-functional`
-  through the real FFI driver whenever
-  `cpp-functional/build/libmcts_cpp_functional.so` is present.
+- At the pre-retirement closure point, the `cpp-functional` PGO/BOLT plan reused
+  the shared C++ builder so the (iii) pipeline was the (ii) pipeline with the
+  backend identifier rewritten. Sprint `8.6` later retired the live build leaf.
+- `MCTS.Driver.Dispatch.runBatchDispatch` routed `--backend cpp-functional`
+  through the real FFI driver during the live backend (iii) interval. It now
+  rejects `CppFunctional` in live dispatch and preserves the wire tag only for
+  archived transcript decoding.
 
 ## Sprint 6.3: `rust/` Rust Engine and `cdylib` ✅
 
@@ -402,10 +398,12 @@ exposed as a `cdylib` for the Haskell FFI.
 - `MCTS.Driver.Dispatch.runBatchDispatch` routes `--backend rust`
   through `runForeignSearchGame withRustSearchGame` whenever the
   cdylib at `rust/target/release/libmcts_rust.so` is present.
-- `docker compose run --rm mcts mcts test all` is green (mcts-unit,
-  mcts-integration, mcts-cross-backend, mcts-legacy-parity, mcts-haskell-style) and
-  `docker compose run --rm mcts mcts check-code` passes. Sprint 7.2 later tightens
-  the cross-backend smoke cohorts so `VerifyMismatch` fails the stanza.
+- At Sprint 6.3 closure, `docker compose run --rm mcts mcts test all` was green
+  with the then-live legacy-parity stanza, and `docker compose run --rm mcts mcts
+  check-code` passed. Sprint 7.2 later tightened the cross-backend smoke cohorts
+  so `VerifyMismatch` failed the stanza; Sprint 8.4 retired
+  `mcts-legacy-parity`, leaving four live Cabal test stanzas in the current
+  clean-clone suite.
 
 ### Remaining Work
 
@@ -455,8 +453,11 @@ dispatch, and the verify dispatch.
   `rust/target/release/libmcts_rust.bolted.so`; the install step copies the
   bolted-or-PGO-fallback artefact to the canonical name. Same `unsafe` / `safe`
   choice per symbol.
-- `src/MCTS/Driver/Rust.hs` exposes `runGameRust :: GameInputs -> App
-  Transcript`.
+- `src/MCTS/Driver/Rust.hs` exposes
+  `runGameRust :: RunInputs -> Word32 -> IO (Either AppError GameTranscript)`
+  for bounded dynamic-FFI smoke coverage; live bench/verify dispatch for Rust
+  routes through `MCTS.Driver.Dispatch.runBatchDispatch` and
+  `runForeignSearchGame withRustSearchGame` when the cdylib is present.
 - `src/MCTS/CLI/Build.hs` extends the Plan/Apply build harness with
   `mcts build rust`. The plan is a typed `[Subprocess]` sequence:
   1. **Instrumented build.** `cargo build --release` with

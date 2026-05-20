@@ -265,7 +265,7 @@ Backend (i)'s throughput is published for reference only and is **not on the sam
 
 The doctrine-mandatory canonical test command. `mcts test all` is the developer-facing entrypoint that proves whether the POC's hypotheses hold. It does three things, in order:
 
-1. **Builds canonical backend artefacts.** The same short-lived container runs
+1. **Builds the live foreign backend artefact.** The same short-lived container runs
    `mcts build rust` before any FFI-sensitive tests or report-card measurements.
    Retired-backend evidence is not read from checked-in generated files; normal
    validation depends only on live builds, code, and data generated inside the
@@ -273,8 +273,8 @@ The doctrine-mandatory canonical test command. `mcts test all` is the developer-
 2. **Delegates to `cabal test`.** Runs every `test-suite` stanza below, each
    `type: exitcode-stdio-1.0`, with `tasty` as the in-stanza runner.
 3. **Executes a fixed POC report-card workload.** Q1/Q2/Q5 use bounded
-   no-transcript timing measurements over the pinned game counts, and Q3/Q7 use
-   explicit `verify` cohorts pinned in `cabal.project`.
+   no-transcript timing measurements over the pinned game counts, Q3 uses
+   explicit live `verify` cohorts, and Q7 is historical retired-backend evidence.
 4. **Prints a single tidy summary block** on stdout that answers the POC's
    headline questions (Q1–Q7 below) in one screenful.
 
@@ -301,7 +301,7 @@ The report-card workload runs *after* `cabal test` succeeds and answers:
 2. **Q2.** Does pure Haskell match backend (ii) on benchmark (b) self-play, single-threaded and on 8 workers?
 3. **Q3.** Do live backend slots (iv), (v) produce bit-for-bit identical determinism payloads under `--rng cpp` (round-robin verify on both rollouts and self-play)?
 4. **Q4.** Does same-backend determinism hold across runs (same backend, same seed, same logical game inputs ⇒ identical determinism payloads) for every backend?
-5. **Q5.** How does each backend scale from `--threading single` to `--threading multi --workers 8`? The text summary block highlights Haskell and C++ (ii) as the two anchors; the full per-backend scaling table is available via `mcts test all --format json`.
+5. **Q5.** How do the Haskell and frozen C++ (ii) anchors scale from `--threading single` to `--threading multi --workers 8`? The text and JSON summaries expose those two anchor rows.
 6. **Q6.** Does the verbatim port (i) faithfully reproduce `MCTS_legacy` on benchmark (b)?
 7. **Q7.** Is backend (i)'s retired legacy-envelope measurement recorded as historical evidence after the live no-overflow gate passed?
 
@@ -326,12 +326,14 @@ docker compose run --rm mcts mcts verify selfplay \
 # Q7 — retired backend (i), historical evidence; not a clean-clone test input
 ```
 
-Game counts (`$G_R`, `$G_S`, `$G_V`), per-move sim budgets (`$S_BENCH`, `$S_VERIFY`), and the retired legacy-envelope knobs (`$G_LP`, `$S_LP_SIMS`, `$S_LP`) are pinned in `cabal.project` so report-card workloads are reproducible across hosts. The pinned values are: `G_R = 1_000`, `G_S = 4`, `G_V = 4`, `G_LP = 2`, `S_BENCH = 500`, `S_VERIFY = 500`, `S_LP_SIMS = 10_000`, `S_LP = 42`. `mcts test all` measures live Haskell/Rust rows with the production monotonic clock through `runBatchNoWriteDispatch` and uses temporary cache roots for any transcript-producing checks. Q3 uses `runBatchDispatch`, so the headline determinism rows exercise live FFI engines when cdylibs are present and fall back to the in-process runner only when needed for self-contained local stanzas. Q3 compares nonzero visit vectors for backends (iv)..(v). Q4 (same-backend determinism) is covered by the `mcts-integration` stanza, including decoded real-binary transcript determinism generated during the test run. Q6/Q7 retired-backend evidence is historical or optional external/local data; the clean-clone suite validates decoder semantics and legacy-envelope invariants using synthetic transcripts generated in temporary directories, not committed fixture files.
+Game counts (`$G_R`, `$G_S`, `$G_V`), per-move sim budgets (`$S_BENCH`, `$S_VERIFY`), and the retired legacy-envelope knobs (`$G_LP`, `$S_LP_SIMS`, `$S_LP`) are implemented in `MCTS.CLI.Test` and mirrored in `cabal.project` comments. The pinned values are: `G_R = 1_000`, `G_S = 4`, `G_V = 4`, `G_LP = 2`, `S_BENCH = 500`, `S_VERIFY = 500`, `S_LP_SIMS = 10_000`, `S_LP = 42`. `mcts test all` measures live Haskell rows with the production monotonic clock through `runBatchNoWriteDispatch`, compares them against the frozen C++ (ii) throughput anchor, and uses temporary cache roots for any transcript-producing checks. Q3 uses `runBatchDispatch`, so the headline determinism rows exercise live FFI engines when cdylibs are present and fall back to the in-process runner only when needed for self-contained local stanzas. Q3 compares nonzero visit vectors for backends (iv)..(v). Q4 (same-backend determinism) is covered by the `mcts-integration` stanza, including decoded real-binary transcript determinism generated during the test run. Q6/Q7 retired-backend evidence is historical or optional external/local data; the clean-clone suite validates decoder semantics and legacy-envelope invariants using synthetic transcripts generated in temporary directories, not committed fixture files.
 
 ### Tidy summary block
 
-Rendered to stdout at the end of `mcts test all`. Literal renderer-baseline
-example for semantic renderer assertions.
+Rendered to stdout at the end of `mcts test all`. The block below is a
+constructed renderer fixture for the semantic renderer assertions; live runs
+replace the logical-baseline ratio fields with measured throughput ratios and
+render `Verdict: Within tolerance` when the parity gate passes.
 
 ```
 MCTS POC report card - seed=42, max-plies=200, host=amd64, ghc=9.14.1
@@ -347,9 +349,9 @@ Q5  MT scaling  C++ (ii)  1->8 workers         1.00x   (logical baseline)
 Q6  Legacy port (i) vs MCTS_legacy             HIST    (retired evidence, external)
 Q7  Legacy envelope, backend (i) retired       HIST    (retirement evidence recorded)
 
-Divergence matrix (visit/move, cpp RNG; thresholds native 0.005/0.050, cross-build 0.001/0.010)
-rust            0.0000/0.0000  0.0000/0.0000  0.0000/0.0000
-haskell         0.0000/0.0000  0.0000/0.0000  0.0000/0.0000
+Divergence matrix (visit/move, cpp RNG; thresholds native 0.050/0.005, cross-build 0.010/0.001)
+rust            0.0000/0.0000  0.0000/0.0000
+haskell         0.0000/0.0000  0.0000/0.0000
 
 cabal test                                     PASS    (mcts-unit, mcts-integration, mcts-cross-backend, mcts-haskell-style)
 
@@ -891,7 +893,7 @@ MCTS/
                        --   no checked-in generated transcripts or golden data
   docker/              -- Dockerfile
   compose.yaml         -- root-level Docker Compose entrypoint
-  cabal.project        -- toolchain pin, report-card knobs ($G_*, $S_*, $S_LP)
+  cabal.project        -- toolchain pin, report-card constant comments
   fourmolu.yaml        -- formatter config (per HASKELL_CLI_TOOL.md)
   DEVELOPMENT_PLAN/    -- authoritative execution-ordered development plan
   documents/           -- documentation standards and project-specific engineering elaborations

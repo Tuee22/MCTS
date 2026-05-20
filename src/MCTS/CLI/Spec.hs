@@ -97,7 +97,7 @@ commandSpec =
                 `withOptions` planOptions
             , leaf
                 "retirement-anchor"
-                "Measure backend retirement parity anchor"
+                "Measure backend parity anchor"
                 "mcts test retirement-anchor rust haskell --format json"
                 `withOptions` planOptions
             , leaf "<stanza>" "Run one cabal stanza" "mcts test mcts-unit"

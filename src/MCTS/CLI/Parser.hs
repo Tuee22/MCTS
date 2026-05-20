@@ -350,7 +350,7 @@ testParser =
                 "retirement-anchor"
                 ( OA.info
                     (retirementAnchorOptionsParser <**> OA.helper)
-                    (OA.progDesc "Measure backend retirement parity anchor")
+                    (OA.progDesc "Measure backend parity anchor")
                 )
             )
 

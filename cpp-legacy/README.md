@@ -1,6 +1,20 @@
 # cpp-legacy
 
-Placeholder for backend (i), the verbatim `~/MCTS_legacy/backend/core` re-port.
-The current runnable baseline uses the in-process logical backend for all five
-backend identifiers; this tree exists so the build harness and plan-owned
-locations are concrete while the real C ABI port remains active work.
+Backend (i), the retired verbatim `~/MCTS_legacy/backend/core` re-port.
+
+This tree retains the imported legacy core, C ABI wrapper source, RNG shim, and
+`legacy-to-wire` evidence generator for historical audit work. Live
+CLI/build/verify/FFI dispatch for `cpp-legacy` retired in Phase 8 Sprint 8.4, so
+normal validation does not build or load `cpp-legacy` as a selectable backend.
+
+The supported command that still touches this tree is the optional external
+evidence generator:
+
+```bash
+docker compose run --rm mcts mcts build legacy-fixtures --output-dir /tmp/mcts-legacy-fixtures
+```
+
+Generated legacy evidence belongs in an explicit external or ignored artifact
+root, not in repository validation fixtures. See `RETIRED.md` and
+`DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md` for the
+retirement record.

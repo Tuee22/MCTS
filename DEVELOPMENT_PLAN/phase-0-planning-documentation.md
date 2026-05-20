@@ -222,19 +222,19 @@ rule L.
     `.sh` wrappers.
   - **Testing Doctrine and Test Organization**: per-tier stanza model,
     `type: exitcode-stdio-1.0`, `tasty`, `execParserPure`, property invariants
-    `decode . encode == id`, `render is deterministic`, `parser roundtrips`, golden
-    tests with sentinel placeholders for non-deterministic content.
+    `decode . encode == id`, `render is deterministic`, `parser roundtrips`, and
+    semantic / temporary-root tests instead of checked-in generated validation data.
   - **Output Rules**: `--format json|table|plain`, default `table` on TTY else
     `plain`, `--color auto|always|never`, `--no-color`.
   - **Error Handling**: single `AppError` ADT, `renderError :: AppError -> Text`,
     forbidden `print`, `exitFailure`, direct terminal formatting outside the output
-    layer. The audit confirms the canonical 17-variant list is named in
+    layer. The audit confirms the canonical 19-variant list is named in
     [system-components.md → CLI Doctrine Components](system-components.md),
     [phase-1-haskell-cli-surface.md → Sprint 1.9](phase-1-haskell-cli-surface.md),
     and the doctrine-scope Error Handling bullet in [00-overview.md](00-overview.md):
     `TranscriptNotFound`, `TranscriptAmbiguous`, `TranscriptFormatUnsupported`,
-    `VerifyMismatch`, `VerifyCohortTooSmall`, `RecomputeMismatch`,
-    `LegacyParityRolloutOverflow`,
+    `VerifyMismatch`, `VerifyLengthMismatch`, `VerifyTerminatorMismatch`,
+    `VerifyCohortTooSmall`, `RecomputeMismatch`, `LegacyParityRolloutOverflow`,
     `ArchEnvelopeMismatch`, `EngineEnvelopeMismatch`, `PrerequisiteUnmet`,
     `SubprocessFailed`, `FFIFailure`, `DocsCheckDrift`, `UnknownCommand`,
     `InvalidMove`, `ParseError`, `IOErrorText`. `TranscriptFormatUnsupported`,
@@ -273,8 +273,9 @@ rule L.
   - **Q1–Q7 mapping**: each of `Q1`, `Q2`, `Q3`, `Q4`, `Q5`, `Q6`, `Q7` appears in
     the `ReportCard` deliverable list (Sprint 7.3).
   - **Report-card pinned values**: each of `G_R`, `G_S`, `G_V`, `G_LP`, `S_BENCH`,
-    `S_VERIFY`, `S_LP_SIMS`, `S_LP` appears in `cabal.project` (Sprint 1.1) and in
-    `system-components.md`.
+    `S_VERIFY`, `S_LP_SIMS`, `S_LP` appears in `cabal.project` comments (Sprint
+    1.1) and in `system-components.md`; live executable values are implemented in
+    `MCTS.CLI.Test`.
 - An out-of-scope counter-grep confirms no sprint schedules adoption of any
   out-of-scope doctrine section. The following identifiers must produce **zero** hits
   in `DEVELOPMENT_PLAN/*.md` except inside an explicit "out of scope" or "informational
@@ -335,9 +336,9 @@ the surrounding phase documents and engineering docs cited above.
 | Prerequisites as Typed Effects (`prerequisiteRegistry`, `PrerequisiteUnmet`) | Phase 1 Sprint 1.7 |
 | Application Environment (`ReaderT Env IO`) | Phase 1 Sprint 1.8 |
 | Lint/Format/Code-Quality Stack (`fourmolu.yaml` twelve settings, `.hlint.yaml`, `forbiddenPathRegistry`) | Phase 1 Sprint 1.4 |
-| Testing Doctrine (`tasty`, `execParserPure`, property invariants, golden tests) | Phase 1 Sprints 1.4/1.9 + Phase 7 Sprint 7.1 |
+| Testing Doctrine (`tasty`, `execParserPure`, property invariants, generated-in-test validation data) | Phase 1 Sprints 1.4/1.9 + Phase 7 Sprint 7.1 + Phase 8 Sprint 8.8 |
 | Output Rules (`--format`, `--color`, `--no-color`) | Phase 1 Sprint 1.9 |
-| Error Handling (17-variant `AppError`, `renderError`, forbidden `print`/`exitFailure`) | Phase 1 Sprint 1.9 |
+| Error Handling (19-variant `AppError`, `renderError`, forbidden `print`/`exitFailure`) | Phase 1 Sprint 1.9 |
 | GADT-Indexed State Machines (phantom indices, singleton witnesses) | `documents/engineering/haskell_code_guide.md`; Phase 7 Sprint 7.2 binding |
 | Project-level documentation standards (six elements) | Phase 0 Sprint 0.1 + Phase 1 Sprint 1.3 |
 
@@ -355,7 +356,8 @@ Sprint `4.2` and
 [../documents/engineering/backend_ffi_contract.md](../documents/engineering/backend_ffi_contract.md).
 
 **Report-card knobs** (`G_R`, `G_S`, `G_V`, `G_LP`, `S_BENCH`, `S_VERIFY`,
-`S_LP_SIMS`, `S_LP`) are pinned in `cabal.project` and listed by name in
+`S_LP_SIMS`, `S_LP`) are mirrored in `cabal.project` comments, implemented for
+the live path in `MCTS.CLI.Test`, and listed by name in
 [system-components.md](system-components.md). `Q1`–`Q7` are each named in
 [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md)
 Sprint `7.3`.
@@ -424,8 +426,8 @@ doctrine — are:
   application environment, and error handling.
 - `documents/engineering/determinism_contract.md` — project-specific: the RNG split,
   per-game `splitmix64(master_seed, game_index)` seed derivation, ply-cap draw rule,
-  visit-count vs equity asymmetry, legacy parity envelope, the `VerifyBackend` /
-  `LegacyParityBackend` GADT split.
+  visit-count vs equity asymmetry, the historical legacy parity envelope, and the
+  current `VerifyBackend` GADT that excludes retired backend tags from live verify.
 - `documents/engineering/transcript_format.md` — project-specific: little-endian
   binary wire format, single-byte action enumeration, content addressing,
   hash-prefix lookup, header layout.
