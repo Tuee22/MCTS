@@ -65,7 +65,7 @@ renderCommandCell path =
         "mcts build rust" -> path <> " [--dry-run] [--plan-file <path>]"
         "mcts build legacy-fixtures" ->
             path
-                <> " [--output-dir <dir>] [--seed <u64>] [--games <n>] [--sims <n>] [--dry-run] [--plan-file <path>]"
+                <> " --output-dir <dir> [--seed <u64>] [--games <n>] [--sims <n>] [--dry-run] [--plan-file <path>]"
         _ -> path
 
 renderPurpose :: String -> CommandSpec -> String
@@ -95,7 +95,7 @@ renderPurpose path spec =
         "mcts help" -> "Focused help pointer for a target command"
         "mcts check-code" -> "Doctrine alignment, formatter, HLint, warning-clean build, docs check"
         "mcts build rust" -> "Plan/Apply: Rust backend build harness"
-        "mcts build legacy-fixtures" -> "Plan/Apply: regenerate legacy Q6 fixture transcripts"
+        "mcts build legacy-fixtures" -> "Plan/Apply: generate external legacy Q6 evidence"
         _ -> summary spec
 
 spliceMarkerRegion :: String -> String -> String -> String -> Maybe String

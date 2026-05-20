@@ -18,6 +18,8 @@ data AppError
     | TranscriptAmbiguous String [String]
     | TranscriptFormatUnsupported String
     | VerifyMismatch Backend Backend Int Int MoveRecord MoveRecord
+    | VerifyLengthMismatch Backend Backend String Int Int
+    | VerifyTerminatorMismatch Backend Backend Int String String
     | VerifyCohortTooSmall String
     | RecomputeMismatch Backend Int Int MoveRecord MoveRecord
     | LegacyParityRolloutOverflow Integer Int Int
@@ -55,8 +57,30 @@ renderError err =
                 <> show leftRecord
                 <> " right="
                 <> show rightRecord
-        VerifyCohortTooSmall detail ->
-            "verify cohort too small: " <> detail
+        VerifyLengthMismatch left right scope leftCount rightCount ->
+            "verify length mismatch: "
+                <> backendIdentifier left
+                <> " vs "
+                <> backendIdentifier right
+                <> " scope="
+                <> scope
+                <> " left="
+                <> show leftCount
+                <> " right="
+                <> show rightCount
+        VerifyTerminatorMismatch left right game leftTerminator rightTerminator ->
+            "verify terminator mismatch: "
+                <> backendIdentifier left
+                <> " vs "
+                <> backendIdentifier right
+                <> " game="
+                <> show game
+                <> " left="
+                <> leftTerminator
+                <> " right="
+                <> rightTerminator
+        VerifyCohortTooSmall reason ->
+            "verify cohort too small: " <> reason
         RecomputeMismatch backend game move leftRecord rightRecord ->
             "recompute mismatch: "
                 <> backendIdentifier backend

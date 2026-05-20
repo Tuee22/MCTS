@@ -4,6 +4,9 @@ module MCTS.App
     ) where
 
 import Control.Monad.IO.Class (liftIO)
+import Data.Bits (shiftL, (.|.))
+import qualified Data.ByteString as ByteString
+import Data.Word (Word64, Word8)
 import MCTS.CLI.Bench (runBench)
 import MCTS.CLI.Build (runBuild)
 import MCTS.CLI.Command
@@ -22,11 +25,11 @@ import MCTS.Driver (defaultRunInputs)
 import qualified MCTS.Driver as Driver
 import MCTS.Driver.Dispatch (runBatchDispatch)
 import qualified MCTS.Env as Env
-import MCTS.Types (Backend, RngSource (NativeRng), backendIdentifier, simPerMove)
+import MCTS.Types (Backend, backendIdentifier, simPerMove)
 import qualified MCTS.Types as Types
 import System.Environment (getArgs)
 import System.Exit (ExitCode (..), exitWith)
-import System.IO (hIsTerminalDevice, stdin)
+import System.IO (IOMode (ReadMode), hIsTerminalDevice, stdin, withBinaryFile)
 
 main :: IO ()
 main = do
@@ -91,24 +94,36 @@ runPlay options = do
 -- the non-interactive batch smoke that the harness exercises.
 runPlayInteractive :: PlayOptions -> Env.App ExitCode
 runPlayInteractive options = do
-    let seed = maybe 42 fromIntegral (playSeed options) :: Integer
-        sims = max 1 (simPerMove (playSims options))
-        maxPlies = Types.runMaxPlies mempty
+    seed <- liftIO (resolvePlaySeed options)
+    let sims = max 1 (simPerMove (playSims options))
     _ <-
-        liftIO (TuiPlay.runInteractivePlay (playBackend options) Nothing (fromIntegral seed) maxPlies sims)
+        liftIO
+            ( TuiPlay.runInteractivePlay
+                (playBackend options)
+                (playSide options)
+                (playVs options)
+                (playCacheDir options)
+                (playRng options)
+                seed
+                (playMaxPlies options)
+                sims
+            )
     pure ExitSuccess
 
 runPlayBatch :: PlayOptions -> Env.App ExitCode
 runPlayBatch options = do
-    let seed = maybe 42 fromIntegral (playSeed options)
+    seed <- liftIO (resolvePlaySeed options)
+    let seedWord = seed
         inputs =
             defaultRunInputs
                 { Driver.inputBackend = playBackend options
                 , Driver.inputWorkload = Types.Selfplay
-                , Driver.inputRng = NativeRng
+                , Driver.inputRng = playRng options
                 , Driver.inputGames = 1
-                , Driver.inputSeed = fromIntegral (seed :: Integer)
+                , Driver.inputSeed = seedWord
                 , Driver.inputSims = playSims options
+                , Driver.inputMaxPlies = playMaxPlies options
+                , Driver.inputCacheDir = playCacheDir options
                 }
     result <- liftIO (runBatchDispatch inputs)
     case result of
@@ -118,6 +133,9 @@ runPlayBatch options = do
                 ( outputLine
                     ( "played one logical game with "
                         <> backendIdentifier (playBackend options)
+                        <> " side="
+                        <> show (playSide options)
+                        <> renderVs (playVs options)
                         <> " hash="
                         <> Driver.batchHash batch
                     )
@@ -127,6 +145,25 @@ runPlayBatch options = do
 exitCodeToInt :: ExitCode -> Int
 exitCodeToInt ExitSuccess = 0
 exitCodeToInt (ExitFailure n) = n
+
+resolvePlaySeed :: PlayOptions -> IO Word64
+resolvePlaySeed options =
+    case playSeed options of
+        Just seed -> pure seed
+        Nothing -> randomWord64
+
+randomWord64 :: IO Word64
+randomWord64 =
+    withBinaryFile "/dev/urandom" ReadMode $ \handle -> do
+        bytes <- ByteString.unpack <$> ByteString.hGet handle 8
+        pure (foldl appendByte 0 bytes)
+  where
+    appendByte acc byte =
+        (acc `shiftL` 8) .|. fromIntegral (byte :: Word8)
+
+renderVs :: Maybe Backend -> String
+renderVs Nothing = ""
+renderVs (Just backend) = " vs=" <> backendIdentifier backend
 
 _keepBackend :: Backend -> Backend
 _keepBackend = id

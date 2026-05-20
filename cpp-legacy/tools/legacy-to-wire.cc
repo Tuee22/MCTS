@@ -1,5 +1,5 @@
-// One-time conversion tool that produces `test/golden/legacy/transcripts/<arch>/`
-// Q6 fixtures from the verbatim legacy core. The tool links directly against
+// One-time conversion tool that produces explicit legacy evidence transcripts
+// from the verbatim legacy core. The tool links directly against
 // `cpp-legacy/legacy-core/` (the byte-identical port of
 // `~/MCTS_legacy/backend/core/`) so the captured transcripts reflect the
 // legacy's own search behavior. The output uses the Phase 2 wire format
@@ -7,7 +7,7 @@
 // per game (file name is sha256(payload)).
 //
 // Supported regeneration entrypoint (from project root):
-//     docker compose run --rm mcts mcts build legacy-fixtures --output-dir test/golden/legacy/transcripts --seed 42 --games 10 --sims 10000
+//     docker compose run --rm mcts mcts build legacy-fixtures --output-dir /tmp/mcts-legacy-fixtures --seed 42 --games 10 --sims 10000
 //
 // Pinned report-card knobs per
 // `DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md`:
@@ -354,7 +354,7 @@ std::string hex(const std::vector<uint8_t> &data) {
 } // namespace
 
 int main(int argc, char **argv) {
-    std::string out_root = "test/golden/legacy/transcripts";
+    std::string out_root = ".build/legacy-fixtures/transcripts";
     auto require_value = [&](int &index, const char *flag) -> const char * {
         if (index + 1 >= argc) {
             std::fprintf(stderr, "[legacy-to-wire] missing value for %s\n", flag);

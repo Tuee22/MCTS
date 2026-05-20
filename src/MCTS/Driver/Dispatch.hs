@@ -3,7 +3,8 @@
 -- The pure in-process Haskell `runBatch` covers the logical fallback.
 -- Backends (i) `cpp-legacy`, (ii) `cpp-imperative`, and (iii)
 -- `cpp-functional` are retired from live dispatch after Sprints 8.4,
--- 8.5, and 8.6; their historical transcripts live under `test/golden/`.
+-- 8.5, and 8.6; any historical evidence is produced explicitly outside
+-- the normal validation tree.
 -- When a live foreign backend's shared library is present, `--backend X`
 -- routes through the per-backend FFI driver so the transcript carries
 -- both the engine's real per-move `(action_id, visits)` records and the
@@ -31,9 +32,9 @@ import System.Directory (doesFileExist)
 runBatchDispatch :: Driver.RunInputs -> IO (Either String Driver.BatchResult)
 runBatchDispatch inputs =
     case Driver.inputBackend inputs of
-        CppLegacy -> pure (Left "cpp-legacy is retired from live dispatch; use test/golden/cpp-legacy/")
-        CppImperative -> pure (Left "cpp-imperative is retired from live dispatch; use test/golden/cpp-imperative/")
-        CppFunctional -> pure (Left "cpp-functional is retired from live dispatch; use test/golden/cpp-functional/")
+        CppLegacy -> pure (Left "cpp-legacy is retired from live dispatch; use explicit external evidence")
+        CppImperative -> pure (Left "cpp-imperative is retired from live dispatch; use explicit external evidence")
+        CppFunctional -> pure (Left "cpp-functional is retired from live dispatch; use explicit external evidence")
         Rust -> do
             present <- doesFileExist rustLibraryPath
             if present && canUseCappedForeignSearch inputs
@@ -48,9 +49,9 @@ runBatchDispatch inputs =
 runBatchNoWriteDispatch :: Driver.RunInputs -> IO (Either String ())
 runBatchNoWriteDispatch inputs =
     case Driver.inputBackend inputs of
-        CppLegacy -> pure (Left "cpp-legacy is retired from live dispatch; use test/golden/cpp-legacy/")
-        CppImperative -> pure (Left "cpp-imperative is retired from live dispatch; use test/golden/cpp-imperative/")
-        CppFunctional -> pure (Left "cpp-functional is retired from live dispatch; use test/golden/cpp-functional/")
+        CppLegacy -> pure (Left "cpp-legacy is retired from live dispatch; use explicit external evidence")
+        CppImperative -> pure (Left "cpp-imperative is retired from live dispatch; use explicit external evidence")
+        CppFunctional -> pure (Left "cpp-functional is retired from live dispatch; use explicit external evidence")
         Rust -> do
             present <- doesFileExist rustLibraryPath
             if present && canUseCappedForeignSearch inputs

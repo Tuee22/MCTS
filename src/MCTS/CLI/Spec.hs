@@ -70,8 +70,11 @@ commandSpec =
                 "Verify self-play visit counts"
                 "mcts verify selfplay --backend rust,haskell --threading single --games 50 --seed 42 --max-plies 200 --sims 10000"
             ]
-        , leaf "play" "Play or spectate a game" "mcts play --backend haskell --side hero --sims 10000"
-            `withExample` "mcts play --backend haskell --side villain --vs rust --sims 10000"
+        , leaf
+            "play"
+            "Play or spectate a game"
+            "mcts play --backend haskell --side hero --rng native --max-plies 200 --sims 10000"
+            `withExample` "mcts play --backend haskell --side villain --vs rust --rng native --max-plies 200 --sims 10000"
         , node
             "inspect"
             "Inspect transcript cache"
@@ -124,8 +127,8 @@ commandSpec =
                 `withOptions` planOptions
             , leaf
                 "legacy-fixtures"
-                "Regenerate legacy Q6 fixtures"
-                "mcts build legacy-fixtures --output-dir test/golden/legacy/transcripts --seed 42 --games 10 --sims 10000 --dry-run"
+                "Generate external legacy Q6 evidence"
+                "mcts build legacy-fixtures --output-dir /tmp/mcts-legacy-fixtures --seed 42 --games 10 --sims 10000 --dry-run"
                 `withOptions` (legacyFixtureOptions <> planOptions)
             ]
         ]

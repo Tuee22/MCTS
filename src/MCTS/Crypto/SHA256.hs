@@ -130,17 +130,22 @@ roundStep (a, b, c, d, e, f, g, h) (k, w) =
 
 messageSchedule :: [Word8] -> [Word32]
 messageSchedule chunk =
-    take 64 words64
+    extend 16 base
   where
     base = map word32FromBytes (chunksOf 4 chunk)
-    words64 =
-        base
-            <> [ smallSigma1 (words64 !! (idx - 2))
-                    + words64 !! (idx - 7)
-                    + smallSigma0 (words64 !! (idx - 15))
-                    + words64 !! (idx - 16)
-               | idx <- [16 ..]
-               ]
+    extend idx wordsSoFar
+        | idx >= 64 = wordsSoFar
+        | otherwise =
+            let next =
+                    smallSigma1 (wordAt (idx - 2) wordsSoFar)
+                        + wordAt (idx - 7) wordsSoFar
+                        + smallSigma0 (wordAt (idx - 15) wordsSoFar)
+                        + wordAt (idx - 16) wordsSoFar
+             in extend (idx + 1) (wordsSoFar <> [next])
+    wordAt idx values =
+        case indexAt idx values of
+            Just word -> word
+            Nothing -> 0
 
 choose :: Word32 -> Word32 -> Word32 -> Word32
 choose x y z = (x Bits..&. y) `Bits.xor` (Bits.complement x Bits..&. z)
@@ -201,6 +206,17 @@ chunksOf n values =
 
 byteHex :: Word8 -> String
 byteHex byte =
-    [hex !! fromIntegral (Bits.shiftR byte 4), hex !! fromIntegral (byte Bits..&. 0x0f)]
+    [nibbleHex (fromIntegral (Bits.shiftR byte 4)), nibbleHex (fromIntegral (byte Bits..&. 0x0f))]
   where
     hex = "0123456789abcdef"
+    nibbleHex idx =
+        case indexAt idx hex of
+            Just ch -> ch
+            Nothing -> '?'
+
+indexAt :: Int -> [a] -> Maybe a
+indexAt n _
+    | n < 0 = Nothing
+indexAt _ [] = Nothing
+indexAt 0 (value : _) = Just value
+indexAt n (_ : rest) = indexAt (n - 1) rest

@@ -21,10 +21,17 @@
 manual `CommandSpec` registry, parser, output/error boundary, typed `Subprocess`
 wrapper, Plan/Apply helpers, prerequisite skeleton, lint/docs commands, and
 `mcts-haskell-style` stanza exist; `docker compose run --rm mcts mcts test all` is
-the baseline host validation gate under the pinned toolchain. Phase `1` closure is scoped to the CLI scaffold,
-generated artefact machinery, container-owned lint stack, typed subprocess and
-Plan/Apply boundaries, prerequisite registry, shared `Env`, and output/error
-discipline; backend logic and transcript semantics remain owned by later phases.
+the baseline host validation gate under the pinned toolchain. Phase `1`
+reclosed in the 2026-05-19 alignment sweep: `bench` and `verify` parser
+required/default semantics match the governed command surface, `play` carries
+the documented runtime controls (`--backend`, `--side`, `--vs`, `--rng`,
+`--seed`, `--max-plies`, `--cache-dir`), generated command documentation is current,
+the committed `fourmolu.yaml` is the formatter SSoT, and supported-path partial
+function usage is removed and enforced by the `mcts-haskell-style` source
+walker. Phase `1` closure is scoped to the CLI scaffold, generated artefact
+machinery, container-owned lint stack, typed subprocess and Plan/Apply
+boundaries, prerequisite registry, shared `Env`, and output/error discipline;
+backend logic and transcript semantics remain owned by later phases.
 
 ## Phase Summary
 
@@ -60,8 +67,8 @@ the reproducible Docker development environment that every later sprint builds o
   current `build-depends` set includes the doctrine's standardized non-TUI stack:
   `optparse-applicative`, `text`, `bytestring`, `aeson`, `prettyprinter`,
   `prettyprinter-ansi-terminal`, `ansi-terminal`, `path`, `path-io`, `typed-process`,
-  `safe-exceptions`, `tasty`, `tasty-hunit`, `tasty-quickcheck`, `tasty-golden`,
-  `temporary`, plus the documented `brick` + `vty` TUI deviation now used by
+  `safe-exceptions`, `tasty`, `tasty-hunit`, `tasty-quickcheck`, `temporary`,
+  plus the documented `brick` + `vty` TUI deviation now used by
   `MCTS.CLI.Tui.{Board,Play,Replay}`. The other recorded deviation is the absence
   of `dhall` per
   [00-overview.md → Doctrine Scope → Stack deviations from doctrine](00-overview.md):
@@ -117,11 +124,11 @@ the reproducible Docker development environment that every later sprint builds o
 
 - Baseline landed: `mcts.cabal`, `cabal.project`, thin `app/Main.hs`,
   `src/MCTS/App.hs`, root formatter/lint files, and Docker scaffolding exist.
-- The full doctrine-standardized dependency set now appears in `mcts.cabal`
+- The full project dependency set now appears in `mcts.cabal`
   (`optparse-applicative`, `text`, `bytestring`, `aeson`, `prettyprinter`,
   `prettyprinter-ansi-terminal`, `ansi-terminal`, `path`, `path-io`,
   `typed-process`, `safe-exceptions`, `tasty`, `tasty-hunit`,
-  `tasty-quickcheck`, `tasty-golden`, `temporary`). The recorded `brick` /
+  `tasty-quickcheck`, `temporary`). The recorded `brick` /
   `vty` TUI exception is active and limited to `MCTS.CLI.Tui.Board`,
   `MCTS.CLI.Tui.Play`, and `MCTS.CLI.Tui.Replay`.
 - Docker toolchain pinning is now encoded in `docker/Dockerfile` for GHC `9.14.1`,
@@ -222,7 +229,7 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
     deriving stock (Show, Eq)
 
   data BuildCommand
-    = BuildLegacyFixtures            -- Q6 fixture generator retained after backend (i) retirement
+    = BuildLegacyFixtures            -- external Q6 evidence generator retained after backend (i) retirement
     | BuildRust                      -- cdylib; rustc PGO + BOLT + mimalloc; Phase 6 Sprint 6.4
     deriving stock (Show, Eq)
 
@@ -315,6 +322,7 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
     , playSeed     :: Maybe Word64          -- Nothing → fresh random, recorded in transcript
     , playSims     :: SimBudget
     , playMaxPlies :: Word16                -- default: 200; ignored if playBackend is (i)
+    , playCacheDir :: Maybe FilePath        -- default cache root when omitted
     -- no threading field: a single game is always single-threaded internally
     } deriving stock (Show, Eq)
 
@@ -347,11 +355,12 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
   the same `CommandSpec` value as input.
 - The twelve worked invocations in
   [../README.md → CLI command topology → Concrete invocations](../README.md)
-  (lines 460–495) are bound to the registry as seed `Example` entries on the
+  are bound to the registry as seed `Example` entries on the
   corresponding `CommandSpec` leaves so the `mcts <subcommand> --help` text, the
   `documents/cli/commands.md` rendering, and the `mcts commands --json` schema
-  all carry them. Sprint 7.1's `mcts-unit` golden over `mcts commands --json`
-  pins the invocations into the externally-stable schema. The invocations are:
+  all carry them. Sprint 7.1's `mcts-unit` semantic renderer assertions over
+  `mcts commands --json` pin the invocations into the externally-stable schema.
+  The invocations are:
   `bench rollouts` (5-backend, ST, native RNG, 100k games);
   `bench selfplay --backend haskell` (default 8 workers);
   `bench selfplay --workers 32`;
@@ -392,9 +401,16 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
   `src/MCTS/CLI/Tree.hs`, with pure renderers delegated to the same
   `CommandSpec` registry value.
 - Parser tests via the doctrine-required `execParserPure` path now cover the
-  bench cohort, legacy-parity, `inspect show --with-equity`, and the unhappy
-  `verify --rng native` path; byte-stable golden coverage for `mcts commands --json`
-  lives in `mcts-unit`.
+  bench cohort, retired legacy-parity parser exclusions, `inspect show
+  --with-equity`, and the unhappy `verify --rng native` path; semantic
+  renderer/schema coverage for `mcts commands --json` lives in `mcts-unit`.
+- The 2026-05-19 alignment sweep made `bench` require an explicit backend
+  cohort, made `bench` and `verify` require explicit `--games` and `--seed`,
+  kept `bench` defaulting to `--threading multi --workers 8`, made `verify`
+  default to `--threading single`, and wired `play` through `--rng`,
+  `--max-plies`, and `--cache-dir` for both batch and interactive execution.
+  `mcts-unit` pins these parser invariants and the updated `commands --json`
+  structure with semantic assertions.
 - Current implementation note: the concrete `VerifyCommand` constructors now
   carry typed `[VerifyBackend]` / `[LegacyParityBackend]` lists, with Phase 7
   Sprint 7.2 parser-boundary guards for `cpp-legacy` exclusion and
@@ -603,6 +619,21 @@ forbidden-symbol HLint rules behind the `mcts-haskell-style` test stanza plus th
   `docker compose run --rm mcts mcts lint files`,
   `docker compose run --rm mcts mcts lint all`, and
   `docker compose run --rm mcts mcts check-code`.
+- The 2026-05-19 alignment sweep retained the committed `fourmolu.yaml` as the
+  formatter SSoT and updated governed docs to link to it instead of copying a
+  conflicting YAML sample. Supported-path uses of `!!`, `init`, `last`, and
+  `read` were replaced with total helpers or `readMaybe`; the
+  `mcts-haskell-style` source walker now rejects the documented partial-function
+  set under `src/` and `app/` while keeping tests free to use fixture indexing.
+  Local validation passed `cabal --builddir=/tmp/mcts-cabal-build test
+  mcts-unit`, `cabal --builddir=/tmp/mcts-cabal-build run mcts -- docs check`,
+  and `git diff --check`; canonical container validation passed
+  `docker compose run --rm mcts mcts check-code`.
+- Extend `mcts-haskell-style` and `.hlint.yaml` coverage so the same rule is
+  checked by both the container-pinned HLint path and the conservative source
+  walker where HLint cannot express the boundary precisely.
+- Re-run `docker compose run --rm mcts mcts lint all` and
+  `docker compose run --rm mcts mcts check-code` after docs and code agree.
 
 ## Sprint 1.5: `Plan / Apply` Boundary ✅
 
@@ -626,14 +657,14 @@ for free.
 - Every Plan/Apply subcommand in the `CommandSpec` registry carries `--dry-run`
   (renders the plan and exits 0) and `--plan-file <path>` (writes the rendered plan
   for out-of-band review) as `OptionSpec` entries.
-- The rendered plan is deterministic: golden-testable, no timestamps, no
+- The rendered plan is deterministic: semantic-testable, no timestamps, no
   environment-dependent paths.
 
 ### Validation
 
 1. A trivial Plan/Apply command (e.g. a stub Sprint-1.7 `mcts toolchain check`)
-   supports `--dry-run` and `--plan-file <path>` and round-trips through golden
-   tests.
+   supports `--dry-run` and `--plan-file <path>` and round-trips through
+   semantic renderer tests.
 2. A property test (Sprint 7.1) asserts `render is deterministic` over the `Plan`
    renderer.
 
@@ -683,7 +714,7 @@ shared-library builds, and every subprocess call site go through one IO boundary
     deriving stock (Eq, Show)
   ```
 
-- Pure `renderSubprocess :: Subprocess -> Text` for logs, `--dry-run`, golden tests.
+- Pure `renderSubprocess :: Subprocess -> Text` for logs, `--dry-run`, semantic tests.
 - Interpreter API: `runStreaming :: Subprocess -> IO (Either AppError ExitCode)` and
   `capture :: Subprocess -> IO (Either AppError ProcessOutput)`. These are the **only**
   IO boundary for subprocess execution.
@@ -700,7 +731,7 @@ shared-library builds, and every subprocess call site go through one IO boundary
    module compiled.
 2. A synthetic violation (e.g. a `callProcess` call in `src/MCTS/Lint.hs`) is
    rejected by `docker compose run --rm mcts mcts lint haskell`.
-3. A golden test of `renderSubprocess` over a sample value passes.
+3. A semantic renderer test of `renderSubprocess` over a sample value passes.
 
 ### Closure Notes
 
@@ -713,9 +744,8 @@ shared-library builds, and every subprocess call site go through one IO boundary
   direct `System.Process.*` and `System.Process.Typed.*` smart constructors
   outside `src/MCTS/Subprocess.hs`. The source walker remains as an additional
   source-walker guard for the conservative textual subset.
-- `test/golden/cli/subprocess.txt` pins `renderSubprocess` shell quoting, and the
-  unit suite asserts `AppError SubprocessFailed` includes the rendered command
-  and exit code.
+- The unit suite semantically pins `renderSubprocess` shell quoting and asserts
+  `AppError SubprocessFailed` includes the rendered command and exit code.
 - Validated on 2026-05-15 through the root Compose entrypoint with
   `docker compose run --rm mcts mcts check-code`,
   `docker compose run --rm mcts mcts test mcts-unit`,
@@ -762,7 +792,7 @@ typed boundary and emits structured remedy hints on failure.
   `llvm-config` (LLVM `19.x`), `llvm-bolt` (LLVM `19.x`), `rustup`,
   `cargo` / `rustc` (`1.95.0`), and `mimalloc` via `pkg-config`, plus the
   `pgo-profiles` directory probe and the `logical-backends` /
-  `legacy-fixtures` tracked-fixture probe.
+  `legacy-fixtures` explicit-output evidence probe.
 - `nodeDependsOn` carries dependency edges (`cargo`/`rustc` depend on
   `rustup`; `bolt` depends on `llvm`; `ghc-9.14.1`/`cabal-3.16.1.0` depend
   on `ghcup`). `prerequisitesForBuild` and `prerequisitesForTest` resolve
@@ -934,8 +964,8 @@ Implement the single `AppError` ADT, the `renderError` boundary, and the `--form
   `--no-color`, stdout/stderr helpers, and command-level JSON/table/plain rendering
   paths exist. `--color always` renders errors with ANSI red at the output boundary;
   `--color never` / `--no-color` render plain text.
-- The `mcts-unit` stanza smoke-renders every `AppError` variant, pins
-  `test/golden/cli/errors.txt`, and asserts the `TranscriptNotFound`,
+- The `mcts-unit` stanza smoke-renders every `AppError` variant and asserts the
+  `TranscriptNotFound`,
   `DocsCheckDrift`, and `PrerequisiteUnmet` renderings carry the user-visible
   references (ref, remedy command, remedy hint).
 - Validated on 2026-05-15 through the root Compose entrypoint with

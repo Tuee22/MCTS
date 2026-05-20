@@ -125,12 +125,6 @@ prerequisiteRegistry =
         []
         (pure True)
     , PrerequisiteNode
-        "legacy-fixtures"
-        "Legacy fixture directory exists"
-        "run docker compose run --rm mcts mcts docs generate"
-        []
-        (doesFileExist "test/golden/legacy/README.md")
-    , PrerequisiteNode
         "libmcts-rust-built"
         "Rust cdylib exists for dynamic FFI smoke tests"
         "run docker compose run --rm mcts mcts build rust"

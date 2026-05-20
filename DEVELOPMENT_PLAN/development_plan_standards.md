@@ -127,9 +127,24 @@ each live in one place only.
 - transcript codec and cache locations
 - verification surfaces and test stanzas
 - toolchain prerequisites and pinned versions
-- state locations (cache root, golden roots, retained transcript locations)
+- state locations (cache root, ignored/local artifact roots, generated documentation roots)
 
 When a phase changes the supported architecture, update the inventory in the same change.
+
+### F.1 No Generated Validation Data in Git
+
+The repository must not require pre-existing transcripts, throughput anchors,
+snapshot files, report-card schemas, renderer baselines, or other generated
+validation data to run its normal test suite.
+
+- Test stanzas synthesize transcripts, sidecars, report cards, and renderer examples in
+  memory or under temporary directories during the test run.
+- Runtime/operator caches live under ignored cache roots such as `.mcts-cache/`.
+- Historical retired-backend evidence may be described in docs or stored as optional
+  external/ignored artifacts, but it is not a clean-clone test prerequisite.
+- Generated documentation artefacts are the exception owned by the generated-section and
+  tracked-generated-path registries; they are deterministic source documentation, not
+  validation fixtures.
 
 ### G. Phase Documentation Requirements
 
@@ -196,8 +211,8 @@ paths, duplicate surfaces, and stale tooling residue that still need removal.
 - The retirement protocol (i)→(ii)→(iii)→(v) named in
   [00-overview.md](00-overview.md) is itself a cleanup ledger: each retiring backend's
   build artefacts and CLI flag values move from `Pending Removal` to `Completed` when the
-  surviving cohort's golden transcripts and throughput numbers freeze in
-  `test/golden/`.
+  surviving cohort's evidence is recorded without requiring generated validation data in
+  the repository.
 - When the cleanup lands, move the item from `Pending Removal` to `Completed`.
 - Phase docs reference the owning sprint, not duplicate the full cleanup ledger.
 

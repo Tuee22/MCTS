@@ -7,12 +7,7 @@ module MCTS.CLI.Test
     ) where
 
 import Control.Monad.IO.Class (liftIO)
-import Data.Aeson ((.:))
-import qualified Data.Aeson as Aeson
-import Data.Aeson.Types (Parser)
-import qualified Data.ByteString as BS
 import Data.List (find)
-import qualified Data.Text as Text
 import Data.Version (showVersion)
 import Data.Word (Word64)
 import MCTS.CLI.Bench (monotonicNanos)
@@ -65,37 +60,6 @@ data FrozenRetirementAnchorRow = FrozenRetirementAnchorRow
     , frozenAnchorRetiringGamesPerSecond :: !Double
     }
     deriving (Eq, Show)
-
-instance Aeson.FromJSON FrozenRetirementAnchor where
-    parseJSON =
-        Aeson.withObject "FrozenRetirementAnchor" $ \obj ->
-            FrozenRetirementAnchor <$> obj .: "rows"
-
-instance Aeson.FromJSON FrozenRetirementAnchorRow where
-    parseJSON =
-        Aeson.withObject "FrozenRetirementAnchorRow" $ \obj -> do
-            workloadRaw <- obj .: "workload"
-            threadingRaw <- obj .: "threading"
-            workload <- parseAnchorWorkload workloadRaw
-            threading <- parseAnchorThreading threadingRaw
-            FrozenRetirementAnchorRow
-                <$> pure workload
-                <*> pure threading
-                <*> obj .: "retiring_games_per_second"
-      where
-        parseAnchorWorkload :: Text.Text -> Parser Workload
-        parseAnchorWorkload raw =
-            case Text.unpack raw of
-                "rollouts" -> pure Rollouts
-                "selfplay" -> pure Selfplay
-                other -> fail ("bad workload in retirement anchor: " <> other)
-
-        parseAnchorThreading :: Text.Text -> Parser Threading
-        parseAnchorThreading raw =
-            case Text.unpack raw of
-                "ST" -> pure SingleThreaded
-                "MT8" -> pure (MultiThreaded 8)
-                other -> fail ("bad threading in retirement anchor: " <> other)
 
 runTestCommand :: TestCommand -> Env.App ExitCode
 runTestCommand command = do
@@ -332,43 +296,39 @@ buildReportPerformance
             )
         )
 buildReportPerformance clock = do
-    anchor <- readFrozenRetirementAnchor cppImperativeThroughputPath
-    case anchor of
-        Left err -> pure (Left err)
-        Right frozen -> do
-            q1ST <-
-                measureFrozenComparison
-                    clock
-                    frozen
-                    Rollouts
-                    SingleThreaded
-                    reportCardRolloutGames
-                    reportCardBenchSims
-            q1MT8 <-
-                measureFrozenComparison
-                    clock
-                    frozen
-                    Rollouts
-                    (MultiThreaded 8)
-                    reportCardRolloutGames
-                    reportCardBenchSims
-            q2ST <-
-                measureFrozenComparison
-                    clock
-                    frozen
-                    Selfplay
-                    SingleThreaded
-                    reportCardSelfplayGames
-                    reportCardBenchSims
-            q2MT8 <-
-                measureFrozenComparison
-                    clock
-                    frozen
-                    Selfplay
-                    (MultiThreaded 8)
-                    reportCardSelfplayGames
-                    reportCardBenchSims
-            pure $ (,,,) <$> q1ST <*> q1MT8 <*> q2ST <*> q2MT8
+    q1ST <-
+        measureFrozenComparison
+            clock
+            frozenCppImperativeAnchor
+            Rollouts
+            SingleThreaded
+            reportCardRolloutGames
+            reportCardBenchSims
+    q1MT8 <-
+        measureFrozenComparison
+            clock
+            frozenCppImperativeAnchor
+            Rollouts
+            (MultiThreaded 8)
+            reportCardRolloutGames
+            reportCardBenchSims
+    q2ST <-
+        measureFrozenComparison
+            clock
+            frozenCppImperativeAnchor
+            Selfplay
+            SingleThreaded
+            reportCardSelfplayGames
+            reportCardBenchSims
+    q2MT8 <-
+        measureFrozenComparison
+            clock
+            frozenCppImperativeAnchor
+            Selfplay
+            (MultiThreaded 8)
+            reportCardSelfplayGames
+            reportCardBenchSims
+    pure $ (,,,) <$> q1ST <*> q1MT8 <*> q2ST <*> q2MT8
 
 buildRetirementAnchor
     :: IO Word64
@@ -448,18 +408,6 @@ measureFrozenComparison clock frozen workload threading games sims = do
             , inputSims = FixedSims sims
             }
 
-readFrozenRetirementAnchor :: FilePath -> IO (Either AppError FrozenRetirementAnchor)
-readFrozenRetirementAnchor path = do
-    present <- doesFileExist path
-    if not present
-        then pure (Left (IOErrorText ("retired backend throughput anchor missing: " <> path)))
-        else do
-            bytes <- BS.readFile path
-            pure $
-                case Aeson.eitherDecodeStrict' bytes of
-                    Left err -> Left (IOErrorText ("retired backend throughput anchor decode failed: " <> err))
-                    Right anchor -> Right anchor
-
 retiredRate :: FrozenRetirementAnchor -> Workload -> Threading -> Either AppError Double
 retiredRate frozen workload threading =
     case find matches (frozenAnchorRows frozen) of
@@ -516,11 +464,7 @@ verdictFromRatios ratios =
 
 requireReportCardArtifacts :: IO (Either AppError ())
 requireReportCardArtifacts =
-    go
-        [ cppImperativeThroughputPath
-        , cppFunctionalThroughputPath
-        , rustLibraryPath
-        ]
+    go [rustLibraryPath]
   where
     go [] = pure (Right ())
     go (path : rest) = do
@@ -531,7 +475,7 @@ requireReportCardArtifacts =
                 pure
                     ( Left
                         ( IOErrorText
-                            ( "report-card requires canonical backend artefact or frozen anchor "
+                            ( "report-card requires canonical backend artefact "
                                 <> path
                                 <> "; run `mcts test all` so the build steps and measurements share one container"
                             )
@@ -553,11 +497,14 @@ reportCardVerifyGames = 4
 reportCardVerifySims :: Int
 reportCardVerifySims = 500
 
-cppImperativeThroughputPath :: FilePath
-cppImperativeThroughputPath = "test/golden/cpp-imperative/throughput.json"
-
-cppFunctionalThroughputPath :: FilePath
-cppFunctionalThroughputPath = "test/golden/cpp-functional/throughput.json"
+frozenCppImperativeAnchor :: FrozenRetirementAnchor
+frozenCppImperativeAnchor =
+    FrozenRetirementAnchor
+        [ FrozenRetirementAnchorRow Rollouts SingleThreaded 26.0287
+        , FrozenRetirementAnchorRow Rollouts (MultiThreaded 8) 185.8295
+        , FrozenRetirementAnchorRow Selfplay SingleThreaded 0.0211
+        , FrozenRetirementAnchorRow Selfplay (MultiThreaded 8) 0.0779
+        ]
 
 haskellParityTolerance :: Double
 haskellParityTolerance = 0.05

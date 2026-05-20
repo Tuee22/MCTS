@@ -274,4 +274,15 @@ rollout = go 0
                                 next = applyMove action board
                                 nextSeed = mix seed (fromIntegral step)
                              in go (step + 1) next nextSeed maxPlies
-    chooseAction idx moves = moves !! max 0 (min (length moves - 1) idx)
+    chooseAction _ [] = error "MCTS.Search.UCT: no legal moves in rollout"
+    chooseAction idx moves@(fallback : _) =
+        case indexAt (max 0 (min (length moves - 1) idx)) moves of
+            Just action -> action
+            Nothing -> fallback
+
+indexAt :: Int -> [a] -> Maybe a
+indexAt n _
+    | n < 0 = Nothing
+indexAt _ [] = Nothing
+indexAt 0 (value : _) = Just value
+indexAt n (_ : rest) = indexAt (n - 1) rest

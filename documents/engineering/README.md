@@ -36,7 +36,7 @@ only project-specific elaborations. The four project-specific docs
 |----------|---------|
 | [cli_command_surface.md](./cli_command_surface.md) | Canonical `mcts` operator command matrix; defers to the doctrine on Command Topology, `CommandSpec`, and Progressive Introspection |
 | [code_quality.md](./code_quality.md) | The `mcts check-code` gate and the lint stack; defers to the doctrine on Lint, Format, Code-Quality Stack, Generated Artifacts, and Forbidden Surfaces |
-| [unit_testing_policy.md](./unit_testing_policy.md) | The four live Cabal test stanzas (`mcts-unit`, `mcts-integration`, `mcts-cross-backend`, `mcts-haskell-style`), the `mcts test all` Plan/Apply command, and the report-card workload; defers to the doctrine on Test Organization |
+| [unit_testing_policy.md](./unit_testing_policy.md) | The four live Cabal test stanzas (`mcts-unit`, `mcts-integration`, `mcts-cross-backend`, `mcts-haskell-style`), the `mcts test all` Plan/Apply command, the report-card workload, and the no-generated-validation-data rule; defers to the doctrine on Test Organization |
 | [haskell_code_guide.md](./haskell_code_guide.md) | How the project uses `Subprocess`, `Plan / Apply`, `prerequisiteRegistry`, `Env`, `AppError`, and GADT state machines; defers to the doctrine on each pattern |
 | [determinism_contract.md](./determinism_contract.md) | RNG split, per-game `splitmix64(master_seed, game_index)` seed derivation, ply-cap draw rule, visit-count vs equity asymmetry, legacy parity envelope |
 | [transcript_format.md](./transcript_format.md) | Little-endian binary wire format, single-byte action enumeration, content addressing, git-style hash-prefix lookup |
@@ -84,8 +84,9 @@ only project-specific elaborations. The four project-specific docs
 
 - [Four Live Cabal Stanzas](./unit_testing_policy.md#test-stanzas)
 - [Test Organization](../../HASKELL_CLI_TOOL.md) — doctrine
+- [Repository Data Doctrine](./unit_testing_policy.md#repository-data-doctrine)
 - [Property Invariants](./unit_testing_policy.md#property-invariants)
-- [Golden Tests](./unit_testing_policy.md#golden-tests)
+- [Generated Validation Data](./unit_testing_policy.md#generated-validation-data)
 - [POC Report Card](./unit_testing_policy.md#report-card)
 
 ### Code Quality

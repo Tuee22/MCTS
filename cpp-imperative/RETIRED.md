@@ -1,13 +1,14 @@
 # Backend (ii) `cpp-imperative` Retired
 
 **Status**: Retired in Phase 8 Sprint 8.5.
-**Frozen anchor**: `test/golden/cpp-imperative/`
+**Frozen anchor**: source-owned report-card anchor constants plus historical plan evidence.
 
 Backend (ii) was the maximally tuned imperative C++ steelman used as the
 performance target for the pure Haskell backend and as the immediate successor
 to backend (i). Its final Q1/Q2 parity anchor shows backend (iii)
-`cpp-functional` within tolerance, so backend (ii) is now preserved by frozen
-transcripts and throughput evidence under `test/golden/cpp-imperative/`.
+`cpp-functional` within tolerance, so backend (ii) is now preserved by
+historical plan evidence and source-owned report-card anchor constants rather
+than normal validation fixtures.
 
 The source remains in `cpp-imperative/` for historical reference, but it is no
 longer a live selectable backend. Normal validation does not build or load

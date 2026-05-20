@@ -22,8 +22,9 @@ import MCTS.Engine (Board, applyMove, initialBoard, terminalWinner)
 import MCTS.Engine.Envelope (makeEngineEnvelope)
 import MCTS.Rng.Mix (backendNativeSalt, mix)
 import qualified MCTS.Search.UCT as UCT
-import MCTS.Transcript (writeTranscript, writeTranscriptPerGame)
+import MCTS.Transcript (writeTranscriptPerGame)
 import MCTS.Types
+import System.FilePath (takeDirectory)
 
 data RunInputs = RunInputs
     { inputBackend :: !Backend
@@ -42,14 +43,14 @@ data BatchResult = BatchResult
     { batchTranscript :: !Transcript
     , batchHash :: !String
     , batchPath :: !FilePath
-    -- ^ Sprint 7.5: legacy single-file batch hash + path retained
-    -- for the bench-summary headline; the per-game write set is
-    -- the authoritative on-disk layout going forward.
+    -- ^ First per-game hash and either that file path (one-game run) or
+    -- the containing transcript directory (multi-game run) for the
+    -- bench-summary headline.
     , batchGameWrites :: ![(String, FilePath)]
-    -- ^ Sprint 7.5 per-game writer migration: one (hash, path) entry
-    -- per game in the batch, matching the doctrine's one-game-per-file
-    -- wire format. Each per-game file is written with `runGames = 1`
-    -- and the per-game seed `splitmix64(master_seed, game_index)`.
+    -- ^ One (hash, path) entry per game in the batch, matching the
+    -- doctrine's one-game-per-file wire format. Each per-game file is
+    -- written with `runGames = 1`, the unchanged master seed, and the
+    -- per-game `runGameIndex`.
     }
     deriving (Eq, Show)
 
@@ -78,6 +79,7 @@ makeRunConfig inputs =
         , runInitialSims = fromIntegral (simInitial (inputSims inputs))
         , runPerMoveSims = fromIntegral (simPerMove (inputSims inputs))
         , runMaxPlies = inputMaxPlies inputs
+        , runGameIndex = 0
         , runGames = fromIntegral (inputGames inputs)
         , runCParamBits = 0x3fe6666666666666
         }
@@ -114,20 +116,31 @@ runBatchWithGameEnvelope envelope runOne inputs = do
         Left err -> pure (Left err)
         Right games -> do
             let transcript = Transcript config envelope games
-            written <- writeTranscript (inputCacheDir inputs) transcript
             perGame <- writeTranscriptPerGame (inputCacheDir inputs) transcript
             pure $
-                case (written, perGame) of
-                    (Right (hashValue, path), Right perGameWrites) ->
+                case perGame of
+                    Right perGameWrites ->
                         Right
                             BatchResult
                                 { batchTranscript = transcript
-                                , batchHash = hashValue
-                                , batchPath = path
+                                , batchHash = batchHeadlineHash perGameWrites
+                                , batchPath = batchHeadlinePath (inputCacheDir inputs) perGameWrites
                                 , batchGameWrites = perGameWrites
                                 }
-                    (Left err, _) -> Left (show err)
-                    (_, Left err) -> Left (show err)
+                    Left err -> Left (show err)
+
+batchHeadlineHash :: [(String, FilePath)] -> String
+batchHeadlineHash writes =
+    case writes of
+        (hashValue, _) : _ -> hashValue
+        [] -> ""
+
+batchHeadlinePath :: Maybe FilePath -> [(String, FilePath)] -> FilePath
+batchHeadlinePath cacheDir writes =
+    case writes of
+        [(_, path)] -> path
+        (_, path) : _ -> takeDirectory path
+        [] -> maybe ".mcts-cache" id cacheDir
 
 -- | Run the same per-game workload as 'runBatchWithGame' but do not
 -- retain or write transcripts. The report-card timing path uses this

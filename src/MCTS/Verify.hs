@@ -5,8 +5,11 @@ module MCTS.Verify
     , verifyRunDetailed
     ) where
 
+import qualified Data.ByteString.Builder as Builder
+import qualified Data.ByteString.Lazy as LBS
 import Data.List (sortOn)
 import Data.Word (Word32)
+import MCTS.Crypto.SHA256 (sha256Hex)
 import MCTS.Driver
 import MCTS.Driver.Dispatch (runBatchDispatch)
 import MCTS.Error (AppError (..))
@@ -23,36 +26,107 @@ compareTranscripts :: Backend -> Transcript -> Backend -> Transcript -> Either A
 compareTranscripts leftBackend left rightBackend right =
     compareTranscriptsWith visitComparable leftBackend left rightBackend right
 
+type ComparableMove = (Action, [(Action, Word32)])
+
 compareTranscriptsWith
-    :: (Eq key)
-    => (MoveRecord -> key)
+    :: (MoveRecord -> ComparableMove)
     -> Backend
     -> Transcript
     -> Backend
     -> Transcript
     -> Either AppError ()
 compareTranscriptsWith comparable leftBackend left rightBackend right =
-    case firstMismatch of
-        Nothing -> Right ()
-        Just (gid, idx, leftRecord, rightRecord) ->
-            Left (VerifyMismatch leftBackend rightBackend gid idx leftRecord rightRecord)
+    if determinismDigest comparable left == determinismDigest comparable right
+        then Right ()
+        else compareGames (transcriptGames left) (transcriptGames right)
   where
-    pairs =
-        zip (transcriptGames left) (transcriptGames right)
+    compareGames [] [] = Right ()
+    compareGames leftGames [] =
+        Left (VerifyLengthMismatch leftBackend rightBackend "games" (length leftGames) 0)
+    compareGames [] rightGames =
+        Left (VerifyLengthMismatch leftBackend rightBackend "games" 0 (length rightGames))
+    compareGames (leftGame : leftRest) (rightGame : rightRest) =
+        case compareGame leftGame rightGame of
+            Right () -> compareGames leftRest rightRest
+            Left err -> Left err
 
-    firstMismatch =
-        findMismatch pairs
+    compareGame leftGame rightGame =
+        case compareRecords (gameId leftGame) (gameMoves leftGame) (gameMoves rightGame) of
+            Right () ->
+                if gameWinner leftGame == gameWinner rightGame
+                    && length (gameMoves leftGame) == length (gameMoves rightGame)
+                    then Right ()
+                    else
+                        Left
+                            ( VerifyTerminatorMismatch
+                                leftBackend
+                                rightBackend
+                                (fromIntegral (gameId leftGame))
+                                (terminatorSummary leftGame)
+                                (terminatorSummary rightGame)
+                            )
+            Left err -> Left err
 
-    findMismatch [] = Nothing
-    findMismatch ((leftGame, rightGame) : rest) =
-        case findRecordMismatch (zip (gameMoves leftGame) (gameMoves rightGame)) of
-            Just (idx, l, r) -> Just (fromIntegral (gameId leftGame), idx, l, r)
-            Nothing -> findMismatch rest
+    compareRecords _ [] [] = Right ()
+    compareRecords gid leftRecords [] =
+        Left
+            (VerifyLengthMismatch leftBackend rightBackend ("moves game=" <> show gid) (length leftRecords) 0)
+    compareRecords gid [] rightRecords =
+        Left
+            (VerifyLengthMismatch leftBackend rightBackend ("moves game=" <> show gid) 0 (length rightRecords))
+    compareRecords gid (leftRecord : leftRest) (rightRecord : rightRest)
+        | comparable leftRecord == comparable rightRecord = compareRecords gid leftRest rightRest
+        | otherwise =
+            Left
+                ( VerifyMismatch
+                    leftBackend
+                    rightBackend
+                    (fromIntegral gid)
+                    (fromIntegral (moveIndex leftRecord))
+                    leftRecord
+                    rightRecord
+                )
 
-    findRecordMismatch [] = Nothing
-    findRecordMismatch ((l, r) : rest)
-        | comparable l == comparable r = findRecordMismatch rest
-        | otherwise = Just (fromIntegral (moveIndex l), l, r)
+    terminatorSummary game =
+        show (gameWinner game) <> " total_moves=" <> show (length (gameMoves game))
+
+determinismDigest :: (MoveRecord -> ComparableMove) -> Transcript -> String
+determinismDigest comparable transcript =
+    sha256Hex . LBS.toStrict . Builder.toLazyByteString $
+        Builder.word8 (rngId (runRngSource config))
+            <> Builder.word64LE (runCParamBits config)
+            <> Builder.word64LE (runMasterSeed config)
+            <> Builder.word32LE (fromIntegral (runInitialSims config))
+            <> Builder.word32LE (fromIntegral (runPerMoveSims config))
+            <> Builder.word16LE (runMaxPlies config)
+            <> Builder.word32LE (fromIntegral (length (transcriptGames transcript)))
+            <> mconcat (map gamePayload (transcriptGames transcript))
+  where
+    config = transcriptConfig transcript
+    gamePayload game =
+        Builder.word32LE (gameId game)
+            <> Builder.word32LE (fromIntegral (length (gameMoves game)))
+            <> mconcat (map recordPayload (gameMoves game))
+            <> Builder.word8 (winnerId (gameWinner game))
+            <> Builder.word16LE (fromIntegral (length (gameMoves game)))
+    recordPayload record =
+        let (chosen, visits) = comparable record
+         in Builder.word16LE (moveIndex record)
+                <> Builder.word8 (actionId chosen)
+                <> Builder.word32LE (fromIntegral (length visits))
+                <> mconcat (map visitPayload visits)
+    visitPayload (action, count) =
+        Builder.word8 (actionId action)
+            <> Builder.word32LE count
+    rngId rng =
+        case rng of
+            NativeRng -> 0
+            CppRng -> 1
+    winnerId winner =
+        case winner of
+            HeroWin -> 0
+            VillainWin -> 1
+            Draw -> 2
 
 -- Sprint 7.2: Q3 compares visit lists as conceptually unordered sets of
 -- `(Action, count)` pairs, and different backends emit different enumerations

@@ -14,6 +14,7 @@ module MCTS.Transcript.EquitySidecar
     , writeEquitySidecar
     , writeEquitySidecarStream
     , writeEquitySidecarStreamWithEnvelope
+    , loadMatchingOriginatorSidecar
     , listEquitySidecars
     , prunableEquitySidecars
     , pruneEquitySidecars
@@ -232,6 +233,46 @@ writeEquitySidecarStreamWithEnvelope explicit envelope stream = do
             , sidecarEqPath = eqPath
             , sidecarEnvelopePath = envelopePath
             }
+
+loadMatchingOriginatorSidecar :: Maybe FilePath -> String -> Transcript -> IO (Maybe EqStream)
+loadMatchingOriginatorSidecar explicit transcriptHash transcript = do
+    entries <-
+        filter isCandidate
+            <$> listEquitySidecars explicit
+    streams <- mapM readMatching entries
+    pure (firstJust streams)
+  where
+    envelope = transcriptEnvelope transcript
+    expectedEnvelope =
+        LBS.toStrict (Builder.toLazyByteString (encodeEnvelope envelope))
+    isCandidate entry =
+        sidecarTranscriptHash entry == transcriptHash
+            && sidecarBackend entry == envelopeBackend envelope
+            && sidecarBuildId entry == envelopeBuildId envelope
+    readMatching entry = do
+        envelopeBytes <- tryRead (sidecarEnvelopePath entry)
+        eqBytes <- tryRead (sidecarEqPath entry)
+        pure $ case (envelopeBytes, eqBytes) of
+            (Just actualEnvelope, Just rawEq)
+                | actualEnvelope == expectedEnvelope ->
+                    case decodeEqStream rawEq of
+                        Right stream
+                            | eqTranscriptHash stream == transcriptHash
+                                && eqBackend stream == envelopeBackend envelope
+                                && eqBuildId stream == envelopeBuildId envelope ->
+                                Just stream
+                        _ -> Nothing
+            _ -> Nothing
+
+    tryRead path = do
+        result <- try (BS.readFile path) :: IO (Either IOException BS.ByteString)
+        pure $ case result of
+            Right bytes -> Just bytes
+            Left _ -> Nothing
+
+    firstJust [] = Nothing
+    firstJust (Just value : _) = Just value
+    firstJust (Nothing : rest) = firstJust rest
 
 writeFileAtomically :: FilePath -> FilePath -> BS.ByteString -> IO ()
 writeFileAtomically dir path bytes = do

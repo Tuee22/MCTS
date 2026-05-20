@@ -184,14 +184,20 @@ trailingProblems path = do
     let rows = zip [(1 :: Int) ..] (lines content)
         trailing = ["trailing whitespace: " <> path <> ":" <> show n | (n, row) <- rows, hasTrailing row]
         finalNewline =
-            if null content || last content == '\n'
+            if null content || endsWithNewline content
                 then []
                 else ["missing final newline: " <> path]
     pure (trailing <> finalNewline)
 
+endsWithNewline :: String -> Bool
+endsWithNewline [] = False
+endsWithNewline [ch] = ch == '\n'
+endsWithNewline (_ : rest) = endsWithNewline rest
+
 hasTrailing :: String -> Bool
 hasTrailing [] = False
-hasTrailing value = last value == ' ' || last value == '\t'
+hasTrailing [ch] = ch == ' ' || ch == '\t'
+hasTrailing (_ : rest) = hasTrailing rest
 
 generatedDriftProblems :: IO [String]
 generatedDriftProblems =

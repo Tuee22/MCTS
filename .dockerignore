@@ -3,6 +3,9 @@ dist-newstyle
 .mcts-cache
 transcripts
 **/transcripts
+test/golden
+.mcts-artifacts
+artifacts
 *.tr
 **/*.tr
 *.eq

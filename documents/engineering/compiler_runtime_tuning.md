@@ -70,8 +70,10 @@ GCC only — Clang is not supported on the C++ side.
 The C++ Plan/Apply command surface is retired from the live CLI after Sprint
 8.6. The historical `mcts build cpp-functional` pipeline ran the surviving C++
 steelman pipeline until backend (iii)'s retirement; backend (ii)'s identical
-historical pipeline is frozen under `test/golden/cpp-imperative/`, and backend
-(iii)'s final anchor is frozen under `test/golden/cpp-functional/`.
+historical pipeline is recorded as Sprint 8.5 evidence, and backend
+(iii)'s final evidence is recorded in Sprint 8.6. Optional external artifacts may
+be regenerated for audit, but normal validation does not require checked-in
+generated data.
 
 1. **Two-stage PGO.** Instrumented build via
    `-fprofile-generate=$(abspath $(PGO_DIR))`; each generated `_bench` and
@@ -101,8 +103,8 @@ Sprint 8.6 retirement; `cpp-imperative` used the same plan before Sprint 8.5
 retirement. C++ shared-library BOLT instrumentation could still produce no
 `.fdata` in the pinned container; the build harness recorded that explicitly and
 installed the PGO artefact as the canonical fallback rather than treating the
-backend build as failed. The frozen C++ evidence now lives under
-`test/golden/cpp-imperative/` and `test/golden/cpp-functional/`.
+backend build as failed. The retired C++ evidence is historical plan/doc data or
+optional external artifacts, not repository validation input.
 
 ### Code-Level Requirements
 
@@ -197,10 +199,12 @@ strip = "symbols"
 The `mcts build rust` Plan/Apply command runs:
 
 - **Two-stage PGO** via
-  `rustc -Cprofile-generate=/workspace/MCTS/rust/pgo-profile` → train on
-  benchmark (b) with `--games 1 --sims 100` → hard-failing
-  `llvm-profdata merge` into `rust/pgo-profile/merged.profdata` →
-  `-Cprofile-use=/workspace/MCTS/rust/pgo-profile/merged.profdata`.
+  `RUSTFLAGS="-C target-cpu=native -C link-arg=-fuse-ld=lld -C
+  profile-generate=/workspace/MCTS/rust/pgo-profile"` → train on benchmark (b)
+  with `--games 1 --sims 100` → hard-failing `llvm-profdata merge` into
+  `rust/pgo-profile/merged.profdata` → `RUSTFLAGS="-C target-cpu=native -C
+  link-arg=-fuse-ld=lld -C
+  profile-use=/workspace/MCTS/rust/pgo-profile/merged.profdata"`.
 - **BOLT** post-link: instrument the PGO cdylib, install the instrumented cdylib
   at the canonical FFI load name for a one-game `--sims 50` training run, restore
   the PGO cdylib, then optimize with `-reorder-blocks=ext-tsp` when `.fdata`
@@ -209,9 +213,10 @@ The `mcts build rust` Plan/Apply command runs:
 
 Current implementation baseline: `docker compose run --rm --build mcts mcts build
 rust` validates the pinned Rust toolchain, inherited subprocess environment,
-absolute profile paths, profile merge guard, canonical install path
-`rust/target/release/libmcts_rust.so`, `mimalloc::MiMalloc` global allocator, and
-post-link `engine_build_id` patching inside the pinned amd64 container.
+absolute profile paths, the `lld` linker flag in both PGO Cargo builds, profile
+merge guard, canonical install path `rust/target/release/libmcts_rust.so`,
+`mimalloc::MiMalloc` global allocator, and post-link `engine_build_id` patching
+inside the pinned amd64 container.
 
 ### Code-Level Requirements
 
@@ -247,17 +252,20 @@ ghc-options:
   -fstatic-argument-transformation
 ```
 
-LLVM codegen tuned via `-optlo-mcpu=native` (through to LLVM `opt`) and
-`-optlc-mcpu=native` (through to `llc`). LLVM version pinned in the
-`docker/Dockerfile` so codegen is reproducible.
+The doctrine target allows native CPU tuning through `-optlo-mcpu=native`
+(LLVM `opt`) and `-optlc-mcpu=native` (`llc`). The current implementation does
+not enable those two flags: they remain deferred on the documented aarch64
+assembler limitation below. LLVM itself is still active through `-fllvm`, and
+the LLVM version is pinned in `docker/Dockerfile` so codegen is reproducible.
 
 #### Currently landed (Phase 8 Sprint 8.1 baseline)
 
-The LLVM-free subset of the flag list above is landed in `mcts.cabal`'s
+The full doctrine flag list including `-fllvm` is landed in `mcts.cabal`'s
 shared `warnings` common stanza:
 
 ```
 -O2
+-fllvm
 -funbox-strict-fields
 -fspecialise-aggressively
 -fexpose-all-unfoldings
@@ -267,8 +275,10 @@ shared `warnings` common stanza:
 -fstatic-argument-transformation
 ```
 
-`-fllvm`, `-optlo-mcpu=native`, and `-optlc-mcpu=native` are held back
-until Sprint 1.1 pins LLVM in `docker/Dockerfile`. `INLINABLE` pragmas
+`-optlo-mcpu=native` and `-optlc-mcpu=native` remain deferred on the documented
+aarch64 assembler limitation: enabling them inside the pinned container can emit
+LSE instructions that the assembler rejects. GHC's LLVM backend uses the pinned
+LLVM toolchain carried by `docker/Dockerfile`. `INLINABLE` pragmas
 are landed on the hot path: every primitive in `MCTS.Search.Arena`,
 `MCTS.Search.UCT`, `MCTS.Rng.Mix`, and the exported engine functions
 in `MCTS.Engine` (`legalMoves`, `applyMove`, `isTerminal`,
@@ -324,15 +334,19 @@ search inner loop. Round 1 takes the rollout's per-step cost from ~1 ms to
   `Word16` ply counter; `isTerminal` returns true on `ply >= maxPlies` with
   eval `0.0`. Lives in the same unboxed board record as the bitboards;
   restored as part of the per-rollout `ST`-arena snapshot path.
-- Engine hot path lives in `ST s`. Tree is a `MutablePrimArray s` arena of
-  unboxed `Int32` / `Float` fields (SoA), or a hand-rolled `MutableByteArray#`
-  if profiling shows `PrimArray` indexing isn't optimal.
+- Engine hot path lives in `ST s`. The current tree is a structure-of-arrays
+  `STUArray` arena of unboxed fields; a hand-rolled `MutableByteArray#`
+  migration remains profile-driven and is not required by the current measured
+  baseline.
 - Board state is `Word64` bitboards, manipulated with `Data.Bits` (compiles to
-  `popcnt` / `tzcnt` under `-fllvm` with `-optlo-mcpu=native`).
+  efficient bit operations under the active `-fllvm` backend; the extra native
+  LLVM CPU flags remain deferred as described above).
 - Strict fields everywhere (`{-# UNPACK #-} !Int`), bang patterns on `let`
   bindings inside `ST` blocks.
-- `INLINABLE` on every exported engine primitive; `SPECIALIZE` on the search
-  loop for the concrete game type.
+- `INLINABLE` on every exported engine primitive. `SPECIALIZE` pragmas are not
+  needed in the current search loop because it is already monomorphic over the
+  concrete `Board` and `Word64` types; if a future refactor introduces a
+  polymorphic game type, the specialisations land with that change.
 - Pure API at the boundary: `search :: GameState -> Seed -> SearchBudget ->
   Tree -> (Move, Tree)`. `Tree` is opaque; internally backed by the `ST` arena
   and frozen at the API boundary if tree-persistence semantics need it.
@@ -414,13 +428,14 @@ optimization beyond the `thread_local` move buffer.
 
 The live Phase 6 Rust backend install surface is closed. On amd64,
 `rustPgoBoltPlan` in `src/MCTS/CLI/Build.hs` completes cargo
-`-Cprofile-generate`, the one-game PGO training run,
-`llvm-profdata merge`, `-Cprofile-use`, BOLT instrumentation/training,
-canonical install, and post-link `engine_build_id` patching. The shared
+`-Cprofile-generate` with `-C target-cpu=native -C link-arg=-fuse-ld=lld`,
+the one-game PGO training run, `llvm-profdata merge`, `-Cprofile-use` with the
+same target CPU and linker flags, BOLT instrumentation/training, canonical
+install, and post-link `engine_build_id` patching. The shared
 C++ `pgoBoltPlan` previously validated the canonical FFI training/install
 sequence for `cpp-functional`; if C++ BOLT instrumentation yielded no `.fdata`
 in the pinned container, the plan installed the PGO artefact as the explicit
-fallback. That C++ surface is now retired and represented by frozen anchors.
+fallback. That C++ surface is now retired and represented by historical evidence.
 
 On aarch64, the container's `llvm-bolt-19` reports:
 

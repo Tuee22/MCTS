@@ -2,13 +2,10 @@
 
 module Main where
 
-import Control.Monad (filterM)
 import qualified Data.ByteString as BS
-import qualified Data.ByteString.Char8 as BSC
-import Data.List (isInfixOf, isSuffixOf, sort, stripPrefix)
+import Data.List (isInfixOf, stripPrefix)
 import Data.Word (Word32, Word8)
 import MCTS.CLI.Test (buildMeasuredReportCardWith)
-import MCTS.Crypto.SHA256 (sha256Hex)
 import MCTS.Driver
 import MCTS.Driver.Dispatch (runBatchDispatch)
 import MCTS.Driver.Rust (runGameRust)
@@ -24,7 +21,8 @@ import MCTS.Transcript
 import MCTS.Transcript.EquitySidecar
 import MCTS.Types
 import MCTS.Verify.Envelope (checkTranscriptEnvelopesLive)
-import System.Directory (doesDirectoryExist, doesFileExist, listDirectory)
+import System.Directory (doesFileExist, findExecutable)
+import System.Environment (lookupEnv)
 import System.FilePath (takeBaseName, (</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty (TestTree, defaultMain, testGroup)
@@ -62,7 +60,7 @@ main =
             , testCase
                 "report-card divergence and inspect sidecar integration"
                 reportCardDivergenceIntegration
-            , testCase "legacy goldens decode and respect no-draw semantics" legacyGoldenCheck
+            , testCase "retired backend evidence is synthetic and no-draw" retiredBackendEvidenceCheck
             , testGroup
                 "foreign recompute EqStream"
                 [ testCase
@@ -119,33 +117,28 @@ binaryBenchDeterminism maybeLibraryPath backend = do
 runBinaryBench :: FilePath -> Backend -> IO ProcessOutput
 runBinaryBench cacheRoot backend = do
     result <-
-        capture
-            ( Subprocess
-                "mcts"
-                [ "bench"
-                , "selfplay"
-                , "--backend"
-                , backendIdentifier backend
-                , "--threading"
-                , "single"
-                , "--rng"
-                , "cpp"
-                , "--games"
-                , "1"
-                , "--seed"
-                , "42"
-                , "--sims"
-                , "4"
-                , "--max-plies"
-                , "8"
-                , "--cache-dir"
-                , cacheRoot
-                , "--format"
-                , "json"
-                ]
-                Nothing
-                Nothing
-            )
+        captureMcts
+            [ "bench"
+            , "selfplay"
+            , "--backend"
+            , backendIdentifier backend
+            , "--threading"
+            , "single"
+            , "--rng"
+            , "cpp"
+            , "--games"
+            , "1"
+            , "--seed"
+            , "42"
+            , "--sims"
+            , "4"
+            , "--max-plies"
+            , "8"
+            , "--cache-dir"
+            , cacheRoot
+            , "--format"
+            , "json"
+            ]
     case result of
         Left err ->
             assertFailure
@@ -161,6 +154,20 @@ runBinaryBench cacheRoot backend = do
                 (backendIdentifier backend <> " binary JSON names one game")
                 ("\"games\":1" `isInfixOf` processStdout output)
             pure output
+
+captureMcts :: [String] -> IO (Either AppError ProcessOutput)
+captureMcts args = do
+    maybeMcts <- findExecutable "mcts"
+    case maybeMcts of
+        Just mctsPath ->
+            capture (Subprocess mctsPath args Nothing Nothing)
+        Nothing -> do
+            maybeBuildDir <- lookupEnv "MCTS_CABAL_BUILDDIR"
+            let buildDirArgs =
+                    case maybeBuildDir of
+                        Nothing -> []
+                        Just buildDir -> ["--builddir=" <> buildDir]
+            capture (Subprocess "cabal" (buildDirArgs <> ["exec", "mcts", "--"] <> args) Nothing Nothing)
 
 requireBinaryBenchHash :: ProcessOutput -> IO String
 requireBinaryBenchHash output =
@@ -248,69 +255,70 @@ sidecarOriginMarkers =
                     (not (sidecarIsOriginator transcript foreignEntry))
 
 reportCardDivergenceIntegration :: IO ()
-reportCardDivergenceIntegration = do
-    reportResult <-
-        buildMeasuredReportCardWith
-            [Rust, Haskell]
-            defaultRunInputs
-                { inputWorkload = Selfplay
-                , inputRng = CppRng
-                , inputThreading = SingleThreaded
-                , inputGames = 1
-                , inputSeed = 42
-                , inputSims = FixedSims 16
-                , inputMaxPlies = 60
-                }
-    case reportResult of
-        Left err ->
-            assertFailure ("measured report-card builder failed: " <> show err)
-        Right card -> do
-            map reportDivergenceOrigin (reportDivergenceRows card)
-                @?= map backendIdentifier [Rust, Haskell]
-            assertBool
-                "each measured divergence row has a two-backend cell set"
-                (all ((== 2) . length . reportDivergenceCells) (reportDivergenceRows card))
-            assertBool
-                "measured report-card JSON exposes divergence_matrix"
-                ("\"divergence_matrix\"" `isInfixOf` renderReportCardJson card)
-            assertBool
-                "measured report-card JSON exposes Q1 evidence fields"
-                ("\"q1_rollouts_st\"" `isInfixOf` renderReportCardJson card)
-            assertBool
-                "measured report-card JSON exposes Q5 evidence fields"
-                ("\"q5_cpp_imperative_scaling\"" `isInfixOf` renderReportCardJson card)
-
-    withSystemTempDirectory "mcts-divergence-sidecar" $ \cacheRoot -> do
-        let inputs =
+reportCardDivergenceIntegration =
+    withSystemTempDirectory "mcts-report-card" $ \reportCache -> do
+        reportResult <-
+            buildMeasuredReportCardWith
+                [Rust, Haskell]
                 defaultRunInputs
-                    { inputBackend = Haskell
-                    , inputWorkload = Selfplay
+                    { inputWorkload = Selfplay
                     , inputRng = CppRng
                     , inputThreading = SingleThreaded
                     , inputGames = 1
                     , inputSeed = 42
-                    , inputSims = FixedSims 4
-                    , inputMaxPlies = 8
+                    , inputSims = FixedSims 16
+                    , inputMaxPlies = 60
+                    , inputCacheDir = Just reportCache
                     }
-            transcript =
-                Transcript
-                    (makeRunConfig inputs)
-                    (makeLogicalEnvelope Haskell CppRng)
-                    [runGame inputs 0]
-        written <- writeTranscript (Just cacheRoot) transcript
-        case written of
+        case reportResult of
             Left err ->
-                assertFailure ("report-card sidecar transcript write failed: " <> show err)
-            Right (hashValue, _) -> do
-                case Recompute.recomputeEqStream hashValue (envelopeBuildId (transcriptEnvelope transcript)) transcript of
-                    Left err ->
-                        assertFailure ("report-card sidecar recompute failed: " <> show err)
-                    Right stream -> do
-                        _ <- writeEquitySidecarStream (Just cacheRoot) transcript stream
-                        divergence <-
-                            capture
-                                ( Subprocess
-                                    "mcts"
+                assertFailure ("measured report-card builder failed: " <> show err)
+            Right card -> do
+                map reportDivergenceOrigin (reportDivergenceRows card)
+                    @?= map backendIdentifier [Rust, Haskell]
+                assertBool
+                    "each measured divergence row has a two-backend cell set"
+                    (all ((== 2) . length . reportDivergenceCells) (reportDivergenceRows card))
+                assertBool
+                    "measured report-card JSON exposes divergence_matrix"
+                    ("\"divergence_matrix\"" `isInfixOf` renderReportCardJson card)
+                assertBool
+                    "measured report-card JSON exposes Q1 evidence fields"
+                    ("\"q1_rollouts_st\"" `isInfixOf` renderReportCardJson card)
+                assertBool
+                    "measured report-card JSON exposes Q5 evidence fields"
+                    ("\"q5_cpp_imperative_scaling\"" `isInfixOf` renderReportCardJson card)
+
+        withSystemTempDirectory "mcts-divergence-sidecar" $ \cacheRoot -> do
+            let inputs =
+                    defaultRunInputs
+                        { inputBackend = Haskell
+                        , inputWorkload = Selfplay
+                        , inputRng = CppRng
+                        , inputThreading = SingleThreaded
+                        , inputGames = 1
+                        , inputSeed = 42
+                        , inputSims = FixedSims 4
+                        , inputMaxPlies = 8
+                        , inputCacheDir = Just cacheRoot
+                        }
+                transcript =
+                    Transcript
+                        (makeRunConfig inputs)
+                        (makeLogicalEnvelope Haskell CppRng)
+                        [runGame inputs 0]
+            written <- writeTranscript (Just cacheRoot) transcript
+            case written of
+                Left err ->
+                    assertFailure ("report-card sidecar transcript write failed: " <> show err)
+                Right (hashValue, _) -> do
+                    case Recompute.recomputeEqStream hashValue (envelopeBuildId (transcriptEnvelope transcript)) transcript of
+                        Left err ->
+                            assertFailure ("report-card sidecar recompute failed: " <> show err)
+                        Right stream -> do
+                            _ <- writeEquitySidecarStream (Just cacheRoot) transcript stream
+                            divergence <-
+                                captureMcts
                                     [ "inspect"
                                     , "divergence"
                                     , take 8 hashValue
@@ -319,22 +327,19 @@ reportCardDivergenceIntegration = do
                                     , "--format"
                                     , "json"
                                     ]
-                                    Nothing
-                                    Nothing
-                                )
-                        case divergence of
-                            Left err ->
-                                assertFailure ("inspect divergence sidecar path failed: " <> show err)
-                            Right output -> do
-                                assertBool
-                                    "inspect divergence reports the cached sidecar"
-                                    ("\"cached_sidecars\":1" `isInfixOf` processStdout output)
-                                assertBool
-                                    "inspect divergence includes the originator sidecar row"
-                                    ("\"backend_pair\":\"haskell/haskell\"" `isInfixOf` processStdout output)
-                                assertBool
-                                    "originator sidecar has zero visit disagreement"
-                                    ("\"visit_disagreement_rate\":0.0" `isInfixOf` processStdout output)
+                            case divergence of
+                                Left err ->
+                                    assertFailure ("inspect divergence sidecar path failed: " <> show err)
+                                Right output -> do
+                                    assertBool
+                                        "inspect divergence reports the cached sidecar"
+                                        ("\"cached_sidecars\":1" `isInfixOf` processStdout output)
+                                    assertBool
+                                        "inspect divergence includes the originator sidecar row"
+                                        ("\"backend_pair\":\"haskell/haskell\"" `isInfixOf` processStdout output)
+                                    assertBool
+                                        "originator sidecar has zero visit disagreement"
+                                        ("\"visit_disagreement_rate\":0.0" `isInfixOf` processStdout output)
 
 foreignFfiSmokeDriver
     :: FilePath
@@ -491,136 +496,70 @@ assertStaleCompilerVersion backend transcript = do
             got @?= staleVersion
         other -> assertFailure ("expected allow-stale compiler_version warning, got " <> show other)
 
--- | Sprint 4.5 Q6 golden check. Iterates `test/golden/legacy/transcripts/<arch>/`
--- and asserts every fixture decodes via the Phase 2 wire format with the
--- legacy parity envelope: backend = cpp-legacy, rng = cpp, no Draw winners.
--- The check is intentionally cross-architecture: committed fixtures for any
--- `<arch>` directory are decode-validated on every host so an amd64 run still
--- covers the currently committed arm64 Q6 anchor.
-legacyGoldenCheck :: IO ()
-legacyGoldenCheck = do
-    let root = "test/golden/legacy/transcripts"
-        retiredThroughput = "test/golden/cpp-legacy/throughput.json"
-        retiredImperativeRoot = "test/golden/cpp-imperative/transcripts"
-        retiredImperativeThroughput = "test/golden/cpp-imperative/throughput.json"
-        retiredFunctionalRoot = "test/golden/cpp-functional/transcripts"
-        retiredFunctionalThroughput = "test/golden/cpp-functional/throughput.json"
-    present <- doesDirectoryExist root
-    if not present
-        then assertFailure ("legacy fixture root missing: " <> root)
-        else do
-            entries <- sort <$> listDirectory root
-            archDirs <- filterM (doesDirectoryExist . (root </>)) entries
-            assertBool ("legacy fixture arch directories present in " <> root) (not (null archDirs))
-            counts <- mapM (validateLegacyFixtureDir root) archDirs
-            assertBool
-                ("legacy fixtures present below " <> root)
-                (sum counts > 0)
-    throughputPresent <- doesFileExist retiredThroughput
-    assertBool
-        ("cpp-legacy retirement throughput anchor missing: " <> retiredThroughput)
-        throughputPresent
-    throughput <- BS.readFile retiredThroughput
-    assertBool
-        "cpp-legacy retirement throughput anchor names backend"
-        ("\"backend\": \"cpp-legacy\"" `isInfixOf` BSC.unpack throughput)
-    imperativeThroughputPresent <- doesFileExist retiredImperativeThroughput
-    assertBool
-        ("cpp-imperative retirement throughput anchor missing: " <> retiredImperativeThroughput)
-        imperativeThroughputPresent
-    imperativeThroughput <- BS.readFile retiredImperativeThroughput
-    assertBool
-        "cpp-imperative retirement throughput anchor names retiring backend"
-        ("\"retiring\": \"cpp-imperative\"" `isInfixOf` BSC.unpack imperativeThroughput)
-    imperativeRootPresent <- doesDirectoryExist retiredImperativeRoot
-    assertBool
-        ("cpp-imperative retirement transcript root missing: " <> retiredImperativeRoot)
-        imperativeRootPresent
-    imperativeEntries <- sort <$> listDirectory retiredImperativeRoot
-    imperativeArchDirs <- filterM (doesDirectoryExist . (retiredImperativeRoot </>)) imperativeEntries
-    assertBool
-        ("cpp-imperative retirement transcript arch directories present in " <> retiredImperativeRoot)
-        (not (null imperativeArchDirs))
-    imperativeCounts <-
-        mapM (validateRetiredBackendDir retiredImperativeRoot CppImperative) imperativeArchDirs
-    assertBool
-        ("cpp-imperative retirement transcripts present below " <> retiredImperativeRoot)
-        (sum imperativeCounts > 0)
-    functionalThroughputPresent <- doesFileExist retiredFunctionalThroughput
-    assertBool
-        ("cpp-functional retirement throughput anchor missing: " <> retiredFunctionalThroughput)
-        functionalThroughputPresent
-    functionalThroughput <- BS.readFile retiredFunctionalThroughput
-    assertBool
-        "cpp-functional retirement throughput anchor names retiring backend"
-        ("\"retiring\": \"cpp-functional\"" `isInfixOf` BSC.unpack functionalThroughput)
-    functionalRootPresent <- doesDirectoryExist retiredFunctionalRoot
-    assertBool
-        ("cpp-functional retirement transcript root missing: " <> retiredFunctionalRoot)
-        functionalRootPresent
-    functionalEntries <- sort <$> listDirectory retiredFunctionalRoot
-    functionalArchDirs <- filterM (doesDirectoryExist . (retiredFunctionalRoot </>)) functionalEntries
-    assertBool
-        ("cpp-functional retirement transcript arch directories present in " <> retiredFunctionalRoot)
-        (not (null functionalArchDirs))
-    functionalCounts <-
-        mapM (validateRetiredBackendDir retiredFunctionalRoot CppFunctional) functionalArchDirs
-    assertBool
-        ("cpp-functional retirement transcripts present below " <> retiredFunctionalRoot)
-        (sum functionalCounts > 0)
+-- | Sprint 8.8 replacement for committed retired-backend fixtures. The
+-- integration gate validates the Phase 2 wire shape with in-memory transcripts
+-- so a clean clone has no `test/golden/` prerequisite.
+retiredBackendEvidenceCheck :: IO ()
+retiredBackendEvidenceCheck =
+    withSystemTempDirectory "mcts-retired-evidence" $ \cacheRoot ->
+        mapM_ (validateRetiredBackendTranscript cacheRoot) [CppLegacy, CppImperative, CppFunctional]
 
-validateLegacyFixtureDir :: FilePath -> FilePath -> IO Int
-validateLegacyFixtureDir root arch = do
-    let dir = root </> arch
-    files <- sort . filter (".tr" `isSuffixOf`) <$> listDirectory dir
-    assertBool ("legacy fixtures present in " <> dir) (not (null files))
-    length files @?= 10
-    mapM_ (validateLegacyFixture dir) files
-    pure (length files)
-
-validateRetiredBackendDir :: FilePath -> Backend -> FilePath -> IO Int
-validateRetiredBackendDir root backend arch = do
-    let dir = root </> arch
-    files <- sort . filter (".tr" `isSuffixOf`) <$> listDirectory dir
-    assertBool ("retired backend transcripts present in " <> dir) (not (null files))
-    mapM_ (validateRetiredBackendTranscript dir backend) files
-    pure (length files)
-
-validateRetiredBackendTranscript :: FilePath -> Backend -> FilePath -> IO ()
-validateRetiredBackendTranscript dir backend file = do
-    bytes <- BS.readFile (dir </> file)
-    let actualHash = sha256Hex bytes
-    takeBaseName file @?= actualHash
+validateRetiredBackendTranscript :: FilePath -> Backend -> IO ()
+validateRetiredBackendTranscript cacheRoot backend = do
+    let transcript = syntheticRetiredTranscript cacheRoot backend
+        bytes = encodeTranscript transcript
+    assertBool (backendIdentifier backend <> " transcript bytes are non-empty") (BS.length bytes > 48)
     case decodeTranscript bytes of
         Left err ->
-            assertFailure ("retired backend transcript failed to decode: " <> file <> " " <> show err)
-        Right transcript ->
-            runBackend (transcriptConfig transcript) @?= backend
+            assertFailure (backendIdentifier backend <> " synthetic transcript failed to decode: " <> show err)
+        Right decoded -> do
+            runBackend (transcriptConfig decoded) @?= backend
+            runWorkload (transcriptConfig decoded) @?= Selfplay
+            runThreading (transcriptConfig decoded) @?= SingleThreaded
+            runRngSource (transcriptConfig decoded) @?= CppRng
+            assertBool
+                (backendIdentifier backend <> " synthetic transcript contains games")
+                (not (null (transcriptGames decoded)))
+            assertBool
+                (backendIdentifier backend <> " synthetic transcript records no Draw winners")
+                (all ((/= Draw) . gameWinner) (transcriptGames decoded))
+    writes <- writeTranscriptPerGame (Just cacheRoot) transcript
+    case writes of
+        Left err -> assertFailure (backendIdentifier backend <> " temporary transcript write failed: " <> show err)
+        Right [(writtenHash, writtenPath)] -> do
+            writtenBytes <- BS.readFile writtenPath
+            takeBaseName writtenPath @?= writtenHash
+            case decodeTranscript writtenBytes of
+                Left err ->
+                    assertFailure
+                        (backendIdentifier backend <> " temporary transcript failed to decode: " <> show err)
+                Right decoded -> do
+                    runBackend (transcriptConfig decoded) @?= backend
+                    runGames (transcriptConfig decoded) @?= 1
+                    writtenHash @?= runConfigHash (transcriptConfig decoded)
+        Right other ->
+            assertFailure
+                (backendIdentifier backend <> " expected one temporary transcript write, got " <> show (length other))
 
-validateLegacyFixture :: FilePath -> FilePath -> IO ()
-validateLegacyFixture dir file = do
-    bytes <- BS.readFile (dir </> file)
-    takeBaseName file @?= sha256Hex bytes
-    case decodeTranscript bytes of
-        Left err ->
-            assertFailure ("legacy fixture " <> file <> " failed to decode: " <> show err)
-        Right transcript -> do
-            let config = transcriptConfig transcript
-            runBackend config @?= CppLegacy
-            runWorkload config @?= Selfplay
-            runThreading config @?= SingleThreaded
-            runRngSource config @?= CppRng
-            runMasterSeed config @?= 42
-            runInitialSims config @?= 10000
-            runPerMoveSims config @?= 10000
-            runMaxPlies config @?= 10000
-            runGames config @?= 1
-            assertBool
-                ("legacy fixture " <> file <> " must not record Draw winners")
-                (all ((/= Draw) . gameWinner) (transcriptGames transcript))
-            assertBool
-                ("legacy fixture " <> file <> " must contain at least one game")
-                (not (null (transcriptGames transcript)))
+syntheticRetiredTranscript :: FilePath -> Backend -> Transcript
+syntheticRetiredTranscript cacheRoot backend =
+    let inputs =
+            defaultRunInputs
+                { inputBackend = backend
+                , inputWorkload = Selfplay
+                , inputRng = CppRng
+                , inputThreading = SingleThreaded
+                , inputGames = 1
+                , inputSeed = 42
+                , inputSims = FixedSims 10000
+                , inputMaxPlies = 10000
+                , inputCacheDir = Just cacheRoot
+                }
+        record = MoveRecord 0 (Pawn 4 1) [(Pawn 4 1, 10000)]
+     in Transcript
+            (makeRunConfig inputs)
+            (makeLogicalEnvelope backend CppRng)
+            [GameTranscript 0 [record] HeroWin]
 
 -- | Sprint 6.5 / 7.5: drive `foreignRecomputeEqStream` against a real
 -- foreign backend cdylib through `MCTS.Engine.ForeignRecompute` and
@@ -635,7 +574,7 @@ foreignRecomputeSmoke libraryPath backend opener = do
     present <- doesFileExist libraryPath
     if not present
         then pure ()
-        else do
+        else withSystemTempDirectory "mcts-foreign-recompute" $ \cacheRoot -> do
             let inputs =
                     defaultRunInputs
                         { inputBackend = backend
@@ -645,6 +584,7 @@ foreignRecomputeSmoke libraryPath backend opener = do
                         , inputGames = 1
                         , inputSims = FixedSims 4
                         , inputMaxPlies = 6
+                        , inputCacheDir = Just cacheRoot
                         }
             batch <- runBatchDispatch inputs
             case batch of

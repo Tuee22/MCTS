@@ -18,6 +18,7 @@ main =
             "mcts-cross-backend"
             [ testCase "two-backend rollout cohort" rolloutsCheck
             , testCase "two-backend selfplay cohort" selfplayCheck
+            , testCase "length-aware verifier mismatches" comparatorMismatchCheck
             , testCase "cohort constraints" cohortConstraintsCheck
             , testCase "envelope: cohort host_arch mismatch hard-fails" envelopeCohortHostArchCheck
             , testCase "envelope: shared_rng_build_id mismatch hard-fails" envelopeCohortRngBuildCheck
@@ -32,6 +33,7 @@ rolloutsCheck = do
                 , inputSeed = 42
                 , inputSims = FixedSims 16
                 , inputMaxPlies = 60
+                , inputCacheDir = Just "/tmp/mcts-cross-backend-rollouts"
                 }
     detailed <-
         verifyRunDetailed
@@ -51,6 +53,7 @@ selfplayCheck = do
                 , inputSeed = 42
                 , inputSims = FixedSims 16
                 , inputMaxPlies = 60
+                , inputCacheDir = Just "/tmp/mcts-cross-backend-selfplay"
                 }
     detailed <-
         verifyRunDetailed
@@ -61,6 +64,45 @@ selfplayCheck = do
     case detailed of
         Right result -> length (verifyBatches result) @?= 2
         Left err -> assertFailure ("cross-backend selfplay verify failed: " <> show err)
+
+comparatorMismatchCheck :: IO ()
+comparatorMismatchCheck = do
+    let base = makeBaseTranscript
+    case transcriptGames base of
+        [] -> assertFailure "makeBaseTranscript must produce a game"
+        baseGame : _ -> do
+            let extraMove =
+                    base
+                        { transcriptGames =
+                            [baseGame{gameMoves = gameMoves baseGame <> [duplicateMove baseGame]}]
+                        }
+                extraGame =
+                    base{transcriptGames = transcriptGames base <> [baseGame{gameId = gameId baseGame + 1}]}
+                differentWinner =
+                    base{transcriptGames = [baseGame{gameWinner = alternateWinner (gameWinner baseGame)}]}
+            case compareTranscripts Haskell base Rust extraMove of
+                Left (VerifyLengthMismatch Haskell Rust scope _ _) ->
+                    assertBool "extra move scope names the game" (scope == "moves game=0")
+                other -> assertFailure ("expected extra-move VerifyLengthMismatch, got " <> show other)
+            case compareTranscripts Haskell base Rust extraGame of
+                Left (VerifyLengthMismatch Haskell Rust "games" _ _) -> pure ()
+                other -> assertFailure ("expected extra-game VerifyLengthMismatch, got " <> show other)
+            case compareTranscripts Haskell base Rust differentWinner of
+                Left (VerifyTerminatorMismatch Haskell Rust 0 _ _) -> pure ()
+                other -> assertFailure ("expected VerifyTerminatorMismatch, got " <> show other)
+
+duplicateMove :: GameTranscript -> MoveRecord
+duplicateMove game =
+    case gameMoves game of
+        record : _ -> record{moveIndex = fromIntegral (length (gameMoves game))}
+        [] -> MoveRecord 0 (Pawn 4 1) []
+
+alternateWinner :: Winner -> Winner
+alternateWinner winner =
+    case winner of
+        HeroWin -> VillainWin
+        VillainWin -> HeroWin
+        Draw -> HeroWin
 
 cohortConstraintsCheck :: IO ()
 cohortConstraintsCheck = do

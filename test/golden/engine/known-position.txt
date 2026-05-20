@@ -1,9 +1,0 @@
-hero=22
-villain=67
-wallsH=5
-wallsV=0
-heroWalls=9
-villainWalls=9
-sideToMove=Villain
-ply=5
-legal=*(4,6) *(3,7) *(5,7) *(4,8) H(4,0) H(5,0) H(6,0) H(7,0) H(0,1) H(1,1) H(2,1) H(3,1)

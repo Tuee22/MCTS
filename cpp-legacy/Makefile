@@ -27,8 +27,8 @@ envelope-build-id:
 # One-time Q6 fixture generator. Plays G_LP=10 selfplay games with the
 # legacy parity envelope (seed=S_LP=42, sims=S_LP_SIMS=10000,
 # max_plies=10000) and writes wire-format .tr files under
-# test/golden/legacy/transcripts/<arch>/. Documented in
-# test/golden/legacy/README.md.
+# an explicit external or ignored output root. Documented in
+# documents/engineering/cli_command_surface.md.
 legacy-to-wire:
 	mkdir -p build
 	$(CXX) -std=c++17 -O3 -Wall -Wno-pessimizing-move -Ilegacy-core \

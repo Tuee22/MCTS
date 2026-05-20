@@ -9,13 +9,10 @@ import qualified Data.Aeson.Key as AesonKey
 import qualified Data.Aeson.KeyMap as AesonKeyMap
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC
-import qualified Data.ByteString.Lazy as LBS
-import Data.Foldable (toList)
 import Data.IORef (modifyIORef', newIORef, readIORef)
 import Data.List (sort)
 import qualified Data.List as List
 import qualified Data.Text as T
-import qualified Data.Text.Encoding as TE
 import Data.Word (Word16, Word8)
 import MCTS.CLI.Bench (monotonicNanos, runBenchWithClock)
 import MCTS.CLI.Build
@@ -33,6 +30,7 @@ import MCTS.CLI.Command
     , Command (..)
     , InspectCommand (..)
     , LegacyFixtureOptions (..)
+    , PlayOptions (..)
     , ShowOptions (..)
     , VerifyCommand (..)
     )
@@ -148,7 +146,7 @@ import MCTS.Transcript
 import qualified MCTS.Transcript as Transcript
 import MCTS.Transcript.EquitySidecar
 import MCTS.Types
-import MCTS.Verify (VerifyResult (..))
+import MCTS.Verify (VerifyResult (..), compareTranscripts)
 import MCTS.Verify.Divergence
 import MCTS.Verify.Envelope
 import qualified Options.Applicative as OA
@@ -161,7 +159,6 @@ import System.Directory
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
 import Test.Tasty (TestTree, defaultMain, testGroup)
-import qualified Test.Tasty.Golden as Golden
 import Test.Tasty.HUnit (testCase)
 import qualified Test.Tasty.QuickCheck as QC
 
@@ -174,12 +171,12 @@ unitTests =
     [ testGroup
         "cli and parser"
         [ testCase "command registry and parser invariants" exerciseCommandParserSurface
-        , testCase "command and generated-section goldens" exerciseCommandGeneratedGoldens
+        , testCase "command and generated-section renderers" exerciseCommandGeneratedRenderers
         ]
     , testGroup
         "transcripts and cache"
         [ testCase "transcript codec invariants" exerciseTranscriptCodecSurface
-        , testCase "transcript goldens and cache lookup" exerciseTranscriptGoldenSurface
+        , testCase "transcript semantic fixtures and cache lookup" exerciseTranscriptGeneratedSurface
         , testCase "per-game transcript writer" exercisePerGameTranscriptWriter
         , QC.testProperty
             "transcript decode . encode == id (quickcheck)"
@@ -209,11 +206,10 @@ unitTests =
         ]
     , testGroup
         "renderers and TUI dispatch"
-        [ testCase "error and inspect render goldens" exerciseRendererGoldenSurface
-        , testCase "report-card golden" exerciseReportCardGolden
-        , testGroup "tasty-golden providers" providerGoldenTests
-        , testCase "TUI board layout golden" exerciseTuiBoardGolden
-        , testCase "TUI replay layout golden" exerciseTuiReplayGolden
+        [ testCase "error and inspect renderers" exerciseRendererSurface
+        , testCase "report-card renderer" exerciseReportCardRenderer
+        , testCase "TUI board layout renderer" exerciseTuiBoardRenderer
+        , testCase "TUI replay layout renderer" exerciseTuiReplayRenderer
         , testCase "TUI play input dispatcher" exerciseTuiPlayInput
         , testCase "TUI replay navigation" exerciseTuiReplayNav
         , testCase "TUI replay overlays" exerciseTuiReplayOverlay
@@ -258,17 +254,11 @@ propTranscriptRoundtrip (QC.NonNegative seedN) (QC.NonNegative simsN) =
 exerciseCommandParserSurface :: IO ()
 exerciseCommandParserSurface = do
     assert
-        "test/golden/legacy/transcripts is in the no-hand-edit registry"
-        ("test/golden/legacy/transcripts" `elem` trackingGeneratedPaths)
+        "generated-path registry excludes validation fixtures"
+        (not (any ("test/golden/" `prefixOf`) trackingGeneratedPaths))
     assert
-        "test/golden/cpp-legacy/transcripts is in the no-hand-edit registry"
-        ("test/golden/cpp-legacy/transcripts" `elem` trackingGeneratedPaths)
-    assert
-        "test/golden/cpp-imperative/transcripts is in the no-hand-edit registry"
-        ("test/golden/cpp-imperative/transcripts" `elem` trackingGeneratedPaths)
-    assert
-        "test/golden/cpp-functional/transcripts is in the no-hand-edit registry"
-        ("test/golden/cpp-functional/transcripts" `elem` trackingGeneratedPaths)
+        "generated-path registry still tracks generated command docs"
+        ("documents/cli/commands.md" `elem` trackingGeneratedPaths)
     assert "command tree mentions verify" ("verify" `contains` renderCommandTree)
     assert "command json is object" (take 1 renderCommandJson == "{")
     assert "all leaves have examples" (all (not . null . examples) (leafSpecs commandSpec))
@@ -283,12 +273,53 @@ exerciseCommandParserSurface = do
             )
         )
     assert
+        "bench requires an explicit backend cohort"
+        (isLeft (parseCommand ["bench", "selfplay", "--games", "1", "--seed", "42"]))
+    assert
         "legacy parity command retired"
         (isLeft (parseCommand ["verify", "legacy-parity", "rollouts", "--backend", "cpp-legacy,haskell"]))
     assert
         "allow stale parser"
         ( parsesAllowStale
-            (parseCommand ["verify", "selfplay", "--backend", "rust,haskell", "--allow-stale"])
+            ( parseCommand
+                [ "verify"
+                , "selfplay"
+                , "--backend"
+                , "rust,haskell"
+                , "--allow-stale"
+                , "--games"
+                , "1"
+                , "--seed"
+                , "42"
+                ]
+            )
+        )
+    assert
+        "verify defaults to single-threaded dispatch"
+        ( parsesVerifyDefaultThreading
+            (parseCommand ["verify", "selfplay", "--backend", "rust,haskell", "--games", "1", "--seed", "42"])
+        )
+    assert
+        "play parser carries rng seed and max-plies"
+        ( parsesPlaySurface
+            ( parseCommand
+                [ "play"
+                , "--backend"
+                , "haskell"
+                , "--side"
+                , "hero"
+                , "--rng"
+                , "cpp"
+                , "--seed"
+                , "99"
+                , "--max-plies"
+                , "123"
+                , "--sims"
+                , "1000"
+                , "--cache-dir"
+                , ".mcts-cache-play"
+                ]
+            )
         )
     assert
         "legacy fixture build parser"
@@ -309,29 +340,58 @@ exerciseCommandParserSurface = do
             )
         )
     assert
+        "legacy fixture build requires explicit output dir"
+        (isLeft (parseCommand ["build", "legacy-fixtures", "--dry-run"]))
+    assert
         "verify rejects native rng"
         ( isLeft
-            (parseCommand ["verify", "selfplay", "--backend", "rust,haskell", "--rng", "native"])
+            ( parseCommand
+                [ "verify"
+                , "selfplay"
+                , "--backend"
+                , "rust,haskell"
+                , "--rng"
+                , "native"
+                , "--games"
+                , "1"
+                , "--seed"
+                , "42"
+                ]
+            )
         )
     assert
         "verify rejects single-backend cohorts at parser boundary"
-        (isVerifyCohortTooSmall (parseCommand ["verify", "selfplay", "--backend", "haskell"]))
+        ( isVerifyCohortTooSmall
+            (parseCommand ["verify", "selfplay", "--backend", "haskell", "--games", "1", "--seed", "42"])
+        )
     assert
         "verify rejects retired cpp-legacy at parser boundary"
-        (isLeft (parseCommand ["verify", "selfplay", "--backend", "cpp-legacy,haskell"]))
+        ( isLeft
+            ( parseCommand
+                ["verify", "selfplay", "--backend", "cpp-legacy,haskell", "--games", "1", "--seed", "42"]
+            )
+        )
     assert
         "verify rejects retired cpp-imperative at parser boundary"
-        (isLeft (parseCommand ["verify", "selfplay", "--backend", "cpp-imperative,haskell"]))
+        ( isLeft
+            ( parseCommand
+                ["verify", "selfplay", "--backend", "cpp-imperative,haskell", "--games", "1", "--seed", "42"]
+            )
+        )
     assert
         "verify rejects retired cpp-functional at parser boundary"
-        (isLeft (parseCommand ["verify", "selfplay", "--backend", "cpp-functional,haskell"]))
+        ( isLeft
+            ( parseCommand
+                ["verify", "selfplay", "--backend", "cpp-functional,haskell", "--games", "1", "--seed", "42"]
+            )
+        )
     exerciseOptparseParser
     exercisePlanOptionMetadata
     exerciseForbiddenPathRegistry
 
-exerciseCommandGeneratedGoldens :: IO ()
-exerciseCommandGeneratedGoldens = do
-    exerciseCommandGoldens
+exerciseCommandGeneratedRenderers :: IO ()
+exerciseCommandGeneratedRenderers = do
+    exerciseCommandRenderers
     exerciseMarkerSplice
 
 exerciseTranscriptCodecSurface :: IO ()
@@ -363,10 +423,10 @@ exerciseTranscriptCodecSurface = do
     exerciseSortedRecords
     exerciseLegacyDrawRejection
 
-exerciseTranscriptGoldenSurface :: IO ()
-exerciseTranscriptGoldenSurface = do
+exerciseTranscriptGeneratedSurface :: IO ()
+exerciseTranscriptGeneratedSurface = do
     exerciseLookup
-    exerciseTranscriptGolden
+    exerciseTranscriptSemanticFixtures
     exerciseCacheRootBranches
     exerciseUniquePrefixProperty
 
@@ -376,7 +436,7 @@ exerciseEngineSurface = do
     assert "notation roundtrip" (all (\a -> parseMove (renderMove a) == Just a) allActions)
     assert "initial board has legal moves" (not (null (legalMoves initialBoard)))
     exerciseEngineProperties
-    exerciseKnownPositionGolden
+    exerciseKnownPositionRenderer
     exerciseEngineBruteForce
     exerciseEnv
     exerciseMonotonicBracket
@@ -403,8 +463,48 @@ exerciseEnvelopeDivergenceSurface = do
     assert
         "divergence ignores backend-specific zero-visit padding"
         (divergenceRate sampleTranscript zeroPadded == DivergenceMetrics 0.0 0.0 0.0)
+    exerciseVerifyComparator sampleTranscript
     exerciseDivergenceVsEqStream sampleTranscript
     exerciseEnvelopeChecks sampleTranscript
+
+exerciseVerifyComparator :: Transcript -> IO ()
+exerciseVerifyComparator transcript = do
+    let foreignSamePayload =
+            transcript
+                { transcriptConfig = (transcriptConfig transcript){runBackend = Rust}
+                , transcriptEnvelope = makeLogicalEnvelope Rust (runRngSource (transcriptConfig transcript))
+                }
+    assert
+        "verify comparator ignores backend and envelope when payload matches"
+        (compareTranscripts Haskell transcript Rust foreignSamePayload == Right ())
+    let extraMove =
+            foreignSamePayload
+                { transcriptGames = mapFirstGame appendDuplicateMove (transcriptGames foreignSamePayload)
+                }
+    case compareTranscripts Haskell transcript Rust extraMove of
+        Left (VerifyLengthMismatch Haskell Rust scope _ _) ->
+            assert "verify comparator reports extra moves" ("moves game=0" `contains` scope)
+        other -> error ("expected verify move length mismatch, got " <> show other)
+    let extraGame =
+            foreignSamePayload
+                { transcriptGames = transcriptGames foreignSamePayload <> [runGame sampleInputs 2]
+                }
+    case compareTranscripts Haskell transcript Rust extraGame of
+        Left (VerifyLengthMismatch Haskell Rust "games" 0 1) -> pure ()
+        other -> error ("expected verify game length mismatch, got " <> show other)
+    let wrongWinner =
+            foreignSamePayload
+                { transcriptGames =
+                    mapFirstGame (\game -> game{gameWinner = Draw}) (transcriptGames foreignSamePayload)
+                }
+    case compareTranscripts Haskell transcript Rust wrongWinner of
+        Left (VerifyTerminatorMismatch Haskell Rust 0 _ _) -> pure ()
+        other -> error ("expected verify terminator mismatch, got " <> show other)
+  where
+    appendDuplicateMove game =
+        case gameMoves game of
+            record : _ -> game{gameMoves = gameMoves game <> [record{moveIndex = fromIntegral (length (gameMoves game))}]}
+            [] -> game
 
 exerciseSidecarSurface :: IO ()
 exerciseSidecarSurface = do
@@ -423,15 +523,15 @@ exercisePlanSurface = do
 
 exerciseSubprocessSurface :: IO ()
 exerciseSubprocessSurface = do
-    exerciseSubprocessGolden
+    exerciseSubprocessRenderer
     exerciseSubprocessEnvironment
 
-exerciseRendererGoldenSurface :: IO ()
-exerciseRendererGoldenSurface = do
+exerciseRendererSurface :: IO ()
+exerciseRendererSurface = do
     exerciseErrorRenderings
-    exerciseErrorGolden
-    exerciseInspectShowGolden
-    exerciseInspectListGolden
+    exerciseErrorRenderer
+    exerciseInspectShowRenderer
+    exerciseInspectListRenderer
 
 assert :: String -> Bool -> IO ()
 assert label ok =
@@ -467,10 +567,29 @@ parsesAllowStale parsed =
         Right (Verify (VerifySelfplay True [VRust, VHaskell] _)) -> True
         _ -> False
 
+parsesVerifyDefaultThreading :: Either AppError Command -> Bool
+parsesVerifyDefaultThreading parsed =
+    case parsed of
+        Right (Verify (VerifySelfplay False [VRust, VHaskell] inputs)) ->
+            inputThreading inputs == SingleThreaded
+        _ -> False
+
 parsesBenchCohort :: Either AppError Command -> Bool
 parsesBenchCohort parsed =
     case parsed of
         Right (Bench (BenchSelfplay [Rust, Haskell] inputs)) -> inputBackend inputs == Rust
+        _ -> False
+
+parsesPlaySurface :: Either AppError Command -> Bool
+parsesPlaySurface parsed =
+    case parsed of
+        Right (Play playOptions) ->
+            playBackend playOptions == Haskell
+                && playSide playOptions == Hero
+                && playRng playOptions == CppRng
+                && playSeed playOptions == Just 99
+                && playMaxPlies playOptions == 123
+                && playCacheDir playOptions == Just ".mcts-cache-play"
         _ -> False
 
 parsesLegacyFixtureBuild :: Either AppError Command -> Bool
@@ -525,6 +644,16 @@ exerciseRunConfigHashEnvelopeInvariant =
             ("playTranscriptHash ignores " <> backendIdentifier backend <> " envelope changes")
             ( playTranscriptHash (transcriptConfig transcriptA) (gameMoves game)
                 == playTranscriptHash (transcriptConfig transcriptB) (gameMoves game)
+            )
+        assert
+            ("runConfigHash ignores " <> backendIdentifier backend <> " batch game count")
+            ( runConfigHash config{runGames = 1}
+                == runConfigHash config{runGames = 2}
+            )
+        assert
+            ("runConfigHash includes " <> backendIdentifier backend <> " game_index")
+            ( runConfigHash config{runGames = 1, runGameIndex = 0}
+                /= runConfigHash config{runGames = 1, runGameIndex = 1}
             )
 
 exerciseEnvelopeChecks :: Transcript -> IO ()
@@ -732,6 +861,10 @@ exerciseSidecars transcript = do
     assert
         "equity sidecar current remains"
         (map sidecarBuildId remaining == ["haskell-logical", "rust-logical"])
+    loaded <- loadMatchingOriginatorSidecar (Just cacheRoot) hashValue transcript
+    assert
+        "inspect show can load envelope-matched originator sidecar before recompute"
+        (loaded == Just (equityStreamForTranscript hashValue transcript))
     removeDirectoryIfExists cacheRoot
 
 removeDirectoryIfExists :: FilePath -> IO ()
@@ -909,23 +1042,16 @@ exerciseLegacyDrawRejection = do
         Left (TranscriptFormatUnsupported _) -> pure ()
         other -> error ("expected cpp-legacy draw rejection, got " <> show other)
 
--- | Sprint 2.1 byte-level golden: a known transcript encodes to a pinned
--- byte sequence under the v1 wire format. The committed fixtures were
--- captured on an arm64 host, while the v1 header and envelope deliberately
--- stamp the current architecture. The golden comparison therefore
--- normalizes only those architecture bytes and keeps every other byte
--- fixed.
-exerciseTranscriptGolden :: IO ()
-exerciseTranscriptGolden =
+-- | Sprint 8.8 semantic fixture: the transcript codec is exercised with
+-- in-memory values for every backend tag. The assertions pin determinism and
+-- decode coverage without depending on committed byte fixtures.
+exerciseTranscriptSemanticFixtures :: IO ()
+exerciseTranscriptSemanticFixtures =
     mapM_
         exerciseCase
-        [ (Haskell, "test/golden/transcript-codec/v1-haskell-2games.bin")
-        , (CppImperative, "test/golden/transcript-codec/v1-cpp-imperative-2games.bin")
-        , (CppFunctional, "test/golden/transcript-codec/v1-cpp-functional-2games.bin")
-        , (Rust, "test/golden/transcript-codec/v1-rust-2games.bin")
-        ]
+        [Haskell, CppImperative, CppFunctional, Rust]
   where
-    exerciseCase (backend, goldenPath) = do
+    exerciseCase backend = do
         let inputs =
                 defaultRunInputs
                     { inputBackend = backend
@@ -944,41 +1070,19 @@ exerciseTranscriptGolden =
                     envelope
                     [runGame inputs 0, runGame inputs 1]
             encoded = encodeTranscript transcript
-        existing <- doesFileExist' goldenPath
-        if existing
-            then do
-                stored <- BS.readFile goldenPath
-                assert
-                    ("transcript byte-level golden matches: " <> backendIdentifier backend)
-                    (normaliseTranscriptGoldenBytes stored == normaliseTranscriptGoldenBytes encoded)
-            else do
-                createDirectoryIfMissing True "test/golden/transcript-codec"
-                BS.writeFile goldenPath encoded
-                putStrLn ("wrote golden: " <> goldenPath <> " (" <> show (BS.length encoded) <> " bytes)")
-        -- Also pin the SHA-256 of the encoded bytes so a drift in encoder output
-        -- causes a clear, single-line failure independent of the golden file.
         let expectedHash = sha256Hex encoded
+        assert
+            ("transcript fixture bytes are non-empty: " <> backendIdentifier backend)
+            (BS.length encoded > 48)
         assert
             ("transcript hash is deterministic: " <> backendIdentifier backend)
             (sha256Hex (encodeTranscript transcript) == expectedHash)
-        -- And the decode roundtrip still holds.
         assert
-            ("transcript golden roundtrips: " <> backendIdentifier backend)
+            ("transcript fixture roundtrips: " <> backendIdentifier backend)
             (decodeTranscript encoded == Right transcript)
 
-normaliseTranscriptGoldenBytes :: BS.ByteString -> BS.ByteString
-normaliseTranscriptGoldenBytes =
-    replaceByte 56 0 . replaceByte 11 0
-
-replaceByte :: Int -> Word8 -> BS.ByteString -> BS.ByteString
-replaceByte index value bytes =
-    let (prefix, suffix) = BS.splitAt index bytes
-     in if BS.null suffix
-            then bytes
-            else prefix <> BS.cons value (BS.drop 1 suffix)
-
-exerciseInspectShowGolden :: IO ()
-exerciseInspectShowGolden = do
+exerciseInspectShowRenderer :: IO ()
+exerciseInspectShowRenderer = do
     let inputs =
             defaultRunInputs
                 { inputBackend = Haskell
@@ -1011,10 +1115,29 @@ exerciseInspectShowGolden = do
                 ".mcts-cache/transcripts/arm64/abc123.tr"
                 (Just stream)
                 transcript
-    goldenCompare "test/golden/cli/inspect-show.txt" rendered
+    assert "inspect show renders the selected hash" ("abc123" `contains` rendered)
+    assert "inspect show renders the backend" ("haskell" `contains` rendered)
+    case gameMoves game of
+        record : _ ->
+            assert "inspect show renders transcript moves" (renderMove (moveChosen record) `contains` rendered)
+        [] -> failTest "inspect show fixture must contain moves"
+    let envelopeRendered =
+            renderTranscript
+                defaultOutputOptions
+                showOptions{showEnvelope = True}
+                ".mcts-cache/transcripts/arm64/abc123.tr"
+                (Just stream)
+                transcript
+    assert
+        "inspect show envelope renders rng source"
+        ("envelope.rng_source: cpp" `contains` envelopeRendered)
+    assert
+        "inspect show envelope renders engine build id"
+        ("envelope.engine_build_id:" `contains` envelopeRendered)
+    assert "inspect show envelope renders fp env" ("envelope.fp_env:" `contains` envelopeRendered)
 
-exerciseInspectListGolden :: IO ()
-exerciseInspectListGolden = do
+exerciseInspectListRenderer :: IO ()
+exerciseInspectListRenderer = do
     let rows =
             [ InspectRow
                 { rowHash = "abc12345"
@@ -1029,10 +1152,9 @@ exerciseInspectListGolden = do
                 }
             ]
         rendered = renderInspectRows defaultOutputOptions{outputFormat = JsonFormat} rows
-    goldenCompare "test/golden/cli/inspect-list.json" rendered
-
-doesFileExist' :: FilePath -> IO Bool
-doesFileExist' = doesFileExist
+    assert "inspect list JSON decodes" (isJsonObjectOrArray (decodeJsonValue "inspect list" rendered))
+    assert "inspect list JSON includes hash" ("abc12345" `contains` rendered)
+    assert "inspect list JSON includes backend" ("haskell" `contains` rendered)
 
 -- | Sprint 2.7 verifies the binary equity sidecar codec round-trips
 -- arbitrary doubles (not just `0.0`), the leading magic is `MEQ1`, and the
@@ -1116,7 +1238,7 @@ exerciseEnvelopeRoundTrip = do
             assert "envelope round-trips fp_env" (envelopeFpEnv actual == 0x42)
             assert
                 "envelope round-trips build_id accessor"
-                (envelopeBuildId actual == "cpp-imperative-12345678")
+                (envelopeBuildId actual == "cpp-imperative-deadbeefcafe0011")
         Left err -> error ("envelope round-trip decode failed: " <> show err)
 
 -- | Sprint 7.5: verify the per-game writer splits a batch into N
@@ -1165,6 +1287,19 @@ exercisePerGameTranscriptWriter = do
                     )
                     decoded
                 )
+            assert
+                "per-game files preserve master seed and record game_index"
+                ( all
+                    ( \r -> case r of
+                        Right t -> case transcriptGames t of
+                            [game] ->
+                                runMasterSeed (transcriptConfig t) == inputSeed inputs
+                                    && runGameIndex (transcriptConfig t) == gameId game
+                            _ -> False
+                        Left _ -> False
+                    )
+                    decoded
+                )
     removePathForcibly cacheRoot
 
 -- | Validate the surviving Rust PGO+BOLT plan as a typed
@@ -1176,11 +1311,26 @@ exerciseRustBuildPlan = do
         steps = rustPgoBoltPlan
         commands = map subprocessPath steps
         argsOf = map subprocessArguments steps
+        rustFlagsAt index =
+            case subprocessEnvironment (steps !! index) of
+                Just env -> maybe "" id (List.lookup "RUSTFLAGS" env)
+                Nothing -> ""
+        generateFlags = rustFlagsAt 0
+        useFlags = rustFlagsAt 3
     assert "Rust PGO+BOLT plan has 12 typed Subprocess steps" (length steps == 12)
     assert "Rust PGO+BOLT plan is the same as buildBackendPlan output" (planSteps plan == steps)
     assert
         "Rust PGO step 1 is cargo build --release"
         (case commands of (c : _) -> c == "cargo"; _ -> False)
+    assert
+        "Rust PGO generate flags include target CPU, lld linker, and profile-generate"
+        ( all
+            (`List.isInfixOf` generateFlags)
+            [ "-C target-cpu=native"
+            , "-C link-arg=-fuse-ld=lld"
+            , "-C profile-generate=/workspace/MCTS/rust/pgo-profile"
+            ]
+        )
     assert
         "Rust PGO training step invokes bench selfplay --rng cpp"
         ( commands !! 1 == "cabal"
@@ -1195,6 +1345,15 @@ exerciseRustBuildPlan = do
             && "selfplay" `elem` argsOf !! 7
             && show boltTrainingGames `elem` argsOf !! 7
             && show boltTrainingSims `elem` argsOf !! 7
+        )
+    assert
+        "Rust PGO use flags include target CPU, lld linker, and profile-use"
+        ( all
+            (`List.isInfixOf` useFlags)
+            [ "-C target-cpu=native"
+            , "-C link-arg=-fuse-ld=lld"
+            , "-C profile-use=/workspace/MCTS/rust/pgo-profile/merged.profdata"
+            ]
         )
     assert
         "Rust final step patches engine_build_id"
@@ -1222,7 +1381,7 @@ exerciseRustBuildPlan = do
         (planSteps (buildBackendPlan "rust") == steps)
     let fixtureOptions =
             LegacyFixtureOptions
-                { legacyFixtureOutputDir = "test/golden/legacy/transcripts"
+                { legacyFixtureOutputDir = "/tmp/mcts-legacy-fixtures"
                 , legacyFixtureSeed = 42
                 , legacyFixtureGames = 10
                 , legacyFixtureSims = 10000
@@ -1247,7 +1406,7 @@ exerciseRustBuildPlan = do
             [_, generatorStep] ->
                 subprocessArguments generatorStep
                     == [ "--output-dir"
-                       , "test/golden/legacy/transcripts"
+                       , "/tmp/mcts-legacy-fixtures"
                        , "--seed"
                        , "42"
                        , "--games"
@@ -1502,13 +1661,20 @@ exerciseMonotonicBracket = do
             modifyIORef' counter (+ 1)
             v <- readIORef counter
             pure (fromIntegral (v * 1000))
-        inputs = defaultRunInputs{inputGames = 1, inputSeed = 1, inputSims = FixedSims 1}
+        cacheRoot = ".mcts-cache-unit-bench"
+        inputs =
+            defaultRunInputs
+                { inputGames = 1
+                , inputSeed = 1
+                , inputSims = FixedSims 1
+                , inputCacheDir = Just cacheRoot
+                }
+    removeDirectoryIfExists cacheRoot
     code <- runBenchWithClock injected defaultOutputOptions [Haskell] inputs
     final <- readIORef counter
     assert "bench reads the clock twice per backend" (final == 2)
     assert "bench returns 0 on success" (code == 0)
-    -- Clean up the .mcts-cache directory the bench wrote.
-    let cacheRoot = ".mcts-cache"
+    -- Clean up the isolated cache directory the bench wrote.
     removeDirectoryIfExists cacheRoot
 
 -- | Sprint 1.3: `GeneratedSectionRule` marker-delimited regions. The
@@ -1574,33 +1740,24 @@ exerciseMarkerSplice = do
             generatedSectionRules
         )
 
--- | Sprint 7.1 + 7.3: pin `commands --tree`, `commands --json`, and the
--- report-card summary block as golden fixtures. The fixtures live in
--- `test/golden/cli/` and are created on first run if missing.
-exerciseCommandGoldens :: IO ()
-exerciseCommandGoldens = do
-    goldenCompare "test/golden/cli/commands-tree.txt" renderCommandTree
-    goldenCompare "test/golden/cli/commands-list.txt" renderCommandList
-    goldenCompare "test/golden/cli/commands.json" renderCommandJson
-    -- `render is deterministic`: invoke the renderer twice and require the
-    -- exact same bytes.
+-- | Command renderer checks use semantic assertions so normal validation does
+-- not depend on committed renderer snapshots.
+exerciseCommandRenderers :: IO ()
+exerciseCommandRenderers = do
+    assert
+        "commands --tree mentions play"
+        ("play - Play or spectate a game" `contains` renderCommandTree)
+    assert
+        "commands --list mentions legacy fixture command"
+        ("mcts build legacy-fixtures" `contains` renderCommandList)
+    assert
+        "commands --json has command schema keys"
+        ( jsonObjectHasKeys
+            (decodeJsonValue "commands json" renderCommandJson)
+            ["name", "summary", "children"]
+        )
     assert "commands --tree is deterministic" (renderCommandTree == renderCommandTree)
     assert "commands --json is deterministic" (renderCommandJson == renderCommandJson)
-
-providerGoldenTests :: [TestTree]
-providerGoldenTests =
-    [ Golden.goldenVsString
-        "commands --tree"
-        "test/golden/cli/commands-tree.txt"
-        (pure (lazyUtf8 renderCommandTree))
-    , Golden.goldenVsString
-        "report card"
-        "test/golden/cli/report-card.txt"
-        (pure (lazyUtf8 (renderReportCard defaultReportCard)))
-    ]
-
-lazyUtf8 :: String -> LBS.ByteString
-lazyUtf8 = LBS.fromStrict . TE.encodeUtf8 . T.pack
 
 exerciseOptparseParser :: IO ()
 exerciseOptparseParser = do
@@ -1625,7 +1782,17 @@ exerciseOptparseParser = do
     case OA.execParserPure
         OA.defaultPrefs
         commandParserInfo
-        ["verify", "selfplay", "--backend", "rust,haskell", "--rng", "native"] of
+        [ "verify"
+        , "selfplay"
+        , "--backend"
+        , "rust,haskell"
+        , "--rng"
+        , "native"
+        , "--games"
+        , "1"
+        , "--seed"
+        , "42"
+        ] of
         OA.Failure _ -> pure ()
         _ -> error "execParserPure accepted native RNG for verify selfplay"
 
@@ -1638,14 +1805,22 @@ exerciseCacheRootBranches = do
   where
     isSuffixOfLocal suffix value = suffix == drop (length value - length suffix) value
 
-exerciseReportCardGolden :: IO ()
-exerciseReportCardGolden = do
-    goldenCompare "test/golden/cli/report-card.txt" (renderReportCard defaultReportCard)
-    goldenCompare "test/golden/cli/report-card.json" (renderReportCardJson defaultReportCard)
-    schemaText <- readFile "test/golden/report-card-schema.json"
-    validateJsonSchema
-        (decodeJsonValue "test/golden/report-card-schema.json" schemaText)
-        (decodeJsonValue "renderReportCardJson defaultReportCard" (renderReportCardJson defaultReportCard))
+exerciseReportCardRenderer :: IO ()
+exerciseReportCardRenderer = do
+    let renderedText = renderReportCard defaultReportCard
+        renderedJson = renderReportCardJson defaultReportCard
+        jsonValue = decodeJsonValue "renderReportCardJson defaultReportCard" renderedJson
+    assert "report card text renders title" ("MCTS POC report card" `contains` renderedText)
+    assert
+        "report card text renders determinism section"
+        ("Cross-backend determinism" `contains` renderedText)
+    assert "report card text renders verdict" ("Verdict:" `contains` renderedText)
+    assert
+        "report card JSON has required top-level keys"
+        ( jsonObjectHasKeys
+            jsonValue
+            ["q1_rollouts_st", "q2_selfplay_st", "q5_cpp_imperative_scaling", "divergence_matrix", "verdict"]
+        )
     let rows = divergenceRowsFromTranscripts [asBackend Rust, asBackend Haskell]
     assert
         "report card derives one matrix row per transcript"
@@ -1666,105 +1841,15 @@ decodeJsonValue label raw =
         Left err -> error ("invalid JSON in " <> label <> ": " <> err)
         Right value -> value
 
-validateJsonSchema :: Value -> Value -> IO ()
-validateJsonSchema schema value = validateAt "$" schema value
+jsonObjectHasKeys :: Value -> [String] -> Bool
+jsonObjectHasKeys (Object object) keys =
+    all (flip AesonKeyMap.member object . AesonKey.fromString) keys
+jsonObjectHasKeys _ _ = False
 
-validateAt :: String -> Value -> Value -> IO ()
-validateAt path (Object schema) value =
-    case schemaType schema of
-        Nothing -> pure ()
-        Just "object" -> validateObjectAt path schema value
-        Just "array" -> validateArrayAt path schema value
-        Just "string" -> assert (path <> " is string") (isStringValue value)
-        Just "number" -> assert (path <> " is number") (isNumberValue value)
-        Just "boolean" -> assert (path <> " is boolean") (isBooleanValue value)
-        Just other -> error ("unsupported schema type at " <> path <> ": " <> other)
-validateAt path _ _ =
-    error ("schema node at " <> path <> " must be an object")
-
-validateObjectAt :: String -> AesonKeyMap.KeyMap Value -> Value -> IO ()
-validateObjectAt path schema value =
-    case value of
-        Object object -> do
-            mapM_
-                ( \requiredKey ->
-                    assert
-                        (path <> " requires " <> requiredKey)
-                        (AesonKeyMap.member (AesonKey.fromString requiredKey) object)
-                )
-                (schemaRequired schema)
-            case AesonKeyMap.lookup (AesonKey.fromString "properties") schema of
-                Just (Object properties) ->
-                    mapM_
-                        ( \(propertyKey, propertySchema) ->
-                            case AesonKeyMap.lookup propertyKey object of
-                                Nothing -> pure ()
-                                Just propertyValue ->
-                                    validateAt
-                                        (path <> "." <> AesonKey.toString propertyKey)
-                                        propertySchema
-                                        propertyValue
-                        )
-                        (AesonKeyMap.toList properties)
-                _ -> pure ()
-        _ -> assert (path <> " is object") False
-
-validateArrayAt :: String -> AesonKeyMap.KeyMap Value -> Value -> IO ()
-validateArrayAt path schema value =
-    case value of
-        Array values ->
-            case AesonKeyMap.lookup (AesonKey.fromString "items") schema of
-                Just itemSchema ->
-                    mapM_ (validateAt (path <> "[]") itemSchema) (toList values)
-                Nothing -> pure ()
-        _ -> assert (path <> " is array") False
-
-schemaType :: AesonKeyMap.KeyMap Value -> Maybe String
-schemaType schema =
-    case AesonKeyMap.lookup (AesonKey.fromString "type") schema of
-        Just (String value) -> Just (T.unpack value)
-        _ -> Nothing
-
-schemaRequired :: AesonKeyMap.KeyMap Value -> [String]
-schemaRequired schema =
-    case AesonKeyMap.lookup (AesonKey.fromString "required") schema of
-        Just (Array values) ->
-            [ T.unpack value
-            | String value <- toList values
-            ]
-        _ -> []
-
-isStringValue :: Value -> Bool
-isStringValue (String _) = True
-isStringValue _ = False
-
-isNumberValue :: Value -> Bool
-isNumberValue (Number _) = True
-isNumberValue _ = False
-
-isBooleanValue :: Value -> Bool
-isBooleanValue (Bool _) = True
-isBooleanValue _ = False
-
-goldenCompare :: FilePath -> String -> IO ()
-goldenCompare path actual = do
-    present <- doesFileExist path
-    if present
-        then do
-            stored <- readFile path
-            assert ("golden matches: " <> path) (stored == actual)
-        else do
-            createDirectoryIfMissing True (takeDirectoryGolden path)
-            writeFile path actual
-            putStrLn ("wrote golden: " <> path <> " (" <> show (length actual) <> " chars)")
-
-takeDirectoryGolden :: FilePath -> FilePath
-takeDirectoryGolden path =
-    case reverse path of
-        rev ->
-            case break (== '/') rev of
-                (_, '/' : rest) -> reverse rest
-                _ -> "."
+isJsonObjectOrArray :: Value -> Bool
+isJsonObjectOrArray (Object _) = True
+isJsonObjectOrArray (Array _) = True
+isJsonObjectOrArray _ = False
 
 exerciseEnv :: IO ()
 exerciseEnv = do
@@ -1824,8 +1909,8 @@ exerciseEngineProperties = do
     let chosenInVisits record = moveChosen record `elem` map fst (moveVisits record)
     assert "every chosen move appears in its visit list" (all chosenInVisits allRecords)
 
-exerciseKnownPositionGolden :: IO ()
-exerciseKnownPositionGolden = do
+exerciseKnownPositionRenderer :: IO ()
+exerciseKnownPositionRenderer = do
     let moves = [Pawn 4 1, Pawn 4 7, WallH 0 0, WallH 2 0, Pawn 4 2]
         board = foldl applyLegal initialBoard moves
         rendered =
@@ -1840,7 +1925,10 @@ exerciseKnownPositionGolden = do
                 , "ply=" <> show (boardPly board)
                 , "legal=" <> unwords (map renderMove (take 12 (legalMoves board)))
                 ]
-    goldenCompare "test/golden/engine/known-position.txt" rendered
+    assert "known position renders hero coordinate" ("hero=" `contains` rendered)
+    assert "known position renders villain coordinate" ("villain=" `contains` rendered)
+    assert "known position renders side to move" ("sideToMove=Villain" `contains` rendered)
+    assert "known position renders legal moves" ("legal=" `contains` rendered)
   where
     applyLegal board action =
         if action `elem` legalMoves board
@@ -1964,17 +2052,21 @@ sampleErrorRenderings =
     , ("IOErrorText", IOErrorText "io")
     ]
 
-exerciseErrorGolden :: IO ()
-exerciseErrorGolden =
-    goldenCompare "test/golden/cli/errors.txt" $
-        unlines [label <> ": " <> T.unpack (renderError err) | (label, err) <- sampleErrorRenderings]
+exerciseErrorRenderer :: IO ()
+exerciseErrorRenderer = do
+    let rendered = unlines [label <> ": " <> T.unpack (renderError err) | (label, err) <- sampleErrorRenderings]
+    assert
+        "error renderer includes every sample label"
+        (all ((`contains` rendered) . fst) sampleErrorRenderings)
+    assert
+        "error renderer emits one line per sample"
+        (length (lines rendered) == length sampleErrorRenderings)
 
-exerciseSubprocessGolden :: IO ()
-exerciseSubprocessGolden = do
+exerciseSubprocessRenderer :: IO ()
+exerciseSubprocessRenderer = do
     let subprocess = Subprocess "cabal" ["exec", "mcts", "--", "inspect", "show", "a b"] Nothing Nothing
         rendered = renderSubprocess subprocess
         failure = renderError (SubprocessFailed rendered 2)
-    goldenCompare "test/golden/cli/subprocess.txt" (rendered <> "\n")
     assert
         "subprocess render quotes spaced arguments"
         (rendered == "cabal exec mcts -- inspect show 'a b'")
@@ -2005,13 +2097,15 @@ exerciseSubprocessEnvironment = do
                 )
         Left err -> failTest ("subprocess env capture failed: " <> show err)
 
-exerciseTuiBoardGolden :: IO ()
-exerciseTuiBoardGolden =
-    goldenCompare "test/golden/cli/tui-board.txt" $
-        renderBoardText initialBoard <> renderStatusText "00000000" 0 0 <> "\n"
+exerciseTuiBoardRenderer :: IO ()
+exerciseTuiBoardRenderer = do
+    let rendered = renderBoardText initialBoard <> renderStatusText "00000000" 0 0 <> "\n"
+    assert "TUI board renders status hash" ("00000000" `contains` rendered)
+    assert "TUI board renders move index" ("move" `contains` rendered)
+    assert "TUI board renders board text" (length (lines rendered) > 4)
 
-exerciseTuiReplayGolden :: IO ()
-exerciseTuiReplayGolden = do
+exerciseTuiReplayRenderer :: IO ()
+exerciseTuiReplayRenderer = do
     let inputs =
             defaultRunInputs
                 { inputBackend = Haskell
@@ -2036,14 +2130,17 @@ exerciseTuiReplayGolden = do
                 }
         stateAtStart = initialReplayStateWithOverlays (replicate 64 'a') transcript [stream]
     case applyReplayKey ReplayNext stateAtStart of
-        Nothing -> failTest "ReplayNext in replay golden must continue"
-        Just stateAtOne ->
-            goldenCompare "test/golden/cli/tui-replay.txt" $
-                unlines $
-                    [ renderStatusText "aaaaaaaa" (replayMoveIndex stateAtOne) 1
-                    , "move played: " <> renderMove (moveChosen record)
-                    ]
-                        <> renderOverlayRowsText (currentOverlayRows stateAtOne)
+        Nothing -> failTest "ReplayNext in replay renderer test must continue"
+        Just stateAtOne -> do
+            let rendered =
+                    unlines $
+                        [ renderStatusText "aaaaaaaa" (replayMoveIndex stateAtOne) 1
+                        , "move played: " <> renderMove (moveChosen record)
+                        ]
+                            <> renderOverlayRowsText (currentOverlayRows stateAtOne)
+            assert "TUI replay renders status row" ("status" `contains` rendered)
+            assert "TUI replay renders originator overlay" ("originator" `contains` rendered)
+            assert "TUI replay renders divergence column" ("divergence" `contains` rendered)
 
 -- | Sprint 7.4: cover the `mcts play` interactive command dispatcher.
 -- The pure `applyUserInput` lets us exercise each in-app command
@@ -2058,6 +2155,11 @@ exerciseTuiPlayInput = do
         hintOutcome = applyUserInput ":hint" st0
         undoNoHistory = applyUserInput ":undo" st0
         saveOutcome = applyUserInput ":save" st0
+        aiTurnInput = applyUserInput "*(4,1)" st0{playStateAiSide = Hero}
+        spectatorInput =
+            applyUserInput
+                "*(4,1)"
+                st0{playStateAiSide = Villain, playStateVsBackend = Just Rust}
     case quitOutcome of
         OutcomeQuit -> pure ()
         _ -> failTest "applyUserInput :quit must produce OutcomeQuit"
@@ -2088,6 +2190,18 @@ exerciseTuiPlayInput = do
         OutcomeSave st ->
             assert ":save leaves a save request for the event loop" (playStateInput st == "")
         _ -> failTest ":save must request a transcript write"
+    case aiTurnInput of
+        OutcomeContinue st ->
+            assert
+                "human input is blocked on an AI-controlled turn"
+                ("waiting for" `isInfixOfStr` playStateMessage st)
+        _ -> failTest "AI-turn input must continue with a status message"
+    case spectatorInput of
+        OutcomeContinue st ->
+            assert "spectator mode blocks manual moves" ("waiting for" `isInfixOfStr` playStateMessage st)
+        _ -> failTest "spectator input must continue with a status message"
+    noMove <- advanceAiState st0
+    assert "advanceAiState does not move during a human turn" (playStateMoveCount noMove == 0)
     -- Apply a real move, then undo it, then verify the board state is
     -- back to the initial position.
     case applyUserInput "*(4,1)" st0 of
@@ -2199,8 +2313,26 @@ exerciseTuiReplayOverlay = do
             [row] -> do
                 assert "overlay row 1 carries a chosen action" (overlayChosen row /= Nothing)
                 assert "overlay row 1 reports the fixture build id" (overlayBuildId row == "overlay-fixture")
+                assert "overlay row 1 marks verified replay data" ("verified" `isInfixOfStr` overlayStatus row)
+                assert "overlay row 1 has no divergence annotation" (overlayDivergence row == Nothing)
             rows -> failTest ("expected one overlay row at idx 1, got " <> show (length rows))
         Nothing -> failTest "ReplayNext at idx 0 must continue"
+    case (gameMoves gameRec, applyReplayKey ReplayNext stateAtStart) of
+        (record : _, Just stateAtOne) -> do
+            case filter (/= moveChosen record) allActions of
+                divergentAction : _ -> do
+                    let divergentStream =
+                            stream
+                                { eqRecords = [EqRecord 0 (moveIndex record) divergentAction 0.125]
+                                }
+                        divergentState = stateAtOne{replayOverlays = [divergentStream]}
+                    case currentOverlayRows divergentState of
+                        [row] -> do
+                            assert "divergent replay row marks divergence" ("diverged" `isInfixOfStr` overlayStatus row)
+                            assert "divergent replay row annotates the move" (overlayDivergence row /= Nothing)
+                        rows -> failTest ("expected one divergent overlay row, got " <> show (length rows))
+                [] -> failTest "allActions must contain a divergent action"
+        _ -> failTest "replay overlay fixture must have at least one move"
     -- On-demand columns: `r` selects the next backend that does not
     -- already have a loaded or unavailable overlay, then status-annotates
     -- loaded/skipped results.
@@ -2234,6 +2366,10 @@ exerciseTuiReplayOverlay = do
     assert
         "on-demand skipped backend is marked unavailable"
         (Rust `elem` replayUnavailableBackends skippedState)
+    case currentOverlayRows skippedState of
+        [_, row] ->
+            assert "unavailable replay row is rendered explicitly" (overlayStatus row == "unavailable")
+        rows -> failTest ("expected loaded plus unavailable replay rows, got " <> show (length rows))
     -- Cache miss: replay preparation recomputes the originator column,
     -- writes the sidecar, and subsequent preparation loads it without
     -- recomputing.

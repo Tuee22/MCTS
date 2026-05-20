@@ -6,6 +6,7 @@ module MCTS.Notation
 
 import Data.Char (isDigit)
 import MCTS.Types (Action (..), Winner (..))
+import Text.Read (readMaybe)
 
 renderMove :: Action -> String
 renderMove action =
@@ -33,11 +34,11 @@ parseCoords raw maxCoord =
                          in case afterRight of
                                 ")"
                                     | not (null left) && not (null right) ->
-                                        let x = read left
-                                            y = read right
-                                         in if x >= 0 && x <= maxCoord && y >= 0 && y <= maxCoord
-                                                then Just (x, y)
-                                                else Nothing
+                                        case (readMaybe left, readMaybe right) of
+                                            (Just x, Just y)
+                                                | x >= 0 && x <= maxCoord && y >= 0 && y <= maxCoord ->
+                                                    Just (x, y)
+                                            _ -> Nothing
                                 _ -> Nothing
                     _ -> Nothing
         _ -> Nothing

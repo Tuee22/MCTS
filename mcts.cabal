@@ -133,7 +133,6 @@ test-suite mcts-unit
         mtl,
         optparse-applicative,
         tasty,
-        tasty-golden,
         tasty-hunit,
         tasty-quickcheck,
         temporary,

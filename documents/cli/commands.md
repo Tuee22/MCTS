@@ -32,4 +32,4 @@
 - `mcts help <subcommand>` - Focused help
 - `mcts check-code` - Run code-quality gate
 - `mcts build rust` - Build Rust backend
-- `mcts build legacy-fixtures` - Regenerate legacy Q6 fixtures
+- `mcts build legacy-fixtures` - Generate external legacy Q6 evidence

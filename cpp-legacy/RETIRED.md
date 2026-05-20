@@ -1,12 +1,12 @@
 # Backend (i) `cpp-legacy` Retired
 
 **Status**: Retired in Phase 8 Sprint 8.4.
-**Frozen anchor**: `test/golden/cpp-legacy/`
+**Frozen anchor**: explicit external evidence from `mcts build legacy-fixtures`.
 
 Backend (i) was the verbatim C++ port used to prove the repository could
-reproduce `MCTS_legacy`. That proof is now preserved by the Q6 fixtures under
-`test/golden/legacy/` and the backend-retirement anchor under
-`test/golden/cpp-legacy/`.
+reproduce `MCTS_legacy`. That proof is now preserved as historical plan
+evidence and can be regenerated into an operator-provided output root with
+`mcts build legacy-fixtures`.
 
 The source remains in `cpp-legacy/` for historical reference and for the
 fixture generator used by `mcts build legacy-fixtures`, but it is no longer a

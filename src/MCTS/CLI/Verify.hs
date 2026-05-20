@@ -115,6 +115,8 @@ warningType warning =
         TranscriptAmbiguous _ _ -> "TranscriptAmbiguous"
         TranscriptFormatUnsupported _ -> "TranscriptFormatUnsupported"
         VerifyMismatch _ _ _ _ _ _ -> "VerifyMismatch"
+        VerifyLengthMismatch _ _ _ _ _ -> "VerifyLengthMismatch"
+        VerifyTerminatorMismatch _ _ _ _ _ -> "VerifyTerminatorMismatch"
         VerifyCohortTooSmall _ -> "VerifyCohortTooSmall"
         RecomputeMismatch _ _ _ _ _ -> "RecomputeMismatch"
         LegacyParityRolloutOverflow _ _ _ -> "LegacyParityRolloutOverflow"

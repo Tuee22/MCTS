@@ -90,7 +90,7 @@ leafParser path =
 
 benchParser :: Workload -> OA.Parser Command
 benchParser workload =
-    mk <$> runOptionsParser workload NativeRng True False backendListOption
+    mk <$> runOptionsParser workload NativeRng True True (MultiThreaded 8) True True backendListOption
   where
     mk opts =
         let inputs = runOptionsToInputs workload id opts
@@ -102,7 +102,7 @@ verifyParser :: Workload -> OA.Parser Command
 verifyParser workload =
     mk
         <$> allowStaleSwitch
-        <*> runOptionsParser workload CppRng False True verifyBackendListOption
+        <*> runOptionsParser workload CppRng False True SingleThreaded True True verifyBackendListOption
   where
     mk allowStale opts =
         let inputs = runOptionsToInputs workload verifyBackendToBackend opts
@@ -125,18 +125,22 @@ data RunOptions backend = RunOptions
     }
 
 runOptionsParser
-    :: Workload -> RngSource -> Bool -> Bool -> OA.Parser [backend] -> OA.Parser (RunOptions backend)
-runOptionsParser workload defaultRng allowNativeRng backendRequired backendList =
+    :: Workload
+    -> RngSource
+    -> Bool
+    -> Bool
+    -> Threading
+    -> Bool
+    -> Bool
+    -> OA.Parser [backend]
+    -> OA.Parser (RunOptions backend)
+runOptionsParser workload defaultRng allowNativeRng backendRequired defaultThreading requireGames requireSeed backendList =
     RunOptions
         <$> backendParser
         <*> rngOption defaultRng allowNativeRng
-        <*> threadingOption
-        <*> OA.option
-            OA.auto
-            (OA.long "games" <> OA.metavar "N" <> OA.value 1 <> OA.showDefault <> OA.help "Number of games")
-        <*> OA.option
-            OA.auto
-            (OA.long "seed" <> OA.metavar "U64" <> OA.value 42 <> OA.showDefault <> OA.help "Master seed")
+        <*> threadingOption defaultThreading
+        <*> gamesOption
+        <*> seedOption
         <*> ( fromIntegral
                 <$> OA.option
                     OA.auto
@@ -161,6 +165,26 @@ runOptionsParser workload defaultRng allowNativeRng backendRequired backendList 
         if backendRequired
             then Just <$> backendList
             else OA.optional backendList
+    gamesOption =
+        OA.option
+            OA.auto
+            ( fold
+                [ OA.long "games"
+                , OA.metavar "N"
+                , OA.help "Number of games"
+                , if requireGames then mempty else OA.value 1 <> OA.showDefault
+                ]
+            )
+    seedOption =
+        OA.option
+            OA.auto
+            ( fold
+                [ OA.long "seed"
+                , OA.metavar "U64"
+                , OA.help "Master seed"
+                , if requireSeed then mempty else OA.value 42 <> OA.showDefault
+                ]
+            )
 
 runOptionsToInputs :: Workload -> (backend -> Backend) -> RunOptions backend -> RunInputs
 runOptionsToInputs workload toBackend options =
@@ -194,14 +218,15 @@ renderSimBudget budget =
         FixedSims n -> show n
         RampedSims first perMove -> show first <> ":" <> show perMove
 
-threadingOption :: OA.Parser Threading
-threadingOption =
+threadingOption :: Threading -> OA.Parser Threading
+threadingOption defaultThreading =
     mk
         <$> OA.option
             threadingReader
             ( OA.long "threading"
                 <> OA.metavar "single|multi"
-                <> OA.value (MultiThreaded 8)
+                <> OA.value defaultThreading
+                <> OA.showDefaultWith renderThreading
                 <> OA.help "Threading mode"
             )
         <*> OA.option
@@ -225,20 +250,17 @@ playParser =
             backendReader
             ( OA.long "backend"
                 <> OA.metavar "BACKEND"
-                <> OA.value Haskell
-                <> OA.showDefaultWith backendIdentifier
                 <> OA.help "Backend"
             )
         <*> OA.option
             sideReader
             ( OA.long "side"
                 <> OA.metavar "hero|villain"
-                <> OA.value Hero
-                <> OA.showDefaultWith renderSide
-                <> OA.help "Human side"
+                <> OA.help "Side controlled by --backend"
             )
         <*> OA.optional
             (OA.option backendReader (OA.long "vs" <> OA.metavar "BACKEND" <> OA.help "Opponent backend"))
+        <*> rngOption NativeRng True
         <*> OA.option
             simBudgetReader
             ( OA.long "sims"
@@ -248,6 +270,17 @@ playParser =
                 <> OA.help "Simulation budget"
             )
         <*> OA.optional (OA.option OA.auto (OA.long "seed" <> OA.metavar "U64" <> OA.help "Master seed"))
+        <*> ( fromIntegral
+                <$> OA.option
+                    OA.auto
+                    ( OA.long "max-plies"
+                        <> OA.metavar "N"
+                        <> OA.value (200 :: Int)
+                        <> OA.showDefault
+                        <> OA.help "Maximum plies per game"
+                    )
+            )
+        <*> optionalStringOption "cache-dir" "DIR" "Transcript cache root"
 
 parseBackends :: String -> Either AppError [Backend]
 parseBackends raw =
@@ -352,9 +385,7 @@ legacyFixtureParser =
         <$> OA.strOption
             ( OA.long "output-dir"
                 <> OA.metavar "DIR"
-                <> OA.value "test/golden/legacy/transcripts"
-                <> OA.showDefault
-                <> OA.help "Fixture transcript output root"
+                <> OA.help "Required legacy evidence output root; use an external or ignored artifact directory"
             )
         <*> OA.option
             OA.auto
@@ -491,11 +522,11 @@ renderRng rng =
         NativeRng -> "native"
         CppRng -> "cpp"
 
-renderSide :: Side -> String
-renderSide side =
-    case side of
-        Hero -> "hero"
-        Villain -> "villain"
+renderThreading :: Threading -> String
+renderThreading threading =
+    case threading of
+        SingleThreaded -> "single"
+        MultiThreaded _ -> "multi"
 
 splitCommas :: String -> [String]
 splitCommas raw =

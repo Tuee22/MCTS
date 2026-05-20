@@ -252,13 +252,20 @@ rustPgoBoltPlan =
             ( Just
                 [
                     ( "RUSTFLAGS"
-                    , "-C target-cpu=native -C "
-                        <> (if mode == "generate" then "profile-generate=" else "profile-use=")
-                        <> absoluteRustProfilePath profileDir
+                    , rustPgoFlags mode profileDir
                     )
                 ]
             )
             (Just "rust")
+
+    rustPgoFlags mode profileDir =
+        unwords
+            [ "-C target-cpu=native"
+            , "-C link-arg=-fuse-ld=lld"
+            , "-C "
+                <> (if mode == "generate" then "profile-generate=" else "profile-use=")
+                <> absoluteRustProfilePath profileDir
+            ]
 
     absoluteRustProfilePath profileDir =
         "/workspace/MCTS/rust/" <> profileDir

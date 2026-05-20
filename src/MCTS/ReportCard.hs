@@ -104,8 +104,8 @@ renderReportCard card =
         , "Q5  MT scaling  Haskell   1->8 workers         " <> renderScaling (reportQ5HaskellScaling card)
         , "Q5  MT scaling  C++ (ii)  1->8 workers         "
             <> renderScaling (reportQ5CppImperativeScaling card)
-        , "Q6  Legacy port (i) vs MCTS_legacy             PASS    (10000-sim fixtures)"
-        , "Q7  Legacy envelope, backend (i) retired       PASS    (frozen cpp-legacy anchor)"
+        , "Q6  Legacy port (i) vs MCTS_legacy             HIST    (retired evidence, external)"
+        , "Q7  Legacy envelope, backend (i) retired       HIST    (retirement evidence recorded)"
         , ""
         , "Divergence matrix (visit/move, cpp RNG; thresholds native 0.005/0.050, cross-build 0.001/0.010)"
         ]

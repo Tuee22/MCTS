@@ -26,8 +26,8 @@ liveness PASS, and verdict `Within tolerance`. Focused validation after live-FFI
 verify promotion and Q7 legacy-envelope respec passed before Phase 8
 retirements:
 `docker compose run --rm mcts mcts test mcts-unit`
-(30 cases including `tasty-quickcheck`, `tasty-golden`, and TUI replay layout
-coverage), `docker compose run --rm mcts mcts test mcts-integration` (42 cases
+(30 cases at the time, including `tasty-quickcheck`, the then-present golden
+providers, and TUI replay layout coverage), `docker compose run --rm mcts mcts test mcts-integration` (42 cases
 including decoded real-binary transcript determinism),
 `docker compose run --rm mcts mcts test mcts-cross-backend`, and
 `docker compose run --rm mcts mcts test mcts-legacy-parity`. The historical
@@ -42,7 +42,7 @@ The historical report-card-sized live Q7 command was a legacy-envelope
 liveness and overflow gate, not a transcript-equality comparison:
 `docker compose run --rm mcts mcts verify legacy-parity selfplay --backend
 cpp-legacy,cpp-imperative,cpp-functional,rust,haskell --games 2 --seed 42
---sims 10000`. Q6 remains the byte-for-byte backend (i) legacy anchor. Q3 now
+--sims 10000`. Q6 remains historical byte-for-byte backend (i) legacy evidence. Q3 now
 continues as the visit-vector equality gate across the surviving
 `(rust, haskell)` cohort.
 The 2026-05-19 live investigation showed backend (i)'s legacy tree search can
@@ -63,15 +63,26 @@ driver paths, live-envelope stamping for FFI-produced transcripts, structured
 Sprint 7.4 ships the `brick` / `vty` play and replay TUIs, including replay
 overlay cache-miss and on-demand backend columns. Sprint 7.3 ships `mcts test
 all` with measured Q1/Q2/Q5 fields. Sprint 7.2 ships typed verify cohorts and
-live hard-fail `VerifyMismatch` discipline for Q3. Sprint 7.1 ships the five test
-stanzas and Q6 fixture guards.
+live hard-fail `VerifyMismatch` discipline for Q3. Sprint 7.1 ships the test
+stanzas and historical Q6 evidence guards. Phase `7` was reopened for the
+2026-05-19 alignment sweep and is now reclosed: `MCTS.Verify` implements the documented
+digest-first canonical byte-payload comparison and length-aware
+game/move/terminator mismatch protocol; `mcts play` wires the parsed side,
+opponent, RNG, seed, sim-budget, max-plies, and cache-root controls into runtime
+state; and `inspect replay` renders originator, build-mismatch, foreign-view,
+unavailable, verified, and diverged overlay row states. The generated-validation-data
+residue was closed by Phase `8` Sprint `8.8`.
+Focused reclosure validation passed with
+`cabal --builddir=/tmp/mcts-cabal-build test mcts-unit`,
+`cabal --builddir=/tmp/mcts-cabal-build test mcts-cross-backend`, and the
+repository docs/code-quality gates listed in the final handoff notes for this
+alignment sweep.
 
 ## Remaining Work
 
-- None. Phase 7 owns the verification/test/report-card surfaces; Phase 8 has
-  closed performance parity and the retirement protocol. Q3 now runs across
-  `(rust, haskell)`, Q6 remains the frozen `MCTS_legacy` fixture anchor, and
-  Q7 is represented by the frozen backend (i) retirement anchor.
+- None for Phase `7`. Sprint `8.8` has removed checked-in renderer snapshots,
+  transcript byte fixtures, static schemas, retired throughput anchors, and
+  `legacyGoldenCheck` fixture directories from normal validation.
 
 ## Phase Summary
 
@@ -80,14 +91,14 @@ Phase `7` is where the determinism contract becomes enforceable end-to-end. The
 `--rng cpp` through live Rust FFI when the cdylib is present and fails the
 stanza on any `VerifyMismatch` in the focused rollout/self-play cohorts. The
 former `mcts-legacy-parity` stanza's Q7 liveness/overflow evidence retired with
-backend (i) and is now frozen under `test/golden/cpp-legacy/`. The
+backend (i) and is now historical/external evidence. The
 `mcts-integration` stanza covers same-backend determinism (Q4) across the live
 cohort at three seeds each, full decoded real-binary transcript determinism,
-live Rust envelope stamping/stale-cache checks, and the Q6 golden-fixture
-comparison for backend (i) against `test/golden/legacy/`. The
+live Rust envelope stamping/stale-cache checks, and synthetic legacy-envelope
+coverage generated during the run. The
 `mcts-unit` stanza covers pure logic, parser tests via `execParserPure`,
-QuickCheck-backed property tests, golden-provider tests, transcript codec
-roundtrips, replay layout goldens, and RNG mixer properties. `mcts test all` is
+QuickCheck-backed property tests, semantic renderer tests, transcript codec
+roundtrips, replay layout assertions, and RNG mixer properties. `mcts test all` is
 the Plan/Apply command that builds canonical foreign backend artefacts, runs every
 Cabal stanza in order, runs the pinned no-write report-card measurements plus
 verify cohorts, and emits the tidy summary block answering Q1–Q7. The `mcts play`
@@ -127,12 +138,13 @@ the real `mcts` binary across the FFI to every backend.
     outputs, the `Subprocess` `renderSubprocess`, the `AppError` `renderError`);
     `parser roundtrips` on every leaf `CommandSpec` (`render (parse argv) ==
     argv`).
-  - **Golden tests** per
+  - **Renderer and semantic tests** per the project-specific no-generated-validation-data rule and
     [../HASKELL_CLI_TOOL.md → Test Categories → Golden Tests](../HASKELL_CLI_TOOL.md)
-    for `commands --tree`, `commands --json`, `inspect show` on a fixed
-    transcript, the report-card summary block (with wall-clock throughputs
-    replaced by sentinel placeholders), and `renderError` for each `AppError`
-    variant.
+    compatibility surface for `commands --tree`, `commands --json`, `inspect show`
+    on a generated transcript, the report-card summary block (with wall-clock
+    throughputs replaced by sentinel placeholders), and `renderError` for each
+    `AppError` variant. These tests assert parsed fields and stable renderer
+    invariants directly rather than reading checked-in snapshot files.
   - **Engine invariants**: legal-move agreement with the brute-force reference;
     terminal-state agreement; tree-persistence inherited-visit-count
     preservation.
@@ -147,10 +159,11 @@ the real `mcts` binary across the FFI to every backend.
     --backend <B> --threading single --rng cpp --games 4 --seed <S> --sims 100`
     at three pinned seeds `(42, 43, 44)` and assert two consecutive runs
     produce identical determinism payload sets.
-  - **Q6 legacy golden comparison.** For backend (i), run `mcts bench selfplay
-    --backend cpp-legacy --rng cpp --max-plies 10000 --seed <S> --games 1
-    --sims <S_LP_SIMS>` at the seeds covered by `test/golden/legacy/`
-    (Phase 4 Sprint 4.5) and assert byte-equal transcripts.
+  - **Q6 legacy-envelope semantics.** Generate or synthesize legacy-envelope
+    transcripts inside a temporary root and assert the decoded envelope, seed,
+    sim budget, max-plies, and byte-level invariants that matter for compatibility.
+    Optional external legacy evidence may be checked by an explicit artifact suite,
+    but it is not part of normal `mcts test all`.
   - **`typed-process` regression guard.** A static check that the
     integration runners go through `Subprocess`, not `typed-process` smart
     constructors.
@@ -160,22 +173,15 @@ the real `mcts` binary across the FFI to every backend.
 1. `docker compose run --rm mcts mcts test mcts-unit` passes.
 2. `docker compose run --rm mcts mcts test mcts-integration` passes. At Sprint
    7.1 closure this required all five backend slots to be meaningful; after
-   Phase 8 retirement, live integration runs against `(rust, haskell)` and the
-   frozen retired-backend anchors.
-3. Each test category produces a golden file or a property-test stanza
-   citing the doctrine section it implements.
+   Phase 8 retirement, live integration runs against `(rust, haskell)` plus
+   synthetic legacy-envelope coverage generated in a temporary root.
+3. Each test category produces a property, semantic renderer assertion, or
+   temporary generated-data test citing the doctrine section it implements.
 
 ### Remaining Work
 
-- None. The `mcts-unit` and `mcts-integration` Cabal stanzas are wired through
-  in-stanza `tasty` runners. `mcts-unit` carries parser coverage via
-  `execParserPure`, transcript codec and engine invariants, `tasty-quickcheck`
-  transcript roundtrip coverage, and `tasty-golden` CLI/report/TUI replay
-  fixtures. `mcts-integration` covers real-binary same-backend determinism,
-  live FFI envelope stamping/stale-cache behavior, decoded real-binary
-  transcript determinism, foreign recompute sidecars, report-card integration,
-  and Q6 legacy fixture guards against the committed `S_LP = 42`,
-  `S_LP_SIMS = 10000`, `max_plies = 10000` fixtures.
+- None for the Phase `7` stanza surface. The remaining no-generated-validation
+  data doctrine cleanup is tracked by Sprint `8.8`.
 
 ## Sprint 7.2: `mcts-cross-backend` and `mcts-legacy-parity` Stanzas ✅
 
@@ -205,7 +211,7 @@ former `LegacyParityBackend` parser surface retired in Phase 8.
   selfplay` across all five backends with `max_plies = 10000`, `--rng cpp`,
   `--threading single`, fixture seed `S_LP = 42`, and `G_LP = 2` games as a
   legacy-envelope liveness/overflow gate. Phase 8 retired the stanza and froze
-  the evidence under `test/golden/cpp-legacy/`.
+  the evidence as historical/external retirement evidence.
 - `src/MCTS/CLI/Spec.hs` finalises the `Verify` subtree: `VerifyRollouts`,
   `VerifySelfplay`, `VerifyLegacyParity` carrying `VerifyOptions` /
   `LegacyParityOptions` at Sprint 7.2 closure. Phase 8 later removed
@@ -245,16 +251,22 @@ former `LegacyParityBackend` parser surface retired in Phase 8.
 2. At Sprint 7.2 closure, `docker compose run --rm mcts mcts test
    mcts-legacy-parity` passed with the 5-backend cohort completing the legacy
    parity envelope without backend (i) overflow or envelope failure at
-   `G_LP = 2`; Phase 8 retired the stanza and froze Q7 under
-   `test/golden/cpp-legacy/`.
+   `G_LP = 2`; Phase 8 retired the stanza and records Q7 as historical evidence.
 3. A synthetic injected mismatch in one backend produces `AppError
    VerifyMismatch` with the correct payload.
 4. A synthetic `MAX_ROLLOUT_ITERS` overflow in backend (i) produces `AppError
    LegacyParityRolloutOverflow`.
 
-### Remaining Work
+### Closure Notes
 
-- None. `mcts-cross-backend` remains an independent Cabal stanza and runs
+- The comparator now computes a canonical byte determinism-payload digest
+  before scanning; mismatched pairs run an explicit game/move/terminator scan
+  that emits `VerifyLengthMismatch`, `VerifyTerminatorMismatch`, or
+  `VerifyMismatch`. `mcts-unit` covers same-payload cross-backend digest
+  equality plus extra-move, extra-game, and terminator cases, and
+  `mcts-cross-backend` carries a synthetic length-aware mismatch case alongside
+  the live `(rust, haskell)` rollout/self-play cohorts.
+- Historical closure evidence: `mcts-cross-backend` remains an independent Cabal stanza and runs
   through `MCTS.Verify`, which dispatches via
   `MCTS.Driver.Dispatch.runBatchDispatch`. When the Rust cdylib is present, Q3
   exercises the live Rust FFI engine and stamps transcripts with the live
@@ -264,7 +276,7 @@ former `LegacyParityBackend` parser surface retired in Phase 8.
   under `--rng cpp` and asserts the parser rejects retired backends and
   single-backend cohorts with `AppError VerifyCohortTooSmall`. Historical Q7
   liveness/overflow coverage from `mcts-legacy-parity` is now represented by
-  the frozen backend (i) anchor.
+  historical backend (i) evidence.
 - Sprint 7.2 typed cohort closure: `src/MCTS/Types.hs` originally owned the
   pre-retirement GADT-shaped `VerifyBackend` and `LegacyParityBackend`
   constructors. Phase 8 reduced the current `VerifyBackend` constructors to
@@ -306,27 +318,23 @@ former `LegacyParityBackend` parser surface retired in Phase 8.
   After Phase 8, `mcts-cross-backend` asserts equality for rollout and
   self-play smoke cohorts across `(rust, haskell)` and fails on
   `VerifyMismatch`; historical `mcts-legacy-parity` liveness/overflow evidence
-  is frozen under `test/golden/cpp-legacy/`. The current Q3 path uses
+  is recorded outside the normal clean-clone validation path. The current Q3 path uses
   `runBatchDispatch`, so the cohort is a live Rust FFI check whenever the Rust
   cdylib is present and the fixed-cap ABI can represent the run.
-  Focused validation:
+  Historical focused validation at that closure point:
   `docker compose run --rm mcts mcts test mcts-cross-backend`,
   `docker compose run --rm mcts mcts test mcts-legacy-parity`, and
   `docker compose run --rm --build mcts mcts lint all`.
-- Sprint 7.1 external-fixture decode closure, 2026-05-18: the
-  `mcts-integration` legacy-goldens test now walks every committed
-  `test/golden/legacy/transcripts/<arch>/*.tr` fixture directory instead of
-  only `transcripts/<host_arch>`, so committed Q6 anchors are decoded and
-  envelope-checked on any validation host. Focused validation:
-  `docker compose run --rm --build mcts mcts test mcts-integration`.
-- Sprint 7.1 Q6 fixture byte-guard closure, 2026-05-18: the
-  `test/golden/legacy/transcripts/amd64/` anchor was regenerated at
-  `S_LP_SIMS = 10000` through `mcts build legacy-fixtures` against the
-  `/home/matt/MCTS_legacy`-equivalent imported core. The integration test now
-  requires ten fixtures per committed architecture directory, verifies each
-  filename equals `sha256(file_bytes)`, and checks `cpp-legacy`, self-play,
-  single-threaded, `--rng cpp`, `seed = 42`, `sims = 10000`, `max_plies =
-  10000`, and `runGames = 1` on every decoded file.
+- Sprint 7.1 external-fixture decode closure, 2026-05-18: historical note only.
+  The integration test previously walked committed legacy-golden transcript
+  directories and envelope-checked Q6 anchors on any validation host. Sprint
+  `8.8` supersedes that approach by moving normal validation to synthetic
+  temporary-root legacy-envelope coverage.
+- Sprint 7.1 Q6 fixture byte-guard closure, 2026-05-18: historical note only.
+  The Q6 evidence was regenerated at `S_LP_SIMS = 10000` through
+  `mcts build legacy-fixtures` against the `/home/matt/MCTS_legacy`-equivalent
+  imported core. Sprint `8.8` removes committed fixture guards from the normal
+  suite while preserving the envelope invariants as generated test data.
 
 ## Sprint 7.3: `mcts test all` Plan/Apply and Report-Card Summary ✅
 
@@ -372,7 +380,7 @@ summary block answering Q1–Q7 in one screenful.
   7. Inside the container, run `cabal test mcts-integration`.
   8. Inside the container, run `cabal test mcts-cross-backend`.
   9. Sprint 8.4 retired the former `mcts-legacy-parity` stanza; Q7 is now
-     checked through the frozen backend (i) anchor.
+     reported from recorded historical backend (i) liveness evidence.
   10. Run the pinned report-card workload. Q1/Q2/Q5 timing rows execute inside
      the report-card builder through `runBatchNoWriteDispatch`, using the
      `G_R`, `G_S`, and `S_BENCH` knobs without retaining or writing the large
@@ -380,8 +388,8 @@ summary block answering Q1–Q7 in one screenful.
      contains only the explicit deterministic verify subprocesses:
      1. `mcts verify rollouts --backend rust,haskell --threading single --games $G_V --seed 42 --max-plies 200`
      2. `mcts verify selfplay --backend rust,haskell --threading single --games $G_V --seed 42 --max-plies 200 --sims $S_VERIFY`
-     Q7 reads the frozen backend (i) anchor rather than running a live
-     `legacy-parity` subprocess.
+     Q7 reads the recorded historical backend (i) evidence rather than running a
+     live `legacy-parity` subprocess.
      The README's standalone `mcts bench` examples remain operator-facing
      commands for comparable ad hoc wall-clock runs and cache-writing inspection
      workflows, not the canonical high-volume report-card implementation path.
@@ -416,8 +424,8 @@ summary block answering Q1–Q7 in one screenful.
   Q4  Same-backend determinism   (per backend)   <PASS|FAIL>    (2/2 live backends × 3 seeds)
   Q5  MT scaling  Haskell   1→8 workers          <ratio>×    (linear ideal: 8×)
   Q5  MT scaling  C++ (ii)  1→8 workers          <ratio>×
-  Q6  Legacy port (i) vs MCTS_legacy             <PASS|FAIL>    (golden transcripts match)
-  Q7  Legacy envelope anchor                     <PASS|FAIL>    (frozen backend (i) anchor)
+  Q6  Legacy port (i) vs MCTS_legacy             HIST           (retired legacy evidence)
+  Q7  Legacy envelope anchor                     HIST           (retired liveness evidence)
 
   cabal test                                     <PASS|FAIL>    (mcts-unit, mcts-integration,
                                                               mcts-cross-backend, mcts-haskell-style)
@@ -439,11 +447,10 @@ summary block answering Q1–Q7 in one screenful.
   the full per-backend scaling table is available via `mcts test all --format
   json`." The asymmetry is enforced by `renderReportCard` returning only the
   anchor rows while the JSON encoder emits the full `[BackendScalingRow]`.
-- A golden test in `mcts-unit` covers the rendering with sentinel placeholders
-  replacing the live throughputs. The golden file pins the literal layout
-  scraped from README lines 255–273 with sentinel placeholders substituted for
-  the `<ratio>` / `<hs>` / `<ii>` / `<PASS|FAIL>` slots; any drift from the
-  README layout fails the golden test.
+- Semantic `mcts-unit` tests cover the renderer with sentinel placeholders
+  replacing live throughputs. The tests assert the typed row order, labels,
+  stable placeholders, and schema fields directly; README examples remain
+  documentation, not checked-in byte snapshots.
 
 #### Doctrine compliance
 
@@ -461,9 +468,9 @@ so the contract is reviewable in one place:
   `--dry-run` prints the rendered plan and exits 0; `--plan-file <path>` writes
   the rendered plan for out-of-band review per
   [../HASKELL_CLI_TOOL.md → Plan / Apply](../HASKELL_CLI_TOOL.md).
-- **Prerequisites as Typed Effects.** The live Rust artefact, frozen retired
-  backend anchors, `mimalloc`, and GHC/Cabal pinned versions on the container
-  `PATH` are encoded as one `prerequisiteRegistry` per
+- **Prerequisites as Typed Effects.** The live Rust artefact, optional external
+  historical evidence, `mimalloc`, and GHC/Cabal pinned versions on the
+  container `PATH` are encoded as one `prerequisiteRegistry` per
   [../HASKELL_CLI_TOOL.md → Prerequisites as Typed
   Effects](../HASKELL_CLI_TOOL.md). The transitive closure runs before `apply`;
   a single unmet node aborts with `AppError PrerequisiteUnmet` carrying the
@@ -474,8 +481,8 @@ so the contract is reviewable in one place:
   terminal-width-dependent wrapping. Wall-clock numbers are the only
   non-deterministic content and render to fixed precision (three significant
   figures for ratios, one decimal for throughputs in kilogames/s). The block is
-  golden-testable; live throughputs are replaced by sentinel placeholders in
-  the golden file.
+  semantic-testable with sentinel placeholders for live throughputs; it does not
+  require a checked-in snapshot.
 
 ### Validation
 
@@ -483,18 +490,18 @@ so the contract is reviewable in one place:
    plan carries typed subprocess steps for lint/docs/build checks, `mcts build
    rust`, the four live Cabal test stanzas, and the two pinned live
    `mcts verify` report-card invocations enumerated above. Q7 reads the frozen
-   backend (i) anchor; rendering Q1/Q2/Q5 timing rows and the summary block is
+   backend (i) historical evidence; rendering Q1/Q2/Q5 timing rows and the summary block is
    an in-process final step, not a subprocess.
 2. `mcts test all` runs end-to-end with the surviving `(rust, haskell)` cohort
-   and frozen retired anchors, then emits the tidy summary block.
-3. `mcts test all --format json` emits valid JSON that schema-checks against a
-   pinned schema in `test/golden/report-card-schema.json`.
+   and no checked-in generated validation data, then emits the tidy summary block.
+3. `mcts test all --format json` emits valid JSON whose shape is checked by
+   semantic assertions in the unit/integration stanzas.
 4. Failure of any cabal stanza, any verify cohort, or any report-card measurement
    exits non-zero.
 
 ### Remaining Work
 
-- None. `mcts test all --dry-run`, `mcts test <stanza>`, the Plan/Apply runner,
+- None for the command surface. `mcts test all --dry-run`, `mcts test <stanza>`, the Plan/Apply runner,
   report-card rendering, and the pinned command sequence exist. The dry-run
   renders fifteen typed `Subprocess` steps in order, including canonical backend
   builds before Cabal stanzas and verify workload; recursive CLI steps route
@@ -503,13 +510,15 @@ so the contract is reviewable in one place:
   canonical backend artefacts, measures Q1/Q2/Q5 through the production monotonic
   clock, derives `Within tolerance` / `Shortfall <ratio>` from
   `HASKELL_PARITY_TOLERANCE = 0.05`, and populates the Sprint 7.5 divergence
-  matrix from the measured live `G_V` verify cohort. JSON schema coverage exists
-  at `test/golden/report-card-schema.json`, with `tasty-golden` renderer
-  fixtures pinning the static report-card table and JSON shape.
+  matrix from the measured live `G_V` verify cohort. Sprint `8.8` replaced the
+  remaining renderer/schema residue with semantic assertions so this surface no
+  longer depends on checked-in generated data.
 
 ## Sprint 7.4: `mcts play` and `mcts inspect replay` TUIs ✅
 
-**Status**: Done. The TUI surface is `MCTS.CLI.Tui.Board` (9×9 board
+**Status**: Done
+
+The TUI surface is `MCTS.CLI.Tui.Board` (9×9 board
 widget with pawn and wall overlays), `MCTS.CLI.Tui.Play` (brick `App` with
 legacy-notation move input, `:hint` / `:undo` / `:quit` / `:q`, `:save`
 transcript writes, and selected-backend AI dispatch through dynamic FFI when
@@ -520,7 +529,7 @@ snapshot caching). `MCTS.App.runPlay` and `MCTS.CLI.Inspect.inspectReplay`
 dispatch to the interactive apps only on a TTY. Pure dispatchers
 (`applyUserInput`, `applyReplayKey`, `currentOverlayRows`, `boardWithCache`,
 `nextOverlayBackend`, `applyOverlayLoadResult`, and the replay text-row
-renderer) are unit-tested, with golden coverage for board/status and replay
+renderer) are unit-tested, with semantic coverage for board/status and replay
 layout rows.
 **Implementation**: `src/MCTS/App.hs` (`runPlay` TTY/fallback dispatch),
 `src/MCTS/CLI/Inspect.hs` (`inspectReplay` TTY/fallback dispatch),
@@ -578,8 +587,8 @@ a stored transcript with cached or recomputed equity overlays.
     (README line 543). The bottom-of-screen status bar renders exactly:
     `<hash> | move M / total | press ? for help` (literal, byte-for-byte —
     `<hash>` is the short hash slot, `M` and `total` are the move-index and
-    move-count slots, `press ? for help` is fixed text). A `mcts-unit` golden
-    pins this layout; drift fails the golden.
+    move-count slots, `press ? for help` is fixed text). `mcts-unit` asserts
+    this layout semantically; drift fails without reading a checked-in snapshot.
   - Keybinds: `→`/`l` next, `←`/`h` prev, `Home`/`End` jump to start/end,
     `r` recompute the next missing backend equity column, and `q` quit.
   - **Equity recomputation on cache miss.** Opening the replay loads cached
@@ -615,9 +624,9 @@ a stored transcript with cached or recomputed equity overlays.
    game and accepts move input.
 2. `mcts inspect replay <prefix>` opens the navigator on a known transcript and
    the determinism check passes on every navigation.
-3. A `docker compose run --rm mcts mcts test mcts-unit` golden covers the TUI
-   board/status layout through the pure text rows that feed the `brick`
-   renderer.
+3. `docker compose run --rm mcts mcts test mcts-unit` covers the TUI
+   board/status layout through semantic assertions over the pure text rows that
+   feed the `brick` renderer.
 4. `mcts lint haskell` rejects any `print` / `exitFailure` / non-`brick` terminal
    output in either TUI module.
 
@@ -674,10 +683,14 @@ covered by `mcts-unit::exerciseTuiReplayOverlay`. Focused validation passed with
 
 ### Remaining Work
 
-- None. Stable board/status layout coverage exists via
-  `test/golden/cli/tui-board.txt`, and replay-buffer-specific layout coverage is
-  pinned by `test/golden/cli/tui-replay.txt`. The TUI exception to global
-  `--format` / `--color` flags is preserved in the command docs.
+- None. `mcts play` runtime state now assigns `--backend` to the side named by
+  `--side`, uses `--vs` for the opposite side in spectator mode, blocks manual
+  input during AI-controlled turns, routes AI turns through the selected
+  backend/RNG/seed/sim/max-plies/cache settings, and draws omitted seeds from
+  `/dev/urandom`. `inspect replay` renders explicit originator,
+  build-mismatch, foreign-view, unavailable, verified, and diverged row states;
+  the governed CLI docs now specify the text-row contract, and Sprint `8.8`
+  replaced the remaining snapshot providers with semantic assertions.
 
 ## Sprint 7.5: Layered Envelope Verify and Divergence Matrix ✅
 
@@ -737,8 +750,8 @@ rows, and `reportDivergenceRows` as `ReportDivergenceRow` /
 with Haskell-vs-C++ games/sec evidence, Q5 ST-to-MT8 scaling rows, then a
 fixed-width `visit/move` matrix after Q7; the JSON renderer emits the same data
 under `q1_*`, `q2_*`, `q5_*`, and `divergence_matrix`. The current default report
-card keeps explicit `Evidence pending` placeholders for golden-test determinism,
-while `mcts test all` builds the final report card through
+card keeps explicit `Evidence pending` placeholders for deterministic renderer
+tests, while `mcts test all` builds the final report card through
 `MCTS.CLI.Test.buildMeasuredReportCard`: after the typed plan succeeds, it
 requires the canonical backend artefacts built in that same container, measures
 Q1/Q2/Q5 with the production monotonic clock, runs the pinned `G_V = 4`
@@ -823,6 +836,15 @@ consumers.
   diagonals at zero and a footnote on the empirically-pinned
   threshold values.
 
+### Remaining Work
+
+- None. Layered envelope verification uses the corrected Phase `2` envelope
+  payload, verify/report-card rows consume the corrected canonical comparator,
+  and replay sidecar rows expose chosen-action divergence annotations where the
+  `.eq` stream has data. Visit-rate/equity-rate divergence remains the
+  `inspect divergence` and report-card matrix surface because replay sidecars do
+  not carry visit tables.
+
 ### Closure Notes (per-game writer)
 
 - `writeTranscriptPerGame` in `src/MCTS/Transcript.hs` splits a batch
@@ -875,10 +897,10 @@ Focused validation passed with
 `MCTS.ReportCard.ReportCard` now owns a typed `reportDivergenceRows` field. The
 table renderer prints the two-backend `(rust, haskell)` `visit/move` matrix in the
 tidy summary block, and the JSON renderer emits the same rows under
-`divergence_matrix`. `mcts-unit::exerciseReportCardGolden` pins
-`test/golden/cli/report-card.txt`, `test/golden/cli/report-card.json`, and
-`test/golden/report-card-schema.json`, so matrix layout/schema drift fails the
-unit stanza. Focused validation passed with
+`divergence_matrix`. The current `mcts-unit::exerciseReportCardGolden` still
+pins checked-in report-card files; Sprint `8.8` replaces that residue with
+semantic table/JSON assertions so matrix layout/schema drift fails without
+repository snapshots. Focused validation passed at the historical closure point with
 `docker compose run --rm --build mcts mcts test mcts-unit`.
 
 ### Closure Notes (measured report-card divergence rows)
@@ -932,7 +954,7 @@ those flags directly, rejects unknown options, rejects non-legacy `max_plies`, a
 no longer accepts environment-variable fixture overrides as an operator path.
 `mcts-unit::exerciseCommandParserSurface` and
 `mcts-unit::exerciseCppImperativeBuildPlan` cover the parser and rendered plan,
-and the generated command docs/goldens include the new leaf.
+and the generated command docs include the new leaf.
 
 Focused validation passed with:
 `docker compose run --rm --build mcts mcts build legacy-fixtures --output-dir
@@ -943,7 +965,7 @@ Focused validation passed with:
 `docker compose run --rm --build mcts mcts lint all`,
 `docker compose run --rm --build mcts mcts check-code`, and `git diff --check`.
 
-### Closure Notes (Q6 fixture refresh)
+### Historical Closure Notes (Q6 fixture refresh)
 
 The external legacy checkout is available at `/home/matt/MCTS_legacy` with clean
 status at commit `97dd6ed7908a20234e3857c1bb4f8af46b507e0a`. A
@@ -953,22 +975,20 @@ files (`SConstruct`, `_corridors_mcts.cpp`, `conio.h`, `minimal_examples/`,
 `test.cpp`) outside the imported core, so the repository generator is operating
 on the same legacy engine logic.
 
-`test/golden/legacy/transcripts/amd64/` now contains ten `S_LP = 42`,
-`S_LP_SIMS = 10000`, one-game fixtures generated through:
-`docker compose run --rm --build --volume
-/home/matt/MCTS/test/golden/legacy/transcripts:/workspace/MCTS/test/golden/legacy/transcripts
-mcts mcts build legacy-fixtures --output-dir test/golden/legacy/transcripts
---seed 42 --games 10 --sims 10000`. The one-shot output mount is needed because
-the root Compose service intentionally does not bind-mount the workspace; the
-project build/run still enters through the supported `mcts build
-legacy-fixtures` command. The stale transitional `arm64` fixture set was removed.
+The 2026-05-18 Q6 evidence was generated with `S_LP = 42`,
+`S_LP_SIMS = 10000`, and ten one-game files through
+`mcts build legacy-fixtures`. That evidence is historical and must not be a
+normal clean-clone validation input. Sprint `8.8` removes repository transcript
+fixture requirements and keeps any future legacy evidence in an explicit
+external or ignored artifact root. The stale transitional `arm64` fixture set
+was removed during the earlier closure.
 
 ### Remaining Work
 
 - None. The canonical 2026-05-19 report-card run passed against
   canonical backend artefacts, follow-up live Q3 validation through
   `runBatchDispatch` passed for cross-backend rollouts and self-play, and Q7 is
-  now the frozen backend (i) legacy-envelope anchor. The
+  now recorded backend (i) legacy-envelope evidence. The
   2026-05-19 live comparison that showed backend (i) can diverge from the
   steelman search tree is recorded in
   [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md) as the
@@ -980,13 +1000,13 @@ legacy-fixtures` command. The stale transitional `arm64` fixture set was removed
 
 - `documents/engineering/unit_testing_policy.md` — finalise the live-stanza
   model, the property-test invariant list, the parser-test
-  `execParserPure` discipline, the golden-test sentinel-placeholder discipline,
-  and the `mcts test all` ordering.
+  `execParserPure` discipline, semantic renderer assertions, and the
+  `mcts test all` ordering without checked-in generated validation data.
 - `documents/engineering/cli_command_surface.md` — finalise the full `mcts`
   command matrix, including `mcts test all`, `mcts play`, `mcts inspect
   replay`, and the `--format`/`--color` asymmetry for the TUI commands.
 - `documents/engineering/determinism_contract.md` — extend with the live-cohort
-  assertions, the frozen Q7 legacy-envelope anchor, and the
+  assertions, the historical Q7 legacy-envelope evidence, and the
   equity-recompute-as-determinism-check property of `inspect replay`.
 - `documents/engineering/haskell_code_guide.md` — record the gated `brick` /
   `vty` deviation: usage allowed only in the named TUI modules; no other

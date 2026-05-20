@@ -171,18 +171,24 @@ inspectShow output options = do
                 Right transcript -> do
                     stream <-
                         if showWithEquity options
-                            then do
-                                let envelope = transcriptEnvelope transcript
-                                    buildId = envelopeBuildId envelope
-                                    transcriptHash = takeBaseName path
-                                case Recompute.recomputeEqStream transcriptHash buildId transcript of
-                                    Right stream -> do
-                                        _ <- writeEquitySidecarStream (showCacheDir options) transcript stream
-                                        pure (Just stream)
-                                    Left err -> outputLine (renderErrorString output err) >> pure Nothing
+                            then loadOrRecomputeShowEquity output options (takeBaseName path) transcript
                             else pure Nothing
                     outputLine (renderTranscript output options path stream transcript)
                     pure 0
+
+loadOrRecomputeShowEquity
+    :: OutputOptions -> ShowOptions -> String -> Transcript -> IO (Maybe EqStream)
+loadOrRecomputeShowEquity output options transcriptHash transcript = do
+    cached <- loadMatchingOriginatorSidecar (showCacheDir options) transcriptHash transcript
+    case cached of
+        Just stream -> pure (Just stream)
+        Nothing -> do
+            let buildId = envelopeBuildId (transcriptEnvelope transcript)
+            case Recompute.recomputeEqStream transcriptHash buildId transcript of
+                Right stream -> do
+                    _ <- writeEquitySidecarStream (showCacheDir options) transcript stream
+                    pure (Just stream)
+                Left err -> outputLine (renderErrorString output err) >> pure Nothing
 
 renderTranscript
     :: OutputOptions -> ShowOptions -> FilePath -> Maybe EqStream -> Transcript -> String
@@ -217,19 +223,52 @@ renderTranscript output options path stream transcript =
                     <> show (envelopeVersion envelope)
                     <> ",\"backend\":\""
                     <> backendIdentifier (envelopeBackend envelope)
+                    <> "\",\"rng_source\":\""
+                    <> renderRngSource (envelopeRngSource envelope)
                     <> "\",\"host_arch\":\""
                     <> envelopeHostArch envelope
                     <> "\",\"build_id\":\""
                     <> envelopeBuildId envelope
-                    <> "\"}"
+                    <> "\",\"shared_rng_build_id\":\""
+                    <> unByteString32 (envelopeSharedRngBuildId envelope)
+                    <> "\",\"cohort_config_hash\":\""
+                    <> unByteString32 (envelopeCohortConfigHash envelope)
+                    <> "\",\"engine_build_id\":\""
+                    <> unByteString32 (envelopeEngineBuildId envelope)
+                    <> "\",\"engine_git_commit\":\""
+                    <> envelopeEngineGitCommit envelope
+                    <> "\",\"compiler_id\":"
+                    <> show (envelopeCompilerId envelope)
+                    <> ",\"compiler_version\":\""
+                    <> envelopeCompilerVersion envelope
+                    <> "\",\"fp_flags\":"
+                    <> show (envelopeFpFlags envelope)
+                    <> ",\"libm_id\":\""
+                    <> envelopeLibmId envelope
+                    <> "\",\"cpu_features\":"
+                    <> show (envelopeCpuFeatures envelope)
+                    <> ",\"fp_env\":"
+                    <> show (envelopeFpEnv envelope)
+                    <> "}"
             else ""
     renderEnvelopeBlock =
         if showEnvelope options
             then
                 [ "envelope.version: " <> show (envelopeVersion envelope)
                 , "envelope.backend: " <> backendIdentifier (envelopeBackend envelope)
+                , "envelope.rng_source: " <> renderRngSource (envelopeRngSource envelope)
                 , "envelope.host_arch: " <> envelopeHostArch envelope
                 , "envelope.build_id: " <> envelopeBuildId envelope
+                , "envelope.shared_rng_build_id: " <> unByteString32 (envelopeSharedRngBuildId envelope)
+                , "envelope.cohort_config_hash: " <> unByteString32 (envelopeCohortConfigHash envelope)
+                , "envelope.engine_build_id: " <> unByteString32 (envelopeEngineBuildId envelope)
+                , "envelope.engine_git_commit: " <> envelopeEngineGitCommit envelope
+                , "envelope.compiler_id: " <> show (envelopeCompilerId envelope)
+                , "envelope.compiler_version: " <> envelopeCompilerVersion envelope
+                , "envelope.fp_flags: " <> show (envelopeFpFlags envelope)
+                , "envelope.libm_id: " <> envelopeLibmId envelope
+                , "envelope.cpu_features: " <> show (envelopeCpuFeatures envelope)
+                , "envelope.fp_env: " <> show (envelopeFpEnv envelope)
                 ]
             else []
     renderGame game =
@@ -264,6 +303,12 @@ showEquity :: Double -> String
 showEquity value =
     let scaled = fromInteger (round (value * 10000)) / 10000 :: Double
      in show scaled
+
+renderRngSource :: RngSource -> String
+renderRngSource rng =
+    case rng of
+        NativeRng -> "native"
+        CppRng -> "cpp"
 
 inspectReplay :: OutputOptions -> ReplayOptions -> IO Int
 inspectReplay output options = do
@@ -398,17 +443,17 @@ recomputeBackendOverlay hashValue transcript backend buildId =
         CppLegacy ->
             pure
                 ( OverlaySkipped
-                    "cpp-legacy is retired; use archived originator sidecars under test/golden/cpp-legacy/"
+                    "cpp-legacy is retired; generate archived sidecars as explicit external evidence"
                 )
         CppImperative ->
             pure
                 ( OverlaySkipped
-                    "cpp-imperative is retired; use archived originator sidecars under test/golden/cpp-imperative/"
+                    "cpp-imperative is retired; generate archived sidecars as explicit external evidence"
                 )
         CppFunctional ->
             pure
                 ( OverlaySkipped
-                    "cpp-functional is retired; use archived originator sidecars under test/golden/cpp-functional/"
+                    "cpp-functional is retired; generate archived sidecars as explicit external evidence"
                 )
         Rust ->
             recomputeForeign Rust rustLibraryPath withRustRecomputeGame

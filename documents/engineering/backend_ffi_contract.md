@@ -19,9 +19,9 @@ Haskell FFI dispatch; the live C ABI surface is backend (iv):
 
 | Backend | Linkage | FFI load name (canonical) | Build-time intermediate | Symbol prefix |
 |---------|---------|---------------------------|-------------------------|----------------|
-| (i) `cpp-legacy` | Retired archive | `test/golden/cpp-legacy/` | `cpp-legacy/` reference + `legacy-to-wire` fixture generator | `mcts_legacy_*` (historical) |
-| (ii) `cpp-imperative` | Retired archive | `test/golden/cpp-imperative/` | `cpp-imperative/` reference | `mcts_imperative_*` (historical) |
-| (iii) `cpp-functional` | Retired archive | `test/golden/cpp-functional/` | `cpp-functional/` reference | `mcts_functional_*` (historical) |
+| (i) `cpp-legacy` | Retired archive | no live FFI load | `cpp-legacy/` reference + optional external `legacy-to-wire` evidence generator | `mcts_legacy_*` (historical) |
+| (ii) `cpp-imperative` | Retired archive | no live FFI load | `cpp-imperative/` reference | `mcts_imperative_*` (historical) |
+| (iii) `cpp-functional` | Retired archive | no live FFI load | `cpp-functional/` reference | `mcts_functional_*` (historical) |
 | (iv) `rust` | C ABI via Haskell FFI, `cdylib` | `rust/target/release/libmcts_rust.so` | `rust/target/release/libmcts_rust.pgo.so` / `rust/target/release/libmcts_rust.bolted.so` | `mcts_rust_*` |
 | (v) `haskell` | Native (in-process) | (compiled into `mcts`) | n/a | (no FFI surface) |
 
@@ -39,9 +39,10 @@ remain as compatibility residue for Cabal builds without local shared libraries;
 operator-facing bench/play/divergence paths and integration smokes use the real
 visit-vector and recompute ABIs for the live foreign backend. Q3 `verify`
 uses the live visit-vector ABI for visit-count equality across `(iv)..(v)`,
-and Q7 is now the frozen backend (i) anchor under `test/golden/cpp-legacy/`.
-Backend (ii)'s Q1/Q2 target is frozen under `test/golden/cpp-imperative/`, and
-backend (iii)'s retirement anchor is frozen under `test/golden/cpp-functional/`. Q3 uses
+and Q7 is now recorded historical backend (i) liveness evidence.
+Backend (ii)'s Q1/Q2 target and backend (iii)'s retirement evidence are recorded
+as historical plan/doc facts or optional external artifacts, not live FFI load
+targets. Q3 uses
 the live cdylib when the matching
 library is present and the requested batch can use the fixed 60-ply foreign
 search horizon; otherwise it falls back to the in-process runner so Cabal
@@ -139,8 +140,8 @@ caps until a future ABI revision adds an explicit per-run search-cap parameter.
 
 ### Instrumentation Surface (Instrumented Build Only)
 
-For `inspect replay`, `inspect divergence`, integration smoke, and the Q6
-golden comparison, each backend
+For `inspect replay`, `inspect divergence`, integration smoke, and optional Q6
+audit comparisons, each live or archived backend implementation
 provides a read-only instrumentation surface:
 
 ```c
@@ -382,8 +383,8 @@ handles.
 
 Backend (i) `cpp-legacy` was the historical exemption: it shipped a single
 shared library because the verbatim legacy engine had no instrumentation to
-disable. Sprint 8.4 retired that live path and preserved its evidence in
-`test/golden/cpp-legacy/`.
+disable. Sprint 8.4 retired that live path and preserved its evidence in the
+plan/docs and optional external artifacts.
 
 For the live steelman backends — (iv) `rust` and (v) `haskell` (the in-process
 Haskell backend's two stanzas):

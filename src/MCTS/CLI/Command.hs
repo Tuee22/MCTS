@@ -21,10 +21,12 @@ module MCTS.CLI.Command
     , DivergenceOptions (..)
     ) where
 
+import Data.Word (Word16, Word64)
 import MCTS.Driver (RunInputs)
 import MCTS.Plan (PlanOptions)
 import MCTS.Types
     ( Backend
+    , RngSource
     , Side
     , SimBudget
     , Transcript
@@ -124,8 +126,11 @@ data PlayOptions = PlayOptions
     { playBackend :: !Backend
     , playSide :: !Side
     , playVs :: !(Maybe Backend)
+    , playRng :: !RngSource
     , playSims :: !SimBudget
-    , playSeed :: !(Maybe Integer)
+    , playSeed :: !(Maybe Word64)
+    , playMaxPlies :: !Word16
+    , playCacheDir :: !(Maybe FilePath)
     }
     deriving (Eq, Show)
 

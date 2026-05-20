@@ -35,7 +35,7 @@ import MCTS.CLI.Tui.Board (renderBoard, renderStatus)
 import MCTS.Driver (makeLogicalEnvelope, uctChooseMove)
 import MCTS.Driver.ForeignSearch (ForeignSearchOpener, foreignSearchMove)
 import MCTS.Engine
-    ( Board
+    ( Board (..)
     , applyMove
     , initialBoard
     , legalMoves
@@ -53,12 +53,14 @@ import MCTS.Types
     , MoveRecord (..)
     , RngSource (..)
     , RunConfig (..)
+    , Side (..)
     , SimBudget (..)
     , Threading (..)
     , Transcript (..)
     , Winner (..)
     , Workload (..)
     , backendIdentifier
+    , otherSide
     , shortHash
     )
 
@@ -69,7 +71,10 @@ data PlayState = PlayState
     , playStateRecords :: ![MoveRecord]
     -- ^ Chronological transcript records for played moves.
     , playStateBackend :: !Backend
+    , playStateAiSide :: !Side
+    , playStateVsBackend :: !(Maybe Backend)
     , playStateCacheDir :: !(Maybe FilePath)
+    , playStateRng :: !RngSource
     , playStateMoveCount :: !Int
     , playStateSeed :: !Word64
     , playStateMaxPlies :: !Word16
@@ -82,25 +87,51 @@ data PlayState = PlayState
     }
 
 initialPlayState :: Word64 -> Word16 -> Int -> PlayState
-initialPlayState = initialPlayStateFor Haskell Nothing
+initialPlayState = initialPlayStateFor Haskell Villain Nothing Nothing NativeRng
 
-initialPlayStateFor :: Backend -> Maybe FilePath -> Word64 -> Word16 -> Int -> PlayState
-initialPlayStateFor backend cacheDir seed maxPlies sims =
+initialPlayStateFor
+    :: Backend
+    -> Side
+    -> Maybe Backend
+    -> Maybe FilePath
+    -> RngSource
+    -> Word64
+    -> Word16
+    -> Int
+    -> PlayState
+initialPlayStateFor backend aiSide vsBackend cacheDir rng seed maxPlies sims =
     PlayState
         { playStateBoard = initialBoard
         , playStateHistory = []
         , playStateRecords = []
         , playStateBackend = backend
+        , playStateAiSide = aiSide
+        , playStateVsBackend = vsBackend
         , playStateCacheDir = cacheDir
+        , playStateRng = rng
         , playStateMoveCount = 0
         , playStateSeed = seed
         , playStateMaxPlies = maxPlies
         , playStateSims = sims
-        , playStateMessage = "type *(x,y) / H(x,y) / V(x,y) and Enter; :hint :undo :quit"
+        , playStateMessage = initialPlayMessage aiSide vsBackend
         , playStateInput = ""
         , playStateLastHint = Nothing
         , playStateDone = Nothing
         }
+
+initialPlayMessage :: Side -> Maybe Backend -> String
+initialPlayMessage aiSide vsBackend =
+    case vsBackend of
+        Nothing ->
+            "human "
+                <> show (otherSide aiSide)
+                <> "; type *(x,y) / H(x,y) / V(x,y); :hint :undo :quit"
+        Just backend ->
+            "spectator mode: "
+                <> show aiSide
+                <> " vs "
+                <> backendIdentifier backend
+                <> "; press Space"
 
 -- | Outcome of dispatching a single text line.
 data UserInputOutcome
@@ -129,6 +160,21 @@ applyUserInput raw st =
 
 applyMoveText :: String -> PlayState -> PlayState
 applyMoveText raw st =
+    case backendForCurrentTurn st of
+        Just backend ->
+            st
+                { playStateInput = ""
+                , playStateMessage =
+                    "waiting for "
+                        <> backendIdentifier backend
+                        <> " to move as "
+                        <> show (boardSideToMove (playStateBoard st))
+                        <> "; press Space"
+                }
+        Nothing -> applyHumanMove raw st
+
+applyHumanMove :: String -> PlayState -> PlayState
+applyHumanMove raw st =
     case parseMove raw of
         Nothing ->
             st
@@ -167,7 +213,8 @@ settleTerminal board terminal =
 
 issueHint :: PlayState -> PlayState
 issueHint st =
-    let (chosen, _) = logicalAiMove st
+    let backend = maybe (playStateBackend st) id (backendForCurrentTurn st)
+        (chosen, _) = logicalAiMoveFor backend st
      in st
             { playStateLastHint = Just chosen
             , playStateInput = ""
@@ -233,7 +280,9 @@ handleEvent (VtyEvent (V.EvKey key _mods)) =
             -- Space when buffer is empty advances AI as a smoke shortcut;
             -- otherwise treated as literal whitespace in the input.
             if null (playStateInput st)
-                then advanceAi
+                then case backendForCurrentTurn st of
+                    Just _ -> advanceAi
+                    Nothing -> modify $ \s -> s{playStateMessage = "human turn: enter a move or :hint"}
                 else modify $ \s -> s{playStateInput = playStateInput s <> " "}
         V.KChar ch -> modify $ \s -> s{playStateInput = playStateInput s <> [ch]}
         V.KBS -> modify $ \s -> s{playStateInput = dropLast (playStateInput s)}
@@ -243,7 +292,8 @@ handleEvent _ = pure ()
 
 dropLast :: [a] -> [a]
 dropLast [] = []
-dropLast xs = init xs
+dropLast [_] = []
+dropLast (x : xs) = x : dropLast xs
 
 advanceAi :: EventM String PlayState ()
 advanceAi = do
@@ -255,34 +305,51 @@ advanceAiState :: PlayState -> IO PlayState
 advanceAiState st =
     case playStateDone st of
         Just _ -> pure st
-        Nothing -> do
-            selected <- selectAiMove st
-            pure $
-                case selected of
-                    Left err ->
+        Nothing ->
+            case backendForCurrentTurn st of
+                Nothing ->
+                    pure
                         st
-                            { playStateMessage = "AI search failed: " <> Text.unpack (renderError err)
+                            { playStateMessage = "human turn: enter a move or :hint"
                             , playStateInput = ""
                             }
-                    Right (chosen, visits, sourceLabel) ->
-                        let record = playMoveRecord st chosen visits
-                            nextBoard = applyMove chosen (playStateBoard st)
-                            terminal = terminalWinner (playStateMaxPlies st) nextBoard
-                         in st
-                                { playStateBoard = nextBoard
-                                , playStateHistory = playStateBoard st : playStateHistory st
-                                , playStateRecords = playStateRecords st <> [record]
-                                , playStateMoveCount = playStateMoveCount st + 1
-                                , playStateMessage = "AI played " <> renderMove chosen <> sourceLabel
-                                , playStateLastHint = Nothing
-                                , playStateInput = ""
-                                , playStateDone = settleTerminal nextBoard terminal
-                                }
+                Just backend -> do
+                    selected <- selectAiMove backend st
+                    pure $
+                        case selected of
+                            Left err ->
+                                st
+                                    { playStateMessage = "AI search failed: " <> Text.unpack (renderError err)
+                                    , playStateInput = ""
+                                    }
+                            Right (chosen, visits, sourceLabel) ->
+                                let record = playMoveRecord st chosen visits
+                                    nextBoard = applyMove chosen (playStateBoard st)
+                                    terminal = terminalWinner (playStateMaxPlies st) nextBoard
+                                 in st
+                                        { playStateBoard = nextBoard
+                                        , playStateHistory = playStateBoard st : playStateHistory st
+                                        , playStateRecords = playStateRecords st <> [record]
+                                        , playStateMoveCount = playStateMoveCount st + 1
+                                        , playStateMessage = "AI played " <> renderMove chosen <> sourceLabel
+                                        , playStateLastHint = Nothing
+                                        , playStateInput = ""
+                                        , playStateDone = settleTerminal nextBoard terminal
+                                        }
 
-selectAiMove :: PlayState -> IO (Either AppError (Action, [(Action, Word32)], String))
-selectAiMove st =
-    case playStateBackend st of
-        Haskell -> pure (Right (tagMove "" (logicalAiMove st)))
+backendForCurrentTurn :: PlayState -> Maybe Backend
+backendForCurrentTurn st =
+    backendForSide st (boardSideToMove (playStateBoard st))
+
+backendForSide :: PlayState -> Side -> Maybe Backend
+backendForSide st side
+    | side == playStateAiSide st = Just (playStateBackend st)
+    | otherwise = playStateVsBackend st
+
+selectAiMove :: Backend -> PlayState -> IO (Either AppError (Action, [(Action, Word32)], String))
+selectAiMove backend st =
+    case backend of
+        Haskell -> pure (Right (tagMove (" via " <> backendIdentifier backend) (logicalAiMoveFor backend st)))
         CppLegacy -> pure (Left (ParseError "cpp-legacy is retired from live play"))
         CppImperative -> pure (Left (ParseError "cpp-imperative is retired from live play"))
         CppFunctional -> pure (Left (ParseError "cpp-functional is retired from live play"))
@@ -302,7 +369,7 @@ chooseForeign backend libraryPath opener st = do
                 foreignSearchMove
                     backend
                     opener
-                    NativeRng
+                    (playStateRng st)
                     (playGameSeed st)
                     (playStateMaxPlies st)
                     (playStateSims st)
@@ -314,17 +381,17 @@ chooseForeign backend libraryPath opener st = do
                 Right
                     ( tagMove
                         (" via " <> backendIdentifier backend <> " logical fallback")
-                        (logicalAiMove st)
+                        (logicalAiMoveFor backend st)
                     )
 
 tagMove :: String -> (Action, [(Action, Word32)]) -> (Action, [(Action, Word32)], String)
 tagMove label (action, visits) = (action, visits, label)
 
-logicalAiMove :: PlayState -> (Action, [(Action, Word32)])
-logicalAiMove st =
+logicalAiMoveFor :: Backend -> PlayState -> (Action, [(Action, Word32)])
+logicalAiMoveFor backend st =
     uctChooseMove
-        (playStateBackend st)
-        NativeRng
+        backend
+        (playStateRng st)
         (playGameSeed st)
         (playStateMoveCount st)
         (playStateBoard st)
@@ -340,7 +407,11 @@ playApp =
         { appDraw = drawUi
         , appChooseCursor = neverShowCursor
         , appHandleEvent = handleEvent
-        , appStartEvent = pure ()
+        , appStartEvent = do
+            st <- get
+            case backendForCurrentTurn st of
+                Just _ -> advanceAi
+                Nothing -> pure ()
         , appAttrMap =
             const
                 ( A.attrMap
@@ -356,9 +427,18 @@ playApp =
 -- backend's dynamic FFI search path when the shared library is present,
 -- with the same logical fallback policy used by batch dispatch when it
 -- is not.
-runInteractivePlay :: Backend -> Maybe FilePath -> Word64 -> Word16 -> Int -> IO PlayState
-runInteractivePlay backend cacheDir seed maxPlies sims =
-    defaultMain playApp (initialPlayStateFor backend cacheDir seed maxPlies sims)
+runInteractivePlay
+    :: Backend
+    -> Side
+    -> Maybe Backend
+    -> Maybe FilePath
+    -> RngSource
+    -> Word64
+    -> Word16
+    -> Int
+    -> IO PlayState
+runInteractivePlay backend aiSide vsBackend cacheDir rng seed maxPlies sims =
+    defaultMain playApp (initialPlayStateFor backend aiSide vsBackend cacheDir rng seed maxPlies sims)
 
 playMoveRecord :: PlayState -> Action -> [(Action, Word32)] -> MoveRecord
 playMoveRecord st action visits =
@@ -388,7 +468,7 @@ playStateTranscript :: PlayState -> Transcript
 playStateTranscript st =
     Transcript
         (playRunConfig st)
-        (makeLogicalEnvelope (playStateBackend st) NativeRng)
+        (makeLogicalEnvelope (playStateBackend st) (playStateRng st))
         [ GameTranscript
             { gameId = 0
             , gameMoves = playStateRecords st
@@ -402,11 +482,12 @@ playRunConfig st =
         { runBackend = playStateBackend st
         , runWorkload = Selfplay
         , runThreading = SingleThreaded
-        , runRngSource = NativeRng
+        , runRngSource = playStateRng st
         , runMasterSeed = playStateSeed st
         , runInitialSims = fromIntegral (playStateSims st)
         , runPerMoveSims = fromIntegral (playStateSims st)
         , runMaxPlies = playStateMaxPlies st
+        , runGameIndex = 0
         , runGames = 1
         , runCParamBits = 0x3fe6666666666666
         }

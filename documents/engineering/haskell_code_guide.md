@@ -57,7 +57,9 @@ The MCTS commands that consume the `Plan / Apply` pattern are:
 - `mcts build rust` — Plan/Apply over
   the live foreign backend two-stage PGO + BOLT post-link + `mimalloc` link pipeline
 - `mcts build legacy-fixtures` — Plan/Apply over the retired backend (i)
-  fixture generator (Phase 4 Sprint 4.5; backend (i) retired in Sprint 8.4).
+  optional external evidence generator (Phase 4 Sprint 4.5; backend (i) retired
+  in Sprint 8.4). Its outputs belong in ignored/external artifact roots, not in
+  normal test inputs.
 - `mcts docs generate` — internally Plan/Apply over the rendered marker
   substitutions and the `trackingGeneratedPaths` writes (Phase 1 Sprint 1.3).
 
@@ -76,7 +78,8 @@ across the five backends. The current baseline uses exact version probes for
 `ghc-9.14.1 --numeric-version == 9.14.1` and
 `cabal --numeric-version == 3.16.1.0`, LLVM/BOLT `19.x`, Rust `1.95.0`,
 `mimalloc` via `pkg-config`, executable/file probes for the remaining
-build-command prerequisites (`c++`, profile directories, and legacy fixtures), and
+build-command prerequisites (`c++`, profile directories, and optional legacy
+evidence roots), and
 emits `AppError PrerequisiteUnmet` with a remedy hint before applying backend build
 plans or Cabal-backed test plans.
 
@@ -112,7 +115,7 @@ through `renderError`.
 
 ### `AppError` and `renderError`
 
-The single `AppError` ADT (Phase 1 Sprint 1.9) declares the canonical 17-variant
+The single `AppError` ADT (Phase 1 Sprint 1.9) declares the canonical 19-variant
 set. The set matches
 [../../README.md → Output and error discipline](../../README.md) exactly;
 `SubprocessFailed`, `FFIFailure`, `DocsCheckDrift`, and
@@ -124,7 +127,10 @@ alongside the user-facing variants:
   transcript carrying a non-zero `flags u32` (reserved for future format
   extensions); see
   [transcript_format.md → Header](./transcript_format.md).
-- `VerifyMismatch`, `VerifyCohortTooSmall` — cross-backend verify failures.
+- `VerifyMismatch`, `VerifyLengthMismatch`, `VerifyTerminatorMismatch`,
+  `VerifyCohortTooSmall` — cross-backend verify failures. The length and
+  terminator variants prevent zip-truncation from hiding extra games, extra
+  moves, or winner/total-move disagreement after digest mismatch.
 - `RecomputeMismatch` — `mcts inspect` recompute of an existing transcript
   under `--rng cpp` disagrees with the recorded visits. Carries
   `(Backend, GameId, MoveIndex, recomputed_record, recorded_record)`.
@@ -187,9 +193,8 @@ at the type level:
   backends (ii) and (iii). Constructors: `VRust | VHaskell`. See
   [determinism_contract.md → Cross-Backend Determinism (Q3)](./determinism_contract.md).
 - The former `LegacyParityBackend` parser surface retired with backend (i) in
-  Sprint 8.4. Q7 is now represented by the frozen backend (i) anchor under
-  `test/golden/cpp-legacy/`; the wire-format `CppLegacy` constructor remains so
-  archived transcripts decode. See
+  Sprint 8.4. Q7 is now represented by historical backend (i) liveness evidence;
+  the wire-format `CppLegacy` constructor remains so archived transcripts decode. See
   [determinism_contract.md → Legacy Parity Envelope](./determinism_contract.md).
 
 Phase 7 Sprint 7.2 implements these GADT-shaped parser surfaces per
@@ -206,17 +211,18 @@ to state machines with more than two conceptual states.
 
 MCTS is a determinism-critical project: bottoms in transcript decoding, RNG
 state derivation, or move generation do not surface as graceful failures —
-they surface as cross-backend `verify` mismatches, golden-test diffs, or
+they surface as cross-backend `verify` mismatches, semantic renderer-test
+failures, or
 silent disagreement between two implementations of the same engine. The
 project therefore bans partial functions outright on the supported path.
 `Prelude.head`, `Prelude.tail`, `Prelude.init`, `Prelude.last`,
 `Prelude.read`, `Data.List.(!!)`, `Data.Maybe.fromJust`,
 `Data.Either.fromLeft`, and `Data.Either.fromRight` are forbidden;
-[code_quality.md → HLint Rules](./code_quality.md) carries the enforcement.
+[code_quality.md → HLint Rules](./code_quality.md) carries the enforcement
+through the `mcts-haskell-style` source walker.
 Use `Data.List.NonEmpty` when the call site genuinely owns a non-empty
-list, `readMaybe` from `Text.Read` for parses, the `safe` package's
-`headMay` / `lastMay` when a `Maybe` is appropriate, or pattern-match with
-an explicit `AppError` branch. The hot inner loops of the Haskell engine
+list, `readMaybe` from `Text.Read` for parses, a local total helper returning
+`Maybe`, or pattern-match with an explicit `AppError` branch. The hot inner loops of the Haskell engine
 (see [../../README.md → Backend (v) — Haskell](../../README.md)) use
 unboxed mutable arrays inside `ST s`, so the partial-function set on lists
 rarely shows up in the engine itself — but it bites in the CLI, transcript,

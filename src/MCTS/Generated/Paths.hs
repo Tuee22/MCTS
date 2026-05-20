@@ -11,24 +11,17 @@ generatedCommandsPath :: FilePath
 generatedCommandsPath = "documents/cli/commands.md"
 
 -- | Generated-or-tracked paths covered by `mcts lint files`. The
--- in-tree renderer set comes from `generatedFiles`; paths emitted by an
--- external renderer (e.g., the legacy fixture tool) are listed in
--- `externallyTrackedPaths` so they participate in the no-hand-edit
--- registry without a Haskell-side content comparison.
+-- in-tree renderer set comes from `generatedFiles`; validation data is
+-- deliberately excluded so clean-clone tests never depend on committed
+-- generated fixtures.
 trackingGeneratedPaths :: [FilePath]
 trackingGeneratedPaths = map fst generatedFiles <> externallyTrackedPaths
 
 -- | Paths whose contents are produced out-of-band (no Haskell renderer
--- module). Listed here so they appear in the no-hand-edit registry
--- without triggering the `generatedDriftProblems` content check. See
--- [DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md → Sprint 4.5](../../../DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md).
+-- module). Legacy evidence is now an explicit operator-generated
+-- artifact outside normal validation, so this registry is empty.
 externallyTrackedPaths :: [FilePath]
-externallyTrackedPaths =
-    [ "test/golden/legacy/transcripts"
-    , "test/golden/cpp-legacy/transcripts"
-    , "test/golden/cpp-imperative/transcripts"
-    , "test/golden/cpp-functional/transcripts"
-    ]
+externallyTrackedPaths = []
 
 generatedFiles :: [(FilePath, String)]
 generatedFiles =

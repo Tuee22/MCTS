@@ -101,10 +101,18 @@ compatibility. Markers follow the
 conventions in
 [../documentation_standards.md → Generated Sections](../documentation_standards.md#11-generated-sections).
 
+`trackingGeneratedPaths` tracks generated documentation and other explicitly
+rendered source-of-truth outputs; it must not make checked-in transcripts,
+report-card snapshots, generated JSON schemas, retired throughput anchors, or
+legacy evidence directories into normal validation inputs. Those artifacts are
+created in temporary roots during tests or in external/ignored roots for
+explicit audits per
+[unit_testing_policy.md → Repository Data Doctrine](./unit_testing_policy.md#repository-data-doctrine).
+
 ### HLint Rules
 
-`.hlint.yaml` at the repository root carries the doctrine's nested-case warnings
-plus negative-space rules:
+The hard Haskell style gate combines `.hlint.yaml` with the
+`mcts-haskell-style` source walker:
 
 - `print`, `exitFailure`, `Text.IO.putStrLn`, `Text.IO.hPutStrLn` (other than to
   `stderr` inside `src/MCTS/CLI/Output.hs`) are forbidden.
@@ -121,11 +129,10 @@ plus negative-space rules:
   generation surfaces as a mysterious cross-backend `verify` mismatch instead
   of a typed `AppError`. Remedy hint: use `Data.List.NonEmpty.head` /
   `NonEmpty.tail` on a `NonEmpty`, `readMaybe` from `Text.Read`, pattern
-  matching with an explicit `AppError` branch, or the `safe` package's
-  `headMay` / `lastMay`. The `mcts-haskell-style` stanza picks these up
-  through `hlint --with-group=default --with-group=extra`; the bans appear
-  explicitly in `.hlint.yaml` so they survive future HLint default-set
-  changes. See [haskell_code_guide.md → Total functions on the supported
+  matching with an explicit `AppError` branch, or a local total helper. The
+  `mcts-haskell-style` source walker enforces this rule under `src/` and
+  `app/`; HLint remains the broader advisory pass for the full Haskell tree.
+  See [haskell_code_guide.md → Total functions on the supported
   path](./haskell_code_guide.md) for the same rule expressed in code-guide
   form.
 
@@ -148,30 +155,13 @@ bans above as the hard gate.
 
 ### `fourmolu.yaml`
 
-At repository root. Pins the twelve doctrine-mandated settings (plus
-`respectful: true`) verbatim per
-[../../HASKELL_CLI_TOOL.md → Pinned fourmolu.yaml](../../HASKELL_CLI_TOOL.md):
-
-```yaml
-# Example: fourmolu.yaml at repository root
-indentation: 2
-column-limit: 100
-function-arrows: leading
-comma-style: leading
-import-export-style: leading
-indent-wheres: false
-record-brace-space: true
-newlines-between-decls: 1
-haddock-style: single-line
-let-style: auto
-in-style: right-align
-unicode: never
-respectful: true
-```
-
+The repository-root `fourmolu.yaml` is the formatter SSoT. It pins the
+doctrine-mandated setting names plus `respectful: true`; this document links to
+that file instead of copying the YAML body, per
+[../documentation_standards.md → Duplication Rules](../documentation_standards.md#5-duplication-rules).
 `column-limit` is finite per doctrine (an unset or infinite column-limit
-defeats the readability proxy). The value `100` is the project's chosen ceiling
-within the doctrine's permitted range.
+defeats the readability proxy), and the committed value is the project's chosen
+ceiling.
 
 The `mcts-haskell-style` Cabal stanza in `test/haskell-style/Main.hs` enforces the
 `cabal format` round-trip through a system temp file on every run. The project policy is to

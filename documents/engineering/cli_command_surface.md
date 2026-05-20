@@ -68,7 +68,7 @@ From the host, run any listed logical command as
 | `mcts help <subcommand>` | Focused help pointer for a target command |
 | `mcts check-code` | Doctrine alignment, formatter, HLint, warning-clean build, docs check |
 | `mcts build rust [--dry-run] [--plan-file <path>]` | Plan/Apply: Rust backend build harness |
-| `mcts build legacy-fixtures [--output-dir <dir>] [--seed <u64>] [--games <n>] [--sims <n>] [--dry-run] [--plan-file <path>]` | Plan/Apply: regenerate legacy Q6 fixture transcripts |
+| `mcts build legacy-fixtures --output-dir <dir> [--seed <u64>] [--games <n>] [--sims <n>] [--dry-run] [--plan-file <path>]` | Plan/Apply: generate external legacy Q6 evidence |
 <!-- mcts:command-matrix:end -->
 
 Current implementation baseline: `src/MCTS/CLI/Parser.hs` exposes
@@ -76,10 +76,11 @@ Current implementation baseline: `src/MCTS/CLI/Parser.hs` exposes
 `CommandSpec` tree; verify parsers reject `--rng native` at the option-reader
 boundary. `inspect list` renders backend, seed, games, threading, sims,
 total moves, mtime, and path; `inspect show --with-equity` writes a logical
-originator sidecar and renders its stream-backed per-move equity column;
+originator sidecar only after failing to load an envelope-matched cached
+originator sidecar, then renders its stream-backed per-move equity column;
 `inspect cache list` enumerates `.eq` / `.envelope` slots; `inspect cache prune
 --keep-current` retains the logical `<backend>-logical` build id; `inspect show
---envelope` renders the current envelope fields; and `inspect divergence` renders
+--envelope` renders every logical v1 envelope field; and `inspect divergence` renders
 transcript-pair metrics from `MCTS.Verify.Divergence`. `mcts verify ...
 --allow-stale` is routed through the layered live-envelope verifier; when a
 foreign cdylib is present, FFI-produced transcripts are stamped with
@@ -87,16 +88,17 @@ foreign cdylib is present, FFI-produced transcripts are stamped with
 `checkTranscriptEnvelopesLive`. JSON verify output includes
 `warning_details` for downgraded `--allow-stale` backend-slot warnings. The report-card renderer now emits
 explicit Q1/Q2/Q5 evidence fields and the cross-backend divergence matrix in
-table and JSON form; the default golden uses a static zero-matrix baseline, and the live
+table and JSON form; semantic unit tests use a constructed zero-matrix baseline, and the live
 `mcts test all` path requires canonical backend artefacts, measures Q1/Q2/Q5
 with the production monotonic clock through the no-write batch runner, and
 populates divergence rows from the measured live `G_V` verify cohort.
-`mcts build legacy-fixtures` remains the supported Q6 fixture-regeneration
-path; it builds `cpp-legacy/build/legacy-to-wire` and passes output root, seed,
-game count, and simulation count as explicit flags. Backends (i), (ii), and
-(iii) are retired from live CLI selection; `test/golden/cpp-legacy/`,
-`test/golden/cpp-imperative/`, and `test/golden/cpp-functional/` are the frozen
-backend-retirement anchors.
+`mcts build legacy-fixtures` remains the supported Q6 evidence-generation path
+for explicit audit runs; it builds `cpp-legacy/build/legacy-to-wire` and passes
+output root, seed, game count, and simulation count as explicit flags. Its output
+must be directed to an external or ignored artifact root and is not a normal
+`mcts test all` input. Backends (i), (ii), and (iii) are retired from live CLI
+selection; their retirement evidence is recorded in the plan/docs and optional
+external artifacts, not checked-in generated validation data.
 
 ## Typed Source of Truth
 
@@ -126,7 +128,7 @@ command also live in
 | `--seed N` | `bench`, `verify`, `play`, `build legacy-fixtures` | required (bench/verify); `Nothing` ⇒ fresh random (play); `42` for legacy fixtures | Master seed; per-game seeds derive via `splitmix64(master_seed, game_index)`. |
 | `--max-plies N` | `bench`, `verify`, `play` | `200` | Part of the determinism contract for the live verifier cohort. |
 | `--sims N` or `--sims N0:N1` | `bench`, `verify`, `play`, `build legacy-fixtures` | `10_000` | `N` parses as `FixedSims N`; `N0:N1` parses as `RampedSims N0 N1` for run commands. `build legacy-fixtures` accepts fixed `N` only. Ignored by `bench rollouts` / `verify rollouts`. |
-| `--output-dir <path>` | `build legacy-fixtures` | `test/golden/legacy/transcripts` | Fixture transcript output root; files land below the host-architecture subdirectory. |
+| `--output-dir <path>` | `build legacy-fixtures` | required explicit path | Legacy evidence output root; choose an external or ignored artifact directory. Files land below the host-architecture subdirectory and are not repository validation inputs. |
 | `--top N` | `inspect show`, `inspect replay` | `10`; `0` ⇒ all legal moves | Live-adjustable via `+`/`-` in `inspect replay`. |
 | `--with-equity` | `inspect show` | `False` | Re-runs the deterministic search to populate the equity column. Reads the originator's cached `.eq` if envelope-matched (instant); otherwise recomputes locally and writes a fresh sidecar. |
 | `--envelope` | `inspect show` | `False` | Dump the transcript's engine-envelope block as plain text (one field per line) before the per-move output. Useful for scripting (`diff`-friendly) and forensics. |
@@ -145,9 +147,9 @@ CLI flag values and the human-readable Roman numerals used in prose:
 
 | Identifier (CLI flag) | Roman | Path | Role |
 |------------------------|-------|------|------|
-| `cpp-legacy` | (i) | `cpp-legacy/`, `test/golden/cpp-legacy/` | Retired live backend; frozen `MCTS_legacy` reproduction anchor |
-| `cpp-imperative` | (ii) | `cpp-imperative/`, `test/golden/cpp-imperative/` | Retired maximally-tuned imperative C++23 performance ceiling |
-| `cpp-functional` | (iii) | `cpp-functional/`, `test/golden/cpp-functional/` | Retired functional-style C++23 anchor |
+| `cpp-legacy` | (i) | `cpp-legacy/` | Retired live backend; historical `MCTS_legacy` reproduction evidence |
+| `cpp-imperative` | (ii) | `cpp-imperative/` | Retired maximally-tuned imperative C++23 performance evidence |
+| `cpp-functional` | (iii) | `cpp-functional/` | Retired functional-style C++23 evidence |
 | `rust` | (iv) | `rust/` | Rust `cdylib`; cross-language second opinion |
 | `haskell` | (v) | `src/MCTS/Engine/`, `src/MCTS/Search/` | Native Haskell engine; the target |
 
@@ -168,13 +170,19 @@ families; the `CommandSpec` declares this asymmetry.
 
 ## `mcts play` Transcript Saves
 
-`mcts play` accepts `:save` inside the `brick` prompt. The TUI keeps a
+`mcts play` accepts `--cache-dir <path>` for transcript writes and `:save`
+inside the `brick` prompt. The TUI keeps a
 chronological `MoveRecord` list for the current game; human-entered moves carry
 an empty visit vector, and AI moves carry the visit vector returned by the search
-that selected the action. AI turns use the selected backend's dynamic FFI
-`search_move` path when the matching foreign shared library is present; if the
-library is absent, the TUI falls back to the logical Haskell search path with the
-selected backend's native RNG salt and reports the fallback in the status line.
+that selected the action. The side named by `--side` is controlled by
+`--backend`; without `--vs`, the human controls the opposite side, and with
+`--vs` the second backend controls the opposite side in spectator mode. AI turns
+use the selected backend's dynamic FFI `search_move` path when the matching
+foreign shared library is present; if the library is absent, the TUI falls back
+to the logical Haskell search path with the selected backend's native RNG salt
+and reports the fallback in the status line. When `--seed` is omitted, the runner
+draws a fresh `Word64` from `/dev/urandom` and records that actual seed in the
+transcript header.
 `:save` writes a one-game transcript through
 `MCTS.Transcript.writePlayTranscript` into the normal transcript cache and
 addresses it by `sha256(run_config || move_history)`, matching
@@ -191,63 +199,48 @@ cursor is on, with the originator marked.
 
 ### Status Line
 
-Two lines, always visible at the top of the TUI:
+The replay status line follows the literal layout asserted by the unit suite:
 
 ```text
-# Example: TUI status-line rendering
-Transcript: 7a2f…  (rust, seed=42, sims=10000, c_param=0.7)
-Substrate:  ★ originator [rust @ build a1b2c3…]  •  envelope: VERIFIED
+<hash> | move M / total | press ? for help
 ```
 
-The `Substrate:` line distinguishes three states, determined by
-comparing the live `rust` binary's envelope against the
-transcript's recorded per-backend-slot envelope:
-
-| State | Trailing text | Banner |
-|-------|---------------|--------|
-| Live originator binary's envelope matches exactly | `envelope: VERIFIED` (green) | none |
-| Live originator binary is the same `backend` but `engine_build_id` (or any other per-backend-slot field) differs | `envelope: BUILD MISMATCH — recomputed locally; equities may drift at ULP from origin` (yellow) | persistent banner; dismiss for the session via `b` |
-| Live binary is a different `backend` than the originator (the user is browsing a foreign-engine overlay only) | `envelope: FOREIGN VIEW — these numbers are this engine's, not the originator's` (orange) | persistent banner |
+The message row below the overlay table carries navigation hints and
+cache/recompute outcomes such as originator sidecar recomputation, loaded
+on-demand backend columns, skipped retired backends, absent shared libraries, and
+recompute failures. The current TUI is synchronous: while a backend column is
+being recomputed the event loop waits for the result and then renders either the
+loaded column or an unavailable/error status.
 
 ### Per-Move Panel
 
-For the move at the cursor:
+For the move at the cursor, replay renders the board, the recorded move, and one
+row per loaded or unavailable backend overlay:
 
 ```text
 # Example: TUI per-move panel
-Move 17 — H(3,5)                                                    -- chosen action
-─────────────────────────────────────────────────────────────────────
-Action     Visits     ★rust    haskell
-H(3,5)     4123       0.6422  0.6421
-*(4,2)      812        --      0.3104
-V(2,6)      287       -0.0510         --       --
-…
+7a2f9c11 | move 17 / 42 | press ? for help
+move played: H(3,5)
+backend          build      status                    chosen     equity   divergence
+rust             a1b2c3d4   originator verified       H(3,5)     +0.6422  -
+haskell          logical    foreign-view verified     H(3,5)     +0.6421  -
+cpp-functional   unavailable unavailable              -          -        -
 ```
 
 Conventions:
 
-- **★** marks the originator (the transcript header's `backend` field).
-  The originator column reads from its cached `.eq` sidecar when
-  envelope-matched. If the originator sidecar is missing, `inspect replay`
-  recomputes it before the TUI starts, writes the sidecar, and shows the
-  recompute result in the status line. Envelope-stale originator handling
-  remains governed by the yellow BUILD MISMATCH banner.
-- **`--`** marks a column that has not been computed yet for this
-  transcript. Pressing `r` asks for the next missing backend column.
-  The replay TUI recomputes that backend's `EqStream`, writes it to a
-  fresh sidecar, appends the column, and records loaded/skipped/error
-  status in the status line so subsequent opens are instant.
-- **Column-header icons** indicate envelope status:
-  - `✓` — verified (live build matches the build that wrote this `.eq`)
-  - `Δ` — build mismatch (`.eq` exists but envelope drifted; cells are
-    historical, hover for the recorded envelope)
-  - `?` — never computed (no `.eq` for any build of this backend on
-    this transcript)
-- **Divergence-rate annotations**: when a non-originator column
-  populates, the column header gains a small footer
-  `move-Δ: 0.3%  visit-Δ: 2.1%` showing this column's
-  disagreement against the originator. Colours follow the threshold
-  table in [determinism_contract.md → Divergence Smell → Thresholds](./determinism_contract.md).
+- `originator` marks the backend/build slot that wrote the transcript.
+- `originator build-mismatch` marks a cached sidecar for the originator backend
+  whose build label differs from the transcript envelope.
+- `foreign-view` marks another backend's recomputed view of the same recorded
+  move sequence.
+- `verified` means the overlay's chosen action matches the transcript record at
+  the cursor. `diverged` means it does not; the `divergence` cell names the
+  recorded and overlay actions. Replay sidecars do not carry visit tables, so
+  visit-rate percentages remain an `inspect divergence` / report-card surface
+  rather than a replay-row cell.
+- `unavailable` rows record retired backends, missing shared libraries, or
+  recompute failures encountered after pressing `r`.
 
 ### Lazy Compute Trigger
 

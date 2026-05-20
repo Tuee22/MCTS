@@ -30,6 +30,9 @@ project-specific.
   writes N per-game transcript files per backend. `mcts play`-recorded
   transcripts use `sha256(run_config || move_history)` because human choices are
   part of the provenance; see [Content Addressing](#content-addressing).
+- **Runtime artifact, not repository fixture.** Transcripts are cache or audit
+  artifacts. Normal tests generate transcript bytes in memory or temporary
+  roots; no pre-existing transcript directory is a clean-clone validation input.
 
 ## Wire Format
 
@@ -84,7 +87,7 @@ The block lives at `envelope_offset` (byte 48 in version-1 transcripts):
 | 2 | 4 | envelope_byte_length | `u32`; total length of the envelope block in bytes, counting from `envelope_version` through the last byte of the block. A decoder that does not recognise an `envelope_version` skips past the block by reading this field. |
 | 6 | 1 | rng_source_envelope | `u8`; matches the header's `rng_source`. Recorded inside the envelope so the cohort-uniformity check is uniform across fields. |
 | 7 | 1 | host_arch_envelope | `u8`; matches the header's `host_arch`. Same rationale as `rng_source_envelope`. |
-| 8 | 32 | shared_rng_build_id | Provenance for a physically shared RNG stream when one is used. The current no-shared-byte-stream baseline records all-zero for normal `--rng cpp` and `--rng native` transcripts; legacy-parity fixtures may pin this to backend (i)'s `engine_build_id`. |
+| 8 | 32 | shared_rng_build_id | Provenance for a physically shared RNG stream when one is used. The current no-shared-byte-stream baseline records all-zero for normal `--rng cpp` and `--rng native` transcripts; optional legacy-parity audit artifacts may pin this to backend (i)'s `engine_build_id`. |
 | 40 | 32 | cohort_config_hash | SHA-256 of the backend-independent cohort config: the common verify inputs excluding `backend`, the engine envelope, path, and cache metadata. Distinct from the backend-specific cache filename hash. |
 | 72 | 32 | engine_build_id | SHA-256 of the loaded backend shared library / executable that wrote this transcript. |
 | 104 | 40 | engine_git_commit | ASCII; project repo commit SHA at build time. Padded with NULs if shorter than 40 bytes. Informational; does not gate `verify`. |
@@ -200,10 +203,9 @@ the canonical little-endian encoding of the backend-specific `RunConfig` record:
 -- Example: RunConfig record hashed for transcript addressing
 data RunConfig = RunConfig
   { runConfigBackend      :: Backend
+  , runConfigWorkload     :: Workload     -- Rollouts | Selfplay
   , runConfigThreading    :: Threading
-  , runConfigWorkers      :: Word16
   , runConfigRngSource    :: RngSource
-  , runConfigCParam       :: Double      -- bit-cast to Word64 on the wire
   , runConfigMasterSeed   :: Word64
   , runConfigInitialSims  :: Word32      -- SimBudget low half
   , runConfigPerMoveSims  :: Word32      -- SimBudget high half
@@ -214,14 +216,25 @@ data RunConfig = RunConfig
                                           -- the splitmix and FFI call sites
                                           -- (see determinism_contract.md and
                                           -- backend_ffi_contract.md)
+  , runConfigGames        :: Word32      -- batch count; not part of the hash
+  , runConfigCParam       :: Double      -- bit-cast to Word64 in the hash
   }
 ```
 
-The field order and on-wire byte width match the header layout above; `game_index`
-is appended after the on-wire header fields for hashing purposes and must equal
-the `game_id u32` stored in the body. The hash is the hex-encoded SHA-256 digest
-of this record. Because `runConfigBackend` participates in this cache key,
-different backends never overwrite each other's provenance-bearing `.tr` files.
+The cache-key encoding is a canonical little-endian projection, not the whole
+header byte sequence. The hash input order is:
+
+```text
+backend u8 | workload u8 | threading u8 | workers u16 | rng_source u8
+| master_seed u64 | initial_sims u32 | per_move_sims u32 | max_plies u16
+| game_index u32 | c_param_bits u64
+```
+
+`runConfigGames` is deliberately excluded: it describes the requested batch, not
+the one-game artifact being addressed. `game_index` must equal the `game_id u32`
+stored in the body. The hash is the hex-encoded SHA-256 digest of this record.
+Because `runConfigBackend` participates in this cache key, different backends
+never overwrite each other's provenance-bearing `.tr` files.
 
 For cross-backend `verify`, the comparator decodes each backend-specific file and
 computes a **determinism payload digest** over the common inputs and per-move
@@ -229,8 +242,11 @@ records: `rng_source`, `c_param`, `master_seed`, `game_index`, `initial_sims`,
 `per_move_sims`, `max_plies`, the chosen action sequence, sorted `(action,
 visits)` vectors, `winner`, and `total_moves`. The payload excludes
 `runConfigBackend`, the engine envelope, the filesystem path, and cache metadata.
-Pairs whose payload digests differ are then scanned move-by-move to render the
-first divergent record.
+Pairs whose payload digests differ are then scanned with explicit length and
+terminator checks. The verifier reports extra or missing games/moves as
+`VerifyLengthMismatch`, winner or total-move disagreement as
+`VerifyTerminatorMismatch`, and otherwise the first divergent record as
+`VerifyMismatch`.
 
 ### `mcts play`-Recorded Transcripts
 
@@ -263,8 +279,8 @@ On-disk layout under the cache root:
 # Example: on-disk transcript cache layout under <cache-root>
 <cache-root>/transcripts/<arch>/<sha>.tr                                    # one-game backend-specific transcript
 <cache-root>/transcripts/<arch>/<sha>/                                      # sidecar directory (one per transcript, lazily created)
-  <backend>-<engine_build_id_prefix16>.eq                                   # per-backend equity series, see Equity Sidecar Cache
-  <backend>-<engine_build_id_prefix16>.envelope                             # snapshot of the engine envelope that wrote this .eq
+  <backend>-<build_label>.eq                                                # per-backend equity series, see Equity Sidecar Cache
+  <backend>-<build_label>.envelope                                          # snapshot of the engine envelope that wrote this .eq
 ```
 
 `<arch>` is `amd64` or `arm64` per the host architecture the transcript was
@@ -276,7 +292,10 @@ volumes), and hash-prefix lookup naturally scopes to the current host's arch.
 See [determinism_contract.md → Architecture
 Envelope](./determinism_contract.md).
 
-The cache root is `.gitignore`'d when it falls inside the project tree.
+The cache root is `.gitignore`'d when it falls inside the project tree. Test
+suites that need transcript files create their own temporary cache roots and
+delete them with the test process; repository paths such as `test/golden/` are
+not transcript cache inputs.
 
 ## Equity Sidecar Cache
 
@@ -297,19 +316,21 @@ For a transcript at `<cache-root>/transcripts/<arch>/<sha>.tr`, the
 sidecar directory is `<cache-root>/transcripts/<arch>/<sha>/`. Inside, one
 `(backend, build)` pair gets two files:
 
-- `<backend>-<engine_build_id_prefix16>.eq` — the per-move equity series,
+- `<backend>-<build_label>.eq` — the per-move equity series,
   binary format below.
-- `<backend>-<engine_build_id_prefix16>.envelope` — exactly the binary engine
+- `<backend>-<build_label>.envelope` — exactly the binary engine
   envelope block supplied by the backend that wrote the sidecar, so scripts can
   `cat .envelope` without parsing the `.eq` stream.
 
 `<backend>` is the string identifier (`cpp-legacy`, `cpp-imperative`,
-`cpp-functional`, `rust`, `haskell`). `<engine_build_id_prefix16>` is
-the first 16 hex characters of the backend's `engine_build_id` (the
-SHA-256 of its loaded shared library / executable). The 16-char prefix
-is collision-safe for any realistic number of cohabiting builds (the
-birthday bound is 2³² before a 50/50 collision) and short enough to be
-human-eyeable.
+`cpp-functional`, `rust`, `haskell`). `<build_label>` is
+`<backend>-<engine_build_id_prefix16>` for a live backend envelope, where the
+prefix is the first 16 hex characters of the backend's `engine_build_id`
+(the SHA-256 of its loaded shared library / executable). Logical in-process
+envelopes with an all-zero `engine_build_id` use `<backend>-logical` as their
+display/cache label. The 16-char prefix is collision-safe for any realistic
+number of cohabiting builds (the birthday bound is 2^32 before a 50/50
+collision) and short enough to be human-eyeable.
 
 Multi-build cohabitation is automatic: a rebuild produces a new
 `engine_build_id`, lands in a fresh cache slot, and leaves the old slot
@@ -324,10 +345,11 @@ dependency — same principles as the transcript itself.
 Current implementation baseline: `src/MCTS/Transcript/EquitySidecar.hs`
 stores `EqStream` in the binary `MEQ1` format below and writes a neighbouring
 `.envelope` file containing the same binary envelope block used in the transcript.
-`inspect show --with-equity` writes that stream and renders its per-move equity
-values, while `inspect cache list` marks each sidecar as originator, foreign, or
-unknown and `inspect cache prune --keep-current` exercises the documented cache
-layout through a Plan/Apply deletion plan.
+`inspect show --with-equity` first loads an envelope-matched originator sidecar
+when one exists, then recomputes and writes the stream only on a cache miss or
+stale envelope. `inspect cache list` marks each sidecar as originator, foreign,
+or unknown and `inspect cache prune --keep-current` exercises the documented
+cache layout through a Plan/Apply deletion plan.
 
 ```text
 # Example: .eq sidecar wire format
@@ -364,15 +386,14 @@ sidecar that later opens read instantly.
 ### Originator vs Foreign Columns
 
 The transcript's `backend` header field identifies the originator. The
-sidecar `<originator>-<originator_build_prefix16>.eq` carries the
-*actual* original equities when its embedded envelope matches the live
-originator binary's envelope — those values are bit-equal to what the
-search computed on the original run, by the chain of guarantees in
+originator sidecar carries the original-equity stream for that backend/build
+slot when its neighbouring `.envelope` bytes match the transcript's recorded
+originator envelope. Under a live backend envelope, those values are bit-equal to
+what the search computed on the original run by the chain of guarantees in
 [determinism_contract.md → Replay Equity
-Guarantees](./determinism_contract.md). Every other `.eq` in the
-sidecar directory is a foreign column: a recompute by a different
-engine, useful for cross-engine comparison but not "the original
-numbers."
+Guarantees](./determinism_contract.md). Every other `.eq` in the sidecar
+directory is a foreign column: a recompute by a different engine, useful for
+cross-engine comparison but not "the original numbers."
 
 `mcts inspect cache list` marks every slot as `originator`, `foreign`, or
 `unknown` (when the neighbouring transcript is absent or unreadable). The REPL

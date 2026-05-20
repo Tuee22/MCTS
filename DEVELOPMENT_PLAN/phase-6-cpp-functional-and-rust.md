@@ -22,7 +22,7 @@ surface (`std::optional<State>` move attempts, `std::variant<ChildIdx, NoChild>`
 select outcomes) on top of the same data layout as backend (ii); Sprint 6.2
 wired the visit-vector dispatch plus the typed `cppFunctionalPgoBoltPlan`
 pipeline; Sprint 8.6 later retired backend (iii)'s live CLI/build/verify/FFI
-surface and froze its anchors under `test/golden/cpp-functional/`. Backend
+surface and recorded its historical evidence outside normal validation. Backend
 (iv) Rust ships a real arena MCTS
 (`rust/src/{tree.rs,search.rs,xoshiro256pp.rs}`), a real Corridors gameplay
 implementation in `rust/src/board.rs` (8x8 bitfield wall maps, post-move
@@ -40,7 +40,19 @@ for the C-ABI backends; after Phase 8 retirement, only Rust remains live.
 Rust's `mcts_rust_read_visits` symbol uses the
 same per-board last-search visit-cache shape as the C++ shims; the active
 visit-vector and recompute paths remain `mcts_rust_search_move` /
-`mcts_rust_recompute_move`.
+`mcts_rust_recompute_move`. The 2026-05-19 alignment sweep reclosed the Rust
+build-harness tuning-stack gap: both PGO Cargo builds now pass
+`RUSTFLAGS="-C target-cpu=native -C link-arg=-fuse-ld=lld -C
+profile-{generate,use}=..."`, the prerequisite registry already requires
+`lld-linker` for `mcts build rust`, and unit coverage asserts the rendered
+`rustPgoBoltPlan` flags.
+
+Focused validation passed with `cabal --builddir=/tmp/mcts-cabal-build test
+mcts-unit`, `docker compose run --rm mcts mcts build rust --dry-run`,
+`docker compose run --rm mcts mcts build rust`, `docker compose run --rm mcts
+mcts bench rollouts --backend rust --threading single --rng cpp --games 8
+--seed 42 --cache-dir /tmp/mcts-rust-smoke`, and `docker compose run --rm mcts
+mcts test mcts-unit`.
 
 ## Phase Summary
 
@@ -403,18 +415,22 @@ cohort-agreement and legacy-envelope verification gates.
 
 ## Sprint 6.4: FFI Bindings, PGO+BOLT Build Harness, Driver for Backend (iv) ✅
 
-**Status**: Done (`rustPgoBoltPlan` ships through Plan/Apply with inherited
+**Status**: Done
+
+Current baseline: `rustPgoBoltPlan` ships through Plan/Apply with inherited
 subprocess environments, absolute profile paths under
-`/workspace/MCTS/rust/pgo-profile`, a hard-failing `llvm-profdata` merge guard,
-canonical install at `rust/target/release/libmcts_rust.so`, and post-link
-`engine_build_id` patching. Full visit-vector FFI binding + `withRustSearchGame`
+`/workspace/MCTS/rust/pgo-profile`, `-C target-cpu=native -C
+link-arg=-fuse-ld=lld` in both PGO Cargo builds, a hard-failing
+`llvm-profdata` merge guard, canonical install at
+`rust/target/release/libmcts_rust.so`, and post-link `engine_build_id` patching.
+Full visit-vector FFI binding + `withRustSearchGame`
 ship; `MCTS.Driver.Dispatch.runBatchDispatch` routes `--backend rust` through
 `runForeignSearchGame withRustSearchGame`. The Rust `instrumentation` feature and
 `mcts_rust_read_visits` export retain and read the last exposed visit vector
 through a per-board cache in `rust/src/c_abi.rs`. Validation on amd64:
 `docker compose run --rm --build mcts mcts build rust` passed, then
 `docker compose run --rm mcts mcts build cpp-functional` and
-`docker compose run --rm mcts mcts test mcts-unit` passed on the same image.)
+`docker compose run --rm mcts mcts test mcts-unit` passed on the same image.
 **Implementation**: `rust/Cargo.toml`, `rust/src/lib.rs`, `mcts.cabal`,
 `src/MCTS/CLI/Build.hs::rustPgoBoltPlan`, `src/MCTS/FFI/Rust.hs::withRustSearchGame`,
 `src/MCTS/Driver/Dispatch.hs`, `src/MCTS/CLI/Bench.hs`,
@@ -444,7 +460,7 @@ dispatch, and the verify dispatch.
 - `src/MCTS/CLI/Build.hs` extends the Plan/Apply build harness with
   `mcts build rust`. The plan is a typed `[Subprocess]` sequence:
   1. **Instrumented build.** `cargo build --release` with
-     `RUSTFLAGS="-C target-cpu=native -C
+     `RUSTFLAGS="-C target-cpu=native -C link-arg=-fuse-ld=lld -C
      profile-generate=/workspace/MCTS/rust/pgo-profile"`.
   2. **Training run.** Run `mcts bench selfplay --backend rust --threading
      single --rng cpp --games 1 --seed 42 --sims 100`. This build-scoped
@@ -455,7 +471,7 @@ dispatch, and the verify dispatch.
      rust/pgo-profile/merged.profdata rust/pgo-profile/*.profraw`, with a hard
      failure if training produced no `.profraw` files.
   4. **Optimised build.** `cargo build --release` with
-     `RUSTFLAGS="-C target-cpu=native -C
+     `RUSTFLAGS="-C target-cpu=native -C link-arg=-fuse-ld=lld -C
      profile-use=/workspace/MCTS/rust/pgo-profile/merged.profdata"`, then copy
      the PGO cdylib aside as `libmcts_rust.pgo.so`.
   5. **BOLT train/optimize.** Instrument the PGO cdylib, install the
@@ -500,11 +516,13 @@ dispatch, and the verify dispatch.
 - `rustPgoBoltPlan` ships the rustc PGO + LLVM-BOLT + install pipeline
   through the typed `Subprocess` boundary. Steps: (1) `cargo build
   --release` with `RUSTFLAGS=-C target-cpu=native -C
-  profile-generate=/workspace/MCTS/rust/pgo-profile`; (2) PGO training run via
+  link-arg=-fuse-ld=lld -C profile-generate=/workspace/MCTS/rust/pgo-profile`;
+  (2) PGO training run via
   the internal `cabal exec mcts -- bench selfplay --backend rust --rng cpp
   --games 1 --seed 42 --sims 100`; (3) `llvm-profdata merge` of the `.profraw`
   files into `rust/pgo-profile/merged.profdata`; (4) `cargo build --release`
-  with `-C profile-use=/workspace/MCTS/rust/pgo-profile/merged.profdata`; (5)
+  with `-C target-cpu=native -C link-arg=-fuse-ld=lld -C
+  profile-use=/workspace/MCTS/rust/pgo-profile/merged.profdata`; (5)
   copy the PGO cdylib aside; (6) `llvm-bolt -instrument` on the cdylib
   (self-recording, no `perf` required); (7) install the instrumented cdylib for
   a one-game `--sims 50` BOLT training run; (8) restore the PGO cdylib and run
@@ -516,13 +534,11 @@ dispatch, and the verify dispatch.
   routes `--backend rust` through the real FFI engine whenever
   `rust/target/release/libmcts_rust.so` is present. The Rust engine now
   emits canonical Corridors action IDs through the Sprint 6.3 gameplay port.
-
-### Remaining Work
-
-None. The Sprint 6.4 install surface is closed. The C++ shared-library BOLT
-limitation in the pinned container is recorded in
-[legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md); the build
-harness treats missing BOLT data as an explicit PGO-only fallback.
+- Unit coverage over the rendered `rustPgoBoltPlan` asserts both PGO Cargo
+  subprocesses include target CPU, the `lld` linker flag, and the correct
+  profile generate/use mode. The C++ shared-library BOLT limitation remains
+  recorded as historical retired-backend evidence and is not part of this
+  Rust-only closure.
 
 ## Sprint 6.5: Backends (iii) and (iv) Engine Envelope and Foreign-Engine Recompute ✅
 

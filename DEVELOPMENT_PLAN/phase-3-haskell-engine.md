@@ -130,8 +130,9 @@ the ply-cap draw rule for backends (ii)–(v)), and legal-move enumeration.
   (c) every terminal board has an empty legal-move set. The full 10k
   brute-force reference comparison lands with Sprint 7.1 property-based
   coverage.
-- The known-position golden over a pinned legal move sequence now lives at
-  `test/golden/engine/known-position.txt`.
+- The known-position coverage over a pinned legal move sequence is a semantic
+  unit assertion; Sprint `8.8` removes any remaining checked-in generated
+  baseline dependency.
 
 ## Sprint 3.2: MCTS Tree Arena in `ST s` ✅
 
@@ -221,7 +222,7 @@ ancestor path).
    Tree)` (same-backend determinism, Q4).
 2. Property test: total visits at the root equals the sim budget.
 3. Smoke test: a fixed starting position plus a small sim budget produces a
-   pinned move choice (golden, in `test/golden/haskell-search/`).
+   pinned move choice asserted semantically by the unit suite.
 
 ### Closure Notes
 
@@ -251,7 +252,7 @@ ancestor path).
   verifier-cohort UCT tie-break.
 - `mcts-unit` covers same-seed determinism, legal chosen moves, legal visit-list actions,
   sorted visit rows, root-child visit totals, the balanced initial `nonTerminalRank`, and
-  the known-position engine golden.
+  the known-position engine semantic fixture.
 
 ## Sprint 3.4: Per-Game Driver and Transcript Writer ✅
 

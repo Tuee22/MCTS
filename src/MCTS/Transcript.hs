@@ -70,7 +70,7 @@ decodeTranscript bytes =
     case runGet parseHeader (BS.unpack bytes) of
         Left err -> Left (TranscriptFormatUnsupported err)
         Right (config, restAfterHeader) ->
-            case runGet parseEnvelope restAfterHeader of
+            case runGet (parseEnvelope (runBackend config)) restAfterHeader of
                 Left err -> Left (TranscriptFormatUnsupported err)
                 Right (envelope, body) ->
                     case parseGames body of
@@ -84,10 +84,20 @@ decodeTranscript bytes =
                                 else
                                     Right
                                         Transcript
-                                            { transcriptConfig = config{runGames = fromIntegral (length games)}
+                                            { transcriptConfig =
+                                                config
+                                                    { runGames = fromIntegral (length games)
+                                                    , runGameIndex = decodedGameIndex config games
+                                                    }
                                             , transcriptEnvelope = envelope
                                             , transcriptGames = games
                                             }
+
+decodedGameIndex :: RunConfig -> [GameTranscript] -> Word32
+decodedGameIndex config games =
+    case games of
+        [game] -> gameId game
+        _ -> runGameIndex config
 
 encodeRunConfig :: RunConfig -> BS.ByteString
 encodeRunConfig config =
@@ -108,7 +118,7 @@ encodeRunConfig config =
             <> word32LE (runInitialSims config)
             <> word32LE (runPerMoveSims config)
             <> word16LE (runMaxPlies config)
-            <> word32LE (runGames config)
+            <> word32LE (runGameIndex config)
             <> word64LE (runCParamBits config)
 
 runConfigHash :: RunConfig -> String
@@ -152,16 +162,14 @@ encodeThreading threading =
         SingleThreaded -> word8 0 <> word16LE 1
         MultiThreaded n -> word8 1 <> word16LE (fromIntegral (max 1 n))
 
--- | v1 envelope wire format. Total fixed size = 6 (prefix) + 278 (payload)
--- = 284 bytes. Layout matches `mcts_<backend>_envelope` in
--- `documents/engineering/backend_ffi_contract.md`.
+-- | v1 envelope wire format. Display-only fields such as backend and
+-- build-label stay outside the encoded block; they are recovered from the
+-- transcript header and `engine_build_id` when decoding.
 encodeEnvelope :: Envelope -> Builder
 encodeEnvelope envelope =
     let payload =
-            word8 (backendId (envelopeBackend envelope))
-                <> word8 (rngSourceId (envelopeRngSource envelope))
+            word8 (rngSourceId (envelopeRngSource envelope))
                 <> word8 (archId (envelopeHostArch envelope))
-                <> word8 0 -- reserved
                 <> fixedHex32Bytes (envelopeSharedRngBuildId envelope)
                 <> fixedHex32Bytes (envelopeCohortConfigHash envelope)
                 <> fixedHex32Bytes (envelopeEngineBuildId envelope)
@@ -172,12 +180,6 @@ encodeEnvelope envelope =
                 <> lengthPrefixed63 (envelopeLibmId envelope)
                 <> word32LE (envelopeCpuFeatures envelope)
                 <> word8 (envelopeFpEnv envelope)
-                -- envelopeBuildId is a project-local accessor string. The
-                -- doctrine envelope has it implicit in engine_build_id; the
-                -- Haskell ADT keeps it as a separate convenience field for
-                -- equity-sidecar stems and CLI rendering, so we encode it
-                -- as a length-prefixed trailer.
-                <> lengthPrefixed63 (envelopeBuildId envelope)
         payloadBytes = LBS.toStrict (toLazyByteString payload)
         totalLength = 2 + 4 + BS.length payloadBytes
      in word16LE (envelopeVersion envelope)
@@ -232,7 +234,7 @@ encodeGame :: GameTranscript -> Builder
 encodeGame game =
     word32LE (gameId game)
         <> mconcat (map encodeRecord (gameMoves game))
-        <> word8 0xFF
+        <> word16LE 0xFFFF
         <> word8
             ( case gameWinner game of
                 HeroWin -> 0
@@ -295,6 +297,7 @@ parseHeader = do
             , runInitialSims = initial
             , runPerMoveSims = perMove
             , runMaxPlies = maxPlies
+            , runGameIndex = 0
             , runGames = 0
             , runCParamBits = cParam
             }
@@ -309,20 +312,18 @@ parseBackendId ident =
         4 -> pure Haskell
         _ -> failGet "bad backend"
 
-parseEnvelope :: Get Envelope
-parseEnvelope = do
+parseEnvelope :: Backend -> Get Envelope
+parseEnvelope backend = do
     version <- getWord16
     byteLength <- getWord32
     if byteLength < 6 then failGet "bad envelope length" else pure ()
     payloadBytes <- takeBytes (fromIntegral byteLength - 6)
-    case runGet (parseEnvelopePayload version) payloadBytes of
+    case runGet (parseEnvelopePayload backend version) payloadBytes of
         Left err -> failGet err
         Right (envelope, _) -> pure envelope
 
-parseEnvelopePayload :: Word16 -> Get Envelope
-parseEnvelopePayload version = do
-    backendByte <- getWord8
-    backend <- parseBackendId backendByte
+parseEnvelopePayload :: Backend -> Word16 -> Get Envelope
+parseEnvelopePayload backend version = do
     rngTag <- getWord8
     rng <- case rngTag of
         0 -> pure NativeRng
@@ -333,7 +334,6 @@ parseEnvelopePayload version = do
             0 -> "amd64"
             1 -> "arm64"
             _ -> "unknown"
-    _reserved <- getWord8
     sharedRngBuildId <- ByteString32 <$> getHex32
     cohortConfigHash <- ByteString32 <$> getHex32
     engineBuildId <- ByteString32 <$> getHex32
@@ -344,7 +344,6 @@ parseEnvelopePayload version = do
     libmId <- getLengthPrefixed63
     cpuFeatures <- getWord32
     fpEnv <- getWord8
-    buildId <- getLengthPrefixed63
     pure
         Envelope
             { envelopeVersion = version
@@ -361,8 +360,13 @@ parseEnvelopePayload version = do
             , envelopeLibmId = libmId
             , envelopeCpuFeatures = cpuFeatures
             , envelopeFpEnv = fpEnv
-            , envelopeBuildId = buildId
+            , envelopeBuildId = buildLabelFromEngineId backend engineBuildId
             }
+
+buildLabelFromEngineId :: Backend -> ByteString32 -> String
+buildLabelFromEngineId backend digest@(ByteString32 hex)
+    | digest == zeroDigest = backendIdentifier backend <> "-logical"
+    | otherwise = backendIdentifier backend <> "-" <> take 16 hex
 
 getHex32 :: Get String
 getHex32 = do
@@ -406,7 +410,7 @@ parseGames bytes =
 parseRecords :: [MoveRecord] -> [Word8] -> Either String ([MoveRecord], Winner, [Word8])
 parseRecords acc bytes =
     case bytes of
-        0xFF : winnerByte : lo : hi : rest ->
+        0xFF : 0xFF : winnerByte : lo : hi : rest ->
             let total = fromIntegral lo + shiftL (fromIntegral hi) 8 :: Int
              in if total == length acc
                     then do
@@ -541,7 +545,7 @@ transcriptPath root hashValue =
 writeTranscript :: Maybe FilePath -> Transcript -> IO (Either AppError (String, FilePath))
 writeTranscript explicit transcript = do
     root <- resolveCacheRoot explicit
-    let config = (transcriptConfig transcript){runGames = fromIntegral (length (transcriptGames transcript))}
+    let config = configForWrite (transcriptConfig transcript) (transcriptGames transcript)
         hashValue = runConfigHash config
         path = transcriptPath root hashValue
         dir = root </> "transcripts" </> hostArch
@@ -552,7 +556,7 @@ writeTranscript explicit transcript = do
 writePlayTranscript :: Maybe FilePath -> Transcript -> IO (Either AppError (String, FilePath))
 writePlayTranscript explicit transcript = do
     root <- resolveCacheRoot explicit
-    let config = (transcriptConfig transcript){runGames = fromIntegral (length (transcriptGames transcript))}
+    let config = configForWrite (transcriptConfig transcript) (transcriptGames transcript)
         records = concatMap gameMoves (transcriptGames transcript)
         hashValue = playTranscriptHash config records
         path = transcriptPath root hashValue
@@ -561,14 +565,20 @@ writePlayTranscript explicit transcript = do
     writeFileAtomically dir path (encodeTranscript transcript{transcriptConfig = config})
     pure (Right (hashValue, path))
 
--- | Sprint 7.5 per-game writer migration: split a batch transcript
--- into N single-game transcripts and write each to its own `.tr`
--- file. Each per-game file's `runGames` header field is rewritten to
--- 1 so its `runConfigHash` derives the per-game directory entry. The
--- doctrine mandates one-game files per
--- [../HASKELL_CLI_TOOL.md → Transcript wire format](../../HASKELL_CLI_TOOL.md);
--- callers that previously wrote a combined batch via `writeTranscript`
--- migrate to this entry point.
+configForWrite :: RunConfig -> [GameTranscript] -> RunConfig
+configForWrite config games =
+    config
+        { runGames = fromIntegral (length games)
+        , runGameIndex =
+            case games of
+                [game] -> gameId game
+                _ -> runGameIndex config
+        }
+
+-- | Split a batch transcript into N single-game transcripts and write
+-- each to its own `.tr` file. Each per-game file keeps the original
+-- master seed and records the game id in `runGameIndex`, making the
+-- cache key `sha256(run_config{game_index = game_id})`.
 writeTranscriptPerGame
     :: Maybe FilePath
     -> Transcript
@@ -581,16 +591,11 @@ writeTranscriptPerGame explicit transcript = do
     pure (Right written)
   where
     writeOne root dir game = do
-        let -- Derive a per-game config: same backend / threading /
-            -- rng / sims / max_plies / seed but with `runGames = 1`
-            -- and `runSeed` advanced to the game's id-derived sub-seed
-            -- (so per-game files have distinct hashes when the batch
-            -- itself had distinct per-game seeds).
-            baseConfig = transcriptConfig transcript
+        let baseConfig = transcriptConfig transcript
             perGameConfig =
                 baseConfig
                     { runGames = 1
-                    , runMasterSeed = perGameSeed (runMasterSeed baseConfig) (gameId game)
+                    , runGameIndex = gameId game
                     }
             perGameTranscript =
                 Transcript
@@ -601,16 +606,6 @@ writeTranscriptPerGame explicit transcript = do
             path = transcriptPath root hashValue
         writeFileAtomically dir path (encodeTranscript perGameTranscript)
         pure (hashValue, path)
-    -- Mirror `MCTS.Rng.Mix.mix` (splitmix64) shape inline to avoid a
-    -- cyclic import; per-game seed = splitmix64(master_seed, game_index).
-    perGameSeed :: Word64 -> Word32 -> Word64
-    perGameSeed master gameIndex =
-        let z0 :: Word64
-            z0 = master + fromIntegral gameIndex * 0x9E3779B97F4A7C15
-            z1 = (z0 `Bits.xor` (z0 `Bits.shiftR` 30)) * 0xBF58476D1CE4E5B9
-            z2 = (z1 `Bits.xor` (z1 `Bits.shiftR` 27)) * 0x94D049BB133111EB
-            z3 = z2 `Bits.xor` (z2 `Bits.shiftR` 31)
-         in z3
 
 -- | Atomic write: temp file in the same directory, fsync the temp file,
 -- rename to the final path, fsync the parent directory. Per Phase 2.2 /

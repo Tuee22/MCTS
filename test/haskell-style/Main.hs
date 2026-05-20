@@ -123,7 +123,11 @@ inspect path = do
             ]
         subprocessHits = forbiddenSymbolHits subprocessSymbols subprocessOwner path rows
         outputHits = forbiddenSymbolHits outputSymbols outputOwner path rows
-    pure (tabs <> subprocessHits <> outputHits)
+        partialHits =
+            if supportedSourcePath path
+                then forbiddenSymbolHits partialFunctionSymbols partialFunctionOwner path rows
+                else []
+    pure (tabs <> subprocessHits <> outputHits <> partialHits)
 
 -- | Subprocess-boundary primitives are forbidden outside `MCTS.Subprocess`.
 subprocessSymbols :: [String]
@@ -158,6 +162,37 @@ outputOwner :: FilePath -> Bool
 outputOwner path =
     "Output.hs" `isSuffixOf` path || "App.hs" `isSuffixOf` path
 
+-- | Partial functions are rejected on supported source paths. Tests may
+-- still use list indexing for fixtures and assertions.
+partialFunctionSymbols :: [String]
+partialFunctionSymbols =
+    [ "!!"
+    , "head "
+    , "tail "
+    , "init "
+    , "last "
+    , "read "
+    , "fromJust"
+    , "fromLeft"
+    , "fromRight"
+    , "Prelude.head"
+    , "Prelude.tail"
+    , "Prelude.init"
+    , "Prelude.last"
+    , "Prelude.read"
+    , "Data.List.!!"
+    , "Data.Maybe.fromJust"
+    , "Data.Either.fromLeft"
+    , "Data.Either.fromRight"
+    ]
+
+partialFunctionOwner :: FilePath -> Bool
+partialFunctionOwner _ = False
+
+supportedSourcePath :: FilePath -> Bool
+supportedSourcePath path =
+    "./src/" `isPrefixOf` path || "./app/" `isPrefixOf` path
+
 forbiddenSymbolHits
     :: [String]
     -> (FilePath -> Bool)
@@ -175,7 +210,7 @@ forbiddenSymbolHits symbols isOwner path rows
             <> show n
         | (n, row) <- rows
         , symbol <- symbols
-        , symbol `isInfixOf` stripComment row
+        , symbol `isInfixOf` stripStrings (stripComment row)
         , not (isImportLine row)
         ]
 
@@ -193,6 +228,15 @@ stripComment row =
     go _ [] = Nothing
     go i ('-' : '-' : _) = Just i
     go i (_ : rest) = go (i + 1) rest
+
+stripStrings :: String -> String
+stripStrings = go False
+  where
+    go _ [] = []
+    go True ('\\' : _ : rest) = "  " <> go True rest
+    go inString ('"' : rest) = ' ' : go (not inString) rest
+    go True (_ : rest) = ' ' : go True rest
+    go False (ch : rest) = ch : go False rest
 
 -- | Don't flag lines that look like `import …`, since enumerating
 -- forbidden modules in an import isn't itself a use of the symbol.

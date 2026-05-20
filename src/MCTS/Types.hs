@@ -235,6 +235,7 @@ data RunConfig = RunConfig
     , runInitialSims :: !Word32
     , runPerMoveSims :: !Word32
     , runMaxPlies :: !Word16
+    , runGameIndex :: !Word32
     , runGames :: !Word32
     , runCParamBits :: !Word64
     }
@@ -313,6 +314,7 @@ instance Semigroup RunConfig where
         a
             { runGames = runGames a + runGames b
             , runMasterSeed = runMasterSeed a .&. runMasterSeed b
+            , runGameIndex = runGameIndex a
             }
 
 instance Monoid RunConfig where
@@ -326,6 +328,7 @@ instance Monoid RunConfig where
             , runInitialSims = 1
             , runPerMoveSims = 1
             , runMaxPlies = 200
+            , runGameIndex = 0
             , runGames = 0
             , runCParamBits = 0
             }

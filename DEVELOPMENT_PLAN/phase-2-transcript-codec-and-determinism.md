@@ -16,19 +16,27 @@
 
 ## Phase Status
 
-✅ **Done**. The worktree has a deterministic transcript encoder/decoder,
-single-byte action enumeration, SHA-256 content addressing, cache root resolution,
-`.mcts-cache/` ignore, hash-prefix lookup, `splitmix64` seed derivation, move
-notation, and non-interactive `inspect list` / `inspect show` / `inspect replay`
-smoke paths. Transcript decode preserves workload and decoded game count in the current
-v1 header, transcript writes use same-directory temp files plus rename, and
-`inspect show --envelope` renders the full logical v1 envelope. The baseline binary
-`MEQ1` `.eq` / `.envelope` sidecar codec, sidecar listing,
-`inspect show --with-equity` recompute-backed sidecar writes, `inspect cache prune`
-Plan/Apply handling, and originator-vs-foreign sidecar markers now exist. Live backend
-envelope capture, foreign-engine recompute sidecars, and verify-time live-envelope
-stale detection live in Sprints `3.6`, `4.7`, `5.5`, `6.5`, and `7.5`; the Phase
-`2` sidecar-prune baseline still treats `<backend>-logical` as the current slot.
+✅ **Done**. The 2026-05-19 alignment sweep reclosed the Phase `2` owned
+transcript/cache/envelope surface. `RunConfig` now carries an explicit
+`runGameIndex`, `sha256(run_config)` hashes `game_index` instead of `runGames`,
+normal batch runs publish only one-game transcript files in the operator cache,
+per-game files preserve `master_seed`, and runtime seed derivation remains
+`splitmix64(master_seed, game_index)`. The v1 wire terminator is
+`0xFFFF u16 | winner u8 | total_moves u16`, the encoded envelope block matches
+`documents/engineering/transcript_format.md` and
+`documents/engineering/backend_ffi_contract.md`, and display/cache build labels
+derive from `engine_build_id` (`<backend>-logical` for all-zero logical
+envelopes). `inspect show --with-equity` now reads an envelope-matched
+originator `.eq` sidecar before recomputing, and `inspect show --envelope`
+renders every logical v1 envelope field in plain and JSON output.
+
+Focused Phase `2` validation passed with
+`cabal --builddir=/tmp/mcts-cabal-build test mcts-unit` and
+`cabal --builddir=/tmp/mcts-cabal-build run mcts -- docs check`; canonical
+container validation passed with `docker compose run --rm mcts mcts check-code`.
+Repository-wide generated-validation-data cleanup remains active in Sprint
+`8.8`; that later sprint owns removing checked-in transcript/renderer/report-card
+fixtures from the normal clean-clone suite.
 
 ## Phase Summary
 
@@ -92,12 +100,11 @@ records of `(action_id, visits)` sorted ascending by action ID, equity excluded.
     `initial_sims = N0` and `per_move_sims = N1`.
   - `max_plies u16` — default `200`; pinned to `10000` under the legacy-parity
     envelope.
-  - `_reserved u16` — must be zero on write, ignored on read.
+  - `workload u16` — `0 = rollouts`, `1 = selfplay`; other values are rejected in
+    v1.
   - `envelope_offset u32` — byte offset from file start where the Envelope Block
-    begins. The fixed header ends at byte 48; in Sprint 2.1 no envelope block is
-    written yet, so the encoder hard-codes `envelope_offset = 48` (the byte
-    immediately after the fixed header) and Sprint 2.6 starts writing the block
-    at that offset. The field exists from v1 so future header growth never breaks
+    begins. The fixed header ends at byte 48; the v1 encoder writes the envelope
+    block immediately at that offset. The field exists from v1 so future header growth never breaks
     envelope readers, per
     [../documents/engineering/transcript_format.md → Header](../documents/engineering/transcript_format.md).
     Property test `decode . encode == id` covers it.
@@ -128,34 +135,33 @@ records of `(action_id, visits)` sorted ascending by action ID, equity excluded.
    `Transcript` (full file).
 2. A property test asserts records within a file are sorted ascending by
    `action_id`.
-3. A golden test asserts a specific transcript renders to a specific byte sequence
-   (the bytes are pinned in `test/golden/transcript-codec/`).
+3. Unit coverage asserts representative transcript field offsets, terminator
+   shape, cache-key invariants, and envelope round-trips through semantic and
+   in-memory byte checks rather than checked-in byte-golden fixtures.
 
 ### Closure Notes
 
 - Baseline landed: `MCTS.Transcript` writes and reads the v1 `MCTR` header,
-  per-game/per-move records, winner terminator, action IDs, and a minimal envelope
-  block. The current decoder preserves workload, game count, and per-game IDs for
-  `decode . encode` roundtrips in the hand-rolled unit suite. `encodeRecord` now
+  per-game/per-move records, the documented winner terminator, action IDs, and the
+  full v1 envelope block. The decoder preserves workload and sets decoded
+  one-game `runGameIndex` from the body `game_id` for `decode . encode`
+  roundtrips in the hand-rolled unit suite. `encodeRecord` now
   emits the per-move `(action, visits)` list sorted ascending by `action_id`
   per [../README.md → Cross-backend verification → Transcript wire
   format](../README.md), and `decodeTranscript` rejects `cpp-legacy` transcripts
   that carry a `Draw` winner (`AppError TranscriptFormatUnsupported`) per
-  [../README.md → Draw rule](../README.md). Byte-level golden fixtures now pin
-  the v1 wire output for known 2-game transcripts for `haskell`,
-  `cpp-imperative`, `cpp-functional`, and `rust`; each fixture is 3614 bytes.
-  The `mcts-unit` stanza asserts byte-equality after normalizing only the two
-  architecture tag bytes (`host_arch` in the fixed header and envelope), because
-  the committed fixtures were captured on arm64 and the Compose image may run on
-  amd64.
+  [../README.md → Draw rule](../README.md). Sprint `8.8` removed the former
+  checked-in byte-golden fixtures for representative transcripts and replaced
+  them with in-memory byte-layout and determinism-payload assertions so host
+  architecture differences cannot make the clean-clone suite flaky.
 - The single-module `MCTS.Transcript` implementation is retained as the concrete codec
   owner, with thin `MCTS.Transcript.Codec`, `MCTS.Transcript.Action`,
   `MCTS.Transcript.Cache`, `MCTS.Transcript.Hash`, and `MCTS.Transcript.Lookup`
   wrapper modules preserving the planned public ownership boundaries without duplicating
   parser state.
-- The legacy-envelope (`max_plies = 10000`) byte-level golden is owned by the real backend
-  (i) transcript driver in Phase `4`, because Phase `2` intentionally owns the codec shape
-  rather than the backend (i) producer.
+- Legacy-envelope (`max_plies = 10000`) generated evidence belongs to the retired
+  backend (i) optional evidence path; Phase `2` owns only the codec shape and tests it
+  with generated in-memory/temporary transcripts.
 
 ## Sprint 2.2: Content-Addressed Cache and Cache Root Resolution ✅
 
@@ -215,6 +221,10 @@ the `.gitignore` entry that keeps the cache out of version control.
   a declared dependency.
 - Cache-root branch coverage for explicit `--cache-dir` and default project-local
   cache behavior lives in `mcts-unit`.
+- `RunConfig` now has a real `runGameIndex` cache-key discriminator. `runGames`
+  is excluded from `encodeRunConfig`; normal batch writes publish one `.tr` file
+  per game via `writeTranscriptPerGame`, preserve `master_seed`, set
+  `runGames = 1`, and set `runGameIndex = game_id`.
 - Container validation confirmed generated `.mcts-cache/` contents are ignored by git and
   do not appear in `git status --short --ignored`.
 
@@ -318,10 +328,12 @@ Sprint 7.4.
 
 ### Validation
 
-1. A round-trip test: write a known transcript to the cache, run
-   `mcts inspect show <prefix>`, assert the rendered output matches a golden.
-2. `mcts inspect list --format json` emits valid JSON; the schema is pinned in
-   `test/golden/inspect-list-schema.json`.
+1. A round-trip test writes a known transcript to a temporary cache root, runs
+   `mcts inspect show <prefix>`, and asserts the parsed/rendered fields
+   semantically.
+2. `mcts inspect list --format json` emits valid JSON; the test validates the
+   expected keys and field types directly instead of reading a checked-in schema
+   fixture.
 3. A unit test asserts the move-notation renderer / parser round-trips over every
    action in the single-byte action enumeration.
 
@@ -332,12 +344,16 @@ Sprint 7.4.
   notation round-trips exist. `inspect list` now renders the planned threading,
   sims, total-move, and mtime columns in table/plain output and the equivalent
   fields in JSON.
-- The sidecar write path is recompute-backed, and the inline `inspect show`
-  text renderer now reads the recomputed `EqStream` for the per-move
+- The sidecar path is recompute-backed on cache miss, and `inspect show
+  --with-equity` first loads an envelope-matched originator sidecar when present.
+  The inline text renderer reads the resulting `EqStream` for the per-move
   `equity=<float>` column instead of a fixed placeholder.
-- The unit suite now pins byte-stable `inspect show` text and
-  `inspect list --format json` fixtures, and round-trips legacy move notation
-  over every action in the single-byte action enumeration.
+- `inspect show --envelope` renders all v1 logical envelope fields in plain text
+  and JSON.
+- Sprint `8.8` replaced byte-stable `inspect show` text and
+  `inspect list --format json` fixture residue with semantic assertions while
+  preserving the round-trip coverage over every action in the single-byte action
+  enumeration.
 
 ## Sprint 2.5: `splitmix64` Seed Derivation and `--rng` Plumbing ✅
 
@@ -384,13 +400,13 @@ consumer is wired in Phase 4 once the FFI bridge exists.
    seed pair; the values come from the canonical splitmix64 spec.
 2. A property test asserts `mix master_seed n` is bijective in `n` for fixed
    `master_seed` over the first 1M values of `Word64`.
-3. Cross-language roundtrip: for a small fixture of `(master_seed, game_index)`
+3. Cross-language roundtrip: for a small generated table of `(master_seed, game_index)`
    pairs, the Haskell `mix masterSeed gameIndex` must equal the initial-state
    word produced by the C ABI `cpp_rng_split(masterSeed, gameIndex)` from
    [phase-4-cpp-legacy-port-and-ffi-bridge.md → Sprint 4.3](phase-4-cpp-legacy-port-and-ffi-bridge.md).
    The check is deferred to Phase 4 closure (the FFI shim must exist) but the
-   fixture is committed in this sprint so the assertion lands the moment the
-   shim is callable.
+   table is constructed inside the test so the assertion lands the moment the
+   shim is callable without committing generated validation data.
 4. `docker compose run --rm mcts mcts bench rollouts --rng native --backend haskell --games 8 --seed 42`
    runs to completion once Phase 3 closure connects the engine to the CLI surface;
    placeholder smoke test in this sprint asserts the CLI parses the flag matrix.
@@ -406,7 +422,8 @@ consumer is wired in Phase 4 once the FFI bridge exists.
   property-based coverage.
 - The C++ `cpp_rng_split_seed` shim is callable from Haskell through
   `MCTS.Rng.Cpp`; when `cpp-legacy/build/libmcts_cpp_legacy.so` is present,
-  `mcts-unit` checks the C++ fixture values against the Haskell splitmix mixer.
+  `mcts-unit` checks generated C++ split-seed values against the Haskell splitmix
+  mixer without relying on committed fixture data.
 - Baseline parser coverage rejects user-supplied `--rng native` on `verify` at parse
   time rather than silently overriding the parsed run inputs.
 
@@ -436,22 +453,19 @@ layered cohort-invariant vs per-backend-slot semantics.
   field-by-field record matching the wire format.
 - `src/MCTS/Transcript/Codec.hs` re-exports the existing transcript encoder, which is
   extended to write the envelope block starting at the offset already
-  carried by the header's `envelope_offset` field (which Sprint 2.1
-  hard-coded to `48`); the existing decoder reads `envelope_offset`,
-  jumps to it, parses the envelope, then continues to the per-game body.
+  carried by the header's `envelope_offset` field (`48` in v1); the existing
+  decoder parses the v1 envelope immediately after the fixed header and then
+  continues to the per-game body.
 - The backend-specific `sha256(RunConfig)` cache-key path is verified by a property
   test to be invariant under arbitrary envelope changes: the hash is computed over
   the canonical encoding of the `RunConfig` record alone, and the envelope block does
   not perturb it.
-- Version-tolerance property test: a decoder built against
-  `envelope_version = 1` must successfully read a transcript whose
-  envelope block contains a hypothetical version-2 trailer (extra
-  bytes past the version-1 field set), skipping the unrecognised
-  trailing bytes via `envelope_byte_length`.
-- Envelope round-trip property test: `decodeEnvelope . encodeEnvelope
-  == id` over an arbitrary `Envelope` (generator covers all field
-  ranges including empty `libm_id`, max-length `compiler_version`,
-  zero `shared_rng_build_id`).
+- Version-tolerance coverage: a decoder built against `envelope_version = 1`
+  successfully reads an envelope block with extra bytes past the version-1 field
+  set, skipping the unrecognised trailing bytes via `envelope_byte_length`.
+- Envelope round-trip coverage: the unit suite encodes and decodes representative
+  `Envelope` values, including empty `libm_id`, max-length string fields, and
+  zero `shared_rng_build_id`.
 - Same-backend envelope stamping: the Phase `2` codec accepts and preserves a full
   `Envelope` value in every transcript. The current baseline stamps logical
   envelopes from the Haskell driver; replacing those logical values with live
@@ -460,37 +474,39 @@ layered cohort-invariant vs per-backend-slot semantics.
 
 ### Validation
 
-- `mcts-unit`: envelope round-trip property, version-tolerance
-  property, hash-stability property.
-- `mcts-integration`: write a transcript with a known envelope,
-  re-read it, assert byte-for-byte equality of the envelope block
-  and `sha256(RunConfig)` invariance.
+- `mcts-unit`: envelope round-trip, version-tolerance, hash-stability,
+  sidecar-cache-hit, and full-envelope rendering coverage.
+- `mcts-integration`: live-envelope stamping and stale-cache coverage when the
+  Rust shared library is present; retired-backend evidence is synthesized in
+  temporary roots.
 
 ### Closure Notes
 
 - Baseline landed: transcripts carry the full v1 engine envelope per
   [../documents/engineering/backend_ffi_contract.md → Engine Envelope](../documents/engineering/backend_ffi_contract.md).
-  The `Envelope` ADT now carries `envelopeVersion`, `envelopeBackend`,
+  The `Envelope` ADT carries `envelopeVersion`, `envelopeBackend`,
   `envelopeRngSource`, `envelopeHostArch`, `envelopeSharedRngBuildId`,
   `envelopeCohortConfigHash`, `envelopeEngineBuildId`,
   `envelopeEngineGitCommit`, `envelopeCompilerId`, `envelopeCompilerVersion`,
   `envelopeFpFlags`, `envelopeLibmId`, `envelopeCpuFeatures`, `envelopeFpEnv`,
-  and the project-local `envelopeBuildId` accessor field. The wire format
-  matches the C ABI `mcts_<backend>_envelope` layout: 1-byte backend, rng,
-  arch, reserved; three 32-byte digests; 40-byte git commit; compiler
-  metadata; length-prefixed `compiler_version`, `libm_id`; 32-bit
-  `fp_flags`, `cpu_features`; 8-bit `fp_env`; trailing length-prefixed
-  `build_id`. `decodeEnvelope . encodeEnvelope == id` round-trips through
-  `mcts-unit`. The byte-level golden
-  `test/golden/transcript-codec/v1-haskell-2games.bin` has been regenerated
-  at 3614 bytes to reflect the current full-envelope fixture; `mcts-unit`
-  normalizes only the duplicated architecture tag bytes when checking committed
-  codec bytes across supported host architectures. `MCTS.Verify.Envelope`
+  and the project-local display/cache `envelopeBuildId` accessor field. The
+  encoded wire payload now matches the C ABI `mcts_<backend>_envelope` layout:
+  `rng_source_envelope`, `host_arch_envelope`, three 32-byte digests, 40-byte
+  git commit, compiler metadata, length-prefixed `compiler_version`, 32-bit
+  `fp_flags`, length-prefixed `libm_id`, 32-bit `cpu_features`, and 8-bit
+  `fp_env`. The backend comes from the transcript header, and
+  `envelopeBuildId` is derived from `engine_build_id` instead of encoded as a
+  trailer. `decodeEnvelope . encodeEnvelope == id` round-trips through
+  `mcts-unit`. Sprint `8.8` replaced the byte-level transcript-golden residue for
+  this shape with semantic byte-layout assertions so supported host architectures
+  cannot make the suite flaky. `MCTS.Verify.Envelope`
   cohort-level checks now compare `rng_source`, `shared_rng_build_id`,
   and `cohort_config_hash` (in addition to `host_arch` and
   `envelope_version`); backend-slot checks now compare `engine_build_id`,
   `compiler_id`, `fp_flags`, `cpu_features`, and `fp_env` (in addition to
   `backend` and the convenience `build_id`).
+- The current suite uses generated in-memory layout assertions and property
+  coverage for this envelope shape.
 - Keep `envelope_byte_length` forward-compatible: the current decoder tolerates
   trailing bytes after the v1 field set, and the unit suite exercises that shape;
   a named v2 trailer property lands once a v2 schema is defined.
@@ -520,11 +536,12 @@ format and the on-disk layout.
 
 ### Current Validation State
 
-The active baseline uses `src/MCTS/Transcript/EquitySidecar.hs` to write the binary
+The closed baseline uses `src/MCTS/Transcript/EquitySidecar.hs` to write the binary
 `MEQ1` `EqStream` beside a binary envelope neighbour, stored under
-`.mcts-cache/transcripts/<host_arch>/<sha>/<backend>-<build_prefix16>.{eq,envelope}`.
-`mcts inspect show --with-equity` materializes the current recompute-backed logical
-sidecar, `mcts inspect cache list` enumerates cached `(backend, build)` slots, and
+`.mcts-cache/transcripts/<host_arch>/<sha>/<backend>-<build_label>.{eq,envelope}`.
+`mcts inspect show --with-equity` reads the matching originator sidecar before
+materializing a recompute-backed logical sidecar on miss, `mcts inspect cache list`
+enumerates cached `(backend, build)` slots, and
 `mcts inspect cache prune --keep-current` removes sidecars whose build id does not match
 the current logical `<backend>-logical` baseline. `mcts-unit` covers sidecar
 encode/decode, listing, keep-current prune behavior, binary magic/terminator checks,
@@ -537,7 +554,7 @@ and `castWord64ToDouble` round-trips.
   plus the `.envelope` neighbour file (the same envelope bytes
   extracted from the `.eq` header for easy `cat .envelope` access).
 - `src/MCTS/Transcript/Cache.hs` extended: given a transcript hash and
-  a `(backend, engine_build_id_prefix16)` pair, resolve the sidecar
+  a `(backend, build_label)` pair, resolve the sidecar
   path; create the `<sha>/` directory lazily on first write; list
   cohabiting `(backend, build)` slots for the `mcts inspect cache
   list` subcommand.
@@ -606,6 +623,10 @@ and `castWord64ToDouble` round-trips.
 - Logical `<backend>-logical` stale detection remains the Phase `2` baseline. Live
   `mcts_<backend>_get_envelope()` matching is owned by Sprints `3.6`, `4.7`, `5.5`,
   `6.5`, and `7.5`.
+- `MCTS.Transcript.EquitySidecar.loadMatchingOriginatorSidecar` now filters
+  sidecars by transcript hash, origin backend, build label, and exact neighbouring
+  `.envelope` bytes before decoding the `.eq` stream. `mcts-unit` covers the
+  cache-hit path and the full-envelope `inspect show` rendering branch.
 
 ## Documentation Requirements
 

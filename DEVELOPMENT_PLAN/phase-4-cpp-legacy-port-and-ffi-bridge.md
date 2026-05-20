@@ -11,8 +11,8 @@
 
 > **Purpose**: Land backend (i) — the strictly verbatim re-port of `MCTS_legacy`
 > exposed via a stable C ABI through the Haskell FFI — plus the build harness, the
-> legacy C++ RNG split-seed fixture for `--rng cpp` validation, and the
-> `test/golden/legacy/` Q6 fixture set.
+> legacy C++ RNG split-seed fixture for `--rng cpp` validation, and the historical
+> Q6 evidence path that Sprint `8.8` supersedes with generated temp-dir coverage.
 
 ## Phase Status
 
@@ -20,7 +20,7 @@
 (`docker compose run --rm mcts mcts test all` +
 `docker compose run --rm mcts mcts check-code` green).
 Backend (i) drives real bench and fixture transcripts via the FFI, the Q6
-fixture set is checked in under `test/golden/legacy/transcripts/`, the
+evidence was historically captured through generated transcripts, the
 post-link envelope patch fills `engine_build_id`, and the foreign-engine
 recompute symbol is exposed and bound. Full cross-backend bit-equality
 across (i)..(v) under the legacy parity envelope is owned by
@@ -37,8 +37,8 @@ its no-draw-rule terminal semantics (`is_terminal()` ↔ `hero_wins() ||
 villain_wins()`); the legacy is a strictly verbatim regression-sanity port, not a
 performance ceiling, and the default cross-backend `verify` cohort excludes it
 through the Phase 7 `VerifyBackend` parser surface. Phase 4 also lands the `--rng cpp` C++ generator the
-other backends will draw from in Phase 5+, the Q6 golden fixture set from
-out-of-band `MCTS_legacy` runs, and the `mcts verify legacy-parity` cohort logic
+other backends will draw from in Phase 5+, the historical Q6 evidence generator
+from out-of-band `MCTS_legacy` runs, and the `mcts verify legacy-parity` cohort logic
 that pins `max_plies = 10000` for the five-backend legacy-envelope
 liveness/overflow gate.
 
@@ -339,64 +339,51 @@ backend (i)'s no-draw-rule terminal semantics.
   (`f55b9736...`), and `mcts inspect show <prefix>` renders the legacy
   notation correctly.
 
-## Sprint 4.5: `test/golden/legacy/` Q6 Fixture Set ✅
+## Sprint 4.5: Historical Q6 Evidence Generator ✅
 
-**Status**: Done (`S_LP_SIMS = 10000` fixtures are committed for the current
-`amd64` validation architecture and regenerate through the supported
-`mcts build legacy-fixtures` entrypoint)
+**Status**: Done for the historical evidence generator; superseded by Sprint
+`8.8` for normal validation because generated transcript data must not be
+required in git.
 **Implementation**: `cpp-legacy/tools/legacy-to-wire.cc`,
 `cpp-legacy/Makefile` (legacy-to-wire target),
-`test/golden/legacy/README.md`,
-`test/golden/legacy/transcripts/<arch>/*.tr`,
-`test/integration/Main.hs` (legacy goldens group),
-`src/MCTS/Generated/Paths.hs` (externallyTrackedPaths)
+`test/integration/Main.hs` (legacy-envelope checks),
+`src/MCTS/Generated/Paths.hs` (generated-path cleanup in Sprint `8.8`)
 **Docs to update**: `documents/engineering/determinism_contract.md`,
 `documents/engineering/unit_testing_policy.md`,
 `DEVELOPMENT_PLAN/system-components.md`
 
 ### Objective
 
-Capture a fixed set of `MCTS_legacy`-produced transcripts under `test/golden/legacy/`
-so Phase 7's `mcts-integration` stanza can compare backend (i)'s transcripts against
-this anchor (Q6).
+Provide an auditable way to convert `MCTS_legacy`-produced games into the Phase 2
+wire format for Q6 investigation. Sprint `8.8` changes the normal
+`mcts-integration` path so it generates or synthesizes legacy-envelope data in a
+temporary root instead of reading checked-in transcripts.
 
 ### Deliverables
 
-- `test/golden/legacy/README.md` documents how the fixtures are produced:
-  out-of-band from `~/MCTS_legacy/` using the legacy's own binary on a
-  pinned seed set, then byte-converted to the Phase 2 wire format via a one-time
-  conversion script that lives under `cpp-legacy/tools/legacy-to-wire.cc` (or
-  equivalent). The conversion script stamps the canonical `host_arch u8` byte for
-  the host it ran on (see [../documents/engineering/transcript_format.md →
-  Header](../documents/engineering/transcript_format.md)).
-- The fixture set covers benchmark (b) self-play at the report-card legacy-parity
-  knobs: seed `$S_LP = 42`, `$G_LP = 10` games, `$S_LP_SIMS = 10_000` sims/move,
-  `--max-plies 10000` (the legacy parity envelope, so terminal semantics agree).
-- Fixtures are per-architecture and per game:
-  `test/golden/legacy/transcripts/<arch>/<sha>.tr` with `<arch>` ∈ `{amd64,
-  arm64}`. Each supported host architecture ships its own fixture set generated on
-  that arch (per [../README.md → Architecture envelope](../README.md)).
-- `test/integration/Main.hs` declares the current Q6 golden cohort: it decodes
-  every committed `test/golden/legacy/transcripts/<arch>/*.tr` fixture on every
-  host, checks each filename against `sha256(file_bytes)`, and asserts the
-  cpp-legacy backend slot, self-play workload, single-threaded cpp RNG source,
-  seed `42`, `10000` sims, `max_plies = 10000`, one game per file, and no-draw
-  semantics.
-- The fixture set is a frozen historical record: it regenerates only when
-  `MCTS_legacy` is upgraded **or** the wire format's `flags u32` bumps. Otherwise
-  it's a checked-in artefact; any other refresh is a separate scheduled sprint
-  that touches `~/MCTS_legacy` and is enqueued as cleanup.
+- `cpp-legacy/tools/legacy-to-wire.cc` documents and implements the conversion
+  path from out-of-band `MCTS_legacy` games to the Phase 2 wire format. The tool
+  stamps the canonical `host_arch u8` byte for the host it ran on (see
+  [../documents/engineering/transcript_format.md → Header](../documents/engineering/transcript_format.md)).
+- The historical evidence envelope covers benchmark (b) self-play at the
+  report-card legacy-parity knobs: seed `$S_LP = 42`, `$G_LP = 10` games,
+  `$S_LP_SIMS = 10_000` sims/move, `--max-plies 10000`.
+- The generated evidence is per-architecture and per game when produced, but it
+  belongs in an explicit external or ignored artifact root, not in the repository.
+- `test/integration/Main.hs` must assert the legacy-envelope semantics that
+  matter for compatibility from temporary generated data: cpp-legacy backend
+  slot, self-play workload, single-threaded cpp RNG source, seed `42`, `10000`
+  sims, `max_plies = 10000`, one game per file, and no-draw semantics.
 
 ### Validation
 
-1. `test/golden/legacy/transcripts/<arch>/` contains the pinned-seed per-game
-   `.tr` fixture set for each supported host arch.
-2. The conversion script under `cpp-legacy/tools/` is documented but not invoked
-   during normal testing — fixtures are checked in.
-3. A static check confirms `test/golden/legacy/` is named in the
-   `trackingGeneratedPaths` no-hand-edit registry (with the explicit exception
-   that the registry's "renderer-source modules" check does not apply, because
-   the renderer is an external legacy binary).
+1. `docker compose run --rm mcts mcts build legacy-fixtures --output-dir
+   <external-or-ignored-root>/legacy/transcripts --seed 42 --games 10 --sims
+   10000 --dry-run` renders the supported Plan/Apply evidence-generation plan.
+2. Normal `mcts-integration` validates the same legacy-envelope semantics from
+   temporary generated data and does not require pre-existing transcripts.
+3. Generated transcript roots are ignored/local and are not named as repository
+   validation inputs in generated-path tracking.
 
 ### Closure Notes
 
@@ -406,22 +393,15 @@ this anchor (Q6).
   the Phase 2 wire format. The pinned envelope is single-threaded,
   `--rng cpp`, `max_plies = 10000`, seed `S_LP = 42`, `G_LP = 10`, and
   `S_LP_SIMS = 10000`. Regeneration enters through `docker compose run --rm
-  mcts mcts build legacy-fixtures --output-dir test/golden/legacy/transcripts
-  --seed 42 --games 10 --sims 10000` rather than direct tool execution.
-- `test/golden/legacy/transcripts/amd64/*.tr` carries the 10-game `amd64`
-  fixture set regenerated on 2026-05-18 after comparing the imported core
-  against `/home/matt/MCTS_legacy/backend/core/` with whitespace ignored.
-- `test/golden/legacy/transcripts` is named in
-  `src/MCTS/Generated/Paths.hs → externallyTrackedPaths` (and thus in
-  `trackingGeneratedPaths`) so `mcts lint files` keeps hand-edits out
-  while skipping the renderer-source content comparison — the renderer
-  is the external legacy binary, not a Haskell module.
-- `test/integration/Main.hs` adds the `legacy goldens` group: every
-  committed `transcripts/<arch>/*.tr` fixture is decoded via
-  `MCTS.Transcript.decodeTranscript` on every host and asserted to carry the
-  cpp-legacy backend slot, self-play workload, single-threaded cpp RNG source,
-  seed `42`, `10000` sims, `max_plies = 10000`, one game per file, hash-named
-  bytes, and no `Draw` winners (the legacy has no draw rule).
+  mcts mcts build legacy-fixtures --output-dir
+  <external-or-ignored-root>/legacy/transcripts --seed 42 --games 10 --sims
+  10000` rather than direct tool execution.
+- Historical 2026-05-18 evidence was generated after comparing the imported core
+  against `/home/matt/MCTS_legacy/backend/core/` with whitespace ignored. Sprint
+  `8.8` removes the old committed-transcript assumption from normal validation.
+- `test/integration/Main.hs` keeps the `MCTS.Transcript.decodeTranscript`
+  coverage and legacy-envelope assertions, but the inputs are generated inside
+  the test process or read only by an explicit optional artifact suite.
 
 ## Sprint 4.6: `mcts verify legacy-parity` Cohort Logic ✅
 
@@ -624,8 +604,9 @@ Envelope Surface](../documents/engineering/backend_ffi_contract.md).
 - `documents/engineering/backend_ffi_contract.md` — fill in the C ABI shape, the
   `unsafe`/`safe` choice per symbol, the `bracket`-based RAII pattern, the
   `cpp-legacy/c-abi/` layout, and the `--rng cpp` shared-generator contract.
-- `documents/engineering/determinism_contract.md` — extend with the Q6 golden
-  fixture set, the legacy parity envelope (`max_plies = 10000`), and the
+- `documents/engineering/determinism_contract.md` — extend with the Q6
+  legacy-envelope semantics, the legacy parity envelope (`max_plies = 10000`),
+  and the
   `LegacyParityRolloutOverflow` failure mode.
 - `documents/engineering/compiler_runtime_tuning.md` — extend with the legacy
   exemption: backend (i) builds with `-std=c++17 -O3 -fPIC -Wall` and is exempt

@@ -49,6 +49,7 @@ import MCTS.Notation (renderMove)
 import MCTS.Transcript.EquitySidecar (EqRecord (..), EqStream (..))
 import MCTS.Types
     ( Backend
+    , Envelope (..)
     , GameTranscript (..)
     , MoveRecord (..)
     , Transcript (..)
@@ -198,6 +199,8 @@ data OverlayRow = OverlayRow
     -- chosen action at the current move, or `Nothing` if the
     -- backend's `EqStream` does not carry a record at this index.
     , overlayEquity :: !(Maybe Double)
+    , overlayStatus :: !String
+    , overlayDivergence :: !(Maybe String)
     }
     deriving (Eq, Show)
 
@@ -205,21 +208,38 @@ data OverlayRow = OverlayRow
 -- list of rows for the renderer. Pure so tests can drive it.
 currentOverlayRows :: ReplayState -> [OverlayRow]
 currentOverlayRows st
-    | idx <= 0 || idx > length flattened = map empty (replayOverlays st)
-    | otherwise = map (overlayAt key) (replayOverlays st)
+    | idx <= 0 || idx > length flattened = map empty (replayOverlays st) <> unavailableRows
+    | otherwise =
+        case indexAt (idx - 1) flattened of
+            Just (currentGameId, currentRecord) ->
+                map (overlayAt currentRecord (currentGameId, moveIndex currentRecord)) (replayOverlays st)
+                    <> unavailableRows
+            Nothing -> map empty (replayOverlays st) <> unavailableRows
   where
     flattened = flattenGameIds (replayTranscript st)
     idx = replayMoveIndex st
-    (currentGameId, currentRecord) = flattened !! (idx - 1)
-    key = (currentGameId, moveIndex currentRecord)
+    originEnvelope = transcriptEnvelope (replayTranscript st)
     empty stream =
         OverlayRow
             { overlayBackendId = eqBackend stream
             , overlayBuildId = eqBuildId stream
             , overlayChosen = Nothing
             , overlayEquity = Nothing
+            , overlayStatus = overlayBaseStatus originEnvelope stream
+            , overlayDivergence = Nothing
             }
-    overlayAt (gid, mvi) stream =
+    unavailableRows =
+        [ OverlayRow
+            { overlayBackendId = backend
+            , overlayBuildId = "unavailable"
+            , overlayChosen = Nothing
+            , overlayEquity = Nothing
+            , overlayStatus = "unavailable"
+            , overlayDivergence = Nothing
+            }
+        | backend <- replayUnavailableBackends st
+        ]
+    overlayAt currentRecord (gid, mvi) stream =
         let recordMap =
                 Map.fromList
                     [ ((eqGameId r, eqMoveIndex r), r)
@@ -231,7 +251,37 @@ currentOverlayRows st
                 , overlayBuildId = eqBuildId stream
                 , overlayChosen = renderMove . eqChosen <$> located
                 , overlayEquity = eqEquity <$> located
+                , overlayStatus = overlayStatusFor originEnvelope currentRecord located stream
+                , overlayDivergence = overlayDivergenceFor currentRecord located
                 }
+
+overlayBaseStatus :: Envelope -> EqStream -> String
+overlayBaseStatus envelope stream
+    | eqBackend stream == envelopeBackend envelope
+        && eqBuildId stream == envelopeBuildId envelope =
+        "originator"
+    | eqBackend stream == envelopeBackend envelope =
+        "originator build-mismatch"
+    | otherwise = "foreign-view"
+
+overlayStatusFor :: Envelope -> MoveRecord -> Maybe EqRecord -> EqStream -> String
+overlayStatusFor envelope currentRecord located stream =
+    overlayBaseStatus envelope stream <> " " <> verificationStatus
+  where
+    verificationStatus =
+        case located of
+            Nothing -> "unavailable"
+            Just record
+                | eqChosen record == moveChosen currentRecord -> "verified"
+                | otherwise -> "diverged"
+
+overlayDivergenceFor :: MoveRecord -> Maybe EqRecord -> Maybe String
+overlayDivergenceFor currentRecord located =
+    case located of
+        Just record
+            | eqChosen record /= moveChosen currentRecord ->
+                Just ("move " <> renderMove (moveChosen currentRecord) <> "!=" <> renderMove (eqChosen record))
+        _ -> Nothing
 
 drawUi :: ReplayState -> [Widget String]
 drawUi st =
@@ -259,7 +309,8 @@ overlayWidget rows =
 renderOverlayRowsText :: [OverlayRow] -> [String]
 renderOverlayRowsText [] = []
 renderOverlayRowsText rows =
-    "backend          build      chosen     equity" : map renderOverlayRowText rows
+    "backend          build      status                    chosen     equity   divergence"
+        : map renderOverlayRowText rows
 
 renderOverlayRowText :: OverlayRow -> String
 renderOverlayRowText row =
@@ -267,9 +318,13 @@ renderOverlayRowText row =
         <> " "
         <> padEnd 10 (overlayBuildId row)
         <> " "
+        <> padEnd 25 (overlayStatus row)
+        <> " "
         <> padEnd 10 (maybe "-" id (overlayChosen row))
         <> " "
-        <> maybe "-" formatEquity (overlayEquity row)
+        <> padEnd 8 (maybe "-" formatEquity (overlayEquity row))
+        <> " "
+        <> maybe "-" id (overlayDivergence row)
 
 padEnd :: Int -> String -> String
 padEnd n s = take n (s <> repeat ' ')
@@ -285,7 +340,14 @@ currentMoveText st =
         idx = replayMoveIndex st
      in if idx <= 0 || idx > length moves
             then "(start of transcript)"
-            else renderMove (moveChosen (moves !! (idx - 1)))
+            else maybe "(start of transcript)" (renderMove . moveChosen) (indexAt (idx - 1) moves)
+
+indexAt :: Int -> [a] -> Maybe a
+indexAt n _
+    | n < 0 = Nothing
+indexAt _ [] = Nothing
+indexAt 0 (value : _) = Just value
+indexAt n (_ : rest) = indexAt (n - 1) rest
 
 handleEvent :: BrickEvent String () -> EventM String ReplayState ()
 handleEvent (VtyEvent (V.EvKey key _mods)) =

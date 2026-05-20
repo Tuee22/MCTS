@@ -5,4 +5,5 @@ Backend (iii) `cpp-functional` retired in Phase 8 Sprint 8.6 after backend
 
 The source tree remains as an archived reference for the functional-style C++
 implementation. Live CLI/build/verify/FFI dispatch no longer selects this
-backend; its frozen evidence lives under `test/golden/cpp-functional/`.
+backend; historical evidence is plan-recorded or generated explicitly outside
+normal validation.
