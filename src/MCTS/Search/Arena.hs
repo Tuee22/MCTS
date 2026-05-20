@@ -9,10 +9,10 @@
 -- 32-bit signed integers; `-1` sentinels indicate "no parent" / "no
 -- child".
 --
--- This is the correctness baseline for the Haskell engine. The optimised
--- Phase 8 version is a hand-rolled `MutableByteArray#` arena with a
--- per-rollout scratch path; the API exported here remains stable across
--- that migration.
+-- This is the current measured Haskell engine baseline. A future
+-- profile-driven migration can replace the representation with a hand-rolled
+-- `MutableByteArray#` arena; the API exported here remains stable across that
+-- migration.
 module MCTS.Search.Arena
     ( NodeId
     , Arena

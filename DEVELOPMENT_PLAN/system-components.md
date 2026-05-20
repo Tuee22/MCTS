@@ -221,8 +221,8 @@ operator auditability; see
 | Backend (ii) sources | `cpp-imperative/` | Maximally-tuned imperative C++23 performance ceiling |
 | Backend (iii) sources | `cpp-functional/` | Functional-style C++23 steelman under the same optimisation stack as backend (ii) |
 | Backend (iv) sources | `rust/` | Rust `cdylib` with the pinned `[profile.release]` |
-| Haskell tests | `test/` | Four live Cabal stanza modules. Generated transcripts, sidecars, report-card values, and renderer baselines are produced in memory or temporary directories during tests, not stored under `test/golden/` |
-| Bench targets | `bench/` | Cabal benchmark targets (`criterion` / `tasty-bench`) for in-process timing |
+| Haskell tests | `test/` | Five live Cabal stanza modules. Generated transcripts, sidecars, report-card values, and renderer baselines are produced in memory or temporary directories during tests, not stored under `test/golden/` |
+| Bench targets | `bench/` | Cabal benchmark target (`mcts-criterion`) using Criterion for in-process timing |
 | Docker development environment | `docker/Dockerfile`, root `compose.yaml` | `ubuntu:24.04` base with pinned GCC, LLVM, GHC, Cabal, Rust, a separate formatter-tools GHC for Fourmolu/HLint, copied project sources, and an installed `mcts`; all supported host work uses `docker compose run --rm mcts mcts <command>`. Repository `.sh` wrappers and `bootstrap/` helpers are forbidden workflow surfaces. The 2026-05-18 Compose-only doctrine update passed `mcts-unit`, `lint files`, `lint all`, and `check-code` through the root Compose service |
 | Development plan | `DEVELOPMENT_PLAN/` | This plan suite |
 | Doctrine | `HASKELL_CLI_TOOL.md` | Authoritative CLI doctrine at repo root |

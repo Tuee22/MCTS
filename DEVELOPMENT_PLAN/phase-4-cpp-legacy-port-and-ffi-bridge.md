@@ -119,7 +119,8 @@ None.
 ## Sprint 4.4: Legacy Evidence Generator ✅
 
 **Status**: Done
-**Implementation**: `cpp-legacy/build/legacy-to-wire`, `src/MCTS/CLI/Build.hs`
+**Implementation**: `cpp-legacy/tools/legacy-to-wire.cc`, `cpp-legacy/Makefile`,
+`src/MCTS/CLI/Build.hs`
 **Docs to update**: `documents/engineering/transcript_format.md`,
 `documents/engineering/unit_testing_policy.md`
 

@@ -1,14 +1,15 @@
 # cpp-functional
 
-Backend (iii), the retired functional-style C++23 backend.
+Backend (iii), the functional-style C++23 steelman backend.
 
-This tree preserves the functional-style arena/search implementation, C ABI
-source, Makefile, and historical PGO profile residue used for the Phase 8 Sprint
-8.6 retirement evidence. Live operator selection, `mcts build cpp-functional`,
-verify/recompute/play dispatch, and Haskell FFI modules have retired, so normal
-validation does not build or load this backend.
+This tree contains the functional-style arena/search implementation, C ABI
+source, Makefile, and PGO/BOLT build surface. It remains a first-class backend
+slot for `mcts build cpp-functional`, benchmark measurement, live FFI
+search/recompute/envelope loading, selected-backend play, and Q3
+logical-equivalence verification.
 
-The source remains as the historical functional-style anchor that backend (v)
-Haskell matched before retirement. See `RETIRED.md` and
-`DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md` for the
-retirement record.
+Backend (iii) uses the same optimization stack as backend (ii), so the
+comparison isolates C++ programming style rather than compiler/runtime
+advantages. See `DEVELOPMENT_PLAN/phase-6-cpp-functional-and-rust.md` and
+`DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md` for the current
+backend role.

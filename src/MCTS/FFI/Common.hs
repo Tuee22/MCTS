@@ -8,10 +8,9 @@
 -- Per-backend modules such as `MCTS.FFI.Rust` supply the typed
 -- foreign-imported pointers and call this module's helpers.
 --
--- Note: until the foreign shared libraries are actually loaded, the
--- bracket helpers compile against opaque type-level placeholders. The
--- typed boundary is what matters; the call-out wiring lands when the
--- foreign engines ship.
+-- Note: the per-backend modules load the live shared libraries dynamically.
+-- These helpers keep the opaque handle types and bracket discipline centralized
+-- so C++ and Rust call-out paths share one error and lifetime boundary.
 module MCTS.FFI.Common
     ( ForeignBoard
     , ForeignTree

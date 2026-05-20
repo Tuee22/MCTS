@@ -328,10 +328,11 @@ Implemented in the worktree:
   `MCTS.Engine`, `MCTS.Search.Arena`, and `MCTS.Search.UCT`.
   `-optlo-mcpu=native` and `-optlc-mcpu=native` are intentionally
   excluded per Sprint `8.1`'s closure note (LSE-instruction assembler
-  refusal on aarch64); the deferred re-introduction is tracked in
-  [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md).
-  `SPECIALIZE` is a no-op for the current monomorphic kernel and the
-  `MutableByteArray#` migration is a profile-driven Sprint `8.2` decision.
+  refusal on aarch64); the deferral is documented in
+  [../documents/engineering/compiler_runtime_tuning.md](../documents/engineering/compiler_runtime_tuning.md).
+  `SPECIALIZE` is unnecessary for the current monomorphic kernel and the
+  `MutableByteArray#` migration remains profile-driven, not part of the
+  current measured baseline.
 - Transcript writes are durable: `MCTS.Transcript.writeFileAtomically`
   uses `openBinaryTempFile`, `hFlush`, `System.Posix.Unistd.fileSynchronise`
   on the temp file's Fd, atomic rename, and best-effort fsync of the

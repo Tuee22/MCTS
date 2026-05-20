@@ -132,7 +132,7 @@ temporary or operator-provided roots.
   search and random-rollout leaf evaluation in the `ST s` monad, tree persistence
   carrying inherited visits across moves, pure API at the boundary. Per-CPU LLVM
   `-mcpu=native` flags are intentionally excluded on the current aarch64 container and
-  tracked as a Sprint 8.2 ledger item. Owned by
+  documented as deferred tuning rather than pending cleanup. Owned by
   [phase-3-haskell-engine.md](phase-3-haskell-engine.md).
 - **Backend (i) C++ legacy port and FFI bridge.** Verbatim re-port from `~/MCTS_legacy`
   with only the FFI shims required to expose a C ABI; inherits the legacy's
@@ -161,7 +161,7 @@ temporary or operator-provided roots.
   link-arg=-fuse-ld=lld`, `mimalloc` as `#[global_allocator]`, two-stage rustc PGO, BOLT
   post-link. Owned by
   [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md).
-- **Cross-backend verify, test stanzas, POC report card.** Four live Cabal test-suite
+- **Cross-backend verify, test stanzas, POC report card.** Five live Cabal test-suite
   stanzas (`mcts-unit`, `mcts-integration`, `mcts-cross-backend`,
   `mcts-haskell-style`), each `type: exitcode-stdio-1.0` with `tasty` as the in-stanza
   runner; `mcts test all` is a Plan/Apply command that builds the canonical foreign
@@ -173,7 +173,7 @@ temporary or operator-provided roots.
   `-funbox-strict-fields`, `-fspecialise-aggressively`,
   `-fexpose-all-unfoldings`, `-flate-dmd-anal`, `-fmax-simplifier-iterations=20`,
   `-fworker-wrapper`, `-fstatic-argument-transformation`, RTS `-A64m -n4m -qg1 -qb -T`,
-  `INLINABLE` + `SPECIALIZE` on the search loop, unboxed strict fields everywhere, no
+  `INLINABLE` on the search hot path, unboxed strict fields everywhere, no
   `Maybe`/`Either` in the rollout inner loop, until backend (v) matches backend (ii) on
   Q1 and Q2 within the parity tolerance per
   [../documents/engineering/compiler_runtime_tuning.md → Parity Tolerance](../documents/engineering/compiler_runtime_tuning.md)
@@ -395,7 +395,7 @@ referenceability.
     structure-of-arrays `STUArray` arena of unboxed `Int32` / `Float` fields; board
     state is `Word64` bitboards manipulated with `Data.Bits`. Pure API at the
     boundary; no `Maybe` / `Either` in the rollout inner loop. LLVM
-    `-optlo-mcpu=native` / `-optlc-mcpu=native` is ledger-deferred on aarch64 until
+    `-optlo-mcpu=native` / `-optlc-mcpu=native` is deferred on aarch64 until
     the assembler target accepts the emitted LSE instructions.
 21. Library-first layout: `app/Main.hs` is thin; logic lives under `src/MCTS/`.
 22. `CommandSpec` is the source of truth for the parser, the command tree, the JSON

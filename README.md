@@ -331,16 +331,16 @@ render `Verdict: Within tolerance` when the parity gate passes.
 ```
 MCTS POC report card - seed=42, max-plies=200, host=amd64, ghc=9.14.1
 ------------------------------------------------------------------------
-Q1  Haskell vs C++ (ii)  rollouts  ST          1.00x   (logical baseline)
-Q1  Haskell vs C++ (ii)  rollouts  MT8         1.00x   (logical baseline)
-Q2  Haskell vs C++ (ii)  self-play ST          1.00x   (logical baseline)
-Q2  Haskell vs C++ (ii)  self-play MT8         1.00x   (logical baseline)
-Q3  Cross-backend determinism  (cpp RNG)       PASS    (4 backends agree)
+Q1  Haskell vs live C++ (ii) rollouts  ST      1.00x   (logical baseline)
+Q1  Haskell vs live C++ (ii) rollouts  MT8     1.00x   (logical baseline)
+Q2  Haskell vs live C++ (ii) self-play ST      1.00x   (logical baseline)
+Q2  Haskell vs live C++ (ii) self-play MT8     1.00x   (logical baseline)
+Q3  Cross-backend determinism  (cpp RNG)       PASS    ((ii)..(v), 4 backends agree)
 Q4  Same-backend determinism   (per backend)   PASS    (5/5 backends x 3 seeds)
 Q5  MT scaling  Haskell   1->8 workers         1.00x   (logical baseline)
 Q5  MT scaling  C++ (ii)  1->8 workers         1.00x   (logical baseline)
-Q6  Legacy port (i) vs MCTS_legacy             PASS    (10000-sim fixtures)
-Q7  Legacy envelope, 5-backend liveness        PASS    (5 backends complete envelope)
+Q6  Legacy port (i) vs MCTS_legacy             HIST    (external audit evidence)
+Q7  Legacy envelope across all backends         PASS    (all five backend slots live)
 
 Divergence matrix (visit/move, cpp RNG; thresholds native 0.050/0.005, cross-build 0.010/0.001)
 cpp-imperative  0.0000/0.0000  0.0000/0.0000  0.0000/0.0000  0.0000/0.0000
@@ -847,7 +847,11 @@ ghc-options:
   -fstatic-argument-transformation
 ```
 
-LLVM codegen tuned via `-optlo-mcpu=native` (through to LLVM `opt`) and `-optlc-mcpu=native` (through to `llc`). LLVM version pinned in the Dockerfile so codegen is reproducible.
+LLVM codegen is active through `-fllvm`, with the LLVM version pinned in the
+Dockerfile so codegen is reproducible. The doctrine target allows native CPU
+tuning through `-optlo-mcpu=native` and `-optlc-mcpu=native`, but the current
+implementation intentionally excludes those two flags because the pinned
+aarch64 container can emit LSE instructions that the assembler rejects.
 
 RTS tuning, baked into the executable's `ghc-options`:
 
@@ -860,11 +864,21 @@ Large nursery to push major GC out, `-qg1` so major GC is parallel from gen 1, `
 Code-level requirements:
 
 - **Ply counter in board state** (correctness — see [Draw rule](#draw-rule)). Board carries a `Word16` ply counter; `isTerminal` returns true on `ply >= maxPlies` with eval `0.0`. Lives in the same unboxed board record as the bitboards; restored as part of the per-rollout `ST`-arena snapshot path.
-- Engine hot path lives in `ST s`. Tree is a `MutablePrimArray s` arena of unboxed `Int32` / `Float` fields (SoA), or a hand-rolled `MutableByteArray#` if profiling shows `PrimArray` indexing isn't optimal.
-- Board state is `Word64` bitboards, manipulated with `Data.Bits` (compiles to `popcnt`/`tzcnt` under `-fllvm` with `-optlo-mcpu=native`).
+- Engine hot path lives in `ST s`. The current tree is a structure-of-arrays
+  `STUArray` arena of unboxed `Int32` / `Float` fields; a hand-rolled
+  `MutableByteArray#` migration remains profile-driven and is not required by
+  the measured baseline.
+- Board state is `Word64` bitboards, manipulated with `Data.Bits` under the
+  active `-fllvm` backend. Extra native LLVM CPU flags remain deferred as
+  described above.
 - Strict fields everywhere (`{-# UNPACK #-} !Int`), bang patterns on `let` bindings inside `ST` blocks.
-- `INLINABLE` on every exported engine primitive; `SPECIALIZE` on the search loop for the concrete game type.
-- Pure API: `search :: GameState -> Seed -> SearchBudget -> Tree -> (Move, Tree)`. `Tree` is opaque; internally backed by the `ST` arena and frozen at the API boundary if tree-persistence semantics need it.
+- `INLINABLE` on the exported engine primitives and search hot path.
+  `SPECIALIZE` pragmas are not needed while the search loop is monomorphic over
+  the concrete `Board` and `Word64` types.
+- Pure API boundary: the driver calls `uctSearch` / `uctSearchWithEquity` with
+  a `Board`, seed, search budget, and ply cap, then receives the chosen action
+  plus visit/equity streams. Tree persistence remains internal to the arena
+  boundary if future profiling requires it.
 - No `Maybe` or `Either` in the rollout inner loop; sentinel values or unboxed sum representations instead.
 
 ### One known asymmetry: PGO
@@ -893,7 +907,7 @@ MCTS/
   cpp-imperative/      -- (ii)  imperative C++, max-optimised, exposed via C ABI
   cpp-functional/      -- (iii) functional-style C++, exposed via C ABI
   rust/                -- (iv)  Rust implementation, exposed via C ABI (cdylib)
-  bench/               -- Cabal benchmark targets (criterion / tasty-bench)
+  bench/               -- Cabal benchmark target (mcts-criterion / Criterion)
   test/                -- deterministic, property, integration, and cross-backend tests
                        --   no checked-in generated transcripts or golden data
   docker/              -- Dockerfile

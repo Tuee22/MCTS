@@ -95,8 +95,9 @@ the ply-cap draw rule for backends (ii)–(v)), and legal-move enumeration.
   checked by a flood-fill (BFS) on the wall-bitboard-derived graph against each
   candidate wall placement; pawn moves do not need this check. The brute-force
   property test in Validation step 1 below covers this rule on the random sample.
-- Bitboard primitives go through `Data.Bits` (lowering to `popcnt`/`tzcnt` under
-  `-fllvm` with `-optlo-mcpu=native`).
+- Bitboard primitives go through `Data.Bits` under the active `-fllvm` backend;
+  the extra native LLVM CPU flags remain deferred by Phase `8` on the current
+  aarch64 container.
 
 ### Validation
 
@@ -143,8 +144,9 @@ the ply-cap draw rule for backends (ii)–(v)), and legal-move enumeration.
 
 ### Objective
 
-Land the mutable tree arena: one contiguous `MutablePrimArray s` per game, freed in
-bulk at game end, with `Int32` child indices and unboxed `Float` value-backup fields.
+Land the mutable tree arena: one structure-of-arrays `STUArray` arena per game,
+freed in bulk at game end, with `Int32` child indices and unboxed `Float`
+value-backup fields.
 
 ### Deliverables
 
@@ -181,10 +183,10 @@ bulk at game end, with `Int32` child indices and unboxed `Float` value-backup fi
   arena cursor tracks allocation count, (c) `bulkVisits` matches
   per-slot reads, (d) `freeArena` resets the cursor and the next
   `allocNode` starts at slot 0.
-- The Phase 8 `MutableByteArray#` migration path (a hand-rolled arena with
-  per-rollout scratch) lands when profiling justifies it. The API exported
-  by `MCTS.Search.Arena` remains the boundary; the underlying
-  representation flips behind it.
+- The `MutableByteArray#` migration path (a hand-rolled arena with per-rollout
+  scratch) remains profile-driven and is not required by the current measured
+  baseline. The API exported by `MCTS.Search.Arena` remains the boundary; the
+  underlying representation can change behind it.
 
 ## Sprint 3.3: UCT Search and Random-Rollout Leaf Evaluation ✅
 

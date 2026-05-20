@@ -6,8 +6,9 @@
 -- N_child)`, one-child-at-a-time expansion on second visit, random-
 -- rollout leaf evaluation on first visit, and per-rollout
 -- backpropagation along the recursive descent path. Phase 8 layers on
--- `-O2 -fllvm` + `INLINABLE` + `SPECIALIZE` + a per-rollout scratch
--- board; the API exported here stays stable across that migration.
+-- `-O2 -fllvm` plus `INLINABLE`; the search loop is currently monomorphic,
+-- so explicit `SPECIALIZE` pragmas are not needed. The API exported here
+-- stays stable across future profile-driven representation work.
 module MCTS.Search.UCT
     ( uctSearch
     , uctSearchWithEquity

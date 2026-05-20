@@ -60,8 +60,8 @@ data Env = Env
 
 -- | Defaults match the worktree baseline: standard output, the canonical
 -- command spec, the full prerequisite registry, project-local cache, and
--- a production clock stub that always returns zero. The Sprint 3.5 test
--- hook overrides `envClockMonotonic` before the bench runner is invoked.
+-- the production monotonic clock. The Sprint 3.5 test hook overrides
+-- `envClockMonotonic` before the bench runner is invoked.
 defaultEnv :: Env
 defaultEnv =
     Env

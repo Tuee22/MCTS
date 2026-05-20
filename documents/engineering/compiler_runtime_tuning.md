@@ -254,8 +254,8 @@ the LLVM version is pinned in `docker/Dockerfile` so codegen is reproducible.
 
 #### Currently landed (Phase 8 Sprint 8.1 baseline)
 
-The full doctrine flag list including `-fllvm` is landed in `mcts.cabal`'s
-shared `warnings` common stanza:
+The full doctrine flag list including `-fllvm` is landed in each relevant
+`mcts.cabal` library, executable, test, and benchmark stanza:
 
 ```
 -O2

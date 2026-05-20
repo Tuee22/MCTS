@@ -85,6 +85,7 @@ checked, and the canonical validation command for that surface passes through
 | C++ backend build leaves not yet in full validation | Phase 8 restoration | `mcts test all` now builds `cpp-legacy`, `cpp-imperative`, `cpp-functional`, and `rust` before FFI-sensitive stanzas, Q3, Q7, and report-card measurement. |
 | Missing Q7 live legacy-parity stanza | Phase 8 restoration | `mcts.cabal` declares `mcts-legacy-parity`, `test/legacy-parity` validates all five backend slots and incomplete-cohort rejection, and `mcts verify legacy-parity` pins the legacy envelope. |
 | Stale two-backend wording | Phase 8 restoration | `README.md`, `DEVELOPMENT_PLAN/`, governed docs, generated command docs, and source comments now describe the five-backend first-class surface and the native-vs-C++ RNG split. |
+| C++ backend retirement marker files | Phase 8 restoration | Deleted `cpp-legacy/RETIRED.md`, `cpp-imperative/RETIRED.md`, and `cpp-functional/RETIRED.md`; the backend-local READMEs now describe the live first-class roles of `(i)`, `(ii)`, and `(iii)`. |
 | Static backend (ii) report-card anchor | Phase 8 restoration | Q1/Q2 report-card measurement uses `runBatchNoWriteDispatch` against live backend (ii) where the canonical shared library is present. |
 | Internal parity-anchor naming cleanup | Phase 8 restoration | Internal command/test types now use `ParityAnchor*`, `baseline`, and `candidate`; the public `mcts test parity-anchor` command remains unchanged. |
 
