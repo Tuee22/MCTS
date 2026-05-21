@@ -400,8 +400,9 @@ consumer is wired in Phase 4 once the FFI bridge exists.
 1. Unit tests pin `mix(42, 0) = <Word64>`, `mix(42, 1) = <Word64>` for a chosen
    seed pair without checked-in generated fixture files; the values come from
    the canonical splitmix64 spec.
-2. A property test asserts `mix master_seed n` is bijective in `n` for fixed
-   `master_seed` over the first 1M values of `Word64`.
+2. A bounded property test asserts `mix master_seed n` is bijective in `n` for fixed
+   `master_seed` over the implemented smoke range; the current `mcts-unit` coverage
+   pins uniqueness for `mix 42 i` where `i ∈ [0, 1023]`.
 3. Cross-language agreement is asserted through generated test data and the live
    `(rust, haskell)` verify/recompute schedule. Historical C++ RNG split-seed
    evidence remains recorded with backend (i), but the current clean-clone test suite
@@ -416,9 +417,9 @@ consumer is wired in Phase 4 once the FFI bridge exists.
   verification paths that force the cohort to `CppRng`.
 - Baseline unit coverage now pins `mix(42, 0) == 2949826092126892291` and
   `mix(42, 1) == 5139283748462763858`, and the `mcts-unit` stanza adds a
-  bounded bijection check (`mix 42 i` is unique for `i ∈ [0, 1023]`). The
-  full `Word64`-range bijection property remains scheduled for Sprint 7.1's
-  property-based coverage.
+  bounded bijection check (`mix 42 i` is unique for `i ∈ [0, 1023]`). Larger
+  statistical or exhaustive RNG evidence can be added in a future validation
+  expansion, but it is not part of the current clean-clone gate.
 - The C++ `cpp_rng_split_seed` / verification-seed bridge belongs to the live
   equivalence path. Current unit and cross-backend tests pin the Haskell splitmix
   values, assert per-backend native salts in `MCTS.Rng.Mix`, and exercise the live

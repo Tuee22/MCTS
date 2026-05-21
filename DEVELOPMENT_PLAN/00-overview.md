@@ -163,11 +163,11 @@ temporary or operator-provided roots.
   [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md).
 - **Cross-backend verify, test stanzas, POC report card.** Five live Cabal test-suite
   stanzas (`mcts-unit`, `mcts-integration`, `mcts-cross-backend`,
-  `mcts-haskell-style`), each `type: exitcode-stdio-1.0` with `tasty` as the in-stanza
-  runner; `mcts test all` is a Plan/Apply command that builds the canonical foreign
-  backend artefacts, delegates to `cabal test`, runs the pinned no-write
-  report-card measurements plus verify cohorts, and emits the tidy summary
-  block. Owned by
+  `mcts-legacy-parity`, `mcts-haskell-style`), each `type: exitcode-stdio-1.0` with
+  `tasty` as the in-stanza runner; `mcts test all` is a Plan/Apply command that
+  builds the canonical foreign backend artefacts, delegates to `cabal test`, runs
+  the pinned no-write report-card measurements plus verify cohorts, and emits the
+  tidy summary block. Owned by
   [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md).
 - **Haskell performance parity closure.** GHC `-O2 -fllvm`,
   `-funbox-strict-fields`, `-fspecialise-aggressively`,
@@ -545,8 +545,8 @@ the Rust build-harness tuning alignment. Phase `7` is closed again after the
 digest-first verifier comparator, length-aware mismatch surfaces, `mcts play`
 side/opponent runtime contract, and replay overlay row contract were aligned.
 Phase `8` has closed the performance-parity proof, the no-generated-validation-data
-sweep, the five-backend restoration work, and the shared FFI/RNG loading contract;
-only final aggregate validation remains active.
+sweep, the five-backend restoration work, the shared FFI/RNG loading contract, and
+the aggregate validation baseline.
 
 | Surface | Current Repo State | Intended End State |
 |---------|--------------------|--------------------|

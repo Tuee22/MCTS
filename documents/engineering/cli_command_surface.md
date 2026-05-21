@@ -111,17 +111,18 @@ must be directed to an external or ignored artifact root and is not a normal
 
 ## Typed Source of Truth
 
-All command, option, backend ADTs, and verify-cohort GADTs — `Command`, `BenchCommand`,
+The command registry in `src/MCTS/CLI/Spec.hs` is the source of truth for the
+operator command tree and generated command artefacts. Concrete command, option,
+backend ADTs, and verify-cohort GADTs — `Command`, `BenchCommand`,
 `VerifyCommand`, `BuildCommand`, `InspectCommand`, `TestCommand`, `LintCommand`,
 `DocsCommand`, `CommandsOptions`, `HelpOptions`, `BenchOptions`,
 `VerifyOptions`, `PlayOptions`, `ShowOptions`, `ReplayOptions`, `Backend`,
 `VerifyBackend`, `SimBudget`, `Threading`, `RngSource`, `Side`,
-`TranscriptRef` — are defined in
-[../../README.md → CLI command topology](../../README.md). This document does
-not duplicate them; it elaborates the operator-facing matrix and the per-command
-flag semantics in the Flag Reference below. Worked invocation examples for every
-command also live in
-[../../README.md → CLI command topology → Concrete invocations](../../README.md).
+`TranscriptRef` — live in `src/MCTS/CLI/Command.hs` and related type modules.
+This document does not duplicate their full Haskell declarations; it elaborates
+the generated operator-facing matrix and the per-command flag semantics in the
+Flag Reference below. Worked invocation examples live in
+[../../README.md → CLI command topology](../../README.md).
 
 ## Flag Reference
 

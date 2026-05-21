@@ -342,33 +342,33 @@ and requires updating
 
 ## Editor / IDE Setup
 
-The project's build doctrine (see [../../CLAUDE.md](../../CLAUDE.md)) routes all
-builds, tests, lints, and codegen through
-`docker compose run --rm mcts mcts <command>`. The IDE pipeline is the single
-intentional exception:
+The project's build doctrine routes all supported builds, tests, lints, and
+codegen through `docker compose run --rm mcts mcts <command>`. Host editor
+integration is personal convenience only; it is not a supported validation,
+build, formatting, linting, documentation-generation, test, benchmark, or
+backend-build workflow.
 
-- **Haskell Language Server runs on the host.** The VS Code / code-server
+- **Haskell Language Server may run on the host.** The VS Code / code-server
   Haskell extension launches `haskell-language-server-wrapper` as a host
   subprocess of the editor, so it cannot see anything that lives only inside
   the Compose service.
 - **The host's `~/.cabal/store/<ghc-ver>/` and the project's `dist-newstyle/`
-  are treated as an IDE-only cache.** They are never consumed by CI, release
+  are treated as IDE-only caches.** They are never consumed by CI, release
   artifacts, or any `mcts <command>` workflow. Both are already gitignored or
   outside the repo.
-- **One-time host seed:** `cabal update && cabal build all` from the project
-  root, using the GHC version pinned by `cabal.project`'s `with-compiler:`
-  field. After that, HLS self-heals across dependency changes — the first
-  hover after a `mcts.cabal` edit may be slow while cabal rebuilds the delta,
-  but no manual intervention is needed.
-- **GHC version bumps** require: `ghcup install ghc <new-ver>`,
-  `ghcup install hls latest`, an update to `with-compiler:` in
-  `cabal.project`, and an update to `haskell.toolchain.ghc` in the editor's
+- **No host command is part of repository validation.** If an editor requires
+  host-side package metadata, that setup is outside the supported project
+  workflow and must not be cited as evidence that the repo builds or tests.
+- **GHC version bumps** require updating the pinned project toolchain and any
+  personal editor configuration that references it, including
+  `haskell.toolchain.ghc` in the editor's
   settings (vscode-server: `~/.vscode-server/data/Machine/settings.json`;
-  code-server: `~/.local/share/code-server/User/settings.json`). Then re-run
-  the host seed step. Expected cadence: rare.
+  code-server: `~/.local/share/code-server/User/settings.json`). Expected
+  cadence: rare.
 
 Adding any other host-side build pathway is a doctrine change and requires
-updating [../../CLAUDE.md](../../CLAUDE.md).
+updating the root operator/agent guidance and
+[../../README.md → Build and run](../../README.md).
 
 ## Cross-References
 

@@ -40,7 +40,7 @@ only project-specific elaborations. The four project-specific docs
 | [haskell_code_guide.md](./haskell_code_guide.md) | How the project uses `Subprocess`, `Plan / Apply`, `prerequisiteRegistry`, `Env`, `AppError`, and GADT state machines; defers to the doctrine on each pattern |
 | [determinism_contract.md](./determinism_contract.md) | RNG split, per-game `splitmix64(master_seed, game_index)` seed derivation, ply-cap draw rule, visit-count vs equity asymmetry, legacy parity envelope |
 | [transcript_format.md](./transcript_format.md) | Little-endian binary wire format, single-byte action enumeration, content addressing, git-style hash-prefix lookup |
-| [backend_ffi_contract.md](./backend_ffi_contract.md) | C ABI shape across the live C-ABI backends, `unsafe`/`safe` import policy, `--rng cpp` plumbing, `*-bench` vs `*-instrumented` build targets |
+| [backend_ffi_contract.md](./backend_ffi_contract.md) | C ABI shape across the live C-ABI backends, `unsafe`/`safe` import policy, `--rng cpp` plumbing, and the foreign steelman `*-bench` vs `*-instrumented` build targets |
 | [compiler_runtime_tuning.md](./compiler_runtime_tuning.md) | Per-backend tuning stack: legacy (i) exemption, (ii)/(iii) doctrine flag set, (iv) Rust `[profile.release]`, (v) Haskell GHC/LLVM/RTS tuning, one-known-asymmetry PGO note |
 
 ## Quick Navigation
@@ -82,7 +82,7 @@ only project-specific elaborations. The four project-specific docs
 
 ### Testing
 
-- [Four Live Cabal Stanzas](./unit_testing_policy.md#test-stanzas)
+- [Five Live Cabal Stanzas](./unit_testing_policy.md#test-stanzas)
 - [Test Organization](../../HASKELL_CLI_TOOL.md) — doctrine
 - [Repository Data Doctrine](./unit_testing_policy.md#repository-data-doctrine)
 - [Property Invariants](./unit_testing_policy.md#property-invariants)

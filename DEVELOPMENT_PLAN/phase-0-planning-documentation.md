@@ -264,7 +264,8 @@ rule L.
     `cpp_rng_fill_u64`, `cpp_rng_free` (all five functions present per README §6.10).
   - **Paired build targets**: `*-bench`, `*-instrumented` (or the project-specific
     `_bench` / `_instrumented` suffix), with at least one owning sprint per
-    non-exempt backend (ii, iii, iv, v).
+    non-exempt foreign steelman backend (ii, iii, iv). Backend (v) Haskell exposes
+    equivalent logical instrumentation/recompute surfaces in-process.
   - **Verify mismatch protocol**: `digest equality`, `first divergent record`.
   - **Replay equity contract**: `bit-identical`, `ULP`, `same-backend equity`,
     `cross-backend equity tolerance`.

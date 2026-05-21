@@ -7,7 +7,7 @@
 
 > **Purpose**: Authoritative spec of the C ABI shape exposed by the live FFI-linked
 > backends, the Haskell-side import policy, the `--rng cpp` shared-generator
-> plumbing, and the instrumented-vs-bench paired build-target scheme.
+> plumbing, and the foreign steelman instrumented-vs-bench paired build-target scheme.
 
 This document owns its content. There is no doctrine overlap; the FFI contract is
 project-specific.
@@ -36,12 +36,13 @@ The Haskell driver dynamically loads board lifecycle, visit-vector search,
 recompute, read-visits, and envelope symbols through `src/MCTS/FFI/Cpp*.hs`,
 `src/MCTS/FFI/Rust.hs`, `src/MCTS/Driver/Dispatch.hs`, and
 `src/MCTS/Driver/ForeignSearch.hs` when the matching shared library is present.
-Chosen-action smoke helpers remain as compatibility residue for Cabal builds
-without local shared libraries; the operator-facing bench/play/divergence paths
-and integration smokes use the real visit-vector and recompute ABIs for
-available foreign backends. Q3 `verify` uses live visit-vector ABI for
-visit-count equality across `(ii)..(v)`, and Q7 uses live backend slots
-`(i)..(v)` under the legacy envelope. Q3 uses the live cdylib when the matching
+The bounded chosen-action smoke helpers are permanent clean-clone test
+scaffolding for Cabal builds without local shared libraries, not deprecated
+operator surface. The operator-facing bench/play/divergence paths and
+integration smokes use the real visit-vector and recompute ABIs for available
+foreign backends. Q3 `verify` uses live visit-vector ABI for visit-count equality
+across `(ii)..(v)`, and Q7 uses live backend slots `(i)..(v)` under the legacy
+envelope. Q3 uses the live cdylib when the matching
 library is present and the requested batch can use the fixed 60-ply foreign
 search horizon; otherwise it falls back to the in-process runner so Cabal
 stanzas stay self-contained.

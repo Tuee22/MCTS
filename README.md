@@ -99,7 +99,7 @@ The `mcts verify` subcommands run the requested backend slots under `--rng cpp` 
 
 **Operator cache is local.** Runtime transcripts live in a local `.mcts-cache/transcripts/` directory which is `.gitignore`'d. Files are content-addressed by `sha256(run_config)`, where `run_config` includes the backend, workload, threading/workers, RNG source, master seed, sim params, `max_plies`, per-game index, and `c_param` bits, so the same backend/game run reuses prior output across runs. Cross-backend verification compares a canonical determinism payload decoded from those backend-specific files; it does not require different backends to share a filename. The repository has no checked-in transcript fixture exception: tests synthesize transcripts and sidecars in temporary directories.
 
-**Compile-time toggle for instrumentation.** Backends (ii), (iii), (iv), and (v) keep the paired-target discipline: `*-bench` (no instrumentation — the binary is byte-identical to one where the feature does not exist) and `*-instrumented` (transcript writer plus hooks that expose per-move tree state; used by `verify`, `play`, and `inspect replay`). Backend (i) is the only exemption: it remains line-level faithful to the legacy engine, with transcript writing and instrumentation layered around the C ABI boundary. The toggle is a template / type-level flag on the self-play driver, not a runtime branch in the hot loop. The MCTS engine itself (search, rollout, board, RNG) is one shared artefact between paired targets; only the small driver compiles twice. Because the bench binary has nothing to disable, no benchmark phase is needed to demonstrate zero overhead — the instrumentation code literally does not exist in it.
+**Compile-time toggle for foreign instrumentation.** Steelman foreign backends (ii), (iii), and (iv) keep the paired-target discipline: `*-bench` (no instrumentation — the binary is byte-identical to one where the feature does not exist) and `*-instrumented` (transcript writer plus hooks that expose per-move tree state; used by `play`, `inspect replay`, `inspect divergence`, and integration smokes). Backend (i) is the legacy exemption: it remains line-level faithful to the legacy engine, with transcript writing and instrumentation layered around the C ABI boundary. Backend (v) is native Haskell in-process; it exposes the same logical visit/recompute surfaces directly through Haskell modules rather than through a paired shared-library target. The toggle for foreign steelman backends is a template / type-level flag on the self-play driver, not a runtime branch in the hot loop. The MCTS engine itself (search, rollout, board, RNG) is one shared artefact between paired foreign targets; only the small driver compiles twice. Because the bench binary has nothing to disable, no benchmark phase is needed to demonstrate zero overhead — the instrumentation code literally does not exist in it.
 
 **Format: dense binary, fully owned.** No schema-library dependency: protobuf, flatbuffers, Cap'n Proto, and CBOR all have library-version-dependent encoding latitude that would have to be imported into the determinism contract. The header carries the run config; per-move records are sparse `(action_id, visits)` pairs sorted ascending by action ID.
 
@@ -253,7 +253,7 @@ Backend (i)'s throughput is published for reference only and is **not on the sam
 
 ## `mcts test all`
 
-The doctrine-mandatory canonical test command. `mcts test all` is the developer-facing entrypoint that proves whether the POC's hypotheses hold. It does three things, in order:
+The doctrine-mandatory canonical test command. `mcts test all` is the developer-facing entrypoint that proves whether the POC's hypotheses hold. It does four things, in order:
 
 1. **Builds canonical backend artefacts.** The same short-lived container runs
    `mcts build cpp-legacy`, `mcts build cpp-imperative`,
@@ -378,167 +378,9 @@ One non-negotiable feature inherited from the legacy implementation:
 
 ## CLI command topology
 
-Following [`HASKELL_CLI_TOOL.md`](HASKELL_CLI_TOOL.md), commands are modelled as ordinary Haskell data types and the parser is generated from a separate `CommandSpec`:
+Following [`HASKELL_CLI_TOOL.md`](HASKELL_CLI_TOOL.md), commands are modelled as ordinary Haskell data types and the parser is generated from a separate `CommandSpec`. The live source of truth is `src/MCTS/CLI/Spec.hs`, with concrete command ADTs in `src/MCTS/CLI/Command.hs` and the `optparse-applicative` parser rendered in `src/MCTS/CLI/Parser.hs`. Generated command artefacts under `documents/cli/`, `share/man/man1/`, and `share/completion/` derive from that same registry.
 
-```haskell
-data Command
-  = Bench     BenchCommand
-  | Verify    VerifyCommand
-  | Play      PlayOptions
-  | Inspect   InspectCommand
-  | Test      TestCommand          -- mcts test all, mcts test <stanza>
-  | Lint      LintCommand          -- mcts lint files|docs|haskell|all
-  | Docs      DocsCommand          -- mcts docs check|generate
-  | Commands  CommandsOptions      -- introspection: --tree, --json, default flat list
-  | Help      HelpOptions          -- mcts help <subcommand>
-  | CheckCode                      -- mcts check-code: lint files → lint docs → lint haskell → cabal build all (warning-clean)
-  | Build     BuildCommand         -- mcts build <backend>: Plan/Apply PGO+BOLT+mimalloc pipeline
-  deriving stock (Show, Eq)
-
-data BenchCommand
-  = BenchRollouts BenchOptions
-  | BenchSelfplay BenchOptions
-  deriving stock (Show, Eq)
-
-data VerifyCommand
-  = VerifyRollouts     VerifyOptions          -- cross-backend determinism on rollouts
-  | VerifySelfplay     VerifyOptions          -- cross-backend determinism on self-play
-  | VerifyLegacyParity LegacyParityOptions    -- all five backends under the legacy envelope
-  deriving stock (Show, Eq)
-
-data BuildCommand
-  = BuildCppLegacy                 -- verbatim port: legacy flags only
-  | BuildCppImperative             -- steelman ceiling: PGO + BOLT + mimalloc
-  | BuildCppFunctional             -- functional-style C++ with the same optimisation stack
-  | BuildRust                      -- cdylib: rustc PGO + BOLT + mimalloc #[global_allocator]
-  | BuildLegacyFixtures            -- Q6 evidence generator from the legacy port
-  deriving stock (Show, Eq)
-
-data InspectCommand
-  = InspectList                    -- enumerate the local transcript cache
-  | InspectShow   ShowOptions      -- dump one transcript, legacy notation
-  | InspectReplay ReplayOptions    -- interactive TUI replay
-  | InspectCache  CacheCommand      -- list/prune equity sidecars
-  | InspectDivergence DivergenceOptions -- show divergence metrics for one transcript
-  deriving stock (Show, Eq)
-
-data CacheCommand
-  = InspectCacheList
-  | InspectCachePrune CachePruneOptions
-  deriving stock (Show, Eq)
-
-data TestCommand
-  = TestAll                        -- every cabal stanza + POC report card
-  | TestStanza Text                -- e.g. "mcts-unit", "mcts-integration"
-  deriving stock (Show, Eq)
-
-data LintCommand
-  = LintFiles   { lintWrite :: Bool }  -- whitespace, final newline, forbidden paths
-  | LintDocs    { lintWrite :: Bool }  -- governed docs, generated sections
-  | LintHaskell { lintWrite :: Bool }  -- fourmolu + hlint + cabal format
-  | LintAll                            -- runs every lint above
-  deriving stock (Show, Eq)
-
-data DocsCommand
-  = DocsCheck                      -- compare rendered output against on-disk markers
-  | DocsGenerate                   -- splice rendered output into markers (idempotent)
-  deriving stock (Show, Eq)
-
-data CommandsOptions = CommandsOptions
-  { commandsTree :: Bool           -- --tree
-  , commandsJson :: Bool           -- --json
-  } deriving stock (Show, Eq)
-
-newtype HelpOptions = HelpOptions { helpTarget :: [Text] }
-                      deriving stock (Show, Eq)
-
-data Backend    = CppLegacy | CppImperative | CppFunctional | Rust | Haskell
-                  deriving stock (Show, Eq)
-
-data VerifyBackend = VCppImperative | VCppFunctional | VRust | VHaskell
-                     deriving stock (Show, Eq)        -- backend (i) excluded at the type level
-
-data VerifyCommand
-  = VerifyRollouts Bool [VerifyBackend] RunInputs
-  | VerifySelfplay Bool [VerifyBackend] RunInputs
-  | VerifyLegacyParity Bool Workload [Backend] RunInputs
-                           deriving stock (Show, Eq)  -- backend (i) is allowed here and required
-
-data RngSource  = NativeRng | CppRng
-                  deriving stock (Show, Eq)
-
-data Threading  = SingleThreaded | MultiThreaded { workers :: Int }
-                  deriving stock (Show, Eq)
-
-data Side       = Hero | Villain
-                  deriving stock (Show, Eq)
-
-data SimBudget  = FixedSims Int                    -- same budget every move
-                | RampedSims Int Int               -- initial, then per-move
-                  deriving stock (Show, Eq)
--- CLI syntax: `--sims N` parses as `FixedSims N`; `--sims N0:N1` parses as
--- `RampedSims N0 N1` (initial-move budget N0, per-move budget N1 thereafter).
-
-newtype TranscriptRef = TranscriptRef Text          -- sha256 prefix, git-style
-                        deriving stock (Show, Eq)
-
-data BenchOptions = BenchOptions
-  { benchBackends  :: NonEmpty Backend
-  , benchRng       :: RngSource
-  , benchThreading :: Threading       -- default: MultiThreaded { workers = 8 }
-  , benchGames     :: Int
-  , benchSeed      :: Word64
-  , benchMaxPlies  :: Word16          -- default: 200; ignored for backend (i)
-  , benchSims      :: SimBudget       -- default: FixedSims 10_000; ignored by bench rollouts
-  } deriving stock (Show, Eq)
-
-data VerifyOptions = VerifyOptions
-  { verifyBackends  :: NonEmpty VerifyBackend  -- (i) cannot appear: see VerifyBackend above
-  , verifyThreading :: Threading              -- default: SingleThreaded; determinism payloads are identical either way, ST is the simpler default
-  , verifyGames     :: Int
-  , verifySeed      :: Word64
-  , verifyMaxPlies  :: Word16             -- default: 200; pinned across the cohort
-  , verifySims      :: SimBudget          -- default: FixedSims 10_000; ignored by verify rollouts
-  -- RngSource is implicitly CppRng; native RNG cannot validate cross-backend
-  -- The "must include >= 2 backends" rule is checked at parse time and rendered
-  -- as AppError VerifyCohortTooSmall on failure (see Output and error discipline).
-  } deriving stock (Show, Eq)
-
-data PlayOptions = PlayOptions
-  { playBackend :: Backend
-  , playSide    :: Side
-  , playVs      :: Maybe Backend         -- Just b → AI-vs-AI; Nothing → human plays
-  , playRng     :: RngSource
-  , playSeed    :: Maybe Word64          -- Nothing → fresh random, recorded in transcript
-  , playSims    :: SimBudget
-  , playMaxPlies :: Word16               -- default: 200; ignored if playBackend is (i)
-  , playCacheDir :: Maybe FilePath       -- default cache root when omitted
-  -- no threading field: a single game is always single-threaded internally
-  } deriving stock (Show, Eq)
-
-data ShowOptions = ShowOptions
-  { showRef        :: TranscriptRef
-  , showTopN       :: Int                -- default 10; 0 = all
-  , showWithEquity :: Bool               -- default False; True re-runs search
-  , showEnvelope   :: Bool               -- default False; dump the engine envelope
-  } deriving stock (Show, Eq)
-
-data ReplayOptions = ReplayOptions
-  { replayRef         :: TranscriptRef
-  , replayTopN        :: Int             -- default 10; 0 = all; live-adjustable in-app
-  , replayCacheStates :: Int             -- default 20; in-memory MCTS state cache size
-  } deriving stock (Show, Eq)
-
-newtype CachePruneOptions = CachePruneOptions
-  { keepCurrent :: Bool                   -- --keep-current
-  } deriving stock (Show, Eq)
-
-newtype DivergenceOptions = DivergenceOptions
-  { divergenceRef :: TranscriptRef
-  } deriving stock (Show, Eq)
-```
-
-This gives a typed surface that the parser, the help text, and the test suite all derive from.
+This README is intentionally operator-facing: it names the project intent, verification model, and common invocations, but it does not duplicate the full command ADT cascade. Use `mcts commands --tree` for the current command tree, `mcts commands --json` for the stable machine-readable schema, and [`documents/engineering/cli_command_surface.md`](documents/engineering/cli_command_surface.md) for the generated command matrix and flag reference.
 
 Concrete invocations:
 
@@ -578,7 +420,7 @@ docker compose run --rm mcts mcts inspect show 7a2f --top 10 --with-equity
 # Interactive replay: navigate forward/back through a stored game
 docker compose run --rm mcts mcts inspect replay 7a2f --top 15
 
-# Doctrine-alignment gate: lint files + docs + haskell, then cabal build all (warning-clean)
+# Doctrine-alignment gate: lint files + docs + haskell, then the container-owned warning-clean build
 docker compose run --rm mcts mcts check-code
 
 # Build the live foreign backend's optimised library (Plan/Apply: PGO instrument → train → re-build → BOLT → mimalloc link)
@@ -588,7 +430,7 @@ docker compose run --rm mcts mcts build rust
 
 The `verify` subtree pins `--rng cpp`, drives every requested backend over the same seed and same move sequence, and round-robin-compares their decoded determinism payloads (see [Cross-backend verification](#cross-backend-verification) above). Same-backend determinism tests live alongside as `tasty` cases under the `mcts-integration` stanza (see [`mcts test all`](#mcts-test-all)).
 
-`mcts check-code` is the canonical doctrine-alignment gate: it dispatches `mcts lint files`, `mcts lint docs`, `mcts lint haskell`, then `cabal build all` and fails if any step is non-clean. `mcts build <backend>` is a Plan/Apply harness per doctrine §Subprocesses as Typed Values; `--dry-run` and `--plan-file <path>` apply identically to the way they do on [`mcts test all`](#mcts-test-all).
+`mcts check-code` is the canonical doctrine-alignment gate: it dispatches `mcts lint files`, `mcts lint docs`, `mcts lint haskell`, then the container-owned warning-clean build step, and fails if any step is non-clean. `mcts build <backend>` is a Plan/Apply harness per doctrine §Subprocesses as Typed Values; `--dry-run` and `--plan-file <path>` apply identically to the way they do on [`mcts test all`](#mcts-test-all).
 
 ### Progressive introspection
 

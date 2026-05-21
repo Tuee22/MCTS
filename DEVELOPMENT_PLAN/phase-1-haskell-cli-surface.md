@@ -163,12 +163,13 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
   `name`, `summary`, `description`, `children`, `options`, `examples` for
   `CommandSpec`; `longName`, `shortName`, `metavar`, `description`, `required` for
   `OptionSpec`. Every leaf `CommandSpec` carries at least one `Example` entry.
-- `src/MCTS/CLI/Command.hs` declares the full ADT cascade verbatim per
-  [../README.md → CLI command topology](../README.md) (lines 301–454). The
-  declarations below are authoritative for every later phase that adds a new
-  subcommand. Each constructor is given its concrete shape — no "mirroring the
-  shape" delegation; later phases extend by adding constructors or fields, not by
-  re-deriving the shape from the README.
+- `src/MCTS/CLI/Command.hs` declares the command ADTs consumed by the
+  `CommandSpec` registry. The declarations below are the Sprint `1.2` baseline
+  snapshot used to establish the pattern; the live source of truth after later
+  phases is the implemented `src/MCTS/CLI/Command.hs` / `src/MCTS/CLI/Spec.hs`
+  pair plus the generated command artefacts. Later phases extend the code-owned
+  ADTs and registry together; this historical block is not a competing current
+  CLI specification.
 
   Top-level command:
 
@@ -622,11 +623,10 @@ forbidden-symbol HLint rules behind the `mcts-haskell-style` test stanza plus th
   Validation passed `docker compose run --rm mcts mcts test mcts-unit`,
   `docker compose run --rm mcts mcts docs check`, `git diff --check`, and
   `docker compose run --rm mcts mcts check-code`.
-- Extend `mcts-haskell-style` and `.hlint.yaml` coverage so the same rule is
-  checked by both the container-pinned HLint path and the conservative source
-  walker where HLint cannot express the boundary precisely.
-- Re-run `docker compose run --rm mcts mcts lint all` and
-  `docker compose run --rm mcts mcts check-code` after docs and code agree.
+- The style boundary is closed by the container-pinned HLint path, the committed
+  `.hlint.yaml`, and the conservative source walker where HLint cannot express the
+  boundary precisely. Later style-rule changes reopen this sprint explicitly rather
+  than leaving action items in a `Done` sprint.
 
 ## Sprint 1.5: `Plan / Apply` Boundary ✅
 
