@@ -45,11 +45,12 @@ reclosed after the Rust PGO build harness adopted the documented `lld` linker
 flag and the shared foreign envelope/C++ RNG bridge loading contract was restored
 for the five-backend surface. Phase `7` reclosed after the verifier comparator,
 `mcts play`, `inspect replay`, Q3 `(ii)..(v)` coverage, and Q7 all-five
-legacy-parity stanza were aligned with the governed contracts. Phases `3`, `4`,
-and `5` remain `Done` on their owned surfaces. Phase `8` is `Done`: the
-first-class C++ parser/build/verify/FFI surfaces are restored for `cpp-legacy`,
-`cpp-imperative`, and `cpp-functional` alongside `rust` and `haskell`, and the
-documentation now preserves the original five-backend hypothesis and RNG split.
+legacy-parity stanza were aligned with the governed contracts. Phases `3` and
+`4` remain `Done` on their owned surfaces. Phase `5` Sprint `5.3` closed on
+2026-05-21: `mcts build cpp-imperative` and `mcts build cpp-functional` now run
+the shared C++ PGO/BOLT Plan/Apply sequence. Phase `8` is closed for five-backend
+parser/build/verify/FFI restoration, generated-data cleanup, and the refreshed
+optimized-C++ report-card evidence.
 
 The Phase `1` reclosure was validated with
 `docker compose run --rm mcts mcts test mcts-unit`,
@@ -72,13 +73,16 @@ The Phase `7` reclosure was validated with
 `8.8` cleanup revalidated the focused and aggregate Compose gates without
 checked-in generated validation data.
 
-The 2026-05-19 performance-parity report-card evidence remains useful audit
-context, and the current implementation again matches the intended handoff:
-normal validation builds the three C++ shared libraries and Rust before
-FFI-sensitive tests, `VerifyBackend` accepts the Q3 cohort `(ii)..(v)`, and
-`mcts-legacy-parity` covers Q7 across all five backend slots. The Sprint `8.8`
-no-generated-validation-data cleanup remains closed: normal tests do not require
-`test/golden/` or checked-in transcript/report-card fixtures. The current
+The 2026-05-19 report-card evidence remains useful smoke-baseline audit context.
+The current implementation matches the five-backend restoration handoff: normal
+validation builds the three C++ shared libraries and Rust before FFI-sensitive
+tests, `VerifyBackend` accepts the Q3 cohort `(ii)..(v)`, and
+`mcts-legacy-parity` covers Q7 across all five backend slots. The 2026-05-21
+optimized-C++ report-card refresh measures backend (v) Haskell against the
+canonical backend (ii) artefact produced by `mcts build cpp-imperative`; on amd64,
+the documented C++ BOLT no-`.fdata` fallback installed the PGO artefact. The Sprint
+`8.8` no-generated-validation-data cleanup remains closed: normal tests do not
+require `test/golden/` or checked-in transcript/report-card fixtures. The current
 restoration has been validated with
 `docker compose run --rm --build mcts mcts test mcts-cross-backend`,
 `docker compose run --rm --build mcts mcts test all`,
@@ -119,10 +123,15 @@ smoke library). The historical 2026-05-19 report card against container-built
 artefacts records Q1 ST **0.05×**, Q1 MT8 **0.41×**, Q2 ST **0.05×**,
 Q2 MT8 **0.20×**, Q5 Haskell **0.99×**, Q5 cpp-imperative **3.64×**,
 Q7 legacy-envelope liveness evidence **PASS**, and `Verdict: Within tolerance`.
-Those numbers are audit evidence for the parity claim, not permission to remove
-any backend from the supported surface. Q3 covers `cpp-imperative`,
-`cpp-functional`, `rust`, and `haskell` under `--rng cpp`, and Q7 covers all
-five backend slots under the legacy envelope.
+Those numbers are historical smoke-baseline audit evidence, not permission to
+remove any backend from the supported surface. The 2026-05-21 optimized-C++ run
+records Q1 ST **0.05×** (`740.0` vs `39.2` games/s), Q1 MT8 **0.43×** (`690.7`
+vs `294.7` games/s), Q2 ST **0.06×** (`0.6` vs `0.0` games/s), Q2 MT8
+**0.19×** (`0.6` vs `0.1` games/s), Q5 Haskell **1.04×**, Q5 cpp-imperative
+**3.64×**, Q7 legacy-envelope liveness evidence **PASS**, and
+`Verdict: Within tolerance`.
+Q3 covers `cpp-imperative`, `cpp-functional`, `rust`, and `haskell` under
+`--rng cpp`, and Q7 covers all five backend slots under the legacy envelope.
 Sprint `8.7` closed the plan-suite cleanup ledger structure, and Sprint `8.8`
 closed the no-generated-validation-data cleanup. The
 `MCTS.Engine.ForeignRecompute` driver feeds
@@ -143,8 +152,8 @@ the `Env` record and `ReaderT App` monad;
 `applySubprocessPlan`, `applyWithEnv`, `applySubprocessWithEnv` helpers;
 the dependency-edge-aware `prerequisiteRegistry` with `transitiveClosure`,
 `registryHasCycle`, exact GHC/Cabal probes, LLVM/BOLT 19 probes, Rust 1.95.0
-probes, `ld.lld-19`, foreign shared-library artefact nodes, profile-directory
-nodes, and `mimalloc` probing; a real ST-arena MCTS engine
+probes, `ld.lld-19`, Rust cdylib/profile-directory nodes, C++/`mimalloc` probing,
+and C++ PGO/BOLT prerequisite coverage; a real ST-arena MCTS engine
 (`MCTS.Search.Arena` + `MCTS.Search.UCT`) wired through every backend's
 driver; deterministic multi-worker game dispatch; the pinned monotonic clock
 (`getMonotonicTimeNSec`) for bench timing with an injectable test hook;
@@ -155,8 +164,9 @@ per-backend-slot fields); the real arena-MCTS foreign-backend engine under
 (`mcts_rust_get_envelope`); full visit-vector Haskell FFI drivers drive
 backends `(i)`-`(iv)` through `withDynamicSearchGame` plus dynamic envelope
 loaders for each live foreign backend. Backend (iii)'s C++23 engine, envelope C ABI, and
-shared C++ 19-step PGO/BOLT pipeline remain part of the first-class source tree
-under `cpp-functional/`;
+Makefile-level C++ PGO/BOLT targets remain part of the first-class source tree
+under `cpp-functional/`, and supported CLI wiring for those targets is closed by
+Sprint `5.3`;
 backend (iv) Rust split into the planned module topology with `mimalloc::MiMalloc`
 as the global allocator, a real Corridors gameplay port, the full
 visit-vector/recompute C ABI, real `--backend rust` dispatch through
@@ -186,13 +196,16 @@ selected-backend `mcts play` AI dispatch, the replay cache-miss originator
 recompute path, and the 2026-05-19 Q7 legacy-envelope respec, focused
 validation passed through the canonical Compose entrypoint. The selected-backend
 ABI changes pass the per-backend build entries, and the focused Cabal stanzas
-pass: `mcts-unit` (26 cases including `tasty-quickcheck` and semantic TUI replay
+pass: `mcts-unit` (27 cases including `tasty-quickcheck`, C++ PGO/BOLT plan checks,
+and semantic TUI replay
 layout coverage), `mcts-integration` (25 integration cases including real-binary
 transcript determinism and synthetic backend-equivalence evidence), and
 `mcts-cross-backend` (7 cases). The
 2026-05-20 rebuilt full lifecycle gate
 `docker compose run --rm mcts mcts test all` passed after the restored C++ RNG bridge
-cleanup and recorded the canonical report-card verdict `Within tolerance`. The
+cleanup and recorded the smoke-baseline report-card verdict `Within tolerance`. The
+2026-05-21 full lifecycle gate passed after the C++ PGO/BOLT Plan/Apply closure and
+recorded the optimized-C++ report-card verdict `Within tolerance`. The
 2026-05-19 live Q7 investigation
 showed backend (i)'s legacy tree search can diverge from the steelman engines at
 the report-card budget, so Q7 is deliberately specified as a five-backend
@@ -265,15 +278,16 @@ A sprint can move to `Done` only when all of the following are true:
 | 2 | Transcript Codec, RNG, and Determinism Contract | ✅ Done (one-game cache keys, envelope wire layout, and `inspect show` sidecar/envelope behavior reclosed) | [phase-2-transcript-codec-and-determinism.md](phase-2-transcript-codec-and-determinism.md) |
 | 3 | Backend (v) Haskell Engine | ✅ Done (strict Word64 board baseline, recursive ST-arena UCT, deterministic tie-break, bench wiring, recompute) | [phase-3-haskell-engine.md](phase-3-haskell-engine.md) |
 | 4 | Backend (i) C++ Legacy Port and FFI Bridge | ✅ Done | [phase-4-cpp-legacy-port-and-ffi-bridge.md](phase-4-cpp-legacy-port-and-ffi-bridge.md) |
-| 5 | Backend (ii) C++ Imperative Steelman with PGO+BOLT | ✅ Done | [phase-5-cpp-imperative-steelman.md](phase-5-cpp-imperative-steelman.md) |
+| 5 | Backend (ii) C++ Imperative Steelman with PGO+BOLT | ✅ Done (Sprint `5.3` C++ PGO/BOLT Plan/Apply wiring closed on 2026-05-21) | [phase-5-cpp-imperative-steelman.md](phase-5-cpp-imperative-steelman.md) |
 | 6 | Backends (iii) C++ Functional-Style and (iv) Rust | ✅ Done | [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md) |
 | 7 | Cross-Backend Verify, Test Stanzas, POC Report Card | ✅ Done (digest-first verify, length-aware mismatch detection, play flag behavior, replay overlay contract, and generated-validation cleanup reclosed) | [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md) |
-| 8 | Haskell Performance Parity Closure and Five-Backend Restoration | ✅ Done (five-backend parser/build/verify/FFI restoration plus aggregate validation closure) | [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md) |
+| 8 | Haskell Performance Parity Closure and Five-Backend Restoration | ✅ Done (five-backend restoration, generated-data cleanup, and optimized-C++ report-card refresh closed) | [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md) |
 
 ## Current Plan Status
 
-The repository has moved past bootstrap into a parity-proven implementation
-baseline with the 2026-05-19 alignment sweep reclosed.
+The repository has moved past bootstrap into a five-backend implementation
+baseline with the 2026-05-19 alignment sweep reclosed and the 2026-05-21 C++
+PGO/BOLT / optimized-C++ report-card closure recorded.
 Implemented in the worktree:
 
 - `mcts.cabal`, `cabal.project`, `app/Main.hs`, `src/MCTS/**`, `test/**`,
@@ -315,9 +329,10 @@ Implemented in the worktree:
   (`getMonotonicTimeNSec`).
 - The prerequisite registry carries dependency edges and resolves transitively;
   the GHC/Cabal nodes check exact pinned versions via the typed `Subprocess`
-  capture boundary, the live foreign shared-library nodes cover C++ and Rust backends,
-  and the unit suite asserts the
-  registry is acyclic.
+  capture boundary, C++/LLVM/Rust/LLD/`mimalloc` toolchain probes are present,
+  Rust profile-directory and Rust cdylib probes exist, and the unit suite asserts the
+  registry is acyclic. C++ PGO/BOLT profile and shared-library prerequisite coverage is
+  part of the closed Sprint `5.3` work.
 - Phase 8 GHC tuning flags landed in `mcts.cabal`: `-O2 -fllvm
   -funbox-strict-fields -fspecialise-aggressively
   -fexpose-all-unfoldings -flate-dmd-anal
@@ -504,10 +519,11 @@ This plan is complete only when all of the following are true:
     constructors are hlint-forbidden outside the `runStreaming` / `capture` interpreter.
 16. Every Plan/Apply command supports `--dry-run` and `--plan-file <path>` (`mcts test
     all`, the build harness, anything that mutates external state).
-17. One `prerequisiteRegistry` spans every backend's toolchain (GCC, LLVM/BOLT, `rustc`,
-    `mimalloc`, `ghcup`, the PGO/BOLT profile directories) and emits
+17. One `prerequisiteRegistry` spans the active build/test prerequisite surface and emits
     `AppError PrerequisiteUnmet` carrying the failing `nodeId`, description, and remedy
-    hint.
+    hint. Current coverage includes exact GHC/Cabal, C++ compiler, LLVM/BOLT, Rust
+    `1.95.0`, LLD, `mimalloc`, Rust profile directories, and the Rust cdylib smoke
+    probe plus C++ PGO/BOLT profile and artefact prerequisites.
 18. Single `AppError` ADT with `renderError :: AppError -> Text` as the only Text
     rendering at the CLI boundary; `print`, `exitFailure`, and direct terminal formatting
     are hlint-forbidden outside `src/MCTS/CLI/Output.hs`.
@@ -544,10 +560,9 @@ This plan is complete only when all of the following are true:
     project work happens through this short-lived container entrypoint. Host-level
     `.build/` artefacts, repository `.sh` scripts, and `bootstrap/` helpers are
     unsupported.
-24. [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md) contains no
-    unresolved cleanup after Phase `8` restoration completes; stale two-backend
-    wording and two-backend code paths are corrected or explicitly tracked until
-    corrected.
+24. [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md) tracks the
+    stale tooling residue; stale two-backend wording and two-backend code paths are
+    corrected or explicitly tracked until corrected.
 
 ## Related Documents
 

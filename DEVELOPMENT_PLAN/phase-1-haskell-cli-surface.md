@@ -767,8 +767,8 @@ typed boundary and emits structured remedy hints on failure.
 - The prerequisite registry carries concrete nodes for the current
   toolchain/build surfaces: exact GHC `9.14.1`, Cabal `3.16.1.0`,
   LLVM/BOLT/LLD `19`, Rust `1.95.0`, `mimalloc`, live Rust shared-library
-  artefacts, optional legacy evidence prerequisites, and retained profile
-  directory checks.
+  artefacts, C++ PGO/BOLT profile and shared-library artefacts, optional legacy
+  evidence prerequisites, and retained profile directory checks.
 - The transitive closure runs before `apply`; a single unmet node emits
   `AppError PrerequisiteUnmet` carrying the failing `nodeId`, `nodeDescription`, and
   remedy hint.
@@ -785,9 +785,11 @@ typed boundary and emits structured remedy hints on failure.
   `transitiveClosure`, and `registryHasCycle` exist. The registry carries
   version-aware probes for `ghcup`, `ghc-9.14.1`, `cabal`, `c++`,
   `llvm-config` (LLVM `19.x`), `llvm-bolt` (LLVM `19.x`), `rustup`,
-  `cargo` / `rustc` (`1.95.0`), and `mimalloc` via `pkg-config`, plus the
-  `pgo-profiles` directory probe and the `logical-backends` /
-  `legacy-fixtures` explicit-output evidence probe.
+  `cargo` / `rustc` (`1.95.0`), LLD `19`, and `mimalloc` via library-path probes,
+  plus the `.build/profiles` and `rust/pgo-profile` directory probes, the
+  C++ profile-directory probes, `logical-backends` node, and canonical foreign
+  shared-library artefact nodes. C++ PGO/BOLT profile and artefact prerequisite
+  coverage closed in Sprint `5.3`.
 - `nodeDependsOn` carries dependency edges (`cargo`/`rustc` depend on
   `rustup`; `bolt` depends on `llvm`; `ghc-9.14.1`/`cabal-3.16.1.0` depend
   on `ghcup`). `prerequisitesForBuild` and `prerequisitesForTest` resolve

@@ -102,9 +102,11 @@ renderPurpose path spec =
         "mcts help" -> "Focused help pointer for a target command"
         "mcts check-code" -> "Doctrine alignment, formatter, HLint, warning-clean build, docs check"
         "mcts build cpp-legacy" -> "Plan/Apply: C++ legacy backend build harness"
-        "mcts build cpp-imperative" -> "Plan/Apply: C++ imperative steelman backend build harness"
-        "mcts build cpp-functional" -> "Plan/Apply: C++ functional-style backend build harness"
-        "mcts build rust" -> "Plan/Apply: Rust backend build harness"
+        "mcts build cpp-imperative" ->
+            "Plan/Apply: C++ imperative backend PGO/BOLT build harness"
+        "mcts build cpp-functional" ->
+            "Plan/Apply: C++ functional-style backend PGO/BOLT build harness"
+        "mcts build rust" -> "Plan/Apply: Rust backend PGO/BOLT build harness"
         "mcts build legacy-fixtures" -> "Plan/Apply: generate external legacy Q6 evidence"
         _ -> summary spec
 

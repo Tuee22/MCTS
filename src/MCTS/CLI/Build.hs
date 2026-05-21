@@ -2,6 +2,7 @@ module MCTS.CLI.Build
     ( runBuild
     , buildBackendPlan
     , legacyFixturePlan
+    , cppPgoBoltPlan
     , rustPgoBoltPlan
     , pgoTrainingGames
     , pgoTrainingSims
@@ -72,6 +73,8 @@ runBuildPlan env name opts plan = do
 ensureProfileDirectories :: String -> IO ()
 ensureProfileDirectories backend =
     case backend of
+        "cpp-imperative" -> ensure ["cpp-imperative/pgo-profile", "cpp-imperative/bolt-profile"]
+        "cpp-functional" -> ensure ["cpp-functional/pgo-profile", "cpp-functional/bolt-profile"]
         "rust" -> ensure ["rust/pgo-profile", "rust/bolt-profile"]
         _ -> pure ()
   where
@@ -85,6 +88,8 @@ buildBackendPlan backend =
         { planName = "build " <> backend
         , planSteps =
             case backend of
+                "cpp-imperative" -> cppPgoBoltPlan "cpp-imperative"
+                "cpp-functional" -> cppPgoBoltPlan "cpp-functional"
                 "rust" -> rustPgoBoltPlan
                 _ ->
                     [ Subprocess "make" ["-C", backend, "smoke"] Nothing Nothing
@@ -136,6 +141,86 @@ legacyFixturePlan options =
 -- this module. The training runs invoke `cabal exec mcts` so the
 -- exact same binary that ships the rest of the CLI drives the training
 -- workload — there is no separate training executable.
+cppPgoBoltPlan :: String -> [Subprocess]
+cppPgoBoltPlan backend =
+    [ resetCppProfileDirectories
+    , makeTarget "pgo-bench-generate"
+    , installCppTrainingArtifact "_bench.so"
+    , trainingRunFor backend pgoTrainingGames pgoTrainingSims
+    , makeTarget "pgo-instr-generate"
+    , installCppTrainingArtifact "_instrumented.so"
+    , trainingRunFor backend pgoTrainingGames pgoTrainingSims
+    , makeTarget "pgo-bench-use"
+    , makeTarget "pgo-instr-use"
+    , makeTarget "bolt-bench-instrument"
+    , installCppBoltTrainingArtifact "_bench.inst.so" "_bench.so"
+    , trainingRunFor backend boltTrainingGames boltTrainingSims
+    , makeTarget "bolt-instr-instrument"
+    , installCppBoltTrainingArtifact "_instrumented.inst.so" "_instrumented.so"
+    , trainingRunFor backend boltTrainingGames boltTrainingSims
+    , makeTarget "bolt-bench-optimize"
+    , makeTarget "bolt-instr-optimize"
+    , makeTarget "install-bench"
+    ]
+  where
+    libraryBase = cppLibraryBase backend
+    canonicalLibrary = cppBuildPath (libraryBase <> ".so")
+
+    makeTarget target =
+        Subprocess "make" ["-C", backend, target] Nothing Nothing
+
+    resetCppProfileDirectories =
+        Subprocess
+            "bash"
+            [ "-c"
+            , "rm -rf "
+                <> backend
+                <> "/pgo-profile "
+                <> backend
+                <> "/bolt-profile && mkdir -p "
+                <> backend
+                <> "/pgo-profile "
+                <> backend
+                <> "/bolt-profile .build/profiles"
+            ]
+            Nothing
+            Nothing
+
+    installCppTrainingArtifact suffix =
+        Subprocess
+            "cp"
+            [cppBuildPath (libraryBase <> suffix), canonicalLibrary]
+            Nothing
+            Nothing
+
+    installCppBoltTrainingArtifact instSuffix fallbackSuffix =
+        Subprocess
+            "bash"
+            [ "-c"
+            , "if [ -f "
+                <> cppBuildPath (libraryBase <> instSuffix)
+                <> " ]; then cp "
+                <> cppBuildPath (libraryBase <> instSuffix)
+                <> " "
+                <> canonicalLibrary
+                <> "; else cp "
+                <> cppBuildPath (libraryBase <> fallbackSuffix)
+                <> " "
+                <> canonicalLibrary
+                <> "; fi"
+            ]
+            Nothing
+            Nothing
+
+    cppBuildPath file =
+        backend <> "/build/" <> file
+
+cppLibraryBase :: String -> String
+cppLibraryBase backend =
+    case backend of
+        "cpp-functional" -> "libmcts_cpp_functional"
+        _ -> "libmcts_cpp_imperative"
+
 -- | Sprint 6.4 PGO+BOLT pipeline for backend (iv) Rust. The first
 -- four steps drive `cargo build --release` with rustc's PGO flags
 -- through `RUSTFLAGS`; the BOLT pass runs `llvm-bolt -instrument`

@@ -64,17 +64,11 @@ prerequisiteRegistry =
     , versionContainsNode
         "bolt"
         "LLVM BOLT 19 post-link optimizer"
-        "install LLVM BOLT 19 (llvm-bolt) for the Rust steelman stack"
+        "install LLVM BOLT 19 (llvm-bolt) for the steelman backend stacks"
         ["llvm"]
         "llvm-bolt"
         ["--version"]
         "LLVM version 19."
-    , executableNode
-        "perf"
-        "Linux perf profiler for BOLT profile generation"
-        "install linux-tools/perf in the project container before running full BOLT profile generation"
-        []
-        "perf"
     , executableNode
         "lld-linker"
         "LLVM LLD 19 linker for the Rust backend"
@@ -117,7 +111,12 @@ prerequisiteRegistry =
         "create container-local .build/profiles when running optimized backend builds"
         []
         (doesDirectoryExist ".build/profiles")
+    , profileDirectoryNode "cpp-imperative-pgo-profile" "cpp-imperative/pgo-profile"
+    , profileDirectoryNode "cpp-imperative-bolt-profile" "cpp-imperative/bolt-profile"
+    , profileDirectoryNode "cpp-functional-pgo-profile" "cpp-functional/pgo-profile"
+    , profileDirectoryNode "cpp-functional-bolt-profile" "cpp-functional/bolt-profile"
     , profileDirectoryNode "rust-pgo-profile" "rust/pgo-profile"
+    , profileDirectoryNode "rust-bolt-profile" "rust/bolt-profile"
     , PrerequisiteNode
         "logical-backends"
         "The logical in-process backend cohort is available"
@@ -130,6 +129,24 @@ prerequisiteRegistry =
         "run docker compose run --rm mcts mcts build rust"
         ["cargo", "rustc"]
         (doesFileExist "rust/target/release/libmcts_rust.so")
+    , sharedLibraryNode
+        "libmcts-cpp-legacy-built"
+        "C++ legacy shared library exists for dynamic FFI smoke tests"
+        "run docker compose run --rm mcts mcts build cpp-legacy"
+        ["cxx"]
+        "cpp-legacy/build/libmcts_cpp_legacy.so"
+    , sharedLibraryNode
+        "libmcts-cpp-imperative-built"
+        "C++ imperative shared library exists for dynamic FFI smoke tests"
+        "run docker compose run --rm mcts mcts build cpp-imperative"
+        ["cxx", "mimalloc"]
+        "cpp-imperative/build/libmcts_cpp_imperative.so"
+    , sharedLibraryNode
+        "libmcts-cpp-functional-built"
+        "C++ functional shared library exists for dynamic FFI smoke tests"
+        "run docker compose run --rm mcts mcts build cpp-functional"
+        ["cxx", "mimalloc"]
+        "cpp-functional/build/libmcts_cpp_functional.so"
     ]
 
 prerequisitesForBuild :: String -> [PrerequisiteNode]
@@ -137,9 +154,11 @@ prerequisitesForBuild backend =
     transitiveClosure prerequisiteRegistry $
         case backend of
             "cpp-legacy" -> ["cxx"]
-            "cpp-imperative" -> ["cxx", "mimalloc"]
-            "cpp-functional" -> ["cxx", "mimalloc"]
-            "rust" -> ["cargo", "rustc", "lld-linker", "pgo-profiles"]
+            "cpp-imperative" ->
+                ["cxx", "mimalloc", "bolt", "cpp-imperative-pgo-profile", "cpp-imperative-bolt-profile"]
+            "cpp-functional" ->
+                ["cxx", "mimalloc", "bolt", "cpp-functional-pgo-profile", "cpp-functional-bolt-profile"]
+            "rust" -> ["cargo", "rustc", "lld-linker", "bolt", "rust-pgo-profile", "rust-bolt-profile"]
             "legacy-fixtures" -> ["cxx"]
             _ -> []
 
@@ -159,6 +178,10 @@ profileDirectoryNode ident path =
         ("create " <> path <> " before running the full optimized backend build")
         ["pgo-profiles"]
         (doesDirectoryExist path)
+
+sharedLibraryNode :: String -> String -> String -> [String] -> FilePath -> PrerequisiteNode
+sharedLibraryNode ident description remedy deps path =
+    PrerequisiteNode ident description remedy deps (doesFileExist path)
 
 versionNode
     :: String

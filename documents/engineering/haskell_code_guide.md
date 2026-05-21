@@ -41,7 +41,7 @@
 
 ### `Subprocess`
 
-The Phase 5/6 PGO+BOLT build harness and the FFI shared-library link path go
+The Rust and C++ PGO/BOLT build harnesses and the FFI shared-library link path go
 through `runStreaming` / `capture`, which interpret `Subprocess` values with
 `typed-process`. There is no other IO surface for subprocess execution. The
 `.hlint.yaml` rules from
@@ -55,8 +55,9 @@ The MCTS commands that consume the `Plan / Apply` pattern are:
 - `mcts test all` — Plan/Apply over the five live Cabal stanzas plus the report-card
   workload (Phase 7 Sprint 7.3).
 - `mcts build cpp-legacy`, `mcts build cpp-imperative`, and
-  `mcts build cpp-functional` — Plan/Apply over the C++ backend build pipelines
-  (Phase 4/5/6; Phase 8 restoration).
+  `mcts build cpp-functional` — Plan/Apply over the C++ backend build leaves.
+  The steelman C++ leaves drive the shared PGO/BOLT target sequence and install the
+  canonical shared libraries, with the documented BOLT no-`.fdata` fallback.
 - `mcts build rust` — Plan/Apply over
   the live foreign backend two-stage PGO + BOLT post-link + `mimalloc` link pipeline
 - `mcts build legacy-fixtures` — Plan/Apply over the backend (i) optional external
@@ -78,10 +79,10 @@ external state (only the transcript cache, which they own), so the
 The `prerequisiteRegistry` (Phase 1 Sprint 1.7) covers every toolchain dependency
 across the five backends. The current baseline uses exact version probes for
 `ghc-9.14.1 --numeric-version == 9.14.1` and
-`cabal --numeric-version == 3.16.1.0`, LLVM/BOLT `19.x`, Rust `1.95.0`,
-`mimalloc` via `pkg-config`, executable/file probes for the remaining
-build-command prerequisites (`c++`, profile directories, and optional legacy
-evidence roots), and
+`cabal --numeric-version == 3.16.1.0`, LLVM/BOLT `19.x`, Rust `1.95.0`, LLD `19`,
+`mimalloc` via library-path probes, executable/file probes for the remaining
+build-command prerequisites (`c++`, Rust and C++ profile directories, and canonical
+foreign shared-library nodes), and
 emits `AppError PrerequisiteUnmet` with a remedy hint before applying backend build
 plans or Cabal-backed test plans.
 
@@ -163,8 +164,9 @@ alongside the user-facing variants:
 - `PrerequisiteUnmet` — `prerequisiteRegistry` failure carrying the failing
   `nodeId`, `nodeDescription`, and remedy hint.
 - `SubprocessFailed` — `runStreaming` / `capture` returns a non-zero exit code
-  through the typed `Subprocess` boundary (the PGO+BOLT build harness, the
-  `cabal test` invocation, etc.). Reserved for the subprocess boundary only.
+  through the typed `Subprocess` boundary (the Rust PGO/BOLT build harness, C++
+  smoke builds, the `cabal test` invocation, etc.). Reserved for the subprocess
+  boundary only.
 - `FFIFailure` — a C ABI call through the Haskell FFI raised. Carries the
   backend identity (`Backend`), the C ABI symbol that raised, and the decoded
   error message. Reserved for the FFI bridge only; distinct from

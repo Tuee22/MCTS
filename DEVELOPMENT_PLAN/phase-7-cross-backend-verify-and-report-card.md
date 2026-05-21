@@ -16,12 +16,20 @@
 ## Phase Status
 
 ✅ **Done.** The Phase 7 surface is live again: Q3 verifies `(ii)..(v)`, Q7 verifies
-the `(i)..(v)` legacy envelope, the report card measures Q1/Q2 against backend
-(ii), and no checked-in generated validation data is required.
+the `(i)..(v)` legacy envelope, the report-card machinery measures Q1/Q2 against
+live backend (ii), and no checked-in generated validation data is required. The
+optimized-C++ parity evidence was refreshed by Sprint `8.3` after Sprint `5.3`
+closed.
 
-The 2026-05-19 report-card evidence remains useful audit context: Q1 ST 0.05x,
+The 2026-05-19 report-card evidence remains useful smoke-baseline audit context:
+Q1 ST 0.05x,
 Q1 MT8 0.41x, Q2 ST 0.05x, Q2 MT8 0.20x, Q5 Haskell 0.99x, Q5 `cpp-imperative`
 3.64x, Q7 liveness PASS, and verdict `Within tolerance`.
+
+The 2026-05-21 report-card refresh against the canonical C++ PGO/BOLT build path
+recorded Q1 ST 0.05x, Q1 MT8 0.43x, Q2 ST 0.06x, Q2 MT8 0.19x, Q5 Haskell
+1.04x, Q5 `cpp-imperative` 3.64x, Q7 liveness PASS, and verdict
+`Within tolerance`.
 
 ## Sprint 7.1: Cabal Test Organization ✅
 

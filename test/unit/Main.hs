@@ -19,6 +19,7 @@ import MCTS.CLI.Build
     ( boltTrainingGames
     , boltTrainingSims
     , buildBackendPlan
+    , cppPgoBoltPlan
     , legacyFixturePlan
     , pgoTrainingGames
     , pgoTrainingSims
@@ -116,6 +117,7 @@ import MCTS.Prerequisite
     ( PrerequisiteNode (..)
     , checkPrerequisites
     , prerequisiteRegistry
+    , prerequisitesForBuild
     , prerequisitesForTest
     , registryHasCycle
     , transitiveClosure
@@ -202,6 +204,7 @@ unitTests =
         [ testCase "prerequisite graph" exercisePrerequisiteSurface
         , testCase "plan/apply helpers" exercisePlanSurface
         , testCase "Rust PGO/BOLT build plan" exerciseRustBuildPlan
+        , testCase "C++ PGO/BOLT build plan" exerciseCppBuildPlan
         , testCase "subprocess rendering and environment" exerciseSubprocessSurface
         ]
     , testGroup
@@ -998,6 +1001,19 @@ exercisePrerequisiteClosure = do
     assert "bolt closure includes llvm" ("llvm" `elem` boltClosure)
     let rustLibClosure = map nodeId (transitiveClosure prerequisiteRegistry ["libmcts-rust-built"])
     assert "rust shared library prerequisite includes rustup" ("rustup" `elem` rustLibClosure)
+    let cppBuildClosure = map nodeId (prerequisitesForBuild "cpp-imperative")
+    assert "C++ optimized build prerequisite includes BOLT" ("bolt" `elem` cppBuildClosure)
+    assert "C++ optimized build prerequisite includes LLVM" ("llvm" `elem` cppBuildClosure)
+    assert "C++ optimized build prerequisite includes pgo root" ("pgo-profiles" `elem` cppBuildClosure)
+    assert
+        "C++ optimized build prerequisite includes pgo dir"
+        ("cpp-imperative-pgo-profile" `elem` cppBuildClosure)
+    assert
+        "C++ optimized build prerequisite includes bolt dir"
+        ("cpp-imperative-bolt-profile" `elem` cppBuildClosure)
+    let cppLibClosure = map nodeId (transitiveClosure prerequisiteRegistry ["libmcts-cpp-imperative-built"])
+    assert "C++ shared library prerequisite includes cxx" ("cxx" `elem` cppLibClosure)
+    assert "C++ shared library prerequisite includes mimalloc" ("mimalloc" `elem` cppLibClosure)
     let lldClosure = map nodeId (transitiveClosure prerequisiteRegistry ["lld-linker"])
     assert "lld linker prerequisite includes llvm" ("llvm" `elem` lldClosure)
     let testClosure = map nodeId prerequisitesForTest
@@ -1484,6 +1500,98 @@ exerciseRustBuildPlan = do
   where
     argContains args needle =
         any (T.isInfixOf (T.pack needle) . T.pack) args
+
+-- | Validate the C++ PGO+BOLT plans as typed `[Subprocess]` sequences.
+exerciseCppBuildPlan :: IO ()
+exerciseCppBuildPlan = do
+    let plan = buildBackendPlan "cpp-imperative"
+        steps = cppPgoBoltPlan "cpp-imperative"
+        functionalSteps = cppPgoBoltPlan "cpp-functional"
+        commands = map subprocessPath steps
+        argsOf = map subprocessArguments steps
+        makeTargets =
+            [ target
+            | step <- steps
+            , subprocessPath step == "make"
+            , target <- drop 2 (subprocessArguments step)
+            ]
+        trainingIndexes = [3, 6, 11, 14]
+        pgoTrainingArgs = argsOf !! 3
+        boltTrainingArgs = argsOf !! 11
+    assert "C++ PGO+BOLT plan has 18 typed Subprocess steps" (length steps == 18)
+    assert "C++ PGO+BOLT plan is the same as buildBackendPlan output" (planSteps plan == steps)
+    assert "C++ PGO+BOLT plan name is build cpp-imperative" (planName plan == "build cpp-imperative")
+    assert
+        "C++ PGO+BOLT plan starts by resetting profile directories"
+        ( commands !! 0 == "bash"
+            && any ("cpp-imperative/pgo-profile" `contains`) (argsOf !! 0)
+            && any ("cpp-imperative/bolt-profile" `contains`) (argsOf !! 0)
+        )
+    assert
+        "C++ PGO+BOLT plan drives Makefile PGO and BOLT targets"
+        ( makeTargets
+            == [ "pgo-bench-generate"
+               , "pgo-instr-generate"
+               , "pgo-bench-use"
+               , "pgo-instr-use"
+               , "bolt-bench-instrument"
+               , "bolt-instr-instrument"
+               , "bolt-bench-optimize"
+               , "bolt-instr-optimize"
+               , "install-bench"
+               ]
+        )
+    assert
+        "C++ PGO training step invokes bench selfplay --rng native"
+        ( commands !! 3 == "cabal"
+            && "selfplay" `elem` pgoTrainingArgs
+            && "native" `elem` pgoTrainingArgs
+            && "cpp-imperative" `elem` pgoTrainingArgs
+            && show pgoTrainingGames `elem` pgoTrainingArgs
+            && show pgoTrainingSims `elem` pgoTrainingArgs
+        )
+    assert
+        "C++ BOLT training step invokes bench selfplay --rng native"
+        ( commands !! 11 == "cabal"
+            && "selfplay" `elem` boltTrainingArgs
+            && "native" `elem` boltTrainingArgs
+            && "cpp-imperative" `elem` boltTrainingArgs
+            && show boltTrainingGames `elem` boltTrainingArgs
+            && show boltTrainingSims `elem` boltTrainingArgs
+        )
+    assert
+        "C++ plan trains PGO and BOLT artefacts through cabal exec"
+        (all (\idx -> commands !! idx == "cabal" && "exec" `elem` argsOf !! idx) trainingIndexes)
+    assert
+        "C++ bench and instrumented artefacts are installed to the canonical load path for training"
+        ( argsOf !! 2
+            == [ "cpp-imperative/build/libmcts_cpp_imperative_bench.so"
+               , "cpp-imperative/build/libmcts_cpp_imperative.so"
+               ]
+            && argsOf !! 5
+                == [ "cpp-imperative/build/libmcts_cpp_imperative_instrumented.so"
+                   , "cpp-imperative/build/libmcts_cpp_imperative.so"
+                   ]
+        )
+    assert
+        "C++ BOLT training install falls back to the PGO artefact"
+        ( any ("libmcts_cpp_imperative_bench.inst.so" `contains`) (argsOf !! 10)
+            && any ("libmcts_cpp_imperative_bench.so" `contains`) (argsOf !! 10)
+            && any ("libmcts_cpp_imperative_instrumented.inst.so" `contains`) (argsOf !! 13)
+            && any ("libmcts_cpp_imperative_instrumented.so" `contains`) (argsOf !! 13)
+        )
+    assert
+        "C++ functional plan uses functional library names"
+        ( any
+            ( \step ->
+                subprocessPath step == "cp"
+                    && subprocessArguments step
+                        == [ "cpp-functional/build/libmcts_cpp_functional_bench.so"
+                           , "cpp-functional/build/libmcts_cpp_functional.so"
+                           ]
+            )
+            functionalSteps
+        )
 
 -- | Sprint 1.4: the forbidden-path registry is a typed value carrying
 -- a rationale per entry. The pinned set matches

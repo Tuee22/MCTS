@@ -14,16 +14,23 @@
 
 ## Phase Status
 
-✅ **Done.** `cpp-imperative/` contains the arena-MCTS steelman source, the
-PGO/BOLT/`mimalloc` build pipeline, and live parser/build/verify/FFI dispatch.
+✅ **Done.** `cpp-imperative/` contains the arena-MCTS steelman source, live
+parser/build/verify/FFI dispatch, Makefile-level PGO/BOLT/`mimalloc` targets, and
+supported `mcts build cpp-imperative` / `mcts build cpp-functional` Plan/Apply
+wiring through the shared C++ PGO/BOLT target sequence. The 2026-05-21 validation
+run closed Sprint `5.3`; Phase `8` then refreshed the report-card evidence against
+the canonical backend (ii) artefact produced by that build surface.
 
 ## Phase Summary
 
 Backend (ii) is deliberately steelmanned C++: C++23, GCC, `-O3`, LTO, PGO, BOLT,
 `mimalloc`, arena allocation, flat child ranges, branch hints, `thread_local` scratch
 buffers, a ply-cap draw rule, and a C ABI that exposes search, recompute, visit-table,
-and envelope operations. Haskell parity is measured against this backend, not against
-the legacy port.
+and envelope operations. The supported CLI build now drives the C++ PGO/BOLT target
+sequence for both steelman C++ backends and installs the canonical shared library.
+On the 2026-05-21 amd64 validation run, BOLT instrumentation produced no usable
+`.fdata`, so the documented Makefile fallback installed the PGO artefact as the
+bolted artefact.
 
 ## Sprint 5.1: Source Tree and Engine Shape ✅
 
@@ -84,7 +91,8 @@ None.
 ## Sprint 5.3: PGO+BOLT+`mimalloc` Pipeline ✅
 
 **Status**: Done
-**Implementation**: `src/MCTS/CLI/Build.hs`, `cpp-imperative/Makefile`
+**Implementation**: `src/MCTS/CLI/Build.hs`, `src/MCTS/Prerequisite.hs`,
+`test/unit/Main.hs`, `cpp-imperative/Makefile`, `cpp-functional/Makefile`
 **Docs to update**: `documents/engineering/compiler_runtime_tuning.md`
 
 ### Objective
@@ -97,14 +105,34 @@ Ensure backend (ii) represents serious optimized C++ rather than a strawman.
   -fno-semantic-interposition -fvisibility=hidden -fvisibility-inlines-hidden
   -fno-exceptions`.
 - No `-ffast-math` and no `-Ofast`.
-- Two-stage PGO train/use pipeline.
-- BOLT post-link pass with documented fallback when no usable `.fdata` is produced.
+- Makefile-level two-stage PGO train/use targets for `cpp-imperative` and
+  `cpp-functional`.
+- Makefile-level BOLT post-link targets with documented fallback when no usable
+  `.fdata` is produced.
 - `mimalloc` linked for the steelman backends.
+- Supported `mcts build cpp-imperative` and `mcts build cpp-functional` Plan/Apply
+  wiring through the PGO/BOLT target sequence.
+- C++ build prerequisite coverage for PGO/BOLT profile directories and canonical
+  shared-library artefacts.
 
 ### Validation
 
 - `docker compose run --rm mcts mcts build cpp-imperative --dry-run`
 - `docker compose run --rm mcts mcts build cpp-imperative`
+- `docker compose run --rm mcts mcts build cpp-functional --dry-run`
+- `docker compose run --rm mcts mcts build cpp-functional`
+- `docker compose run --rm --build mcts mcts test mcts-unit`
+
+2026-05-21 closure evidence:
+
+- `mcts build cpp-imperative --dry-run` and `mcts build cpp-functional --dry-run`
+  rendered the shared 18-step C++ PGO/BOLT Plan/Apply sequence.
+- `mcts build cpp-imperative` and `mcts build cpp-functional` both completed through
+  PGO generate/use, BOLT instrument/optimize, and canonical install. On amd64,
+  `llvm-bolt` emitted no usable `.fdata`; the Makefile fallback copied the PGO
+  artefacts as the bolted artefacts.
+- `mcts-unit` passed 27 cases, including the new C++ PGO/BOLT plan and prerequisite
+  coverage assertions.
 
 ### Remaining Work
 

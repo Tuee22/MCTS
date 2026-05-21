@@ -15,16 +15,18 @@
 
 ## Phase Status
 
-✅ **Done.** Rust and `cpp-functional/` are live backends. Backend (iii) remains
-first-class because it isolates C++ style from C++ optimization when compared with
-backend (ii).
+✅ **Done on Phase 6-owned surfaces.** Rust and `cpp-functional/` are live
+backends. Backend (iii) remains first-class because it isolates C++ style from C++
+optimization when compared with backend (ii). The shared C++ PGO/BOLT Plan/Apply
+wiring closed in Sprint `5.3`; Phase `6` does not duplicate that build harness.
 
 ## Phase Summary
 
 Backend (iii) keeps backend (ii)'s data layout, performance budget, C ABI shape, and
-optimization stack while expressing search flow with functional-style C++ APIs and data
-flow. Backend (iv) Rust provides a second systems-language implementation with its own
-release profile, PGO/BOLT path, `mimalloc` allocator, Corridors gameplay port, and C ABI.
+Makefile-level optimization target surface while expressing search flow with
+functional-style C++ APIs and data flow. Backend (iv) Rust provides a second
+systems-language implementation with its own release profile, supported PGO/BOLT
+Plan/Apply path, `mimalloc` allocator, Corridors gameplay port, and C ABI.
 
 ## Sprint 6.1: C++ Functional-Style Engine ✅
 
@@ -44,6 +46,8 @@ effort.
 - Same arena memory layout and optimization stack as backend (ii).
 - Functional-style move application, selection outcomes, and descent state transitions.
 - C ABI with the same search/recompute/visit/envelope roles as backend (ii).
+- The C++ functional PGO/BOLT Makefile targets mirror backend (ii); canonical CLI
+  wiring for the shared C++ PGO/BOLT sequence closed in Sprint `5.3`.
 
 ### Validation
 

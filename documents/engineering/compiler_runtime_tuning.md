@@ -19,8 +19,10 @@ is doctrine-owned; the per-backend tuning stacks are project-specific.
 - [../../HASKELL_CLI_TOOL.md → Toolchain pinning](../../HASKELL_CLI_TOOL.md) — GHC
   `9.14.1` and Cabal `3.16.1.0` are the pinned versions for the Haskell binary.
 - [../../HASKELL_CLI_TOOL.md → Architecture → Subprocesses as Typed
-  Values](../../HASKELL_CLI_TOOL.md) — the PGO+BOLT build harness invokes `g++`,
-  `rustc`, `llvm-bolt`, and `cabal` through the typed `Subprocess` boundary.
+  Values](../../HASKELL_CLI_TOOL.md) — supported build harnesses invoke toolchains
+  through typed `Subprocess` values. Rust and the steelman C++ backends are wired
+  through supported PGO/BOLT `mcts build <backend>` paths; see
+  [../../DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md](../../DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md).
 - [../../HASKELL_CLI_TOOL.md → Plan / Apply](../../HASKELL_CLI_TOOL.md) — the
   `mcts build <backend>` commands are Plan/Apply with `--dry-run` and
   `--plan-file <path>`.
@@ -68,9 +70,10 @@ GCC only — Clang is not supported on the C++ side.
 ### Build Workflow
 
 The C++ Plan/Apply command surface is first-class. `mcts build cpp-imperative` and
-`mcts build cpp-functional` run the shared steelman PGO/BOLT pipeline for both C++
-backends. Optional audit artifacts may be regenerated, but normal validation does not
-require checked-in generated data.
+`mcts build cpp-functional` drive the steelman PGO/BOLT targets below through typed
+`Subprocess` plans and install the canonical shared libraries. Optional audit
+artifacts may be regenerated, but normal validation does not require checked-in
+generated data.
 
 1. **Two-stage PGO.** Instrumented build via
    `-fprofile-generate=$(abspath $(PGO_DIR))`; each generated `_bench` and
@@ -83,8 +86,9 @@ require checked-in generated data.
    a one-game, `--sims 50` training run. `llvm-bolt -reorder-blocks=ext-tsp`
    consumes the resulting `.fdata` when present; otherwise the PGO artefact is
    copied as the `.bolted.so` fallback.
-3. **`mimalloc` link.** Static-linked (preferred for FFI determinism;
-   `LD_PRELOAD` is acceptable for ad-hoc benchmark runs).
+3. **`mimalloc` link.** The current C++ Makefiles link the system `libmimalloc`
+   library supplied by the container. Static linking is not required by the current
+   build surface.
 4. **Install.** The backend (iii) pipeline copies
    `cpp-functional/build/libmcts_cpp_functional_bench.bolted.so` to
    `cpp-functional/build/libmcts_cpp_functional.so` — the canonical FFI load
@@ -94,11 +98,12 @@ require checked-in generated data.
    [./backend_ffi_contract.md → Backends and Linkage](./backend_ffi_contract.md)
    for the full install-name vs build-intermediate table.
 
-Current implementation baseline: the C++ Plan/Apply surface is live. The shared
-19-step `pgoBoltPlan` applies to `cpp-functional` and `cpp-imperative`. C++ shared-library BOLT
-instrumentation can produce no `.fdata` in the pinned container; the build harness
-records that explicitly and installs the PGO artefact as the canonical fallback rather
-than treating the backend build as failed.
+Current implementation baseline: the C++ Plan/Apply surface uses the shared
+`cppPgoBoltPlan` in `src/MCTS/CLI/Build.hs`. The plan resets profile directories,
+builds and trains `_bench` and `_instrumented` PGO artefacts, runs BOLT
+instrument/training/optimize steps, and installs the canonical shared library. On
+the 2026-05-21 amd64 validation run, `llvm-bolt` produced no usable `.fdata`; the
+Makefile fallback copied the PGO artefacts as the bolted artefacts.
 
 ### Code-Level Requirements
 
@@ -419,17 +424,17 @@ backend scale across 8 workers without lock contention; the
 cpp-imperative smoke library is single-process with no thread-local
 optimization beyond the `thread_local` move buffer.
 
-### Sprint 6.4 / 8.3 PGO+BOLT Status
+### Sprint 5.3 / 6.4 / 8.3 PGO+BOLT Status
 
 The live Phase 6 Rust backend install surface is closed. On amd64,
 `rustPgoBoltPlan` in `src/MCTS/CLI/Build.hs` completes cargo
 `-Cprofile-generate` with `-C target-cpu=native -C link-arg=-fuse-ld=lld`,
 the one-game PGO training run, `llvm-profdata merge`, `-Cprofile-use` with the
 same target CPU and linker flags, BOLT instrumentation/training, canonical
-install, and post-link `engine_build_id` patching. The shared
-C++ `pgoBoltPlan` validates the canonical FFI training/install sequence for
-`cpp-functional`; if C++ BOLT instrumentation yields no `.fdata` in the pinned
-container, the plan installs the PGO artefact as the explicit fallback.
+install, and post-link `engine_build_id` patching. The C++ Makefiles contain the
+corresponding PGO/BOLT target surface for `cpp-imperative` and `cpp-functional`,
+and `cppPgoBoltPlan` drives that sequence through `mcts build cpp-imperative` and
+`mcts build cpp-functional`.
 
 On aarch64, the container's `llvm-bolt-19` reports:
 
@@ -444,23 +449,23 @@ on aarch64 requires relocations that the stripped release profile does
 not preserve. The fallback keeps the install path publishing a
 PGO-optimized cdylib at the canonical location.
 
-The Sprint 8.3 verdict was recorded on 2026-05-19 by
+The optimized-C++ Sprint 8.3 verdict was refreshed on 2026-05-21 by
 `docker compose run --rm mcts mcts test all` against the canonical workload
 (`G_R=1_000`, `G_S=4`, `S_BENCH=500`, MT8 variants)
 and the canonical artefacts produced by that same container run. On amd64,
 Rust completed PGO/BOLT; the C++ shared-library BOLT instrumentation yielded no
-`.fdata`, so the report card measures the documented C++ PGO-only fallback.
+`.fdata`, so the report card measures the documented C++ PGO fallback.
 Q1/Q2/Q5 use the production monotonic clock through the no-write batch runner
 rather than the former zero-valued test stub or transcript-retaining benchmark
 subprocesses.
 
 | Row | Ratio | Evidence |
 |-----|------:|----------|
-| Q1 rollouts ST | 0.05x | Haskell 546.7 games/s vs cpp-imperative 26.9 games/s |
-| Q1 rollouts MT8 | 0.41x | Haskell 503.8 games/s vs cpp-imperative 204.9 games/s |
-| Q2 self-play ST | 0.05x | Haskell 0.4 games/s vs cpp-imperative 0.0 games/s |
-| Q2 self-play MT8 | 0.20x | Haskell 0.4 games/s vs cpp-imperative 0.1 games/s |
-| Q5 Haskell MT scaling | 0.99x | 0.4 -> 0.4 games/s |
+| Q1 rollouts ST | 0.05x | Haskell 740.0 games/s vs cpp-imperative 39.2 games/s |
+| Q1 rollouts MT8 | 0.43x | Haskell 690.7 games/s vs cpp-imperative 294.7 games/s |
+| Q2 self-play ST | 0.06x | Haskell 0.6 games/s vs cpp-imperative 0.0 games/s |
+| Q2 self-play MT8 | 0.19x | Haskell 0.6 games/s vs cpp-imperative 0.1 games/s |
+| Q5 Haskell MT scaling | 1.04x | 0.6 -> 0.6 games/s |
 | Q5 cpp-imperative MT scaling | 3.64x | 0.0 -> 0.1 games/s |
 
 The final Sprint 8.3 verdict is **`Within tolerance`**. The PGO asymmetry remains
@@ -507,7 +512,8 @@ pinning](../../HASKELL_CLI_TOOL.md) and
   language is being compiled.
 - **Rust** — latest stable, installed via `rustup` with the minor version
   pinned in `docker/Dockerfile`.
-- **`mimalloc`** — pinned version, static-linked.
+- **`mimalloc`** — Ubuntu `libmimalloc-dev` in the pinned container; C++ links the
+  system library and Rust uses the locked `mimalloc` crate.
 
 ## Cross-References
 

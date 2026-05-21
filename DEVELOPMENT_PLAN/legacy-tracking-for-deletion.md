@@ -24,9 +24,11 @@
 
 The intended repository end state is one Haskell CLI with five first-class backend
 slots: `cpp-legacy`, `cpp-imperative`, `cpp-functional`, `rust`, and `haskell`.
-The stale two-backend drift from the 2026-05-19 cleanup is corrected; remaining
-ledger entries track only future compatibility residue discovered after the current
-restoration.
+The stale two-backend drift from the 2026-05-19 cleanup is corrected. The 2026-05-21
+audit closed the remaining build-surface gap: the supported
+`mcts build cpp-imperative` and `mcts build cpp-functional` Plan/Apply paths now
+drive the C++ PGO/BOLT target sequence, and Sprint `8.3` refreshed the report-card
+evidence against the optimized backend (ii) artefact.
 
 The validation-data doctrine sweep remains closed: normal tests do not require
 checked-in transcripts, throughput anchors, renderer snapshots, schema fixtures, or
@@ -50,7 +52,7 @@ repository.
 
 | Item | Location | Reason | Owning Sprint |
 |------|----------|--------|---------------|
-| None. | n/a | No pending stale-surface cleanup remains after the five-backend restoration. | n/a |
+| None | n/a | No pending cleanup entries are currently open. | n/a |
 
 ## Pending Removal Notes
 
@@ -64,11 +66,13 @@ checked, and the canonical validation command for that surface passes through
 
 | Item | Removed In | Notes |
 |------|------------|-------|
+| C++ PGO/BOLT Plan/Apply overclaim | Sprint 5.3, 2026-05-21 | `src/MCTS/CLI/Build.hs` now uses `cppPgoBoltPlan` for `mcts build cpp-imperative` and `mcts build cpp-functional`; dry-run and live build validation passed for both C++ steelman backends, and Sprint 8.3 refreshed the report-card evidence. |
+| Unused `perf` prerequisite node | Sprint 5.3, 2026-05-21 | Removed the unused `perf` prerequisite node; the implemented BOLT path uses `llvm-bolt -instrument`, and the build prerequisite closure now covers LLVM/BOLT plus the relevant profile directories and shared-library artefacts. |
 | Multi-game transcript file layout | Sprint 7.5, 2026-05-16 | `writeTranscriptPerGame` in `src/MCTS/Transcript.hs` splits batches into one-game-per-file transcripts with per-game splitmix seeds; `MCTS.Driver.runBatchWithGame` reports the resulting hash/path pairs, and `mcts-unit::exercisePerGameTranscriptWriter` covers the behavior. |
-| PGO+BOLT pipeline | Sprint 5.3, updated Sprint 6.4, 2026-05-18 | The shared C++ `pgoBoltPlan` in `src/MCTS/CLI/Build.hs` shipped the typed 19-step PGO+BOLT pipeline for the C++ steelman backends, including canonical FFI training installs and explicit PGO fallback when BOLT data is unavailable. |
+| C++ Makefile PGO+BOLT target surface | Sprint 5.3 Makefile baseline, updated Sprint 6.4, 2026-05-18; CLI wiring closed 2026-05-21 | `cpp-imperative/Makefile` and `cpp-functional/Makefile` contain PGO generate/use, BOLT instrument/optimize, and canonical install targets. The supported `mcts build` Plan/Apply wiring for those targets is closed by `cppPgoBoltPlan`. |
 | Backend (iv) Rust Corridors gameplay port | Sprint 6.3, 2026-05-16; updated Sprint 7.2, 2026-05-18 | `rust/src/board.rs`, `rust/src/rollout.rs`, and `rust/src/search.rs` carry the real Corridors game state, rollout loop, and arena MCTS, and `MCTS.Driver.Dispatch.runBatchDispatch` routes `--backend rust` through the real FFI engine when the cdylib is present. |
 | Foreign-engine recompute streaming to `.eq` sidecars | Sprint 7.5, 2026-05-16 | `MCTS.Engine.ForeignRecompute.foreignRecomputeEqStream` drives backend recompute ABIs through transcripts, `MCTS.Verify.Divergence.divergenceVsEqStream` scores the resulting `EqStream`, and `mcts inspect divergence` renders cached and available foreign recompute rows. |
-| Measured Q1-Q7 report-card evidence | Sprint 7.3 / Sprint 8.3 evidence closure, updated 2026-05-19 | `docker compose run --rm mcts mcts test all` passed against the canonical workload and recorded Q1 ST 0.05x, Q1 MT8 0.41x, Q2 ST 0.05x, Q2 MT8 0.20x, Q5 Haskell 0.99x, Q5 cpp-imperative 3.64x, zero live-cohort divergence, Q7 liveness evidence PASS, and verdict `Within tolerance`. |
+| Measured Q1-Q7 report-card evidence | Sprint 7.3 / Sprint 8.3 evidence closure, updated 2026-05-21 | `docker compose run --rm mcts mcts test all` passed against the canonical workload and recorded Q1 ST 0.05x, Q1 MT8 0.43x, Q2 ST 0.06x, Q2 MT8 0.19x, Q5 Haskell 1.04x, Q5 cpp-imperative 3.64x, zero live-cohort divergence, Q7 liveness evidence PASS, and verdict `Within tolerance`. |
 | Pure Haskell parity proof vs backend (ii) | Sprint 8.2 / Sprint 8.3 closure, 2026-05-19 | Sprint 8.1 closed the LLVM/RTS tuning baseline. Sprint 8.2 ran three profile-driven rounds on 2026-05-16: round 1 IntSet (~6.2x speedup), round 2 strict-pair Word64 (regression, reverted), round 3 wavefront-bitmap BFS over `Bits128` (~52x legal-moves / ~33x uct-search vs round 1; combined ~320x / ~200x vs original baseline). |
 | Deterministic placeholder transcript hash | Sprint 2.2 baseline closure | Replaced `pseudoSha256Hex` in `src/MCTS/Transcript.hs` with the pure SHA-256 implementation in `src/MCTS/Crypto/SHA256.hs`; `runConfigHash` and `playTranscriptHash` now emit SHA-256 hex digests. |
 | No-op sidecar cache and divergence inspect placeholders | Sprint 2.7 / Sprint 7.5 baseline closure | Replaced fixed `inspect cache list`, `inspect cache prune`, and `inspect divergence` output with `MCTS.Transcript.EquitySidecar` cache discovery/pruning and `MCTS.Verify.Divergence` metric rendering. |

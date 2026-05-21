@@ -18,8 +18,10 @@ This repository continues from `MCTS_legacy`, a hand-tuned imperative C++ implem
 > steelmanned imperative C++ baseline while the five implementations preserve the
 > same MCTS logic under the controlled C++-RNG verification mode. Normal tests pass
 > from a clean clone without checked-in transcripts, throughput anchors, snapshots,
-> or other generated validation data. The authoritative phase-by-phase status
-> remains
+> or other generated validation data. The C++ PGO/BOLT Plan/Apply wiring is closed:
+> `mcts build cpp-imperative` and `mcts build cpp-functional` now drive the shared
+> C++ PGO/BOLT target sequence, with the documented BOLT fallback when no usable
+> `.fdata` is produced. The authoritative phase-by-phase status remains
 > [`DEVELOPMENT_PLAN/README.md`](DEVELOPMENT_PLAN/README.md).
 
 > **Plan and doctrine:** The authoritative execution-ordered plan lives at [`DEVELOPMENT_PLAN/README.md`](DEVELOPMENT_PLAN/README.md); the authoritative CLI doctrine lives at [`HASKELL_CLI_TOOL.md`](HASKELL_CLI_TOOL.md); the documentation-topology rules live at [`documents/documentation_standards.md`](documents/documentation_standards.md).
@@ -36,7 +38,7 @@ We want a runtime that is:
 2. **Purely functional at the API surface** in its final form, so that algorithmic changes (search policies, evaluators, prior shaping) are local edits rather than rewrites. Internally, the engine is free to use `ST`-monad mutable unboxed arrays — that is the only realistic way to match optimised imperative C++, and the local-reasoning property is preserved as long as the public types and operations stay pure.
 3. **Bit-for-bit deterministic**: given a seed, an RNG source, and a sequence of moves, every implementation produces identical visit counts, identical action orderings, identical rollouts. Reproducibility is a first-class invariant, not a debugging aid.
 
-The contest is rigged in favour of imperative C++ and Rust. Backends (ii), (iii), and (iv) are compiled and linked with every reasonable optimisation — `-O3`, `-march=native`, full LTO, two-stage PGO, BOLT post-link, `mimalloc`, arena-allocated tree nodes, scratch-board rollouts, branch hints. Backend (i) is a strictly verbatim port used to prove faithful reproduction of the legacy engine; backend (ii) is the performance ceiling against which (v) Haskell must compete. The hypothesis is only meaningful when tested against a maximally-tuned imperative baseline rather than a strawman.
+The contest is rigged in favour of imperative C++ and Rust. The target for backends (ii), (iii), and (iv) is every reasonable optimisation — `-O3`, `-march=native`, full LTO, two-stage PGO, BOLT post-link, `mimalloc`, arena-allocated tree nodes, scratch-board rollouts, branch hints. Rust and the two steelman C++ backends are wired through supported PGO/BOLT build paths; C++ uses the documented PGO fallback when BOLT cannot produce usable `.fdata`. Backend (i) is a strictly verbatim port used to prove faithful reproduction of the legacy engine; backend (ii) is the performance ceiling against which (v) Haskell must compete. The hypothesis is only meaningful when tested against a maximally-tuned imperative baseline rather than a strawman.
 
 To get there without a single big-bang rewrite, we keep multiple implementations alive in the same repo, expose them through a single tool, and benchmark them against each other on every change.
 
@@ -253,7 +255,7 @@ Backend (i)'s throughput is published for reference only and is **not on the sam
 
 ## `mcts test all`
 
-The doctrine-mandatory canonical test command. `mcts test all` is the developer-facing entrypoint that proves whether the POC's hypotheses hold. It does four things, in order:
+The doctrine-mandatory canonical test command. `mcts test all` is the developer-facing entrypoint for the current validation surface and builds the canonical foreign backend artefacts before FFI-sensitive tests and the report-card workload. It does four things, in order:
 
 1. **Builds canonical backend artefacts.** The same short-lived container runs
    `mcts build cpp-legacy`, `mcts build cpp-imperative`,
@@ -360,7 +362,13 @@ The same data is available as `mcts test all --format json` for CI consumption; 
 ### Doctrine compliance
 
 - **Plan / Apply.** `mcts test all` is a Plan/Apply command. `build :: TestInputs -> Either AppError TestPlan` produces the typed list of canonical backend builds, Cabal stanzas, and verify subprocesses (modelled per doctrine §Subprocesses as Typed Values); `apply :: Env -> TestPlan -> IO ExitCode` runs it before the measured report-card builder renders Q1/Q2/Q5 and the divergence rows. `--dry-run` prints the rendered plan and exits 0; `--plan-file <path>` writes the rendered plan for out-of-band review.
-- **Prerequisites.** All five backend artifacts present, PGO+BOLT profiles populated, `mimalloc` linked, GHC/Cabal pinned versions on the container `PATH` — encoded as one `prerequisiteRegistry` per doctrine §Prerequisites as Typed Effects. The transitive closure runs before `apply`; a single unmet node aborts with `AppError PrerequisiteUnmet` carrying the failing `nodeId`, description, and remedy hint.
+- **Prerequisites.** Active build/test prerequisites are encoded as one
+  `prerequisiteRegistry` per doctrine §Prerequisites as Typed Effects. Current coverage
+  includes exact GHC/Cabal, C++ compiler, LLVM/BOLT, Rust 1.95.0, LLD, `mimalloc`,
+  Rust and C++ profile directories, and canonical shared-library artefact nodes for
+  the live foreign build leaves. The transitive closure runs before
+  `apply`; a single unmet node aborts with `AppError PrerequisiteUnmet` carrying the
+  failing `nodeId`, description, and remedy hint.
 - **Determinism.** The summary block is rendered by a pure function of a typed `ReportCard` value. No timestamps, no locale-dependent ordering, no terminal-width-dependent wrapping. Wall-clock numbers are the only non-deterministic content and are rendered to fixed precision for ratios and one decimal place for throughputs. Tests assert renderer structure and sentinel substitution in memory; they do not depend on checked-in generated baselines.
 
 ---
@@ -423,7 +431,7 @@ docker compose run --rm mcts mcts inspect replay 7a2f --top 15
 # Doctrine-alignment gate: lint files + docs + haskell, then the container-owned warning-clean build
 docker compose run --rm mcts mcts check-code
 
-# Build the live foreign backend's optimised library (Plan/Apply: PGO instrument → train → re-build → BOLT → mimalloc link)
+# Build Rust's optimized library (Plan/Apply: PGO instrument -> train -> rebuild -> BOLT -> mimalloc link)
 docker compose run --rm mcts mcts build rust --dry-run
 docker compose run --rm mcts mcts build rust
 ```
@@ -451,7 +459,7 @@ Per doctrine §Output Rules and §Error Handling: stdout carries primary output,
 
 ### Doctrine scope
 
-This project adopts the following sections of `HASKELL_CLI_TOOL.md` as binding: Command Topology, CommandSpec + Generated Artifacts (marker discipline, paired check/write, `forbiddenPathRegistry`), Progressive Introspection, Subprocesses as Typed Values (the PGO+BOLT build harness invokes `g++`, `rustc`, `llvm-bolt` through the typed `Subprocess` boundary), Plan/Apply (notably for `mcts test all` and the build harness, with `--dry-run` and `--plan-file <path>` on every Plan/Apply command), Prerequisites as Typed Effects (toolchain prereqs across all five backends, encoded as one `prerequisiteRegistry`), Application Environment (`ReaderT Env IO` with a single `Env` record), Lint, Format, and Code-Quality Stack (`fourmolu` + `hlint` + `cabal format`, with `fourmolu.yaml` committed at repo root and the `mcts-haskell-style` test-suite), Testing Doctrine and Test Organization (one `test-suite` stanza per tier), Output Rules, Error Handling, and GADT-indexed state machines where naturally indicated. The project also treats repository `.sh` scripts and `bootstrap/` helpers as forbidden workflow surfaces; supported work enters through `docker compose run --rm mcts mcts <command>`.
+This project adopts the following sections of `HASKELL_CLI_TOOL.md` as binding: Command Topology, CommandSpec + Generated Artifacts (marker discipline, paired check/write, `forbiddenPathRegistry`), Progressive Introspection, Subprocesses as Typed Values (build harnesses invoke toolchains through the typed `Subprocess` boundary, including the C++ and Rust PGO/BOLT paths), Plan/Apply (notably for `mcts test all` and the build harness, with `--dry-run` and `--plan-file <path>` on every Plan/Apply command), Prerequisites as Typed Effects (toolchain prereqs across all five backends, encoded as one `prerequisiteRegistry`), Application Environment (`ReaderT Env IO` with a single `Env` record), Lint, Format, and Code-Quality Stack (`fourmolu` + `hlint` + `cabal format`, with `fourmolu.yaml` committed at repo root and the `mcts-haskell-style` test-suite), Testing Doctrine and Test Organization (one `test-suite` stanza per tier), Output Rules, Error Handling, and GADT-indexed state machines where naturally indicated. The project also treats repository `.sh` scripts and `bootstrap/` helpers as forbidden workflow surfaces; supported work enters through `docker compose run --rm mcts mcts <command>`.
 
 Explicitly **out of scope**: Long-Running Daemons in the Same Binary (the CLI is short-running only — this also covers the daemon-internal "Configuration: Dhall file with mandatory hot reload" subsection), Capability Classes and Service Errors (no external subsystems), Retry Policy as First-Class Values (no external subsystems), At-Least-Once Event Processing (no event stream), Reconcilers: Idempotent Mutation as a Single Command (no managed state in the world), Smart Constructors for Paired Resources (no paired resources), and Pulumi-Orchestrated Infrastructure Tests (no cloud surface). These sections of `HASKELL_CLI_TOOL.md` are read as informational context, not as binding constraints on this project.
 
@@ -604,7 +612,7 @@ Exempt from this section. (i) is strictly verbatim from `MCTS_legacy`; only FFI 
 
 - **Two-stage PGO**: instrumented build via `-fprofile-generate=<dir>`, training run on benchmark (b) at a representative game count, optimised build with `-fprofile-use=<dir> -fprofile-correction`.
 - **BOLT** post-link binary reordering after PGO — the canonical PGO+BOLT stack used by perf-critical C++ services.
-- **`mimalloc`** as the system allocator (static link preferred for FFI determinism; `LD_PRELOAD` acceptable for benchmark runs).
+- **`mimalloc`** as the system allocator through the container's `libmimalloc-dev` package for C++ and the locked Rust crate for backend (iv).
 
 **Code-level requirements**, grouped by priority. Top-tier items are non-negotiable; the rest are required unless profiling shows the change is neutral or harmful.
 
@@ -725,7 +733,7 @@ Code-level requirements:
 
 ### One known asymmetry: PGO
 
-GHC 9.14 has no production-grade profile-guided optimisation comparable to GCC/Clang `-fprofile-use` or `rustc -Cprofile-use`. The Haskell backend therefore competes against PGO+BOLT-optimised C++ and Rust without an equivalent feedback loop. This is the asymmetry that most concretely tests the hypothesis: if Haskell matches under these conditions, the result is meaningful; if it falls short by 5–15%, that gap is plausibly attributable to the missing PGO loop rather than to any property of pure functional code per se. We document this rather than paper over it.
+GHC 9.14 has no production-grade profile-guided optimisation comparable to GCC/Clang `-fprofile-use` or `rustc -Cprofile-use`. The current comparison is Haskell against the C++ and Rust PGO/BOLT build surfaces without an equivalent Haskell feedback loop; on the 2026-05-21 amd64 run, C++ BOLT instrumentation produced no usable `.fdata`, so the documented C++ PGO fallback was the canonical artefact. This is the asymmetry that most concretely tests the hypothesis: if Haskell matches under those conditions, the result is meaningful; if it falls short by 5–15%, that gap is plausibly attributable to the missing PGO loop rather than to any property of pure functional code per se. We document this rather than paper over it.
 
 ---
 

@@ -70,9 +70,9 @@ From the host, run any listed logical command as
 | `mcts help <subcommand>` | Focused help pointer for a target command |
 | `mcts check-code` | Doctrine alignment, formatter, HLint, warning-clean build, docs check |
 | `mcts build cpp-legacy [--dry-run] [--plan-file <path>]` | Plan/Apply: C++ legacy backend build harness |
-| `mcts build cpp-imperative [--dry-run] [--plan-file <path>]` | Plan/Apply: C++ imperative steelman backend build harness |
-| `mcts build cpp-functional [--dry-run] [--plan-file <path>]` | Plan/Apply: C++ functional-style backend build harness |
-| `mcts build rust [--dry-run] [--plan-file <path>]` | Plan/Apply: Rust backend build harness |
+| `mcts build cpp-imperative [--dry-run] [--plan-file <path>]` | Plan/Apply: C++ imperative backend PGO/BOLT build harness |
+| `mcts build cpp-functional [--dry-run] [--plan-file <path>]` | Plan/Apply: C++ functional-style backend PGO/BOLT build harness |
+| `mcts build rust [--dry-run] [--plan-file <path>]` | Plan/Apply: Rust backend PGO/BOLT build harness |
 | `mcts build legacy-fixtures --output-dir <dir> [--seed <u64>] [--games <n>] [--sims <n>] [--dry-run] [--plan-file <path>]` | Plan/Apply: generate external legacy Q6 evidence |
 <!-- mcts:command-matrix:end -->
 
@@ -158,8 +158,8 @@ CLI flag values and the human-readable Roman numerals used in prose:
 | Identifier (CLI flag) | Roman | Path | Role |
 |------------------------|-------|------|------|
 | `cpp-legacy` | (i) | `cpp-legacy/` | Verbatim `MCTS_legacy` reproduction and Q7 legacy-envelope evidence |
-| `cpp-imperative` | (ii) | `cpp-imperative/` | Maximally-tuned imperative C++23 performance ceiling |
-| `cpp-functional` | (iii) | `cpp-functional/` | Functional-style C++23 steelman under the same optimization stack as (ii) |
+| `cpp-imperative` | (ii) | `cpp-imperative/` | Imperative C++23 performance ceiling target; supported PGO/BOLT CLI build path |
+| `cpp-functional` | (iii) | `cpp-functional/` | Functional-style C++23 steelman target; supported shared C++ PGO/BOLT CLI build path |
 | `rust` | (iv) | `rust/` | Rust `cdylib`; cross-language second opinion |
 | `haskell` | (v) | `src/MCTS/Engine/`, `src/MCTS/Search/` | Native Haskell engine; the target |
 

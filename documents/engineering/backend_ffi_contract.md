@@ -49,16 +49,14 @@ stanzas stay self-contained.
 
 The **FFI load name** is the canonical install path matching
 [../../README.md → Repository layout (target)](../../README.md); the Haskell FFI
-binds against this name. The **build-time intermediate** is the artefact the
-PGO+BOLT harness in Phase 6 produces under `<backend>/build/`; the install
-step (last step of `mcts build <backend>`) copies the live `_bench`
-variant of the bolted-or-PGO-fallback intermediate to the canonical FFI load
-name. The `_bench` artefact is what the benchmark report card measures; the parallel
-`_instrumented` artefact (behind the Rust `instrumentation` feature; C++ targets use
-`<backend>/build/libmcts_<backend>_instrumented.so`) carries the
-transcript-writer and `read_visits` symbols and is loaded by `mcts play`,
-`mcts inspect replay`, `mcts inspect divergence`, and integration smokes — see
-[Paired Build Targets](#paired-build-targets) for the toggle semantics.
+binds against this name. Current `mcts build` behavior runs the supported PGO/BOLT
+Plan/Apply sequence for Rust and the steelman C++ backends, then installs the
+bolted-or-PGO-fallback shared library at the canonical load name. The
+parallel `_instrumented` artefact (behind the Rust `instrumentation` feature; C++
+targets use `<backend>/build/libmcts_<backend>_instrumented.so` when that target is
+built) carries the transcript-writer and `read_visits` symbols and is loaded by
+`mcts play`, `mcts inspect replay`, `mcts inspect divergence`, and integration
+smokes — see [Paired Build Targets](#paired-build-targets) for the toggle semantics.
 
 ## C ABI Shape
 

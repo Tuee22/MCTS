@@ -141,8 +141,8 @@ needed. Internally, the plan is a typed `[Subprocess]` sequence run via
 3. Inside the container, `cabal build all` warning-clean under the pinned
    toolchain.
 4. Build the live foreign backend artefacts through the supported build harness:
-   `mcts build cpp-legacy`, `mcts build cpp-imperative`,
-   `mcts build cpp-functional`, and `mcts build rust`.
+   `mcts build cpp-legacy`, the C++ PGO/BOLT paths for `mcts build cpp-imperative`
+   and `mcts build cpp-functional`, and the Rust PGO/BOLT path via `mcts build rust`.
 5. Inside the container, `cabal test mcts-haskell-style` (`cabal format`
    temp-file round-trip,
    `/opt/mcts-style-tools/bin/fourmolu --mode check`,
@@ -174,6 +174,9 @@ and `divergence_matrix` rows.
 
 The report card answers seven questions, verbatim from
 [../../README.md → POC headline questions](../../README.md):
+Q1/Q2 currently measure against the live backend (ii) artefact that `mcts test all`
+builds through the supported C++ PGO/BOLT path, using the documented PGO fallback
+when BOLT produces no usable `.fdata`.
 
 1. **Q1.** Does pure Haskell match maximally-optimised C++ (backend (ii)) on
    benchmark (a) random rollouts, single-threaded and on 8 workers?

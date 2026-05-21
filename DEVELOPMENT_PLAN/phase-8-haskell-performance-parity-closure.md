@@ -21,15 +21,21 @@
 
 ## Phase Status
 
-The Haskell tuning work, no-generated-validation-data cleanup, and five-backend
-restoration are closed. The stale two-backend drift has been corrected:
+✅ **Done.** The Haskell tuning work, no-generated-validation-data cleanup,
+five-backend restoration, and optimized-C++ report-card refresh are closed. Sprint
+`5.3` now routes `mcts build cpp-imperative` and `mcts build cpp-functional`
+through the shared C++ PGO/BOLT target sequence, and Sprint `8.3` refreshed the
+report-card evidence on 2026-05-21 against the canonical backend (ii) artefact
+produced by that build surface. The stale two-backend drift has been corrected:
 `cpp-legacy`, `cpp-imperative`, and `cpp-functional` are live
 parser/build/verify/FFI participants alongside `rust` and `haskell`.
 
 The restored end state is:
 
 - Q1/Q2 performance rows measure backend (v) Haskell against live backend (ii)
-  `cpp-imperative` where its shared library is available.
+  `cpp-imperative` where its shared library is available; the 2026-05-21 evidence
+  uses the supported C++ PGO/BOLT build path, with the documented BOLT no-`.fdata`
+  fallback on amd64.
 - Performance benchmarks use each backend's own/native deterministic RNG contract.
 - Q3 logical-equivalence verification covers `(ii)..(v)` under `--rng cpp`.
 - Q7 legacy-envelope verification covers all five backend slots.
@@ -106,11 +112,17 @@ target within `HASKELL_PARITY_TOLERANCE = 0.05`.
 
 ### Deliverables
 
-- The 2026-05-19 report-card run recorded Q1 ST 0.05x, Q1 MT8 0.41x, Q2 ST 0.05x,
-  Q2 MT8 0.20x, Q5 Haskell 0.99x, Q5 `cpp-imperative` 3.64x, Q7 liveness PASS, and
-  verdict `Within tolerance`.
+- The 2026-05-21 report-card run recorded Q1 ST 0.05x
+  (`740.0` vs `39.2` games/s), Q1 MT8 0.43x (`690.7` vs `294.7` games/s),
+  Q2 ST 0.06x (`0.6` vs `0.0` games/s), Q2 MT8 0.19x
+  (`0.6` vs `0.1` games/s), Q5 Haskell 1.04x, Q5 `cpp-imperative` 3.64x,
+  Q7 liveness PASS, and verdict `Within tolerance` against the canonical
+  backend (ii) artefact built by `mcts build cpp-imperative`.
 - The report-card numbers remain audit evidence, not checked-in generated validation
   inputs.
+- The 2026-05-19 report-card run remains historical smoke-baseline audit context:
+  Q1 ST 0.05x, Q1 MT8 0.41x, Q2 ST 0.05x, Q2 MT8 0.20x, Q5 Haskell 0.99x,
+  Q5 `cpp-imperative` 3.64x, Q7 liveness PASS, and verdict `Within tolerance`.
 
 ### Validation
 
@@ -120,10 +132,18 @@ The report-card evidence was produced through:
 docker compose run --rm mcts mcts test all
 ```
 
+### Current Validation State
+
+The report-card path measures live backend (ii) where the C++ shared library is
+present. The 2026-05-21 aggregate run rebuilt the C++ PGO/BOLT artefacts first and
+then passed all Cabal stanzas, Q3 `(ii)..(v)`, Q7 all-five legacy-envelope checks,
+and the report-card verdict. On amd64, C++ BOLT instrumentation produced no usable
+`.fdata`, so the Makefile installed the documented PGO fallback as the bolted
+artefact.
+
 ### Remaining Work
 
-None. The report-card path now measures live backend (ii) where the C++ shared library
-is present.
+None.
 
 ## Sprint 8.4: Keep Generated Validation Data Out of Git ✅
 
@@ -270,15 +290,17 @@ None.
 ### Objective
 
 Make the project documentation match the original hypothesis with tighter language:
-Haskell matches steelmanned C++, all five backends stay first-class, performance RNG is
-backend-native, and equivalence RNG is C++-stream-compatible.
+Haskell is measured against the live C++ comparison backend, all five backends stay
+first-class, performance RNG is backend-native, and equivalence RNG is
+C++-stream-compatible.
 
 ### Deliverables
 
 - Root README states the five-backend architecture and RNG split clearly.
 - Development plan standards forbid stale two-backend drift.
-- `system-components.md` and this phase identify the restored five-backend surface and
-  the validation evidence that closed it.
+- `system-components.md` and this phase identify the restored five-backend surface,
+  the historical smoke-baseline performance evidence, and the optimized-C++ evidence
+  refresh.
 - Governed engineering docs under `documents/engineering/` match the five-backend target.
 - Backend FFI and determinism docs identify the process-pinned envelope loader and C++
   RNG bridge used by equivalence verification.
@@ -296,9 +318,19 @@ backend-native, and equivalence RNG is C++-stream-compatible.
 2026-05-20 closure evidence:
 
 - Rebuilt `mcts test all` passed all five Cabal stanzas plus Q3 `(ii)..(v)` and Q7
-  all-five legacy-envelope gates; report-card verdict: `Within tolerance`.
+  all-five legacy-envelope gates; smoke-baseline report-card verdict:
+  `Within tolerance`.
 - `mcts docs check`, `mcts check-code`, and `git diff --check` passed after the
   temporary trace hooks were removed.
+
+2026-05-21 closure evidence:
+
+- `mcts build cpp-imperative --dry-run`, `mcts build cpp-functional --dry-run`,
+  `mcts build cpp-imperative`, and `mcts build cpp-functional` passed through the
+  supported C++ PGO/BOLT Plan/Apply path.
+- `docker compose run --rm mcts mcts test all` passed all five Cabal stanzas, Q3
+  `(ii)..(v)`, Q7 all-five legacy-envelope checks, and the optimized-C++ report-card
+  refresh with verdict `Within tolerance`.
 
 ### Remaining Work
 
