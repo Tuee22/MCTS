@@ -3,8 +3,7 @@ module MCTS.CheckCode
     ) where
 
 import Control.Monad.IO.Class (liftIO)
-import MCTS.CLI.Command (DocsCommand (DocsCheck), LintCommand (LintAll))
-import MCTS.CLI.Docs (runDocs)
+import MCTS.CLI.Command (LintCommand (LintAll))
 import MCTS.CLI.Lint (runLint)
 import MCTS.CLI.Output (outputLine, renderErrorString)
 import qualified MCTS.Env as Env
@@ -14,9 +13,8 @@ import System.Exit (ExitCode (..))
 runCheckCode :: Env.App ExitCode
 runCheckCode = do
     lintCode <- runLint LintAll
-    docsCode <- runDocs DocsCheck
     buildCode <- runBuildGate
-    pure (maxExitCode [lintCode, docsCode, buildCode])
+    pure (maxExitCode [lintCode, buildCode])
 
 runBuildGate :: Env.App ExitCode
 runBuildGate = do

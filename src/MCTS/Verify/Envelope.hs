@@ -184,8 +184,9 @@ loadExpectedEnvelope envelope =
 
 isLogicalEnvelope :: Envelope -> Bool
 isLogicalEnvelope envelope =
-    envelopeBuildId envelope == backendIdentifier (envelopeBackend envelope) <> "-logical"
+    envelopeBuildId envelope == "logical"
         && envelopeEngineBuildId envelope == zeroDigest
+        && envelopeCompilerId envelope == 3
 
 compareField :: String -> (Envelope -> String) -> Envelope -> Envelope -> Either AppError ()
 compareField field getValue expected actual =

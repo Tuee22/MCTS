@@ -334,7 +334,7 @@ prunableEquitySidecars explicit keepCurrent = do
 
 isCurrentSidecar :: SidecarEntry -> Bool
 isCurrentSidecar entry =
-    sidecarBuildId entry == backendIdentifier (sidecarBackend entry) <> "-logical"
+    sidecarBuildId entry == "logical"
 
 isOriginator :: Transcript -> EqStream -> Bool
 isOriginator transcript stream =

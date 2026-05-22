@@ -63,12 +63,9 @@ typedef struct {
 
 MCTS_IMPERATIVE_API const mcts_imperative_envelope *mcts_imperative_get_envelope(void);
 
-// Bench / instrumented split: the bench artefact returns 0 from
-// `mcts_imperative_read_visits` (the symbol is exported but inert);
-// the instrumented artefact returns the actual visit count for the
-// requested move. Operator-facing tools (verify, play, inspect
-// replay) load the instrumented variant; `mcts bench` loads the bench
-// variant.
+// Optional same-board visit cache accessor. The load-bearing search and
+// recompute ABI returns visit vectors directly; this helper is meaningful
+// only for artefacts compiled with MCTS_IMPERATIVE_INSTRUMENTED=1.
 MCTS_IMPERATIVE_API uint32_t mcts_imperative_read_visits(
     const mcts_imperative_board *board,
     uint8_t action_id);

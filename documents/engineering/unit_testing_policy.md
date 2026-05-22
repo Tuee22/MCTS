@@ -2,7 +2,7 @@
 
 **Status**: Authoritative source
 **Supersedes**: N/A
-**Referenced by**: ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, ../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md, ../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, ../documentation_standards.md, ./README.md, ./code_quality.md
+**Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/00-overview.md, ../../DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, ../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md, ../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, ../documentation_standards.md, ./README.md, ./code_quality.md
 **Generated sections**: none
 
 > **Purpose**: Describe the five live Cabal test stanzas (`mcts-unit`,
@@ -56,7 +56,7 @@ Stanzas](../../DEVELOPMENT_PLAN/system-components.md):
 | Stanza | Tier | Scope |
 |--------|------|-------|
 | `mcts-unit` | Pure logic | Engine invariants, parser tests via `execParserPure`, property invariants (`decode . encode == id`, `render is deterministic`, `parser roundtrips`), semantic renderer tests for `CommandSpec`, report-card, TUI, and `inspect show` output, transcript codec roundtrips, RNG mixer properties, per-leaf `Example` presence |
-| `mcts-integration` | Subprocess | Real `mcts` binary across the FFI to every live backend; same-backend determinism (Q4) at 3 seeds per backend; bounded report-card divergence plus cached recompute-sidecar `inspect divergence` coverage; foreign-backend FFI smoke-driver, live-envelope stamping, and backend-slot stale hard-fail/`--allow-stale` warning coverage when shared libraries are present; synthetic legacy-envelope coverage generated in temporary roots |
+| `mcts-integration` | Subprocess | Same-backend determinism (Q4) at 3 seeds per backend through `MCTS.Driver`; real `mcts` binary determinism for Haskell and Rust when the Rust cdylib is present; bounded report-card divergence plus cached recompute-sidecar `inspect divergence` coverage; Rust FFI smoke-driver, live-envelope stamping, and backend-slot stale hard-fail/`--allow-stale` warning coverage; synthetic C++ and legacy-envelope coverage generated in temporary roots |
 | `mcts-cross-backend` | Round-robin verify | real `mcts verify` subprocess coverage for the live FFI-capable Q3 `--rng cpp` cohort covering `(ii)..(v)`; runs serially around the process-pinned dynamic-library and C++ RNG bridge path |
 | `mcts-legacy-parity` | Legacy-envelope verify | Q7 liveness/overflow coverage across all five backend slots under the legacy envelope |
 | `mcts-haskell-style` | Lint | `cabal format` temp-file round-trip byte-equality, pinned style-tool `fourmolu --mode check` and `hlint`, plus the source-walker guard for tabs and the conservative forbidden-symbol subset |
@@ -80,11 +80,14 @@ for `compiler_version` and `shared_rng_build_id` mismatches, plus structured JSO
 transcript roundtrips. The current Phase 7 verification baseline uses
 real `mcts verify` subprocesses for Q3, so live foreign shared libraries are exercised
 when present by the same operator surface used outside the test runner, while the
-in-process fallback keeps the stanza self-contained when they are absent. The integration tier also runs real `mcts` binary same-backend determinism checks through
-`MCTS.Subprocess.capture` for Haskell and every built live foreign backend, a bounded
-measured report-card builder check, a cached recompute-sidecar
-`mcts inspect divergence` subprocess check, plus bounded foreign-backend smoke games through
-foreign backend drivers when the container-built shared libraries are present. The cross-backend stanza asserts
+in-process fallback keeps the stanza self-contained when they are absent. The
+integration tier also runs real `mcts` binary same-backend determinism checks
+through `MCTS.Subprocess.capture` for Haskell and Rust when the Rust cdylib is
+present, a bounded measured report-card builder check, a cached recompute-sidecar
+`mcts inspect divergence` subprocess check, plus bounded Rust foreign-backend
+smoke games through foreign backend drivers. Live C++ FFI coverage is carried by
+the cross-backend, legacy-parity, and report-card surfaces after `mcts test all`
+builds the C++ artefacts. The cross-backend stanza asserts
 successful `verify rollouts` and `verify selfplay` subprocess output for its
 focused Q3 smoke cohorts. Its `tasty` tree uses `NumThreads 1` so the Q3
 subprocess cases do not concurrently exercise the same process-pinned shared

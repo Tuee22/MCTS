@@ -35,6 +35,15 @@ checked-in transcripts, throughput anchors, renderer snapshots, schema fixtures,
 other generated validation data. Evidence needed for audit is generated in memory,
 under temporary directories, or under explicit operator-provided artifact roots.
 
+The 2026-05-21 evidence-surface audit reopened doctrine-deviation residue where
+governed docs or comments overclaim the current code. Sprints `1.10`, `2.8`,
+`5.5`, `6.6`, `7.6`, and `8.9` have closed the Phase `1` generated-doc/style-policy
+residue, the Phase `2` transcript/sidecar identity residue, the backend (ii)
+compact ABI contract residue, the backend (iii)/(iv) ABI/build-artifact wording
+residue, the replay/divergence evidence-label residue, and the compiler-tuning
+test-stanza wording residue. No pending row is backend-removal work; all five
+backend slots remain first-class.
+
 Two classes of entries populate this ledger over time:
 
 1. **Doctrine-deviation residue.** Any worktree behavior that the implemented code
@@ -50,22 +59,32 @@ repository.
 
 ## Pending Removal
 
-| Item | Location | Reason | Owning Sprint |
-|------|----------|--------|---------------|
-| None | n/a | No pending cleanup entries are currently open. | n/a |
+None.
 
 ## Pending Removal Notes
 
-Each pending-removal row resolves on the closure of the owning sprint listed in the
-relevant phase document. Each row moves to `Completed` only after the corrected
-surface is implemented, governed docs are aligned, generated docs are regenerated or
-checked, and the canonical validation command for that surface passes through
-`docker compose run --rm mcts mcts <command>`.
+No pending-removal rows remain after Sprint `8.9`. Future rows must move to
+`Completed` only after the corrected surface is implemented, governed docs are aligned,
+generated docs are regenerated or checked, and the canonical validation command for that
+surface passes through `docker compose run --rm mcts mcts <command>`.
 
 ## Completed
 
 | Item | Removed In | Notes |
 |------|------------|-------|
+| Generated-section metadata overclaim | Sprint 1.10, 2026-05-21 | `mcts docs check` now verifies governed-doc `**Generated sections**:` metadata against physical marker pairs and the `GeneratedSectionRule` registry; fenced Markdown examples are ignored as examples, not real markers. |
+| `check-code` stage-order drift | Sprint 1.10, 2026-05-21 | `mcts check-code` now runs the documented lint/docs/style/build sequence once per stage; validation output contains a single generated-doc check in the lint phase before the warning-clean build. |
+| Supported-path partial-function wording drift | Sprint 1.10, 2026-05-21 | `documents/engineering/haskell_code_guide.md` and `documents/engineering/code_quality.md` now describe the narrow hot-path invariant-failure exception instead of claiming an unconditional partial-function ban. |
+| Transcript forward-compat overclaim | Sprint 2.8, 2026-05-21 | `src/MCTS/Transcript.hs` now requires `envelope_offset == 48`, rejects unsupported envelope versions, and unit-tests additive v1 envelope trailing bytes. |
+| Action smart-constructor overclaim | Sprint 2.8, 2026-05-21 | The governed transcript docs describe the implemented `Action` conversion: legal actions are `0..208`, reserved bytes are not accepted, and `255` remains sentinel-only. |
+| Logical sidecar label duplication | Sprint 2.8, 2026-05-21 | Logical build labels normalize to `logical`, sidecar stems render `<backend>-logical`, and current-sidecar pruning follows the same build-label contract. |
+| Originator sidecar identity exactness | Sprint 2.8, 2026-05-21 | Phase `2` sidecar identity is backend/build/envelope exact; Sprint `7.6` retains the CLI replay/divergence labeling validation for fallback and foreign recompute streams. |
+| Originator-labelled fallback recompute | Sprint 7.6, 2026-05-21 | `inspect show --with-equity` and replay preparation now preserve originator identity: fallback or foreign recompute streams are reported as unavailable/foreign-view evidence and are not written under the transcript originator backend/build slot. |
+| Rust-only live divergence recompute wording | Sprint 7.6, 2026-05-21 | `mcts inspect divergence` docs and implementation now cover cached sidecars plus every available live foreign recompute backend, including C++ cdylibs where present, instead of presenting a Rust-only row set as the full live surface. |
+| Test-stanza `-fllvm` wording drift | Sprint 8.9, 2026-05-21 | `documents/engineering/compiler_runtime_tuning.md` now states that `-fllvm` is load-bearing on the library, executable, and benchmark stanzas; test stanzas compile small runners and link the optimized library without duplicating `-fllvm`. |
+| Backend (ii) compact C ABI contract | Sprint 5.5, 2026-05-21 | `documents/engineering/backend_ffi_contract.md`, `cpp-imperative/c-abi/`, and the Haskell FFI docs now describe the compact live board/search/recompute/read-visits/envelope surface without speculative tree/rng lifecycle handles. |
+| Backend (iii)/(iv) compact C ABI contract | Sprint 6.6, 2026-05-21 | `documents/engineering/backend_ffi_contract.md`, `cpp-functional/c-abi/`, `rust/src/c_abi.rs`, and the Haskell FFI docs now describe the compact live ABI with no speculative tree/rng lifecycle handles. |
+| Rust instrumented-artefact overclaim | Sprint 6.6, 2026-05-21 | Docs and tooling now describe one optimized Rust FFI artefact; the BOLT-instrumented copy is a temporary build detail, not a supported `_instrumented` artefact. |
 | C++ PGO/BOLT Plan/Apply overclaim | Sprint 5.3, 2026-05-21 | `src/MCTS/CLI/Build.hs` now uses `cppPgoBoltPlan` for `mcts build cpp-imperative` and `mcts build cpp-functional`; dry-run and live build validation passed for both C++ steelman backends, and Sprint 8.3 refreshed the report-card evidence. |
 | Unused `perf` prerequisite node | Sprint 5.3, 2026-05-21 | Removed the unused `perf` prerequisite node; the implemented BOLT path uses `llvm-bolt -instrument`, and the build prerequisite closure now covers LLVM/BOLT plus the relevant profile directories and shared-library artefacts. |
 | Multi-game transcript file layout | Sprint 7.5, 2026-05-16 | `writeTranscriptPerGame` in `src/MCTS/Transcript.hs` splits batches into one-game-per-file transcripts with per-game splitmix seeds; `MCTS.Driver.runBatchWithGame` reports the resulting hash/path pairs, and `mcts-unit::exercisePerGameTranscriptWriter` covers the behavior. |

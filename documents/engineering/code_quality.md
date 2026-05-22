@@ -121,20 +121,23 @@ The hard Haskell style gate combines `.hlint.yaml` with the
   constructors are forbidden outside `src/MCTS/Subprocess.hs`.
 - Direct terminal-formatting calls (escape-sequence emission, raw ANSI codes)
   are forbidden outside `src/MCTS/CLI/Output.hs`.
-- **Partial functions are forbidden on the supported path.** `Prelude.head`,
-  `Prelude.tail`, `Prelude.init`, `Prelude.last`, `Prelude.read`,
-  `Data.List.(!!)`, `Data.Maybe.fromJust`, `Data.Either.fromLeft`, and
-  `Data.Either.fromRight` raise on inputs the type system already permits, so
-  a silent bottom in transcript decoding, RNG state derivation, or move
-  generation surfaces as a mysterious cross-backend `verify` mismatch instead
-  of a typed `AppError`. Remedy hint: use `Data.List.NonEmpty.head` /
-  `NonEmpty.tail` on a `NonEmpty`, `readMaybe` from `Text.Read`, pattern
-  matching with an explicit `AppError` branch, or a local total helper. The
-  `mcts-haskell-style` source walker enforces this rule under `src/` and
-  `app/`; HLint remains the broader advisory pass for the full Haskell tree.
-  See [haskell_code_guide.md → Total functions on the supported
-  path](./haskell_code_guide.md) for the same rule expressed in code-guide
-  form.
+- **Ambient data partials are forbidden on the supported path.**
+  `Prelude.head`, `Prelude.tail`, `Prelude.init`, `Prelude.last`,
+  `Prelude.read`, `Data.List.(!!)`, `Data.Maybe.fromJust`,
+  `Data.Either.fromLeft`, and `Data.Either.fromRight` raise on inputs the type
+  system already permits, so a silent bottom in transcript decoding, RNG state
+  derivation, or move generation surfaces as a mysterious cross-backend
+  `verify` mismatch instead of a typed `AppError`. Remedy hint: use
+  `Data.List.NonEmpty.head` / `NonEmpty.tail` on a `NonEmpty`, `readMaybe`
+  from `Text.Read`, pattern matching with an explicit `AppError` branch, or a
+  local total helper. Narrow `error` calls remain permitted only for impossible
+  hot-path invariants where threading `AppError` through the inner loop would
+  corrupt the measured surface; ordinary input, parse, IO, FFI, and CLI errors
+  still use typed errors. The `mcts-haskell-style` source walker enforces this
+  rule under `src/` and `app/`; HLint remains the broader advisory pass for the
+  full Haskell tree. See [haskell_code_guide.md → Total functions on the
+  supported path](./haskell_code_guide.md) for the same rule expressed in
+  code-guide form.
 
 ### HLint Invocation
 

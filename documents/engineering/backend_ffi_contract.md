@@ -5,9 +5,9 @@
 **Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md, ../../DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md, ../../DEVELOPMENT_PLAN/phase-6-cpp-functional-and-rust.md, ../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, ../documentation_standards.md, ./README.md, ./determinism_contract.md, ./compiler_runtime_tuning.md
 **Generated sections**: none
 
-> **Purpose**: Authoritative spec of the C ABI shape exposed by the live FFI-linked
-> backends, the Haskell-side import policy, the `--rng cpp` shared-generator
-> plumbing, and the foreign steelman instrumented-vs-bench paired build-target scheme.
+> **Purpose**: Authoritative spec of the compact C ABI shape exposed by the live
+> FFI-linked backends, the Haskell-side import policy, the `--rng cpp`
+> shared-generator plumbing, and the concrete foreign build artefact contracts.
 
 This document owns its content. There is no doctrine overlap; the FFI contract is
 project-specific.
@@ -39,10 +39,13 @@ recompute, read-visits, and envelope symbols through `src/MCTS/FFI/Cpp*.hs`,
 The bounded chosen-action smoke helpers are permanent clean-clone test
 scaffolding for Cabal builds without local shared libraries, not deprecated
 operator surface. The operator-facing bench/play/divergence paths and
-integration smokes use the real visit-vector and recompute ABIs for available
-foreign backends. Q3 `verify` uses live visit-vector ABI for visit-count equality
-across `(ii)..(v)`, and Q7 uses live backend slots `(i)..(v)` under the legacy
-envelope. Q3 uses the live cdylib when the matching
+Q3/Q7/report-card surfaces use the real visit-vector and recompute ABIs for
+available foreign backends. The direct live-FFI integration smoke cases currently
+exercise the Rust search/recompute/envelope path; C++ live coverage is carried by
+Q3 `verify`, Q7 legacy parity, and report-card measurement after `mcts test all`
+builds the C++ artefacts. Q3 `verify` uses live visit-vector ABI for visit-count
+equality across `(ii)..(v)`, and Q7 uses live backend slots `(i)..(v)` under the
+legacy envelope. Q3 uses the live cdylib when the matching
 library is present and the requested batch can use the fixed 60-ply foreign
 search horizon; otherwise it falls back to the in-process runner so Cabal
 stanzas stay self-contained.
@@ -51,12 +54,10 @@ The **FFI load name** is the canonical install path matching
 [../../README.md → Repository layout (target)](../../README.md); the Haskell FFI
 binds against this name. Current `mcts build` behavior runs the supported PGO/BOLT
 Plan/Apply sequence for Rust and the steelman C++ backends, then installs the
-bolted-or-PGO-fallback shared library at the canonical load name. The
-parallel `_instrumented` artefact (behind the Rust `instrumentation` feature; C++
-targets use `<backend>/build/libmcts_<backend>_instrumented.so` when that target is
-built) carries the transcript-writer and `read_visits` symbols and is loaded by
-`mcts play`, `mcts inspect replay`, `mcts inspect divergence`, and integration
-smokes — see [Paired Build Targets](#paired-build-targets) for the toggle semantics.
+bolted-or-PGO-fallback shared library at the canonical load name. The C++ backends
+also retain concrete `_instrumented` Makefile outputs for C++ investigations, but
+the supported Haskell FFI loader names the canonical shared libraries above. Rust
+publishes one optimized `cdylib` contract, not a parallel `_instrumented` artefact.
 
 ## C ABI Shape
 
@@ -68,8 +69,6 @@ symbol prefix. The header lives in `<backend-dir>/c-abi/mcts_<backend>.h`.
 ```c
 // Example: C ABI opaque handle types (per backend)
 typedef struct mcts_<backend>_board   mcts_<backend>_board;
-typedef struct mcts_<backend>_tree    mcts_<backend>_tree;
-typedef struct mcts_<backend>_rng     mcts_<backend>_rng;
 ```
 
 Handles are opaque pointers; only the named operations may touch the underlying
@@ -78,32 +77,26 @@ state.
 ### Lifecycle
 
 ```c
-// Example: C ABI lifecycle entry points
-mcts_<backend>_board *mcts_<backend>_new_board(uint16_t max_plies);
+// Example: compact live C ABI lifecycle entry points
+mcts_<backend>_board *mcts_<backend>_new_board(void);
 void                  mcts_<backend>_free_board(mcts_<backend>_board *b);
-
-mcts_<backend>_tree  *mcts_<backend>_new_tree(uint32_t initial_capacity);
-void                  mcts_<backend>_free_tree(mcts_<backend>_tree *t);
-
-mcts_<backend>_rng   *mcts_<backend>_new_rng(uint64_t seed, int rng_kind);
-void                  mcts_<backend>_free_rng(mcts_<backend>_rng *r);
 ```
 
-`rng_kind` is `0 = native` or `1 = cpp`. Native performance runs use each backend's
-own deterministic RNG contract. Equivalence verification uses C++-generated
-verification seeds from the shared RNG bridge so `(ii)..(v)` transcripts can be
-compared exactly. Profiling-driven native RNG swaps must update the determinism table in
-the same change.
+The live foreign search path owns one opaque board handle per replayed game. It does
+not expose C-owned tree or RNG lifecycle objects: the backend search allocates its
+own per-call arena internally, and the Haskell driver supplies deterministic
+per-move seeds derived from either the backend-native schedule or the shared C++ RNG
+bridge.
 
 ### Engine Operations
 
 ```c
-// Example: C ABI engine operations
+// Example: compact live C ABI engine operations
 int                    mcts_<backend>_is_terminal(const mcts_<backend>_board *b);
-float                  mcts_<backend>_terminal_eval(const mcts_<backend>_board *b);
 int                    mcts_<backend>_apply_action(mcts_<backend>_board *b, uint8_t action_id);
-uint8_t                mcts_<backend>_legal_moves(const mcts_<backend>_board *b,
-                                                  uint8_t *out, size_t out_capacity);
+uint8_t                mcts_<backend>_select_uct_move(mcts_<backend>_board *b,
+                                                      uint64_t seed,
+                                                      uint32_t sim_budget);
 ```
 
 `apply_action` returns `0` on success and a negative value on rejection or backend
@@ -114,17 +107,22 @@ into a fresh foreign board before calling `mcts_<backend>_search_move`, which ke
 ### Search Operations
 
 ```c
-// Example: C ABI search operations
-uint8_t                mcts_<backend>_select_uct_move(mcts_<backend>_tree *t,
-                                                      const mcts_<backend>_board *b,
-                                                      mcts_<backend>_rng *r,
-                                                      uint32_t sim_budget);
-void                   mcts_<backend>_rollout(mcts_<backend>_tree *t,
-                                               mcts_<backend>_board *b,
-                                               mcts_<backend>_rng *r);
-void                   mcts_<backend>_backprop(mcts_<backend>_tree *t,
-                                                uint32_t leaf_idx, float value);
-void                   mcts_<backend>_reroot(mcts_<backend>_tree *t, uint8_t chosen_action);
+// Example: full search-with-visit-vector C ABI
+int32_t                mcts_<backend>_search_move(mcts_<backend>_board *b,
+                                                  uint64_t seed,
+                                                  uint32_t sim_budget,
+                                                  uint8_t *out_action_ids,
+                                                  uint32_t *out_visits,
+                                                  uint8_t *out_chosen);
+
+// Example: replay/divergence recompute C ABI
+int32_t                mcts_<backend>_recompute_move(mcts_<backend>_board *b,
+                                                     uint64_t seed,
+                                                     uint32_t sim_budget,
+                                                     uint8_t *out_action_ids,
+                                                     uint32_t *out_visits,
+                                                     uint8_t *out_chosen,
+                                                     double *out_equity);
 ```
 
 The current C++ and Rust visit-vector search entry points expose `sim_budget`
@@ -134,24 +132,21 @@ the report-card verify workload. Batch dispatch therefore uses live foreign
 search for `max_plies >= 60` and falls back to the in-process runner for lower
 caps until a future ABI revision adds an explicit per-run search-cap parameter.
 
-### Instrumentation Surface (Instrumented Build Only)
+### Optional Visit Read Surface
 
 For `inspect replay`, `inspect divergence`, integration smoke, and optional Q6
-audit comparisons, each live backend implementation
-provides a read-only instrumentation surface:
+audit comparisons, live foreign backends may provide a read-only visit cache
+accessor on the board handle:
 
 ```c
-// Example: C ABI instrumentation read accessor (instrumented build only)
-uint32_t               mcts_<backend>_read_visits(const mcts_<backend>_tree *t,
-                                                   uint32_t node_idx,
-                                                   uint8_t *out_action,
-                                                   uint32_t *out_visits,
-                                                   uint32_t out_capacity);
+// Example: optional C ABI read accessor
+uint32_t               mcts_<backend>_read_visits(const mcts_<backend>_board *b,
+                                                  uint8_t action_id);
 ```
 
-Returns the sorted (action, visits) vector for a given node. Available only when
-the backend is built in instrumented mode (see [Paired Build
-Targets](#paired-build-targets) below).
+The load-bearing visit evidence comes from `search_move` and `recompute_move`,
+which return the sorted visit vector directly. `read_visits` is an auxiliary
+same-board cache accessor where a backend exposes it; it is not a tree-object API.
 
 ### Engine Envelope Surface
 
@@ -205,10 +200,12 @@ not part of the contract.
 Current baseline: `src/MCTS/FFI/Common.hs` dynamically loads
 `mcts_<backend>_get_envelope` via `dlopen` / `dlsym`, marshals the C/Rust
 process-static struct into `EngineEnvelope`, and the per-backend modules expose
-`loadRustEnvelope`. The integration stanza validates the live envelope path for
-the live foreign library when its shared
-artefacts are present, including transcript stamping and backend-slot stale
-hard-fail/`--allow-stale` warning behavior. The C++ backends patch
+`loadCppLegacyEnvelope`, `loadCppImperativeEnvelope`, `loadCppFunctionalEnvelope`,
+and `loadRustEnvelope`. The integration stanza validates the live Rust envelope
+path when the Rust shared artefact is present, including transcript stamping and
+backend-slot stale hard-fail/`--allow-stale` warning behavior; C++ live envelope
+loading is exercised through the Q3/Q7/report-card operator surfaces. The C++
+backends patch
 `engine_build_id` after link through their Makefile `envelope-build-id` targets;
 Rust stamps `compiler_version` from
 `rustc --version` through `rust/build.rs` / `MCTS_RUSTC_VERSION` and patches the
@@ -286,7 +283,7 @@ The implemented Haskell bridge uses the per-move
 `MCTS.FFI.Common.withDynamicRecomputeGame` rather than a C-owned stream object.
 `mcts inspect replay` uses that bridge to fill a missing originator overlay
 before the TUI starts when the matching shared library is present. The result
-caches in `<cache-root>/transcripts/<arch>/<sha>/<backend>-<build_prefix16>.eq`
+caches in `<cache-root>/transcripts/<arch>/<sha>/<backend>-<build_label>.eq`
 (see [transcript_format.md → Equity Sidecar Cache](./transcript_format.md))
 so subsequent opens are instant.
 
@@ -294,12 +291,12 @@ so subsequent opens are instant.
 
 Haskell bindings live under `src/MCTS/FFI/`:
 
-- `src/MCTS/FFI/Common.hs` — shared RAII wrappers (`withBoard`, `withTree`,
-  `withRng`), the `bracket`-based pattern that guarantees handle release on
-  exceptions, and `AppError FFIFailure` error rendering for C ABI exceptions
-  surfaced through the FFI bridge (see [Error Rendering](#error-rendering)
-  below). Distinct from `AppError SubprocessFailed`, which is reserved for the
-  typed `Subprocess` boundary.
+- `src/MCTS/FFI/Common.hs` — shared dynamic board/search/recompute wrappers, the
+  `bracket`-based pattern that guarantees handle release on exceptions, and
+  `AppError FFIFailure` error rendering for C ABI exceptions surfaced through the
+  FFI bridge (see [Error Rendering](#error-rendering) below). Distinct from
+  `AppError SubprocessFailed`, which is reserved for the typed `Subprocess`
+  boundary.
 - `src/MCTS/FFI/CppLegacy.hs` — backend (i) bindings.
 - `src/MCTS/FFI/CppImperative.hs` — backend (ii) bindings.
 - `src/MCTS/FFI/CppFunctional.hs` — backend (iii) bindings.
@@ -318,11 +315,11 @@ The in-process Haskell recompute path lives at `src/MCTS/Engine/Recompute.hs`.
 It reuses `MCTS.Search.UCT.uctSearchWithEquity` to replay every move of a
 transcript and emits a per-move `(move_index, action, visits, equity)` record
 stream. The foreign recompute path lives at `src/MCTS/Engine/ForeignRecompute.hs`
-and drives `DynamicRecomputeGame` through the same transcript. The in-process
-path hard-asserts chosen-action and visit equality under `--rng cpp`; the
-foreign path hard-asserts only for live same-backend originator transcripts and
-otherwise emits an `EqStream` for divergence scoring. A strict mismatch aborts
-with `AppError RecomputeMismatch (Backend, GameId, MoveIndex,
+and drives `DynamicRecomputeGame` through the same transcript. Both paths
+hard-assert chosen-action and visit equality under `--rng cpp` only for live
+same-backend originator transcripts; foreign-view recompute otherwise emits an
+`EqStream` for divergence scoring. A strict mismatch aborts with
+`AppError RecomputeMismatch (Backend, GameId, MoveIndex,
 recomputed_record, recorded_record)`. The sidecar
 writer `MCTS.Transcript.EquitySidecar.writeEquitySidecarStream` accepts an
 explicit `EqStream` so the recompute-driven stream can be persisted;
@@ -333,14 +330,13 @@ explicit `EqStream` so the recompute-driven stream can be persisted;
 
 Per-symbol:
 
-- **Hot-path symbols** (`select_uct_move`, `rollout`, `backprop`, `apply_action`,
-  `is_terminal`, `terminal_eval`, `legal_moves`, the `rng_*` family) use
-  `foreign import ccall unsafe`. These calls do not allocate Haskell heap memory
-  and do not call back into the Haskell RTS; `unsafe` is correct and avoids the
-  safe-call overhead.
-- **Lifecycle symbols** (`new_board`, `new_tree`, `new_rng`, `free_*`,
-  `read_visits`) use `foreign import ccall safe`. These calls may block on
-  allocator activity; `safe` lets the GC run on other capabilities.
+- **Hot-path symbols** (`select_uct_move`, `apply_action`, `is_terminal`,
+  `search_move`, and `recompute_move`) use the dynamic-call wrapper in
+  `MCTS.FFI.Common`; the wrapper keeps the Haskell-side lifetime boundary explicit
+  while preserving the compact board-handle ABI.
+- **Lifecycle and metadata symbols** (`new_board`, `free_board`, `read_visits`,
+  `get_envelope`) may block on allocator or loader activity; they remain on the
+  shared FFI boundary rather than becoming persistent C-owned resource graphs.
 
 ## `--rng cpp` Plumbing
 
@@ -390,25 +386,23 @@ caller widens it to `Word64` with `fromIntegral` at the FFI call site. The
 Haskell `mix :: Word64 -> Word64 -> Word64` mixer must agree byte-for-byte
 with `cpp_rng_split_seed` for any widened pair in the fixture code.
 
-The per-backend lifecycle symbols (`mcts_<backend>_new_rng` / `_free_rng`) from
-the per-backend ABI remain part of the C ABI shape, but the current live search
-path receives effective seeds from the Haskell driver rather than persistent RNG
-handles.
+The current per-backend ABI has no `mcts_<backend>_new_rng` /
+`mcts_<backend>_free_rng` resource pair. The live search path receives effective
+seeds from the Haskell driver rather than persistent RNG handles.
 
 ## Paired Build Targets
 
 Backend (i) `cpp-legacy` is the exception: it ships a single shared library because the
 verbatim legacy engine has no separate instrumentation build to disable.
 
-For the steelman foreign backends — (ii) `cpp-imperative`, (iii) `cpp-functional`, and
-(iv) `rust`:
+Backends (ii) `cpp-imperative` and (iii) `cpp-functional` keep concrete Makefile
+targets for a bench-shaped artefact and an instrumented-shaped artefact:
 
 - `*-bench` — no instrumentation. The binary is byte-identical to one where the
   instrumentation feature does not exist. Used for benchmark runs where any
   observable overhead would corrupt the measurement.
 - `*-instrumented` — transcript writer plus `read_visits` exported. Used by
-  `mcts play`, `mcts inspect replay`, `mcts inspect divergence`, and integration
-  smokes.
+  C++ replay/divergence investigations when that concrete artefact is selected.
 
 The toggle is a template / type-level flag on the per-game driver, not a runtime
 branch in the hot loop. The MCTS engine itself (search, rollout, board, RNG) is
@@ -419,6 +413,13 @@ Because the bench binary has nothing to disable, no benchmark phase is needed to
 demonstrate zero overhead — the instrumentation code literally does not exist in
 it. This is the "Compile-time toggle for instrumentation" property in the
 project [../../README.md → Cross-backend verification](../../README.md).
+
+Backend (iv) Rust currently publishes one concrete optimized FFI artefact at
+`rust/target/release/libmcts_rust.so`. It exports search, recompute, read-visits,
+and envelope symbols from that artefact; there is no supported Rust
+`_instrumented` companion artefact in the current contract. Rust remains
+first-class for Q3 cross-language verification and FFI smoke coverage, while backend
+(ii) remains the load-bearing performance ceiling for Q1/Q2.
 
 ## Error Rendering
 
@@ -462,13 +463,13 @@ per-symbol `unsafe`/`safe` policy above, not the `Subprocess` interpreter.
 
 ## Memory Ownership
 
-- Haskell owns the FFI handle; the C++/Rust side allocates and frees the
-  underlying memory. Every handle goes through the `withBoard` / `withTree` /
-  `withRng` `bracket` pattern in `src/MCTS/FFI/Common.hs`; double-free and leaked
-  handles are statically prevented.
-- `legal_moves` writes into a caller-provided buffer; the buffer is allocated
-  Haskell-side and the C++/Rust side only fills it. No buffer ownership crosses
-  the FFI boundary.
+- Haskell owns the FFI board handle; the C++/Rust side allocates and frees the
+  underlying memory. Every handle goes through the dynamic-board `bracket` pattern
+  in `src/MCTS/FFI/Common.hs`; double-free and leaked handles are prevented at the
+  wrapper boundary.
+- `search_move` and `recompute_move` write visit vectors into caller-provided
+  buffers; those buffers are allocated Haskell-side and the C++/Rust side only
+  fills them. No buffer ownership crosses the FFI boundary.
 
 ## Domain-to-ABI Conversion Discipline
 
@@ -487,17 +488,17 @@ The conversion lives at the FFI boundary module and only there:
   `c2hs` is preferred for a given backend). The `.hsc` file `#include`s
   the corresponding `<backend>/c-abi/mcts_<backend>.h` and exposes
   `Storable` instances on FFI-only newtypes (e.g. `FFIBoardPtr`,
-  `FFITreeHandle`, `FFIActionByte`). These newtypes are not re-exported
+  `FFIActionByte`). These newtypes are not re-exported
   from `MCTS.FFI.<Backend>` — the module re-exports only typed Haskell
-  surface (`SearchHandle`, `BoardHandle`, ...) and the `withBoard` /
-  `withTree` / `withRng` bracket helpers.
+  surface (`SearchHandle`, `BoardHandle`, ...) and the dynamic board/search
+  bracket helpers.
 - Marshalling functions are named `fromDomain` and `toDomain` (one
   matched pair per domain type per backend), live next to the `foreign
   import` declarations, and are the only functions in the module that
   touch both a domain type and an FFI type. They are total when the
   domain type's smart constructor has already enforced the input range
   (`fromDomain (a :: Action) :: FFIActionByte` is total because `Action`
-  carries only `0..208 ∪ {255}`); the inverse `toDomain :: FFIActionByte
+  carries only `0..208`); the inverse `toDomain :: FFIActionByte
   -> Either AppError Action` re-validates on decode because the C ABI
   side may return arbitrary bytes.
 - Engine modules under `src/MCTS/Engine/` and CLI modules under
@@ -524,8 +525,8 @@ file per backend rather than chasing call sites.
   through which the build harness invokes the C/Rust compilers
 - [determinism_contract.md](./determinism_contract.md) — `--rng cpp` semantics
   and the verification cohort
-- [transcript_format.md](./transcript_format.md) — wire format the instrumented
-  build emits
+- [transcript_format.md](./transcript_format.md) — wire format consumed by
+  transcript and recompute evidence
 - [compiler_runtime_tuning.md](./compiler_runtime_tuning.md) — per-backend flag
   sets and the PGO+BOLT build harness
 - [Development Plan](../../DEVELOPMENT_PLAN/README.md)

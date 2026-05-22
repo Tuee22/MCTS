@@ -37,7 +37,6 @@ import MCTS.Types
     , SimBudget (..)
     , Transcript (..)
     , actionFromId
-    , backendIdentifier
     , simPerMove
     )
 
@@ -92,7 +91,7 @@ foreignRecomputeEqStream backend transcriptHash buildId opener transcript = do
     strictRecompute =
         rng == CppRng
             && envelopeBackend envelope == backend
-            && envelopeBuildId envelope /= backendIdentifier backend <> "-logical"
+            && envelopeBuildId envelope /= "logical"
     sims =
         max 1 $
             fromIntegral $

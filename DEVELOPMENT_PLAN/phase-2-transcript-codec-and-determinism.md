@@ -16,27 +16,24 @@
 
 ## Phase Status
 
-✅ **Done**. The 2026-05-19 alignment sweep reclosed the Phase `2` owned
-transcript/cache/envelope surface. `RunConfig` now carries an explicit
-`runGameIndex`, `sha256(run_config)` hashes `game_index` instead of `runGames`,
-normal batch runs publish only one-game transcript files in the operator cache,
-per-game files preserve `master_seed`, and runtime seed derivation remains
-`splitmix64(master_seed, game_index)`. The v1 wire terminator is
-`0xFFFF u16 | winner u8 | total_moves u16`, the encoded envelope block matches
-`documents/engineering/transcript_format.md` and
-`documents/engineering/backend_ffi_contract.md`, and display/cache build labels
-derive from `engine_build_id` (`<backend>-logical` for all-zero logical
-envelopes). `inspect show --with-equity` now reads an envelope-matched
-originator `.eq` sidecar before recomputing, and `inspect show --envelope`
-renders every logical v1 envelope field in plain and JSON output.
+✅ **Done.** The 2026-05-19 alignment sweep reclosed the Phase `2` owned
+transcript/cache/envelope surface, and Sprint `2.8` reclosed the 2026-05-21
+evidence-surface audit findings for the transcript and sidecar contracts. The
+v1 transcript version handling is explicit, the single-byte action-domain docs
+match the implemented `Action` conversion, and logical sidecar identities are
+unambiguous. `RunConfig` still carries an
+explicit `runGameIndex`, `sha256(run_config)` hashes `game_index` instead of
+`runGames`, normal batch runs publish only one-game transcript files in the
+operator cache, per-game files preserve `master_seed`, and runtime seed
+derivation remains `splitmix64(master_seed, game_index)`.
 
-Focused Phase `2` validation passed with
+Focused Phase `2` validation passed on 2026-05-21 with
 `docker compose run --rm mcts mcts test mcts-unit`,
-`docker compose run --rm mcts mcts docs check`, and
-`docker compose run --rm mcts mcts check-code`.
+`docker compose run --rm mcts mcts docs check`,
+`docker compose run --rm mcts mcts check-code`, and `git diff --check`.
 Sprint `8.8` later removed checked-in transcript, renderer, report-card, and
 backend-fixture dependencies from the normal clean-clone suite; Phase `2`
-now relies on in-memory and temporary-root codec/cache tests.
+continues to rely on in-memory and temporary-root codec/cache tests.
 
 ## Phase Summary
 
@@ -163,6 +160,10 @@ records of `(action_id, visits)` sorted ascending by action ID, equity excluded.
   optional evidence path; Phase `2` owns only the codec shape and tests it
   with generated in-memory/temporary transcripts.
 
+### Remaining Work
+
+None.
+
 ## Sprint 2.2: Content-Addressed Cache and Cache Root Resolution ✅
 
 **Status**: Done
@@ -228,6 +229,10 @@ the `.gitignore` entry that keeps the cache out of version control.
 - Container validation confirmed generated `.mcts-cache/` contents are ignored by git and
   do not appear in `git status --short --ignored`.
 
+### Remaining Work
+
+None.
+
 ## Sprint 2.3: Git-Style Hash-Prefix Lookup ✅
 
 **Status**: Done
@@ -276,6 +281,10 @@ transcript with the doctrine-flavoured error rendering.
   `TranscriptNotFound`.
 - `lookupByPrefix` now returns a typed `TranscriptRef` carrying the resolved full hash and
   file path. Ambiguous-prefix errors render candidate hashes rather than paths.
+
+### Remaining Work
+
+None.
 
 ## Sprint 2.4: `mcts inspect list` and `mcts inspect show` ✅
 
@@ -355,6 +364,10 @@ Sprint 7.4.
   preserving the round-trip coverage over every action in the single-byte action
   enumeration.
 
+### Remaining Work
+
+None.
+
 ## Sprint 2.5: `splitmix64` Seed Derivation and `--rng` Plumbing ✅
 
 **Status**: Done
@@ -426,6 +439,10 @@ consumer is wired in Phase 4 once the FFI bridge exists.
   `(ii)..(v)` `--rng cpp` schedule without relying on committed fixture data.
 - Baseline parser coverage rejects user-supplied `--rng native` on `verify` at parse
   time rather than silently overriding the parsed run inputs.
+
+### Remaining Work
+
+None.
 
 ## Sprint 2.6: Engine Envelope Codec ✅
 
@@ -517,6 +534,10 @@ layered cohort-invariant vs per-backend-slot semantics.
   by Sprints `3.6`, `4.7`, `5.5`, and `6.5`. The Phase `2` codec surface is closed on
   the envelope wire format and reader/writer behavior.
 
+### Remaining Work
+
+None.
+
 ## Sprint 2.7: Equity Sidecar Codec ✅
 
 **Status**: Done
@@ -540,10 +561,12 @@ The closed baseline uses `src/MCTS/Transcript/EquitySidecar.hs` to write the bin
 `MEQ1` `EqStream` beside a binary envelope neighbour, stored under
 `.mcts-cache/transcripts/<host_arch>/<sha>/<backend>-<build_label>.{eq,envelope}`.
 `mcts inspect show --with-equity` reads the matching originator sidecar before
-materializing a recompute-backed logical sidecar on miss, `mcts inspect cache list`
+materializing a recompute-backed sidecar on miss; Sprint `2.8` and Sprint `7.6`
+correct the miss path so fallback recomputes cannot be labelled as originator
+evidence. `mcts inspect cache list`
 enumerates cached `(backend, build)` slots, and
-`mcts inspect cache prune --keep-current` removes sidecars whose build id does not match
-the current logical `<backend>-logical` baseline. `mcts-unit` covers sidecar
+`mcts inspect cache prune --keep-current` removes sidecars whose build label does
+not match the current logical `logical` baseline. `mcts-unit` covers sidecar
 encode/decode, listing, keep-current prune behavior, binary magic/terminator checks,
 and `castWord64ToDouble` round-trips.
 
@@ -562,8 +585,8 @@ and `castWord64ToDouble` round-trips.
   `mcts inspect cache prune [--keep-current]`. `cache list` enumerates
   every `(backend, build)` slot per transcript via the helper above.
   `cache prune` walks the cache and deletes sidecars selected by the plan. The
-  current Phase `2` baseline treats the logical `<backend>-logical` build id as
-  current; live-envelope pruning against backend `get_envelope` FFI structs is
+  current Phase `2` baseline treats the `logical` build label as current for
+  logical sidecar slots; live-envelope pruning against backend `get_envelope` FFI structs is
   owned by Sprints `3.6`, `4.7`, `5.5`, `6.5`, and `7.5`.
 - Originator-vs-foreign discrimination: the codec exposes a helper
   `isOriginator :: TranscriptHeader -> EqSidecar -> Bool` that
@@ -620,13 +643,72 @@ and `castWord64ToDouble` round-trips.
   directory.
 - `mcts inspect cache prune` is Plan/Apply-shaped: `--dry-run` renders the deletion plan,
   `--plan-file` writes it, and apply deletes `.eq` plus `.envelope` neighbours.
-- Logical `<backend>-logical` stale detection remains the Phase `2` baseline. Live
+- Logical `logical` build-label stale detection remains the Phase `2` baseline. Live
   `mcts_<backend>_get_envelope()` matching is owned by Sprints `3.6`, `4.7`, `5.5`,
   `6.5`, and `7.5`.
 - `MCTS.Transcript.EquitySidecar.loadMatchingOriginatorSidecar` now filters
   sidecars by transcript hash, origin backend, build label, and exact neighbouring
   `.envelope` bytes before decoding the `.eq` stream. `mcts-unit` covers the
   cache-hit path and the full-envelope `inspect show` rendering branch.
+
+### Remaining Work
+
+None.
+
+## Sprint 2.8: Transcript and Sidecar Evidence Contract Realignment ✅
+
+**Status**: Done
+**Implementation**: `src/MCTS/Transcript.hs`, `src/MCTS/Transcript/Action.hs`,
+`src/MCTS/Transcript/EquitySidecar.hs`, `src/MCTS/Engine/Envelope.hs`,
+`test/unit`
+**Docs to update**: `documents/engineering/transcript_format.md`,
+`documents/engineering/determinism_contract.md`,
+`documents/engineering/cli_command_surface.md`, `DEVELOPMENT_PLAN/system-components.md`,
+`DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md`
+
+### Objective
+
+Protect the evidence surface by making the wire-format and sidecar identity rules
+strict, current, and impossible to mislabel.
+
+### Deliverables
+
+- The v1 transcript decoder treats unsupported transcript or envelope versions as
+  `AppError TranscriptFormatUnsupported`. The current v1 reader validates
+  `envelope_offset == 48` instead of implying support for arbitrary future header
+  growth. Additive envelope trailing bytes are tolerated only where unit tests prove the
+  reader can skip them without interpreting unknown fields.
+- The action-domain docs match the implemented `Action` model: legal actions are
+  `0..208`; `209..254` are reserved; `255` is a sentinel/invalid byte in terminator
+  contexts and is not admitted as an `Action`.
+- Logical sidecar cache names are exactly `<backend>-logical.{eq,envelope}`. Internal
+  build labels must not double-prefix the backend, and `isCurrentSidecar` /
+  pruning logic must use the same build-label contract as the docs.
+- Originator sidecar identity is backend/build/envelope exact. A recompute performed by
+  another backend or by a logical fallback must be labelled as a foreign view or
+  unavailable, never as the originator stream.
+- `documents/engineering/transcript_format.md` owns the final byte layout and cache
+  naming language; `documents/engineering/determinism_contract.md` owns the
+  same-substrate vs foreign-view replay-equity semantics.
+
+### Validation
+
+- `docker compose run --rm mcts mcts test mcts-unit`
+- `docker compose run --rm mcts mcts docs check`
+- `docker compose run --rm mcts mcts check-code`
+- `git diff --check`
+
+### Remaining Work
+
+- None.
+
+### Closure Notes
+
+- Closed on 2026-05-21 after `docker compose run --rm mcts mcts test mcts-unit`,
+  `docker compose run --rm mcts mcts docs check`,
+  `docker compose run --rm mcts mcts check-code`, and `git diff --check` passed.
+- Sprint `7.6` retains the CLI replay/divergence evidence-label validation on top of
+  this corrected transcript/sidecar identity contract.
 
 ## Documentation Requirements
 
@@ -662,7 +744,9 @@ and `castWord64ToDouble` round-trips.
 - `documents/engineering/cli_command_surface.md` — extend the command matrix with
   the `mcts inspect list` and `mcts inspect show` surfaces, and document the
   `--rng`, `--cache-dir`, `--top`, `--with-equity`, `--format`, `--color`,
-  `--no-color` flags.
+  `--no-color` flags. Sprint `2.8` and Sprint `7.6` keep `inspect show
+  --with-equity` originator/foreign-view language synchronized with the corrected
+  sidecar identity contract.
 
 **Product docs to create/update:**
 
@@ -672,6 +756,8 @@ and `castWord64ToDouble` round-trips.
 
 - `system-components.md` Transcript Codec rows reflect the current `✅ Done`
   transcript/cache/envelope baseline.
+- `legacy-tracking-for-deletion.md` carries Sprint `2.8` transcript/sidecar doctrine
+  residue until the strict v1 and sidecar-identity work closes.
 
 ## Related Documents
 

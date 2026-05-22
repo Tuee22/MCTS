@@ -19,7 +19,10 @@
 the `(i)..(v)` legacy envelope, the report-card machinery measures Q1/Q2 against
 live backend (ii), and no checked-in generated validation data is required. The
 optimized-C++ parity evidence was refreshed by Sprint `8.3` after Sprint `5.3`
-closed.
+closed. Sprint `7.6` reclosed the inspect/replay/divergence evidence surface on
+2026-05-21 so originator, foreign-view, unavailable, and live-recompute labels
+cannot be misread as stronger evidence than the matching backend/build actually
+provides.
 
 The 2026-05-19 report-card evidence remains useful smoke-baseline audit context:
 Q1 ST 0.05x,
@@ -179,12 +182,67 @@ Make verification evidence reproducible without checked-in generated fixtures.
 
 None.
 
+## Sprint 7.6: Replay and Divergence Evidence Labels ✅
+
+**Status**: Done
+**Implementation**: `src/MCTS/CLI/Inspect.hs`, `src/MCTS/CLI/Tui/Replay.hs`,
+`src/MCTS/Engine/ForeignRecompute.hs`, `test/unit`, `test/integration`
+**Docs to update**: `documents/engineering/cli_command_surface.md`,
+`documents/engineering/determinism_contract.md`,
+`documents/engineering/transcript_format.md`,
+`documents/engineering/unit_testing_policy.md`, `DEVELOPMENT_PLAN/system-components.md`,
+`DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md`
+
+### Objective
+
+Make replay and divergence output preserve the distinction between originator
+evidence, foreign-view evidence, stale-build evidence, and unavailable evidence.
+
+### Deliverables
+
+- `inspect show --with-equity` reads an envelope-matched originator sidecar first and
+  writes an originator replacement only through the same backend/build slot. If the
+  matching backend cannot recompute, the command reports unavailable or foreign-view
+  evidence instead of writing a Haskell recompute under the originator label.
+- `inspect replay` prepares a missing originator column only through the matching
+  backend/build and marks foreign or fallback columns explicitly.
+- `inspect divergence <hash>` emits rows for every available cached sidecar and every
+  available live foreign recompute backend, including C++ backends where their cdylibs
+  are present. Rust-only live recompute is no longer described as the all-backend
+  surface.
+- Unit and integration tests assert the originator/foreign/unavailable labels and prove
+  that a foreign recompute cannot be persisted as the originator stream.
+
+### Validation
+
+- `docker compose run --rm mcts mcts test mcts-unit`
+- `docker compose run --rm mcts mcts test mcts-integration`
+- `docker compose run --rm mcts mcts docs check`
+- `docker compose run --rm mcts mcts check-code`
+- `git diff --check`
+
+### Remaining Work
+
+None.
+
+### Closure Notes
+
+Sprint `7.6` reclosed on 2026-05-21. Validation passed with:
+
+- `docker compose run --rm mcts mcts test mcts-unit`
+- `docker compose run --rm mcts mcts test mcts-integration`
+- `docker compose run --rm mcts mcts docs check`
+- `docker compose run --rm mcts mcts check-code`
+- `git diff --check`
+
 ## Documentation Requirements
 
 **Engineering docs to create/update:**
 
-- `documents/engineering/cli_command_surface.md` — verify/test/play command surfaces.
-- `documents/engineering/determinism_contract.md` — Q3/Q7 semantics and RNG split.
+- `documents/engineering/cli_command_surface.md` — verify/test/play command surfaces plus
+  Sprint `7.6` replay/divergence evidence labels.
+- `documents/engineering/determinism_contract.md` — Q3/Q7 semantics, RNG split, and
+  Sprint `7.6` originator/foreign-view replay semantics.
 - `documents/engineering/unit_testing_policy.md` — test stanza ownership and no generated
   validation data.
 
@@ -196,6 +254,8 @@ None.
 
 - Keep [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md)
   aligned with live C++ verification and report-card measurement.
+- `legacy-tracking-for-deletion.md` records Sprint `7.6` replay/divergence residue as
+  completed after output labels and live recompute row coverage were reclosed.
 
 ## Related Documents
 

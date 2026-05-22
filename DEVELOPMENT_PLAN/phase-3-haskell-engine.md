@@ -135,6 +135,10 @@ the ply-cap draw rule for backends (ii)–(v)), and legal-move enumeration.
   unit assertion; Sprint `8.8` removes any remaining checked-in generated
   baseline dependency.
 
+### Remaining Work
+
+None.
+
 ## Sprint 3.2: MCTS Tree Arena in `ST s` ✅
 
 **Status**: Done
@@ -187,6 +191,10 @@ value-backup fields.
   scratch) remains profile-driven and is not required by the current measured
   baseline. The API exported by `MCTS.Search.Arena` remains the boundary; the
   underlying representation can change behind it.
+
+### Remaining Work
+
+None.
 
 ## Sprint 3.3: UCT Search and Random-Rollout Leaf Evaluation ✅
 
@@ -256,6 +264,10 @@ ancestor path).
   sorted visit rows, root-child visit totals, the balanced initial `nonTerminalRank`, and
   the known-position engine semantic fixture.
 
+### Remaining Work
+
+None.
+
 ## Sprint 3.4: Per-Game Driver and Transcript Writer ✅
 
 **Status**: Done
@@ -313,6 +325,10 @@ in the Phase 2 wire format.
   container-built `mcts` binary until profiling requires a split.
 - Same-backend determinism, transcript roundtrip, and filename/hash behavior are covered
   by `mcts-unit`, `mcts-integration`, and the Phase `2` transcript cache tests.
+
+### Remaining Work
+
+None.
 
 ## Sprint 3.5: `mcts bench rollouts` and `mcts bench selfplay` for `--backend haskell` ✅
 
@@ -399,6 +415,10 @@ wall-clock time from a single `GHC.Clock.getMonotonicTimeNSec`, emit
 - Final report-card budgets are owned by Phase `7` and the Haskell parity proof by
   Phase `8`.
 
+### Remaining Work
+
+None.
+
 ## Sprint 3.6: Backend (v) Engine Envelope and Foreign-Engine Recompute ✅
 
 **Status**: Done
@@ -432,10 +452,12 @@ Recompute](../documents/engineering/backend_ffi_contract.md).
   recompute path: given a transcript's bytes, parse the `RunConfig`,
   replay the search from move 0, emit `(move_index, n_alternatives,
   action_id[], visits[], equity[])` records that the REPL writes into
-  an `.eq` sidecar (Sprint 2.7). Under `--rng cpp` the recompute
-  hard-asserts visit-agreement with the transcript's recorded visits
-  at every move; mismatch aborts with `AppError RecomputeMismatch
-  (backend, game_id, move_index, recomputed_record, recorded_record)`
+  an `.eq` sidecar (Sprint 2.7). Under `--rng cpp`, same-backend
+  originator recompute hard-asserts chosen-action and visit agreement
+  with the transcript at every move; mismatch aborts with
+  `AppError RecomputeMismatch (backend, game_id, move_index,
+  recomputed_record, recorded_record)`. Foreign-view recompute emits an
+  `EqStream` for divergence scoring instead of claiming originator identity,
   per
   [../documents/engineering/determinism_contract.md → Recompute Mismatch Output](../documents/engineering/determinism_contract.md).
 - The Haskell driver's existing search loop is invoked from this
@@ -447,9 +469,8 @@ Recompute](../documents/engineering/backend_ffi_contract.md).
 - `mcts-integration`: invoke `inspect replay <hash>` on a transcript
   produced by a different backend (e.g., a `cpp-imperative`
   transcript), trigger the haskell column with `r`, assert the
-  sidecar `.eq` writes successfully, assert the recompute's visits
-  agree byte-for-byte with the transcript's recorded visits under
-  `--rng cpp`.
+  sidecar `.eq` writes successfully, and assert disagreement is surfaced
+  as foreign-view divergence evidence rather than `RecomputeMismatch`.
 - `mcts-integration`: produce a transcript with backend (v); on
   subsequent `inspect replay` open, the originator `.eq` is read if
   the live binary's envelope matches.
@@ -461,10 +482,11 @@ Recompute](../documents/engineering/backend_ffi_contract.md).
   slot fields). `src/MCTS/Engine/Recompute.hs` exposes
   `recomputeEquities :: Transcript -> Either AppError [EqRecord]` and
   `recomputeEqStream :: String -> String -> Transcript -> Either
-  AppError EqStream`. Under `--rng cpp` the recompute hard-asserts
-  visit equality with the transcript's recorded visits at every move
-  and short-circuits with `AppError RecomputeMismatch` on the first
-  disagreement, exactly per
+  AppError EqStream`. Under `--rng cpp`, same-backend originator recompute
+  hard-asserts chosen-action and visit equality with the transcript at every
+  move and short-circuits with `AppError RecomputeMismatch` on the first
+  disagreement, while foreign-view recompute emits an `EqStream` for divergence
+  scoring, exactly per
   [../documents/engineering/determinism_contract.md → Recompute Mismatch Output](../documents/engineering/determinism_contract.md).
   The `mcts-unit` stanza covers (a) the recompute produces one
   `EqRecord` per recorded move, (b) chosen-move sequence preserved,
@@ -477,6 +499,10 @@ Recompute](../documents/engineering/backend_ffi_contract.md).
 - Originator cache hits are covered by the Phase `2` sidecar integration baseline.
   Foreign-view recompute coverage waits for real foreign backend dispatch in Phases `4`
   through `7`.
+
+### Remaining Work
+
+None.
 
 ## Documentation Requirements
 

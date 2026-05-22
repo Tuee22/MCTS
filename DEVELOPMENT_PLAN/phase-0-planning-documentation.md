@@ -262,10 +262,12 @@ rule L.
     — must produce **zero** hits.
   - **RNG FFI contract**: `cpp_rng_new`, `cpp_rng_next_u64`, `cpp_rng_split`,
     `cpp_rng_fill_u64`, `cpp_rng_free` (all five functions present per README §6.10).
-  - **Paired build targets**: `*-bench`, `*-instrumented` (or the project-specific
-    `_bench` / `_instrumented` suffix), with at least one owning sprint per
-    non-exempt foreign steelman backend (ii, iii, iv). Backend (v) Haskell exposes
-    equivalent logical instrumentation/recompute surfaces in-process.
+  - **Foreign observability/build targets**: concrete bench/recompute/instrumentation
+    artefact names must be owned by the backend phase that builds them. C++ steelman
+    backends own the paired-target wording where concrete artefacts exist; Sprint `6.6`
+    owns the current Rust contract as a single optimized FFI artefact. Backend (v)
+    Haskell exposes equivalent logical
+    instrumentation/recompute surfaces in-process.
   - **Verify mismatch protocol**: `digest equality`, `first divergent record`.
   - **Replay equity contract**: `bit-identical`, `ULP`, `same-backend equity`,
     `cross-backend equity tolerance`.
@@ -433,8 +435,8 @@ doctrine — are:
   binary wire format, single-byte action enumeration, content addressing,
   hash-prefix lookup, header layout.
 - `documents/engineering/backend_ffi_contract.md` — project-specific: C ABI shape,
-  `--rng cpp` plumbing through the FFI, instrumented vs bench build targets, the
-  `*-bench` / `*-instrumented` paired-target template-flag scheme.
+  `--rng cpp` plumbing through the FFI, and the concrete bench/recompute/instrumentation
+  artefact contract for each foreign backend.
 - `documents/engineering/compiler_runtime_tuning.md` — project-specific: the
   per-backend tuning stacks from the project README, with doctrine pointers for the
   toolchain pin and the `Subprocess` boundary the build harness uses.

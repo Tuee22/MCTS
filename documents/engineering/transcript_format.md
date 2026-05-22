@@ -58,7 +58,7 @@ specification. Little-endian everywhere, no padding.
 | 36 | 4 | per_move_sims | `u32`; together with `initial_sims` encodes `SimBudget` |
 | 40 | 2 | max_plies | `u16`; default `200`, pinned to `10000` under the legacy-parity envelope |
 | 42 | 2 | workload | `0 = rollouts`, `1 = selfplay`; other values are rejected in v1 |
-| 44 | 4 | envelope_offset | `u32`; byte offset from file start where the [Envelope Block](#envelope-block) begins. Always `48` in version-1 transcripts (the envelope immediately follows the fixed header), but explicit so future header changes can grow the fixed header without breaking envelope readers. |
+| 44 | 4 | envelope_offset | `u32`; byte offset from file start where the [Envelope Block](#envelope-block) begins. Version-1 readers require this to be exactly `48` and reject any other value with `AppError TranscriptFormatUnsupported`. |
 | 48 | — | — | Header end; envelope block begins at `envelope_offset`, per-game body begins immediately after the envelope block |
 
 **`SimBudget` encoding.** For `FixedSims N`, both `initial_sims` and
@@ -83,8 +83,8 @@ The block lives at `envelope_offset` (byte 48 in version-1 transcripts):
 
 | Offset (within block) | Size | Field | Notes |
 |-----------------------|------|-------|-------|
-| 0 | 2 | envelope_version | `u16`; currently `1`. New envelope fields are appended additively; older readers tolerate trailing bytes they do not recognise. |
-| 2 | 4 | envelope_byte_length | `u32`; total length of the envelope block in bytes, counting from `envelope_version` through the last byte of the block. A decoder that does not recognise an `envelope_version` skips past the block by reading this field. |
+| 0 | 2 | envelope_version | `u16`; currently `1`. Version-1 readers reject unsupported envelope versions with `AppError TranscriptFormatUnsupported`. New v1 fields are appended additively; readers tolerate trailing bytes they do not recognise after the known v1 payload. |
+| 2 | 4 | envelope_byte_length | `u32`; total length of the envelope block in bytes, counting from `envelope_version` through the last byte of the block. |
 | 6 | 1 | rng_source_envelope | `u8`; matches the header's `rng_source`. Recorded inside the envelope so the cohort-uniformity check is uniform across fields. |
 | 7 | 1 | host_arch_envelope | `u8`; matches the header's `host_arch`. Same rationale as `rng_source_envelope`. |
 | 8 | 32 | shared_rng_build_id | Provenance for a shared verification-RNG source when one is recorded. Deterministic logical fallback transcripts record all-zero; live equivalence evidence may pin this to the RNG provider build identity. |
@@ -111,13 +111,12 @@ compares a canonical decoded payload that omits provenance fields such as
 `backend` and the envelope. This is the property cross-backend visit-equality
 requires.
 
-Version handling: a reader that recognises `envelope_version` reads
-the fields it knows about by their fixed-or-length-prefixed widths; if
-`envelope_byte_length` exceeds what the reader expects for that version,
-the trailing bytes are skipped silently. A reader that does **not**
-recognise the version skips the entire block via `envelope_byte_length`
-and decodes the per-game body normally — visit counts remain
-machine-readable across envelope-version drift.
+Version handling: the current reader recognises transcript version `1`,
+requires `envelope_offset == 48`, recognises envelope version `1`, and rejects
+unsupported transcript or envelope versions with
+`AppError TranscriptFormatUnsupported`. If `envelope_byte_length` exceeds the
+known v1 payload length, the reader skips those trailing v1 bytes without
+interpreting them; unit coverage pins this additive-extension behavior.
 
 ### Per-Game Body
 
@@ -181,10 +180,10 @@ The encoding lives in `src/MCTS/Transcript/Action.hs`. The single-byte action
 enumeration is pinned by the determinism contract; future enumeration changes
 ride the `flags` field, which currently must be zero.
 
-`ActionId` is a newtype with a smart constructor (`mkActionId :: Word8 ->
-Either AppError ActionId`) that rejects the reserved range `209..254`,
-admits the sentinel `255`, and admits the valid range `0..208`. The data
-constructor is not exported from `MCTS.Transcript.Action`. See
+The implemented `Action` domain admits only the valid range `0..208` through
+`actionFromId :: Word8 -> Maybe Action`. The reserved range `209..254` and the
+sentinel/invalid byte `255` are rejected as actions; `255` is used only by
+terminator/sentinel contexts outside the `Action` model. See
 [haskell_code_guide.md → Smart Constructors for Bounded Domain
 Types](./haskell_code_guide.md) for the project-wide pattern; the
 `decode . encode == id` property in
@@ -323,12 +322,12 @@ sidecar directory is `<cache-root>/transcripts/<arch>/<sha>/`. Inside, one
   `cat .envelope` without parsing the `.eq` stream.
 
 `<backend>` is the string identifier (`cpp-legacy`, `cpp-imperative`,
-`cpp-functional`, `rust`, `haskell`). `<build_label>` is
-`<backend>-<engine_build_id_prefix16>` for a live backend envelope, where the
-prefix is the first 16 hex characters of the backend's `engine_build_id`
-(the SHA-256 of its loaded shared library / executable). Logical in-process
-envelopes with an all-zero `engine_build_id` use `<backend>-logical` as their
-display/cache label. The 16-char prefix is collision-safe for any realistic
+`cpp-functional`, `rust`, `haskell`). `<build_label>` is the first 16 hex
+characters of the backend's `engine_build_id` for a live backend envelope (the
+SHA-256 of its loaded shared library / executable). Logical in-process GHC envelopes
+with an all-zero `engine_build_id` use `logical` as their display/cache build
+label, yielding full sidecar names such as `rust-a1b2c3d4e5f60718.eq` and
+`haskell-logical.eq`. The 16-char prefix is collision-safe for any realistic
 number of cohabiting builds (the birthday bound is 2^32 before a 50/50
 collision) and short enough to be human-eyeable.
 
@@ -373,11 +372,12 @@ Terminator:
   u32 sentinel = 0xFFFFFFFF
 ```
 
-Visits are not duplicated in the `.eq` stream. A recompute writer compares
-recomputed visits against the transcript's recorded visit table before writing
-the sidecar: under `--rng cpp` within the (ii)–(v) cohort they MUST agree;
-under `--rng native` or cross-build they *usually* agree, and disagreement is
-surfaced as the divergence-smell metric (see
+Visits are not duplicated in the `.eq` stream. Same-backend originator recompute
+compares recomputed visits and chosen actions against the transcript before
+writing the sidecar: under `--rng cpp` they MUST agree. Foreign-view recompute of
+another backend's transcript emits that backend's own comparison stream; chosen
+or visit disagreement is surfaced as divergence-smell evidence instead of
+originator corruption (see
 [determinism_contract.md → Divergence Smell](./determinism_contract.md)).
 `mcts inspect replay` uses the same writer on originator cache miss before
 starting the TUI, so a successful replay-preparation recompute creates the same

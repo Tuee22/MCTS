@@ -22,5 +22,5 @@ makeEngineEnvelope backend rng =
         , envelopeLibmId = ""
         , envelopeCpuFeatures = 0
         , envelopeFpEnv = 0
-        , envelopeBuildId = backendIdentifier backend <> "-logical"
+        , envelopeBuildId = "logical"
         }

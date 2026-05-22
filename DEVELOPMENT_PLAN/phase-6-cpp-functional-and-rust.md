@@ -15,16 +15,19 @@
 
 ## Phase Status
 
-✅ **Done on Phase 6-owned surfaces.** Rust and `cpp-functional/` are live
-backends. Backend (iii) remains first-class because it isolates C++ style from C++
-optimization when compared with backend (ii). The shared C++ PGO/BOLT Plan/Apply
-wiring closed in Sprint `5.3`; Phase `6` does not duplicate that build harness.
+✅ **Done.** Rust and `cpp-functional/` are live backends. Backend (iii)
+remains first-class because it isolates C++ style from C++ optimization when
+compared with backend (ii). The shared C++ PGO/BOLT Plan/Apply wiring closed in
+Sprint `5.3`; Phase `6` does not duplicate that build harness. Sprint `6.6`
+reclosed this phase on 2026-05-21 by aligning backend (iii)'s compact ABI wording
+with backend (ii), and by making Rust's instrumentation/build-artifact contract
+match the code rather than a speculative paired-target description.
 
 ## Phase Summary
 
-Backend (iii) keeps backend (ii)'s data layout, performance budget, C ABI shape, and
-Makefile-level optimization target surface while expressing search flow with
-functional-style C++ APIs and data flow. Backend (iv) Rust provides a second
+Backend (iii) keeps backend (ii)'s data layout, performance budget, compact C ABI
+roles, and Makefile-level optimization target surface while expressing search flow
+with functional-style C++ APIs and data flow. Backend (iv) Rust provides a second
 systems-language implementation with its own release profile, supported PGO/BOLT
 Plan/Apply path, `mimalloc` allocator, Corridors gameplay port, and C ABI.
 
@@ -175,12 +178,66 @@ Keep every foreign backend observable through the same envelope and recompute co
 
 None.
 
+## Sprint 6.6: Functional/Rust ABI and Instrumentation Realignment ✅
+
+**Status**: Done
+**Implementation**: `cpp-functional/c-abi/`, `rust/Cargo.toml`, `rust/src/c_abi.rs`,
+`src/MCTS/CLI/Build.hs`, `src/MCTS/FFI/CppFunctional.hs`, `src/MCTS/FFI/Rust.hs`
+**Docs to update**: `documents/engineering/backend_ffi_contract.md`,
+`documents/engineering/compiler_runtime_tuning.md`,
+`documents/engineering/determinism_contract.md`, `DEVELOPMENT_PLAN/system-components.md`,
+`DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md`
+
+### Objective
+
+Keep backend (iii) and backend (iv) first-class without claiming build or
+instrumentation shapes that are not present in the supported code path.
+
+### Deliverables
+
+- Backend (iii)'s governed ABI wording mirrors backend (ii)'s compact live ABI and
+  does not claim tree/rng lifecycle symbols or visit-vector accessors that its header
+  does not export.
+- Rust's build and instrumentation contract is concrete. The current plan records Rust
+  as a single optimized FFI artefact with search, recompute, read-visits, and envelope
+  symbols. No separate Rust `_instrumented` artefact is part of the current contract.
+- `documents/engineering/backend_ffi_contract.md` distinguishes load-bearing backend
+  (ii) benchmark evidence from Rust's cross-language verification role, so the absence
+  of a Rust paired instrumentation artefact is not confused with the C++ performance
+  ceiling.
+- Rust and C++ functional header comments, Haskell FFI bindings, and compiler-tuning
+  docs agree on the actual artefact names produced by the supported build commands.
+
+### Validation
+
+- `docker compose run --rm mcts mcts build cpp-functional --dry-run`
+- `docker compose run --rm mcts mcts build rust --dry-run`
+- `docker compose run --rm mcts mcts test mcts-unit`
+- `docker compose run --rm mcts mcts docs check`
+- `git diff --check`
+
+### Remaining Work
+
+None.
+
+### Closure Notes
+
+Sprint `6.6` reclosed on 2026-05-21. Validation passed with:
+
+- `docker compose run --rm mcts mcts build cpp-functional --dry-run`
+- `docker compose run --rm mcts mcts build rust --dry-run`
+- `docker compose run --rm mcts mcts test mcts-unit`
+- `docker compose run --rm mcts mcts docs check`
+- `git diff --check`
+
 ## Documentation Requirements
 
 **Engineering docs to create/update:**
 
-- `documents/engineering/backend_ffi_contract.md` — C++ functional and Rust ABI roles.
-- `documents/engineering/compiler_runtime_tuning.md` — C++ functional/Rust tuning flags.
+- `documents/engineering/backend_ffi_contract.md` — C++ functional and Rust ABI roles,
+  including Sprint `6.6` compact-ABI and Rust artefact wording.
+- `documents/engineering/compiler_runtime_tuning.md` — C++ functional/Rust tuning flags and
+  the concrete Rust build-artifact contract.
 - `documents/engineering/determinism_contract.md` — Q3 participation and envelope fields.
 
 **Product docs to create/update:**
@@ -192,6 +249,8 @@ None.
 - Keep [system-components.md](system-components.md) and
   [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md)
   aligned with backend (iii) and backend (iv) live status.
+- `legacy-tracking-for-deletion.md` records Sprint `6.6` Rust/instrumentation residue
+  as completed after governed docs and build comments agreed.
 
 ## Related Documents
 

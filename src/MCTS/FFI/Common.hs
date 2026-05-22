@@ -1,9 +1,8 @@
 -- | Shared FFI helpers per Phase 4 Sprint 4.2 /
 -- [../../documents/engineering/backend_ffi_contract.md → Haskell-Side Import Policy](../../documents/engineering/backend_ffi_contract.md).
 --
--- This module owns the `bracket`-based RAII pattern for every foreign
--- backend handle (`withBoard`, `withTree`, `withRng`), the `AppError
--- FFIFailure` lifting of foreign exceptions, and the `EngineEnvelope`
+-- This module owns the `bracket`-based RAII pattern for foreign board
+-- handles, the `AppError` `FFIFailure` lifting of foreign exceptions, and the `EngineEnvelope`
 -- record type that mirrors the C ABI `mcts_<backend>_envelope` struct.
 -- Per-backend modules such as `MCTS.FFI.Rust` supply the typed
 -- foreign-imported pointers and call this module's helpers.
@@ -13,13 +12,9 @@
 -- so C++ and Rust call-out paths share one error and lifetime boundary.
 module MCTS.FFI.Common
     ( ForeignBoard
-    , ForeignTree
-    , ForeignRng
     , EngineEnvelope (..)
     , DynamicGame (..)
     , withBoard
-    , withTree
-    , withRng
     , withDynamicBoard
     , withDynamicGame
     , withDynamicSearchGame
@@ -48,7 +43,6 @@ import MCTS.Types
     , ByteString32 (..)
     , Envelope (..)
     , RngSource (..)
-    , backendIdentifier
     )
 import Numeric (showHex)
 import System.IO.Unsafe (unsafePerformIO)
@@ -57,9 +51,6 @@ import qualified System.Posix.DynamicLinker as DL
 -- | Opaque foreign pointers. Each `MCTS.FFI.*` module re-exports these
 -- newtype-tagged to its backend.
 type ForeignBoard backend = Ptr backend
-
-type ForeignTree backend = Ptr backend
-type ForeignRng backend = Ptr backend
 
 -- | The doctrine `mcts_<backend>_envelope` struct as a Haskell record.
 -- Per-backend modules marshal C struct values into this record after
@@ -101,7 +92,10 @@ engineEnvelopeToEnvelope engine =
         , envelopeLibmId = engineEnvLibmId engine
         , envelopeCpuFeatures = engineEnvCpuFeatures engine
         , envelopeFpEnv = engineEnvFpEnv engine
-        , envelopeBuildId = backendIdentifier backend <> "-" <> take 16 (engineEnvBuildId engine)
+        , envelopeBuildId =
+            if all (== '0') (take 64 (engineEnvBuildId engine))
+                then "logical"
+                else take 16 (engineEnvBuildId engine)
         }
   where
     backend = engineEnvBackend engine
@@ -166,30 +160,6 @@ withBoard
     -> IO (Either AppError a)
 withBoard backend acquire release body =
     liftFFI backend "withBoard" $
-        bracket acquire release body
-
--- | `bracket`-style RAII for foreign tree arenas.
-withTree
-    :: Backend
-    -> IO (Ptr backend)
-    -> (Ptr backend -> IO ())
-    -> (Ptr backend -> IO a)
-    -> IO (Either AppError a)
-withTree backend acquire release body =
-    liftFFI backend "withTree" $
-        bracket acquire release body
-
--- | `bracket`-style RAII for foreign RNG handles per the
--- `cpp_rng_*` C ABI in
--- [../../README.md → Cross-backend verification → RNG FFI contract](../../README.md).
-withRng
-    :: Backend
-    -> IO (Ptr backend)
-    -> (Ptr backend -> IO ())
-    -> (Ptr backend -> IO a)
-    -> IO (Either AppError a)
-withRng backend acquire release body =
-    liftFFI backend "withRng" $
         bracket acquire release body
 
 foreign import ccall "dynamic" mkBoardNew :: FunPtr (IO (Ptr ())) -> IO (Ptr ())

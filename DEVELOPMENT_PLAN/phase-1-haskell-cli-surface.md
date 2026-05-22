@@ -17,21 +17,17 @@
 
 ## Phase Status
 
-✅ **Done**. A Cabal package, thin `app/Main.hs`, `src/MCTS/` library layout,
+✅ **Done.** A Cabal package, thin `app/Main.hs`, `src/MCTS/` library layout,
 manual `CommandSpec` registry, parser, output/error boundary, typed `Subprocess`
 wrapper, Plan/Apply helpers, prerequisite skeleton, lint/docs commands, and
 `mcts-haskell-style` stanza exist; `docker compose run --rm mcts mcts test all` is
 the baseline host validation gate under the pinned toolchain. Phase `1`
-reclosed in the 2026-05-19 alignment sweep: `bench` and `verify` parser
-required/default semantics match the governed command surface, `play` carries
-the documented runtime controls (`--backend`, `--side`, `--vs`, `--rng`,
-`--seed`, `--max-plies`, `--cache-dir`), generated command documentation is current,
-the committed `fourmolu.yaml` is the formatter SSoT, and supported-path partial
-function usage is removed and enforced by the `mcts-haskell-style` source
-walker. Phase `1` closure is scoped to the CLI scaffold, generated artefact
-machinery, container-owned lint stack, typed subprocess and Plan/Apply
-boundaries, prerequisite registry, shared `Env`, and output/error discipline;
-backend logic and transcript semantics remain owned by later phases.
+reopened on 2026-05-21 for Sprint `1.10` and reclosed the same day after
+generated-document metadata enforcement, `check-code` dispatch ordering, and
+style-policy wording matched the implemented lint stack exactly. Backend logic
+and transcript semantics remain owned by later phases; this closure owns only the
+generated artefact machinery, container-owned lint stack, and code-quality
+doctrine surface.
 
 ## Phase Summary
 
@@ -141,6 +137,10 @@ the reproducible Docker development environment that every later sprint builds o
   `ghc --numeric-version == 9.14.1`, `cabal --numeric-version == 3.16.1.0`,
   and `docker compose run --rm mcts mcts check-code` (including warning-clean
   `cabal build all`).
+
+### Remaining Work
+
+None.
 
 ## Sprint 1.2: `CommandSpec` Registry and Parser Generation ✅
 
@@ -418,6 +418,10 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
   `docker compose run --rm mcts mcts help bench selfplay`, and
   `docker compose run --rm mcts mcts check-code`.
 
+### Remaining Work
+
+None.
+
 ## Sprint 1.3: Generated Artefacts Registry and Docs Pipeline ✅
 
 **Status**: Done
@@ -506,6 +510,10 @@ text-artefact derived from the `CommandSpec` registry.
   `docker compose run --rm mcts mcts lint files`, and final green
   `docker compose run --rm mcts mcts docs check` plus
   `docker compose run --rm mcts mcts lint files`.
+
+### Remaining Work
+
+None.
 
 ## Sprint 1.4: Lint Stack, `fourmolu.yaml`, `mcts-haskell-style` Stanza ✅
 
@@ -628,6 +636,10 @@ forbidden-symbol HLint rules behind the `mcts-haskell-style` test stanza plus th
   boundary precisely. Later style-rule changes reopen this sprint explicitly rather
   than leaving action items in a `Done` sprint.
 
+### Remaining Work
+
+None.
+
 ## Sprint 1.5: `Plan / Apply` Boundary ✅
 
 **Status**: Done
@@ -678,6 +690,10 @@ for free.
   `docker compose run --rm mcts mcts test all --dry-run --plan-file /tmp/mcts-test-plan.txt`,
   `docker compose run --rm mcts mcts docs generate --dry-run --plan-file /tmp/mcts-docs-plan.txt`,
   and `docker compose run --rm mcts mcts build rust --dry-run --plan-file /tmp/mcts-build-plan.txt`.
+
+### Remaining Work
+
+None.
 
 ## Sprint 1.6: `Subprocess` ADT and Interpreter ✅
 
@@ -746,6 +762,10 @@ shared-library builds, and every subprocess call site go through one IO boundary
   `/tmp/HlintTypedSynthetic.hs` using `System.Process.Typed.proc` rejected by the
   container-pinned HLint as `Error: Use typed subprocess boundary`.
 
+### Remaining Work
+
+None.
+
 ## Sprint 1.7: `prerequisiteRegistry` ✅
 
 **Status**: Done
@@ -800,6 +820,10 @@ typed boundary and emits structured remedy hints on failure.
 - Validated on 2026-05-15 through the root Compose entrypoint with
   `docker compose run --rm mcts mcts test mcts-unit` and
   `docker compose run --rm mcts mcts test mcts-integration`.
+
+### Remaining Work
+
+None.
 
 ## Sprint 1.8: `Env` Record and `ReaderT App` ✅
 
@@ -861,6 +885,10 @@ Thread one shared `Env` record through every command runner via `ReaderT Env IO`
   `docker compose run --rm mcts mcts lint files`, and
   `docker compose run --rm mcts mcts build rust --dry-run`, plus a container
   signature check showing every public command runner returns `Env.App ExitCode`.
+
+### Remaining Work
+
+None.
 
 ## Sprint 1.9: `AppError`, `renderError`, Output Discipline ✅
 
@@ -975,6 +1003,61 @@ Implement the single `AppError` ADT, the `renderError` boundary, and the `--form
   and a synthetic `/tmp/HlintPrintSynthetic.hs` using `print` rejected by the
   container-pinned HLint as `Error: Use output boundary`.
 
+### Remaining Work
+
+None.
+
+## Sprint 1.10: Generated-Doc and Style Contract Realignment ✅
+
+**Status**: Done
+**Implementation**: `src/MCTS/CLI/Docs.hs`, `src/MCTS/Generated/Sections.hs`,
+`src/MCTS/CheckCode.hs`, `src/MCTS/CLI/Lint.hs`, `test/haskell-style/Main.hs`
+**Docs to update**: `documents/documentation_standards.md`,
+`documents/engineering/code_quality.md`, `documents/engineering/haskell_code_guide.md`,
+`documents/engineering/unit_testing_policy.md`, `DEVELOPMENT_PLAN/system-components.md`,
+`DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md`
+
+### Objective
+
+Make the CLI-owned documentation and style gates say exactly what they enforce, and
+enforce the metadata checks the governed documentation topology requires.
+
+### Deliverables
+
+- `mcts docs check` parses each governed document's `**Generated sections**:` metadata
+  and verifies that the declared keys, physically-present marker pairs, and
+  `GeneratedSectionRule` registry agree. A document declaring `none` while carrying a
+  generated marker pair fails, and a document declaring a generated key whose markers
+  are absent fails.
+- `mcts check-code` runs the documented lint/docs/style/build sequence once per stage;
+  any intentional duplicate check is removed or documented as an explicit safeguard.
+- `documents/engineering/haskell_code_guide.md`,
+  `documents/engineering/code_quality.md`, and the `mcts-haskell-style` source walker
+  agree on the supported-path partial-function policy. If hot-path invariant failures
+  such as `error` remain permitted, the policy says so narrowly instead of claiming an
+  unconditional ban.
+- `system-components.md` marks the generated-doc and style gates done after the code,
+  governed docs, and validation commands agree.
+
+### Validation
+
+- `docker compose run --rm mcts mcts docs check`
+- `docker compose run --rm mcts mcts lint docs`
+- `docker compose run --rm mcts mcts test mcts-haskell-style`
+- `docker compose run --rm mcts mcts check-code`
+- `git diff --check`
+
+### Remaining Work
+
+- None.
+
+### Closure Notes
+
+- Closed on 2026-05-21 after `docker compose run --rm mcts mcts docs check`,
+  `docker compose run --rm mcts mcts lint docs`,
+  `docker compose run --rm mcts mcts test mcts-haskell-style`,
+  `docker compose run --rm mcts mcts check-code`, and `git diff --check` passed.
+
 ## Documentation Requirements
 
 **Engineering docs to create/update:**
@@ -991,6 +1074,8 @@ Implement the single `AppError` ADT, the `renderError` boundary, and the `--form
 - `documents/engineering/haskell_code_guide.md` — describe how the project uses
   `Subprocess`, `Plan / Apply`, `prerequisiteRegistry`, `Env`, and `AppError`; defer
   to the doctrine on each pattern.
+- `documents/documentation_standards.md` — align the generated-section metadata rule with
+  the Sprint `1.10` implementation.
 
 **Product docs to create/update:**
 
@@ -1000,6 +1085,8 @@ Implement the single `AppError` ADT, the `renderError` boundary, and the `--form
 
 - `documents/cli/commands.md` (generated by Sprint `1.3`) is reachable from the
   `documents/engineering/README.md` index.
+- `legacy-tracking-for-deletion.md` carries any Sprint `1.10` doctrine-deviation residue
+  until the generated-doc and style contracts are reclosed.
 
 ## Related Documents
 

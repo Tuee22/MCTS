@@ -134,8 +134,9 @@ alongside the user-facing variants:
   `VerifyCohortTooSmall` — cross-backend verify failures. The length and
   terminator variants prevent zip-truncation from hiding extra games, extra
   moves, or winner/total-move disagreement after digest mismatch.
-- `RecomputeMismatch` — `mcts inspect` recompute of an existing transcript
-  under `--rng cpp` disagrees with the recorded visits. Carries
+- `RecomputeMismatch` — same-backend originator recompute of an existing
+  transcript under `--rng cpp` disagrees with the recorded chosen actions or
+  visits. Carries
   `(Backend, GameId, MoveIndex, recomputed_record, recorded_record)`.
   Distinct from `VerifyMismatch` because it indicates a single backend's
   own determinism has broken against its prior recording (a bug bell), not
@@ -216,7 +217,7 @@ state derivation, or move generation do not surface as graceful failures —
 they surface as cross-backend `verify` mismatches, semantic renderer-test
 failures, or
 silent disagreement between two implementations of the same engine. The
-project therefore bans partial functions outright on the supported path.
+project therefore bans ambient data partials on the supported path.
 `Prelude.head`, `Prelude.tail`, `Prelude.init`, `Prelude.last`,
 `Prelude.read`, `Data.List.(!!)`, `Data.Maybe.fromJust`,
 `Data.Either.fromLeft`, and `Data.Either.fromRight` are forbidden;
@@ -224,12 +225,15 @@ project therefore bans partial functions outright on the supported path.
 through the `mcts-haskell-style` source walker.
 Use `Data.List.NonEmpty` when the call site genuinely owns a non-empty
 list, `readMaybe` from `Text.Read` for parses, a local total helper returning
-`Maybe`, or pattern-match with an explicit `AppError` branch. The hot inner loops of the Haskell engine
-(see [../../README.md → Backend (v) — Haskell](../../README.md)) use
-unboxed mutable arrays inside `ST s`, so the partial-function set on lists
-rarely shows up in the engine itself — but it bites in the CLI, transcript,
-and FFI marshalling layers, which is exactly where determinism damage
-would propagate the furthest.
+`Maybe`, or pattern-match with an explicit `AppError` branch. Narrow `error`
+calls are permitted only for impossible hot-path invariants in the Haskell
+engine, where changing the inner-loop type to carry `AppError` would alter the
+measured surface. The hot inner loops of the Haskell engine (see
+[../../README.md → Backend (v) — Haskell](../../README.md)) use unboxed mutable
+arrays inside `ST s`, so the forbidden partial-function set on lists rarely
+shows up in the engine itself — but it bites in the CLI, transcript, and FFI
+marshalling layers, which is exactly where determinism damage would propagate
+the furthest.
 
 ### Smart Constructors for Bounded Domain Types
 
@@ -239,7 +243,8 @@ violated:
 
 - **Action enumeration** (single-byte action IDs). Valid: `0..208`
   (`0..80` pawn moves, `81..144` horizontal walls, `145..208` vertical
-  walls). Reserved-for-extensions: `209..254`. Sentinel: `255`. See
+  walls). Reserved-for-extensions: `209..254`. Sentinel/invalid byte: `255`,
+  not admitted by the `Action` domain. See
   [transcript_format.md → Action Enumeration](./transcript_format.md) for
   the layout the wire format pins and
   [../../README.md → Cross-backend verification](../../README.md) for the

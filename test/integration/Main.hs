@@ -239,12 +239,12 @@ sidecarOriginMarkers =
                 let foreignEnvelope =
                         (transcriptEnvelope transcript)
                             { envelopeBackend = Rust
-                            , envelopeBuildId = "rust-logical"
+                            , envelopeBuildId = "logical"
                             }
                     foreignStream =
                         (equityStreamForTranscript hashValue transcript)
                             { eqBackend = Rust
-                            , eqBuildId = "rust-logical"
+                            , eqBuildId = "logical"
                             }
                 foreignEntry <- writeEquitySidecarStreamWithEnvelope (Just cacheRoot) foreignEnvelope foreignStream
                 listed <- listEquitySidecars (Just cacheRoot)

@@ -19,15 +19,19 @@ parser/build/verify/FFI dispatch, Makefile-level PGO/BOLT/`mimalloc` targets, an
 supported `mcts build cpp-imperative` / `mcts build cpp-functional` Plan/Apply
 wiring through the shared C++ PGO/BOLT target sequence. The 2026-05-21 validation
 run closed Sprint `5.3`; Phase `8` then refreshed the report-card evidence against
-the canonical backend (ii) artefact produced by that build surface.
+the canonical backend (ii) artefact produced by that build surface. Sprint `5.5`
+reclosed Phase `5` on 2026-05-21 by aligning the backend (ii) C ABI contract with
+the compact live evidence ABI that exists, not speculative tree/rng lifecycle
+handles.
 
 ## Phase Summary
 
 Backend (ii) is deliberately steelmanned C++: C++23, GCC, `-O3`, LTO, PGO, BOLT,
 `mimalloc`, arena allocation, flat child ranges, branch hints, `thread_local` scratch
-buffers, a ply-cap draw rule, and a C ABI that exposes search, recompute, visit-table,
-and envelope operations. The supported CLI build now drives the C++ PGO/BOLT target
-sequence for both steelman C++ backends and installs the canonical shared library.
+buffers, a ply-cap draw rule, and a compact C ABI that exposes board lifecycle,
+search, recompute, available visit evidence, and envelope operations. The supported
+CLI build now drives the C++ PGO/BOLT target sequence for both steelman C++ backends
+and installs the canonical shared library.
 On the 2026-05-21 amd64 validation run, BOLT instrumentation produced no usable
 `.fdata`, so the documented Makefile fallback installed the PGO artefact as the
 bolted artefact.
@@ -166,13 +170,65 @@ Make backend (ii) a live participant in performance and equivalence surfaces.
 
 None.
 
+## Sprint 5.5: Compact C++ ABI Contract Realignment ✅
+
+**Status**: Done
+**Implementation**: `cpp-imperative/c-abi/`, `src/MCTS/FFI/CppImperative.hs`,
+`src/MCTS/FFI/Common.hs`, `src/MCTS/Driver/ForeignSearch.hs`
+**Docs to update**: `documents/engineering/backend_ffi_contract.md`,
+`documents/engineering/determinism_contract.md`, `DEVELOPMENT_PLAN/system-components.md`,
+`DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md`
+
+### Objective
+
+Make the backend (ii) contract describe the live ABI used for the performance and
+determinism proof, without adding object-model APIs that do not improve the proof.
+
+### Deliverables
+
+- `documents/engineering/backend_ffi_contract.md` describes the compact live ABI:
+  board allocation/free, `is_terminal`, `apply_action`, `select_uct_move` where
+  exported, full `search_move`, `recompute_move`, optional available visit evidence,
+  and `get_envelope`.
+- Speculative per-backend tree and RNG lifecycle APIs are removed from the current
+  contract unless the implementation actually exposes and uses them.
+- Instrumentation wording states exactly which backend (ii) artefact is used for
+  benchmark, verify, play, replay, and divergence evidence. The current contract names
+  only concrete artefacts produced by `mcts build cpp-imperative`; no unimplemented
+  zero-overhead paired-target claim remains.
+- Haskell FFI bindings and C header comments use the same symbol names and argument
+  shapes as the governed ABI document.
+
+### Validation
+
+- `docker compose run --rm mcts mcts build cpp-imperative --dry-run`
+- `docker compose run --rm mcts mcts build cpp-imperative`
+- `docker compose run --rm mcts mcts test mcts-unit`
+- `docker compose run --rm mcts mcts docs check`
+- `git diff --check`
+
+### Remaining Work
+
+- None.
+
+### Closure Notes
+
+- Closed on 2026-05-21 after
+  `docker compose run --rm mcts mcts build cpp-imperative --dry-run`,
+  `docker compose run --rm mcts mcts build cpp-imperative`,
+  `docker compose run --rm mcts mcts test mcts-unit`,
+  `docker compose run --rm mcts mcts docs check`, and `git diff --check` passed.
+- Sprint `6.6` retains the shared compact-ABI wording validation for backend (iii)
+  and backend (iv).
+
 ## Documentation Requirements
 
 **Engineering docs to create/update:**
 
 - `documents/engineering/compiler_runtime_tuning.md` — C++ steelman flags, PGO/BOLT,
   parity tolerance, and native-RNG benchmark semantics.
-- `documents/engineering/backend_ffi_contract.md` — imperative C ABI symbols.
+- `documents/engineering/backend_ffi_contract.md` — imperative C ABI symbols, using the
+  compact live ABI surface owned by Sprint `5.5`.
 - `documents/engineering/determinism_contract.md` — Q3 equivalence participation.
 
 **Product docs to create/update:**
@@ -183,6 +239,8 @@ None.
 
 - Keep [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md)
   aligned with live backend (ii) measurement.
+- `legacy-tracking-for-deletion.md` carries Sprint `5.5` ABI overclaim residue until
+  backend (ii)'s governed ABI and headers agree.
 
 ## Related Documents
 

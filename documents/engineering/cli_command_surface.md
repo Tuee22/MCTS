@@ -2,7 +2,7 @@
 
 **Status**: Authoritative source
 **Supersedes**: N/A
-**Referenced by**: ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, ../../DEVELOPMENT_PLAN/phase-2-transcript-codec-and-determinism.md, ../../DEVELOPMENT_PLAN/phase-3-haskell-engine.md, ../../DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md, ../../DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md, ../../DEVELOPMENT_PLAN/phase-6-cpp-functional-and-rust.md, ../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md, ../documentation_standards.md, ./README.md
+**Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, ../../DEVELOPMENT_PLAN/phase-2-transcript-codec-and-determinism.md, ../../DEVELOPMENT_PLAN/phase-3-haskell-engine.md, ../../DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md, ../../DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md, ../../DEVELOPMENT_PLAN/phase-6-cpp-functional-and-rust.md, ../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md, ../documentation_standards.md, ./README.md
 **Generated sections**: command-matrix
 
 > **Purpose**: Operator-facing `mcts` command matrix. Defers to
@@ -80,13 +80,15 @@ Current implementation baseline: `src/MCTS/CLI/Parser.hs` exposes
 `commandParserInfo`, an `optparse-applicative` parser rendered from the
 `CommandSpec` tree; verify parsers reject `--rng native` at the option-reader
 boundary. `inspect list` renders backend, seed, games, threading, sims,
-total moves, mtime, and path; `inspect show --with-equity` writes a logical
-originator sidecar only after failing to load an envelope-matched cached
-originator sidecar, then renders its stream-backed per-move equity column;
+total moves, mtime, and path; `inspect show --with-equity` first reads an
+envelope-matched cached originator sidecar, then writes an originator replacement
+only through the transcript's same backend/build recompute path and otherwise
+reports unavailable evidence;
 `inspect cache list` enumerates `.eq` / `.envelope` slots; `inspect cache prune
---keep-current` retains the logical `<backend>-logical` build id; `inspect show
+--keep-current` retains the logical `<backend>-logical` sidecar slot; `inspect show
 --envelope` renders every logical v1 envelope field; and `inspect divergence` renders
-transcript-pair metrics from `MCTS.Verify.Divergence`. `mcts verify ...
+cached sidecar metrics plus live recompute rows for every available foreign cdylib
+from `MCTS.Verify.Divergence`. `mcts verify ...
 --allow-stale` is routed through the layered live-envelope verifier; when a
 foreign cdylib is present, FFI-produced transcripts are stamped with
 `mcts_<backend>_get_envelope()` and compared through
@@ -144,7 +146,7 @@ Flag Reference below. Worked invocation examples live in
 | `--envelope` | `inspect show` | `False` | Dump the transcript's engine-envelope block as plain text (one field per line) before the per-move output. Useful for scripting (`diff`-friendly) and forensics. |
 | `--cache-states N` | `inspect replay` | `20` | In-memory MCTS-state LRU cache for back-navigation. |
 | `--allow-stale` | `verify rollouts`, `verify selfplay` | off | Downgrade per-backend-slot `EngineEnvelopeMismatch` from hard fail to a warning; Q3 verify proceeds on visit counts. `--format json` includes the downgraded warnings under `warning_details`. Cohort-level mismatches (`host_arch`, `shared_rng_build_id`, `cohort_config_hash`) remain hard fails. Forensic use only. |
-| `--keep-current` | `inspect cache prune` | off | In the Phase 2 baseline, only deletes sidecar slots whose build id does not match the logical `<backend>-logical` current slot. Live-envelope stale detection is enforced by `verify` for transcript cohorts; report-card/recompute sidecar coverage lives under `inspect divergence` and the Phase 7 integration stanza. |
+| `--keep-current` | `inspect cache prune` | off | In the Phase 2 baseline, only deletes sidecar slots whose build label does not match the logical `logical` label, yielding the current `<backend>-logical` slot. Live-envelope stale detection is enforced by `verify` for transcript cohorts; report-card/recompute sidecar coverage lives under `inspect divergence` and the Phase 7 integration stanza. |
 | `--cache-dir <path>` | every cache-touching command | `./.mcts-cache/` when omitted | The `mcts` binary does not read cache-root environment variables. |
 | `--format json\|table\|plain` | every non-TUI command | `table` on TTY, `plain` otherwise | Per [HASKELL_CLI_TOOL.md → Output Rules](../../HASKELL_CLI_TOOL.md). TUI commands (`play`, `inspect replay`) ignore the flag. |
 | `--color auto\|always\|never`, `--no-color` | every non-TUI command | `auto` | TUI commands ignore the flag. |
@@ -256,24 +258,28 @@ Conventions:
 
 - **On transcript open** the originator's `.eq` is read if it exists and matches
   the transcript's `(backend, engine_build_id)` slot. Match → originator column
-  populates instantly. Absent → `MCTS.CLI.Inspect.prepareReplayOverlays`
-  recomputes the full originator `EqStream`, validates chosen actions and visits
-  under `--rng cpp`, writes the sidecar, and opens the TUI with that overlay
-  already loaded. Recompute failure becomes a status-line message; the stored
-  transcript still opens for navigation.
+  populates instantly. Absent → `MCTS.CLI.Inspect.prepareReplayOverlays` attempts
+  the full originator `EqStream` only through the same backend/build slot. It
+  validates chosen actions and visits under `--rng cpp` before writing the sidecar.
+  If the matching backend/build is unavailable, the TUI opens without an originator
+  sidecar and reports unavailable evidence rather than writing a fallback stream
+  under the originator label. Recompute failure becomes a status-line message; the
+  stored transcript still opens for navigation.
 - **Other backends** populate from cached `.eq` sidecars when present. Pressing
   `r` recomputes the next missing backend column through the Haskell recompute path
   or the matching foreign recompute FFI opener, writes
-  `<cache-root>/transcripts/<arch>/<sha>/<backend>-<build_prefix16>.eq`, appends the
+  `<cache-root>/transcripts/<arch>/<sha>/<backend>-<build_label>.eq`, appends the
   overlay, and makes subsequent navigation instant. If a requested foreign shared
   library is absent or recompute fails, the backend is marked unavailable for that
   TUI session and the status line explains why.
-- **Under `--rng cpp`** the recompute hard-asserts visit-agreement
-  with the transcript's recorded visits at every move; a mismatch
-  surfaces as a red error banner `AppError RecomputeMismatch
-  (backend, game_id, move_index, recomputed_record, recorded_record)`
-  per [determinism_contract.md → Recompute Mismatch Output](./determinism_contract.md)
-  — this is a bug bell, not an expected state.
+- **Under `--rng cpp`** same-backend originator recompute hard-asserts
+  chosen-action and visit agreement with the transcript at every move; a mismatch
+  surfaces as `AppError RecomputeMismatch (backend, game_id, move_index,
+  recomputed_record, recorded_record)` per
+  [determinism_contract.md → Recompute Mismatch Output](./determinism_contract.md).
+  Foreign-view recompute does not claim originator identity: chosen-action or
+  visit disagreement is rendered as `diverged` / divergence-smell comparison
+  evidence instead of corrupting the originator column.
 
 ### Foreign-Backend View
 

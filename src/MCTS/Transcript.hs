@@ -286,7 +286,8 @@ parseHeader = do
             0 -> pure Rollouts
             1 -> pure Selfplay
             _ -> failGet "bad workload"
-    _offset <- getWord32
+    envelopeOffset <- getWord32
+    if envelopeOffset /= 48 then failGet "bad envelope offset" else pure ()
     pure
         RunConfig
             { runBackend = backend
@@ -315,6 +316,7 @@ parseBackendId ident =
 parseEnvelope :: Backend -> Get Envelope
 parseEnvelope backend = do
     version <- getWord16
+    if version /= 1 then failGet "unsupported envelope version" else pure ()
     byteLength <- getWord32
     if byteLength < 6 then failGet "bad envelope length" else pure ()
     payloadBytes <- takeBytes (fromIntegral byteLength - 6)
@@ -364,9 +366,9 @@ parseEnvelopePayload backend version = do
             }
 
 buildLabelFromEngineId :: Backend -> ByteString32 -> String
-buildLabelFromEngineId backend digest@(ByteString32 hex)
-    | digest == zeroDigest = backendIdentifier backend <> "-logical"
-    | otherwise = backendIdentifier backend <> "-" <> take 16 hex
+buildLabelFromEngineId _backend digest@(ByteString32 hex)
+    | digest == zeroDigest = "logical"
+    | otherwise = take 16 hex
 
 getHex32 :: Get String
 getHex32 = do

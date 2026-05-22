@@ -22,13 +22,15 @@
 ## Phase Status
 
 ✅ **Done.** The Haskell tuning work, no-generated-validation-data cleanup,
-five-backend restoration, and optimized-C++ report-card refresh are closed. Sprint
-`5.3` now routes `mcts build cpp-imperative` and `mcts build cpp-functional`
+five-backend restoration, and optimized-C++ report-card refresh previously closed.
+Sprint `5.3` routes `mcts build cpp-imperative` and `mcts build cpp-functional`
 through the shared C++ PGO/BOLT target sequence, and Sprint `8.3` refreshed the
 report-card evidence on 2026-05-21 against the canonical backend (ii) artefact
-produced by that build surface. The stale two-backend drift has been corrected:
-`cpp-legacy`, `cpp-imperative`, and `cpp-functional` are live
-parser/build/verify/FFI participants alongside `rust` and `haskell`.
+produced by that build surface. Sprint `8.9` reclosed Phase `8` on 2026-05-21
+after compiler-tuning wording and final handoff revalidation passed through the
+root Compose entrypoint. The stale two-backend drift remains corrected: `cpp-legacy`,
+`cpp-imperative`, and `cpp-functional` are live parser/build/verify/FFI
+participants alongside `rust` and `haskell`.
 
 The restored end state is:
 
@@ -123,6 +125,10 @@ target within `HASKELL_PARITY_TOLERANCE = 0.05`.
 - The 2026-05-19 report-card run remains historical smoke-baseline audit context:
   Q1 ST 0.05x, Q1 MT8 0.41x, Q2 ST 0.05x, Q2 MT8 0.20x, Q5 Haskell 0.99x,
   Q5 `cpp-imperative` 3.64x, Q7 liveness PASS, and verdict `Within tolerance`.
+- `mcts test parity-anchor <baseline> <candidate>` is the focused Plan/Apply
+  parity measurement surface for explicit backend pairs. It shares the Q1/Q2
+  workloads, build prerequisites, and `HASKELL_PARITY_TOLERANCE = 0.05`
+  verdict logic with the Phase `8` report-card proof.
 
 ### Validation
 
@@ -130,6 +136,12 @@ The report-card evidence was produced through:
 
 ```bash
 docker compose run --rm mcts mcts test all
+```
+
+The focused parity-anchor surface is validated by:
+
+```bash
+docker compose run --rm mcts mcts test parity-anchor cpp-imperative haskell --dry-run
 ```
 
 ### Current Validation State
@@ -304,6 +316,10 @@ C++-stream-compatible.
 - Governed engineering docs under `documents/engineering/` match the five-backend target.
 - Backend FFI and determinism docs identify the process-pinned envelope loader and C++
   RNG bridge used by equivalence verification.
+- README, the development plan, and governed engineering docs keep the SSoT boundaries
+  explicit: `unit_testing_policy.md` owns the exact `mcts test all` sequence,
+  `transcript_format.md` owns sidecar labels, `determinism_contract.md` owns
+  replay/recompute mismatch semantics, and README remains operator-facing.
 
 ### Validation
 
@@ -331,10 +347,66 @@ C++-stream-compatible.
 - `docker compose run --rm mcts mcts test all` passed all five Cabal stanzas, Q3
   `(ii)..(v)`, Q7 all-five legacy-envelope checks, and the optimized-C++ report-card
   refresh with verdict `Within tolerance`.
+- Documentation SSoT alignment updated README, `DEVELOPMENT_PLAN/`, and `documents/`
+  to defer exact test sequencing, replay overlay behavior, sidecar labels, and
+  recompute mismatch semantics to their owning documents.
 
 ### Remaining Work
 
 None.
+
+## Sprint 8.9: Tuning Documentation and Handoff Reclosure ✅
+
+**Status**: Done
+**Implementation**: `mcts.cabal`, `src/MCTS/CLI/Test.hs`,
+`DEVELOPMENT_PLAN/README.md`, `DEVELOPMENT_PLAN/00-overview.md`,
+`DEVELOPMENT_PLAN/system-components.md`
+**Docs to update**: `documents/engineering/compiler_runtime_tuning.md`,
+`documents/engineering/unit_testing_policy.md`,
+`DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md`
+
+### Objective
+
+Reclose the parity handoff after the evidence-surface corrections land, without
+changing the high-level proof or treating stale documentation as proof.
+
+### Deliverables
+
+- `documents/engineering/compiler_runtime_tuning.md` accurately states where GHC
+  `-fllvm` is load-bearing. The performance-relevant library, executable, and benchmark
+  stanzas carry the optimization flags; test stanzas either carry the same flags or the
+  docs explain why they compile/test library code without duplicating `-fllvm`.
+- The report-card and parity-anchor docs continue to identify backend (ii)
+  `cpp-imperative` as the performance ceiling and backend (v) Haskell as the candidate.
+- `README.md`, `00-overview.md`, and `system-components.md` describe the final state
+  after Sprints `1.10`, `2.8`, `5.5`, `6.6`, and `7.6` close.
+- The aggregate validation gate passes through the root Compose entrypoint with no
+  checked-in generated validation data.
+
+### Validation
+
+- `docker compose run --rm mcts mcts docs check`
+- `docker compose run --rm mcts mcts check-code`
+- `docker compose run --rm --build mcts mcts test mcts-cross-backend`
+- `docker compose run --rm --build mcts mcts test all`
+- `git diff --check`
+
+### Remaining Work
+
+None.
+
+### Closure Notes
+
+Sprint `8.9` reclosed on 2026-05-21. Validation passed with:
+
+- `docker compose run --rm mcts mcts docs check`
+- `docker compose run --rm mcts mcts check-code`
+- `docker compose run --rm --build mcts mcts test mcts-cross-backend`
+- `docker compose run --rm --build mcts mcts test all`
+- `git diff --check`
+
+The final `mcts test all` report-card verdict was `Within tolerance`; Q3 passed for
+`(ii)..(v)`, Q7 passed across all five backend slots, and all five Cabal stanzas passed.
 
 ## Documentation Requirements
 
@@ -349,7 +421,8 @@ None.
 - `documents/engineering/unit_testing_policy.md` — live `mcts-cross-backend` and
   `mcts-legacy-parity` roles without checked-in generated validation data.
 - `documents/engineering/compiler_runtime_tuning.md` — performance parity against live
-  backend (ii) and native-RNG benchmark semantics.
+  backend (ii), native-RNG benchmark semantics, and Sprint `8.9` Cabal-stanza flag
+  wording.
 - `documents/engineering/haskell_code_guide.md` — command/build surface examples.
 
 **Product docs to create/update:**
@@ -361,6 +434,9 @@ None.
 - Add or update backlinks from every governed doc above to this phase and
   [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md) where cleanup
   ownership is referenced.
+- Keep [README.md](README.md), [00-overview.md](00-overview.md), and
+  [system-components.md](system-components.md) aligned with the closed reclosure sprint
+  statuses.
 
 ## Related Documents
 

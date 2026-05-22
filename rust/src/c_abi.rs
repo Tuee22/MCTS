@@ -181,10 +181,10 @@ pub unsafe extern "C" fn mcts_rust_recompute_move(
     count as i32
 }
 
-/// Instrumentation hook for the paired bench/instrumented split per
-/// the Cargo feature `instrumentation`. Looks up `action_id` in the
-/// last exposed visit vector for this board handle, matching the C++
-/// shims' per-board last-search cache.
+/// Optional visit cache accessor on the single optimized Rust FFI
+/// artefact. The load-bearing search and recompute ABI returns visit
+/// vectors directly; this helper looks up `action_id` in the last
+/// exposed visit vector for this board handle.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn mcts_rust_read_visits(
     board: *const MctsRustBoard,

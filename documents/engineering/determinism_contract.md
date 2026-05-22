@@ -71,8 +71,8 @@ transcripts, visit tables, and chosen moves for MCTS logic verification, without
 forcing benchmark runs to use a shared RNG.
 
 Used for correctness validation. Under `--rng cpp`, Q3 backends `(ii)..(v)` must
-produce identical visit counts, identical action orderings, and identical rollout
-sequences for the same seed and move history. Backend (i) is excluded from Q3 because
+produce identical determinism payloads, including visit counts and chosen moves, for
+the same seed and move history. Backend (i) is excluded from Q3 because
 its terminal-state semantics differ from the steelman cohort (see
 [Ply-Cap Draw Rule](#ply-cap-draw-rule) below), but it participates in Q7.
 
@@ -282,12 +282,15 @@ envelope.
 ### Equity Recomputation on Replay
 
 `mcts inspect replay` loads cached `.eq` overlays and, when the originator overlay
-is missing, recomputes the originator `EqStream` before the TUI starts. The visit
-counts and chosen actions produced must equal the transcript records byte-for-byte
-under `--rng cpp` before the sidecar is written. Equity is read from the recompute
-result, not from the transcript wire format. The stored visits serve as a per-move
-determinism check that the re-run stayed on the deterministic path — not as input to
-the equity calculation.
+is missing, recomputes the originator `EqStream` before the TUI starts when the
+originator backend is available. Same-backend originator recompute must produce
+chosen actions and visit counts that equal the transcript records byte-for-byte
+under `--rng cpp` before the sidecar is written. Foreign-view recompute emits that
+backend's own comparison stream; disagreement there is reported as divergence
+evidence, not as proof that the originator transcript is corrupt. Equity is read
+from the recompute result, not from the transcript wire format. The stored visits
+serve as a per-move determinism check for same-backend originator reruns — not as
+input to the equity calculation.
 
 ### Replay Equity Guarantees
 
@@ -424,13 +427,17 @@ honours.
 
 ## Recompute Mismatch Output
 
-`mcts inspect show` and `mcts inspect replay` populate other-backend columns
-by asking the live binary to recompute visits from a recorded transcript
-(see [cli_command_surface.md → Lazy Compute Trigger](./cli_command_surface.md)
-and `src/MCTS/Engine/Recompute.hs`). Under `--rng cpp` the recompute hard-
-asserts visit-agreement with the transcript's recorded visits at every
-move. A mismatch indicates the live backend has become non-deterministic
-against its own prior recording — a bug bell, not a routine outcome.
+`mcts inspect show` and `mcts inspect replay` populate recompute-backed columns
+by asking the live binary to recompute a stream from a recorded transcript
+(see [cli_command_surface.md → Lazy Compute Trigger](./cli_command_surface.md),
+`src/MCTS/Engine/Recompute.hs`, and `src/MCTS/Engine/ForeignRecompute.hs`). Under
+`--rng cpp`, same-backend originator recompute hard-asserts chosen-action and visit
+agreement with the transcript at every move. A mismatch indicates the live backend
+has become non-deterministic against its own prior recording — a bug bell, not a
+routine outcome. Foreign-view recompute of another backend's transcript emits an
+`EqStream` for comparison; chosen-action or visit disagreement is rendered as
+divergence evidence instead of `RecomputeMismatch` unless the path is the
+same-backend originator rerun.
 
 The renderer emits
 
@@ -647,8 +654,9 @@ The REPL's multi-backend overlay (`mcts inspect replay`) reads cached per-move
 equity series and now fills a missing originator series before TUI startup. Each
 series is cached in a sidecar `.eq` file keyed by
 `(backend, build_label)`. Live envelopes use the first 16 hex characters of
-`engine_build_id` for the build label; logical in-process envelopes with an
-all-zero engine id use `<backend>-logical`. Multi-build cohabitation is
+`engine_build_id` for the build label; logical in-process GHC envelopes with an
+all-zero engine id use `logical`, yielding full sidecar slots such as
+`<backend>-logical`. Multi-build cohabitation is
 automatic — a rebuild lands in a fresh cache slot; the old slot remains for
 forensic reference until pruned. The originator (the transcript's `backend`
 field) is marked with a ★ in the REPL; its `.eq`, when keyed to the transcript's
@@ -664,7 +672,8 @@ envelope-matched originator sidecar before recomputing and writing a replacement
 before TUI startup and uses `r` to recompute/write the next missing backend
 column on demand, `inspect cache list` enumerates sidecar slots with originator /
 foreign / unknown markers, and `inspect cache prune --keep-current` retains
-`<backend>-logical` build ids through a Plan/Apply deletion plan. Live-envelope
+the current logical `<backend>-logical` sidecar slots through a Plan/Apply deletion
+plan. Live-envelope
 stamping and verify-time comparison are implemented for present cdylibs.
 `mcts-integration` also writes a recomputed `.eq` sidecar and consumes it through
 the real `mcts inspect divergence` subprocess. Sprint `7.5` also publishes the
@@ -787,7 +796,7 @@ below.
 | 3 | Live FFI engines under `--rng native` | RNG: backend-native schedule rather than the shared C++ verification stream | Benchmark streams stay backend-distinct and optimized for each backend. | Bench-only divergence: visit-count bit-equality is not asserted under `--rng native`; Q3 uses `--rng cpp` verification transcripts |
 | 4 | (i) under any `max_plies != MAX_ROLLOUT_ITERS` | Q1 / Q2 / Q5 throughput basis: (i)'s games run to a positional win and are on average longer than the ply-capped games of (ii)–(v) | (i) has no ply cap (#1), so games/sec for (i) is not on the same engine-budget basis as (ii)–(v) | `mcts test all` does not use backend (i) for Q1/Q2 throughput rows; the load-bearing Q1 / Q2 comparison is Haskell (v) vs live C++ (ii). |
 | 5 | All backends, amd64 ↔ arm64 | Full determinism evidence, especially equity float bits | `libm`, FMA, denormal handling, SIMD reduction, and runtime dispatch can differ across arches | Cross-arch cohorts are rejected by layered envelope verification with `AppError ArchEnvelopeMismatch`; per-arch cache partitioning makes accidental cross-arch comparison unlikely. No cross-arch bit-equality result is treated as contractual evidence. |
-| 6 | Same backend across different build envelopes | Equity float bits and (under `--rng native`) potentially visit counts | A rebuild changes `engine_build_id`, often `libm_id`/`compiler_version`, and may change `fp_flags`/`cpu_features`. Equity drift is unavoidable; visit drift can occur if FP differences swap a tie-break upstream of a subsequent rollout under `--rng native` | `checkTranscriptEnvelopesLive` hard-fails with `AppError EngineEnvelopeMismatch (BackendSlot b)` unless `--allow-stale` is passed. `mcts inspect replay` shows a persistent yellow banner `envelope: BUILD MISMATCH - recomputed locally; equities may drift at ULP from origin`; multi-build sidecar cache (one `.eq` per `(backend, build_prefix16)`) lets the user compare across builds. Visit drift under cross-build `--rng cpp` is expected to be zero; stale backend-slot envelopes must be explicitly acknowledged with `--allow-stale` before visits are compared |
+| 6 | Same backend across different build envelopes | Equity float bits and (under `--rng native`) potentially visit counts | A rebuild changes `engine_build_id`, often `libm_id`/`compiler_version`, and may change `fp_flags`/`cpu_features`. Equity drift is unavoidable; visit drift can occur if FP differences swap a tie-break upstream of a subsequent rollout under `--rng native` | `checkTranscriptEnvelopesLive` hard-fails with `AppError EngineEnvelopeMismatch (BackendSlot b)` unless `--allow-stale` is passed. `mcts inspect replay` shows a persistent yellow banner `envelope: BUILD MISMATCH - recomputed locally; equities may drift at ULP from origin`; multi-build sidecar cache (one `.eq` per `(backend, build_label)`) lets the user compare across builds. Visit drift under cross-build `--rng cpp` is expected to be zero; stale backend-slot envelopes must be explicitly acknowledged with `--allow-stale` before visits are compared |
 
 The set is closed in the literal sense: review rejects any PR that
 introduces behaviour incompatible with the cohort assertions above unless

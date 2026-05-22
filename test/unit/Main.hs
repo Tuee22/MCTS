@@ -178,6 +178,7 @@ unitTests =
     , testGroup
         "transcripts and cache"
         [ testCase "transcript codec invariants" exerciseTranscriptCodecSurface
+        , testCase "strict v1 transcript envelope boundary" exerciseTranscriptEnvelopeBoundary
         , testCase "transcript semantic fixtures and cache lookup" exerciseTranscriptGeneratedSurface
         , testCase "per-game transcript writer" exercisePerGameTranscriptWriter
         , QC.testProperty
@@ -470,6 +471,9 @@ exerciseTranscriptGeneratedSurface = do
 exerciseEngineSurface :: IO ()
 exerciseEngineSurface = do
     assert "action enumeration roundtrip" (all (\a -> actionFromId (actionId a) == Just a) allActions)
+    assert "reserved action id is rejected" (actionFromId 209 == Nothing)
+    assert "last reserved action id is rejected" (actionFromId 254 == Nothing)
+    assert "sentinel action id is rejected" (actionFromId 255 == Nothing)
     assert "notation roundtrip" (all (\a -> parseMove (renderMove a) == Just a) allActions)
     assert "initial board has legal moves" (not (null (legalMoves initialBoard)))
     exerciseEngineProperties
@@ -727,7 +731,7 @@ exerciseEnvelopeChecks transcript = do
                         { envelopeBuildId = "haskell-old"
                         }
                 }
-        expectedStale = EngineEnvelopeMismatch (BackendSlot Haskell) "build_id" "haskell-logical" "haskell-old"
+        expectedStale = EngineEnvelopeMismatch (BackendSlot Haskell) "build_id" "logical" "haskell-old"
     assert
         "cohort arch mismatch"
         (checkCohortInvariant [transcript, archMismatch] == Left (ArchEnvelopeMismatch hostArch "other-arch"))
@@ -889,12 +893,12 @@ exerciseSidecars transcript = do
     let foreignEnvelope =
             (transcriptEnvelope transcript)
                 { envelopeBackend = Rust
-                , envelopeBuildId = "rust-logical"
+                , envelopeBuildId = "logical"
                 }
         foreignStream =
             (equityStreamForTranscript hashValue transcript)
                 { eqBackend = Rust
-                , eqBuildId = "rust-logical"
+                , eqBuildId = "logical"
                 }
     foreignEntry <- writeEquitySidecarStreamWithEnvelope (Just cacheRoot) foreignEnvelope foreignStream
     decoded <- decodeEqStream <$> BS.readFile (sidecarEqPath currentEntry)
@@ -914,7 +918,7 @@ exerciseSidecars transcript = do
     remaining <- listEquitySidecars (Just cacheRoot)
     assert
         "equity sidecar current remains"
-        (map sidecarBuildId remaining == ["haskell-logical", "rust-logical"])
+        (map sidecarBuildId remaining == ["logical", "logical"])
     loaded <- loadMatchingOriginatorSidecar (Just cacheRoot) hashValue transcript
     assert
         "inspect show can load envelope-matched originator sidecar before recompute"
@@ -925,6 +929,30 @@ removeDirectoryIfExists :: FilePath -> IO ()
 removeDirectoryIfExists path = do
     exists <- doesDirectoryExist path
     if exists then removePathForcibly path else pure ()
+
+replaceByte :: Int -> Word8 -> BS.ByteString -> BS.ByteString
+replaceByte offset value bytes =
+    BS.take offset bytes <> BS.singleton value <> BS.drop (offset + 1) bytes
+
+insertBytes :: Int -> BS.ByteString -> BS.ByteString -> BS.ByteString
+insertBytes offset inserted bytes =
+    BS.take offset bytes <> inserted <> BS.drop offset bytes
+
+readWord32LE :: Int -> BS.ByteString -> Int
+readWord32LE offset bytes =
+    sum
+        [ fromIntegral (BS.index bytes (offset + i)) * (256 ^ i)
+        | i <- [0 .. 3]
+        ]
+
+writeWord32LE :: Int -> Int -> BS.ByteString -> BS.ByteString
+writeWord32LE offset value bytes =
+    BS.take offset bytes <> BS.pack encoded <> BS.drop (offset + 4) bytes
+  where
+    encoded =
+        [ fromIntegral ((value `div` (256 ^ i)) `mod` 256)
+        | i <- [0 :: Int .. 3]
+        ]
 
 -- | Sprint 7.5: divergenceVsEqStream pairs a transcript against a
 -- recompute-produced `EqStream` and reports per-move metrics. Same-
@@ -973,17 +1001,13 @@ mapFirstGame f (game : rest) = f game : rest
 
 withEnvelopeTrailer :: BS.ByteString -> BS.ByteString
 withEnvelopeTrailer encoded =
-    let envelopeLength = readWord32LE (BS.unpack (BS.take 4 (BS.drop 50 encoded)))
+    let envelopeLength = readWord32LE 50 encoded
         newLength = envelopeLength + 3
         payloadLength = envelopeLength - 6
         prefix = BS.take 50 encoded
         payload = BS.take payloadLength (BS.drop 54 encoded)
         suffix = BS.drop (48 + envelopeLength) encoded
      in prefix <> word32LEBytes newLength <> payload <> BS.pack [0, 0, 0] <> suffix
-
-readWord32LE :: [Word8] -> Int
-readWord32LE bytes =
-    sum [fromIntegral byte * (256 ^ idx) | (idx, byte) <- zip [0 :: Int ..] bytes]
 
 word32LEBytes :: Int -> BS.ByteString
 word32LEBytes value =
@@ -1116,6 +1140,34 @@ exerciseLegacyDrawRejection = do
         Left (TranscriptFormatUnsupported _) -> pure ()
         other -> error ("expected cpp-legacy draw rejection, got " <> show other)
 
+exerciseTranscriptEnvelopeBoundary :: IO ()
+exerciseTranscriptEnvelopeBoundary = do
+    let inputs =
+            defaultRunInputs{inputBackend = Haskell, inputGames = 1, inputSeed = 9, inputSims = FixedSims 1}
+        transcript =
+            Transcript
+                (makeRunConfig inputs)
+                (makeLogicalEnvelope Haskell CppRng)
+                [runGame inputs 0]
+        encoded = encodeTranscript transcript
+        badOffset = replaceByte 44 49 encoded
+        badEnvelopeVersion = replaceByte 48 2 encoded
+        oldEnvelopeLength = readWord32LE 50 encoded
+        trailingEnvelope =
+            writeWord32LE
+                50
+                (oldEnvelopeLength + 3)
+                (insertBytes (48 + oldEnvelopeLength) (BS.pack [0xDE, 0xAD, 0xBE]) encoded)
+    case decodeTranscript badOffset of
+        Left (TranscriptFormatUnsupported _) -> pure ()
+        other -> error ("expected bad envelope offset rejection, got " <> show other)
+    case decodeTranscript badEnvelopeVersion of
+        Left (TranscriptFormatUnsupported _) -> pure ()
+        other -> error ("expected unsupported envelope version rejection, got " <> show other)
+    case decodeTranscript trailingEnvelope of
+        Right _ -> pure ()
+        other -> error ("expected additive trailing envelope bytes to decode, got " <> show other)
+
 -- | Sprint 8.8 semantic fixture: the transcript codec is exercised with
 -- in-memory values for every backend tag. The assertions pin determinism and
 -- decode coverage without depending on committed byte fixtures.
@@ -1239,7 +1291,7 @@ exerciseEquitySidecarBinary = do
             EqStream
                 { eqTranscriptHash = "abcd1234"
                 , eqBackend = Haskell
-                , eqBuildId = "haskell-logical"
+                , eqBuildId = "logical"
                 , eqRecords =
                     [ EqRecord 0 0 (Pawn 4 4) 0.0
                     , EqRecord 0 1 (Pawn 4 5) 0.5
@@ -1290,7 +1342,7 @@ exerciseEnvelopeRoundTrip = do
                 , envelopeLibmId = "musl-libm-1.2"
                 , envelopeCpuFeatures = 0x00800001
                 , envelopeFpEnv = 0x42
-                , envelopeBuildId = "cpp-imperative-12345678"
+                , envelopeBuildId = "12345678"
                 }
         transcript = Transcript config envelope [runGame inputs 0]
         encoded = encodeTranscript transcript
@@ -1312,7 +1364,7 @@ exerciseEnvelopeRoundTrip = do
             assert "envelope round-trips fp_env" (envelopeFpEnv actual == 0x42)
             assert
                 "envelope round-trips build_id accessor"
-                (envelopeBuildId actual == "cpp-imperative-deadbeefcafe0011")
+                (envelopeBuildId actual == "deadbeefcafe0011")
         Left err -> error ("envelope round-trip decode failed: " <> show err)
 
 -- | Sprint 7.5: verify the per-game writer splits a batch into N
@@ -1643,7 +1695,7 @@ exerciseRecompute = do
         envelope = makeLogicalEnvelope Haskell CppRng
         game = runGame inputs 0
         transcript = Transcript config envelope [game]
-    case Recompute.recomputeEqStream "deadbeef" "haskell-logical" transcript of
+    case Recompute.recomputeEqStream "deadbeef" "logical" transcript of
         Left err -> error ("equity recompute failed: " <> show err)
         Right stream -> do
             assert
@@ -1653,7 +1705,7 @@ exerciseRecompute = do
                 "recompute preserves the chosen-move sequence"
                 (map eqChosen (eqRecords stream) == map moveChosen (gameMoves game))
             assert "recompute stamps the transcript hash" (eqTranscriptHash stream == "deadbeef")
-            assert "recompute stamps the build id" (eqBuildId stream == "haskell-logical")
+            assert "recompute stamps the build id" (eqBuildId stream == "logical")
     -- A transcript with intentionally wrong visit counts triggers
     -- RecomputeMismatch under CppRng.
     case gameMoves game of
@@ -2564,6 +2616,26 @@ exerciseTuiReplayOverlay = do
     assert "replay cache hit loads one overlay" (length cached == 1)
     assert "replay cache hit has no recompute message" (cachedMessage == Nothing)
     removeDirectoryIfExists cacheRoot
+    let fallbackRoot = ".mcts-cache-replay-logical-foreign-test"
+        fallbackTranscript =
+            transcript
+                { transcriptConfig = (transcriptConfig transcript){runBackend = Rust}
+                , transcriptEnvelope =
+                    (transcriptEnvelope transcript)
+                        { envelopeBackend = Rust
+                        , envelopeBuildId = "logical"
+                        }
+                }
+    removeDirectoryIfExists fallbackRoot
+    (fallbackPrepared, fallbackMessage) <-
+        prepareReplayOverlays (Just fallbackRoot) hashValue fallbackTranscript
+    assert "foreign logical fallback is not persisted as originator" (null fallbackPrepared)
+    assert
+        "foreign logical fallback is labelled unavailable"
+        (maybe False ("logical fallback" `isInfixOfStr`) fallbackMessage)
+    fallbackSidecars <- listEquitySidecars (Just fallbackRoot)
+    assert "foreign logical fallback writes no originator sidecar" (null fallbackSidecars)
+    removeDirectoryIfExists fallbackRoot
 
 -- | Sprint 7.4: cover the `mcts inspect replay` TUI's pure
 -- navigation dispatcher. The replay state walks forward, backward,

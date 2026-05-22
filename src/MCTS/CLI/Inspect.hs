@@ -186,12 +186,13 @@ loadOrRecomputeShowEquity output options transcriptHash transcript = do
     case cached of
         Just stream -> pure (Just stream)
         Nothing -> do
-            let buildId = envelopeBuildId (transcriptEnvelope transcript)
-            case Recompute.recomputeEqStream transcriptHash buildId transcript of
-                Right stream -> do
+            recomputed <- recomputeOriginatorOverlay transcriptHash transcript
+            case recomputed of
+                OverlayReady stream -> do
                     _ <- writeEquitySidecarStream (showCacheDir options) transcript stream
                     pure (Just stream)
-                Left err -> outputLine (renderErrorString output err) >> pure Nothing
+                OverlaySkipped message -> outputLine message >> pure Nothing
+                OverlayFailed err -> outputLine (renderErrorString output err) >> pure Nothing
 
 renderTranscript
     :: OutputOptions -> ShowOptions -> FilePath -> Maybe EqStream -> Transcript -> String
@@ -408,7 +409,16 @@ originatorOverlayPresent hashValue transcript =
 
 recomputeOriginatorOverlay :: String -> Transcript -> IO OverlayRecomputeResult
 recomputeOriginatorOverlay hashValue transcript =
-    recomputeBackendOverlay hashValue transcript (envelopeBackend envelope) (envelopeBuildId envelope)
+    if envelopeBuildId envelope == "logical" && envelopeBackend envelope /= Haskell
+        then
+            pure $
+                OverlaySkipped
+                    ( "originator "
+                        <> backendIdentifier (envelopeBackend envelope)
+                        <> " replay equity is unavailable: transcript was produced by a logical fallback"
+                    )
+        else
+            recomputeBackendOverlay hashValue transcript (envelopeBackend envelope) (envelopeBuildId envelope)
   where
     envelope = transcriptEnvelope transcript
 
@@ -679,6 +689,36 @@ foreignRecomputeRows transcriptHash transcript origin = do
         mapM
             (tryForeignRow transcript origin)
             [
+                ( CppLegacy
+                , cppLegacyLibraryPath
+                , ForeignRecompute.foreignRecomputeEqStream
+                    CppLegacy
+                    transcriptHash
+                    "live"
+                    withCppLegacyRecomputeGame
+                    transcript
+                )
+            ,
+                ( CppImperative
+                , cppImperativeLibraryPath
+                , ForeignRecompute.foreignRecomputeEqStream
+                    CppImperative
+                    transcriptHash
+                    "live"
+                    withCppImperativeRecomputeGame
+                    transcript
+                )
+            ,
+                ( CppFunctional
+                , cppFunctionalLibraryPath
+                , ForeignRecompute.foreignRecomputeEqStream
+                    CppFunctional
+                    transcriptHash
+                    "live"
+                    withCppFunctionalRecomputeGame
+                    transcript
+                )
+            ,
                 ( Rust
                 , rustLibraryPath
                 , ForeignRecompute.foreignRecomputeEqStream

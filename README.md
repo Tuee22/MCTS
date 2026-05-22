@@ -36,7 +36,7 @@ We want a runtime that is:
 
 1. **As fast as maximally-optimised imperative C++** on the headline workloads. The bar is not the legacy as it exists today — it is the strongest imperative-C++ implementation we can build using every reasonable modern technique (LTO, PGO, BOLT, arena-allocated tree nodes, scratch-board rollouts, branch hints). See backend (ii) below.
 2. **Purely functional at the API surface** in its final form, so that algorithmic changes (search policies, evaluators, prior shaping) are local edits rather than rewrites. Internally, the engine is free to use `ST`-monad mutable unboxed arrays — that is the only realistic way to match optimised imperative C++, and the local-reasoning property is preserved as long as the public types and operations stay pure.
-3. **Bit-for-bit deterministic**: given a seed, an RNG source, and a sequence of moves, every implementation produces identical visit counts, identical action orderings, identical rollouts. Reproducibility is a first-class invariant, not a debugging aid.
+3. **Deterministic inside the documented envelope**: same-backend runs are reproducible for the same seed, RNG source, and logical inputs; cross-backend bit equality is asserted for backends (ii)..(v) under `--rng cpp`; backend (i) is covered by the legacy-parity envelope rather than the Q3 equality cohort. Reproducibility is a first-class invariant, not a debugging aid.
 
 The contest is rigged in favour of imperative C++ and Rust. The target for backends (ii), (iii), and (iv) is every reasonable optimisation — `-O3`, `-march=native`, full LTO, two-stage PGO, BOLT post-link, `mimalloc`, arena-allocated tree nodes, scratch-board rollouts, branch hints. Rust and the two steelman C++ backends are wired through supported PGO/BOLT build paths; C++ uses the documented PGO fallback when BOLT cannot produce usable `.fdata`. Backend (i) is a strictly verbatim port used to prove faithful reproduction of the legacy engine; backend (ii) is the performance ceiling against which (v) Haskell must compete. The hypothesis is only meaningful when tested against a maximally-tuned imperative baseline rather than a strawman.
 
@@ -101,7 +101,16 @@ The `mcts verify` subcommands run the requested backend slots under `--rng cpp` 
 
 **Operator cache is local.** Runtime transcripts live in a local `.mcts-cache/transcripts/` directory which is `.gitignore`'d. Files are content-addressed by `sha256(run_config)`, where `run_config` includes the backend, workload, threading/workers, RNG source, master seed, sim params, `max_plies`, per-game index, and `c_param` bits, so the same backend/game run reuses prior output across runs. Cross-backend verification compares a canonical determinism payload decoded from those backend-specific files; it does not require different backends to share a filename. The repository has no checked-in transcript fixture exception: tests synthesize transcripts and sidecars in temporary directories.
 
-**Compile-time toggle for foreign instrumentation.** Steelman foreign backends (ii), (iii), and (iv) keep the paired-target discipline: `*-bench` (no instrumentation — the binary is byte-identical to one where the feature does not exist) and `*-instrumented` (transcript writer plus hooks that expose per-move tree state; used by `play`, `inspect replay`, `inspect divergence`, and integration smokes). Backend (i) is the legacy exemption: it remains line-level faithful to the legacy engine, with transcript writing and instrumentation layered around the C ABI boundary. Backend (v) is native Haskell in-process; it exposes the same logical visit/recompute surfaces directly through Haskell modules rather than through a paired shared-library target. The toggle for foreign steelman backends is a template / type-level flag on the self-play driver, not a runtime branch in the hot loop. The MCTS engine itself (search, rollout, board, RNG) is one shared artefact between paired foreign targets; only the small driver compiles twice. Because the bench binary has nothing to disable, no benchmark phase is needed to demonstrate zero overhead — the instrumentation code literally does not exist in it.
+**Foreign instrumentation contract.** Steelman C++ backends (ii) and (iii) keep
+concrete paired Makefile outputs for bench-shaped and instrumented-shaped artefacts.
+The supported Haskell FFI loader uses the canonical shared libraries installed by
+`mcts build cpp-imperative` and `mcts build cpp-functional`, whose search and
+recompute ABIs return visit vectors directly. Backend (iv) Rust currently publishes
+one optimized `cdylib` at `rust/target/release/libmcts_rust.so`; there is no
+supported Rust `_instrumented` companion artefact. Backend (i) is the legacy
+exemption, with transcript writing and instrumentation layered around the C ABI
+boundary. Backend (v) is native Haskell in-process and exposes the same logical
+visit/recompute surfaces directly through Haskell modules.
 
 **Format: dense binary, fully owned.** No schema-library dependency: protobuf, flatbuffers, Cap'n Proto, and CBOR all have library-version-dependent encoding latitude that would have to be imported into the determinism contract. The header carries the run config; per-move records are sparse `(action_id, visits)` pairs sorted ascending by action ID.
 
@@ -209,13 +218,13 @@ See [`documents/engineering/determinism_contract.md`](documents/engineering/dete
 
 `mcts inspect replay` opens a transcript and renders a per-move equity overlay with one column per backend. The originator (the `backend` field in the transcript header) is marked with ★; other backends are computed lazily on first request and cached.
 
-The cache layout is `<cache-root>/transcripts/<arch>/<sha>/<backend>-<build_label>.eq` — one sidecar `.eq` file per `(backend, build)` slot. Live envelopes use the first 16 hex characters of `engine_build_id` for the build label; logical in-process envelopes with an all-zero engine id use `<backend>-logical`. Multi-build cohabitation is automatic: a rebuild lands in a fresh cache slot, the old slot stays put for forensic reference. Pruning is explicit (`mcts inspect cache prune`).
+The cache layout is `<cache-root>/transcripts/<arch>/<sha>/<backend>-<build_label>.eq` — one sidecar `.eq` file per `(backend, build)` slot. Live envelopes use the first 16 hex characters of `engine_build_id` for the build label; logical in-process GHC envelopes with an all-zero engine id use `logical`, yielding names such as `<backend>-logical.eq`. Multi-build cohabitation is automatic: a rebuild lands in a fresh cache slot, the old slot stays put for forensic reference. Pruning is explicit (`mcts inspect cache prune`).
 
 On transcript open:
 
-- The originator's `.eq` is read if it exists and its embedded envelope matches the live originator binary. Match → originator column populates instantly with the bit-equal originator equities. Mismatch or absent → user explicitly populates it (cursor on the originator column header, press `r`); the recomputed values are labelled with the persistent yellow `BUILD MISMATCH` banner.
-- Other backends' columns stay `--` until the user requests them (`r`). Compute runs in the background; the column shows `…computing` until the FFI returns, then writes to `.eq` so subsequent opens are instant.
-- Visits are shared across Q3-compatible steelman columns under `--rng cpp` (and any recompute mismatch inside that contract is surfaced loudly).
+- The originator's `.eq` is read if it exists and its embedded envelope matches the live originator binary. Match → originator column populates instantly with the bit-equal originator equities. Absent → `inspect replay` prepares the missing originator overlay before TUI startup when the originator backend is available. Stale or unavailable originator binaries are reported in the status line and the affected rows are labelled as build-mismatch, foreign-view, or unavailable as appropriate.
+- Other backends' columns stay `--` until the user requests them (`r`). The current TUI recomputes synchronously through the matching Haskell or foreign recompute path, writes the `.eq` sidecar, and makes subsequent opens instant.
+- Same-backend originator recompute under `--rng cpp` hard-asserts chosen-action and visit agreement. Foreign-view recompute is comparison evidence for `inspect divergence` and replay annotations; disagreement is treated as divergence-smell, not as proof that the originator transcript is corrupt.
 
 The full UX is documented in [`documents/engineering/cli_command_surface.md`](documents/engineering/cli_command_surface.md) §`mcts inspect replay` Multi-Backend Overlay.
 
@@ -255,21 +264,9 @@ Backend (i)'s throughput is published for reference only and is **not on the sam
 
 ## `mcts test all`
 
-The doctrine-mandatory canonical test command. `mcts test all` is the developer-facing entrypoint for the current validation surface and builds the canonical foreign backend artefacts before FFI-sensitive tests and the report-card workload. It does four things, in order:
+The doctrine-mandatory canonical test command. `mcts test all` is the developer-facing entrypoint for the current validation surface. The exact Plan/Apply sequence is owned by [`documents/engineering/unit_testing_policy.md`](documents/engineering/unit_testing_policy.md); at a high level it checks lint/docs prerequisites, verifies a warning-clean build, builds the canonical foreign backend artefacts, runs the Cabal test-suite stanzas, executes the pinned no-write report-card workload, and prints one tidy summary block.
 
-1. **Builds canonical backend artefacts.** The same short-lived container runs
-   `mcts build cpp-legacy`, `mcts build cpp-imperative`,
-   `mcts build cpp-functional`, and `mcts build rust` before any FFI-sensitive
-   tests or report-card measurements.
-2. **Delegates to `cabal test`.** Runs every `test-suite` stanza below, each
-   `type: exitcode-stdio-1.0`, with `tasty` as the in-stanza runner.
-3. **Executes a fixed POC report-card workload.** Q1/Q2/Q5 use bounded
-   no-transcript native-RNG timing measurements over the pinned game counts, and
-   Q3/Q7 use explicit C++-RNG `verify` cohorts.
-4. **Prints a single tidy summary block** on stdout that answers the POC's
-   headline questions (Q1–Q7 below) in one screenful.
-
-Failure of any cabal stanza, any verify cohort, or any report-card measurement exits non-zero.
+Failure of any lint/docs prerequisite, build step, Cabal stanza, verify cohort, or report-card measurement exits non-zero.
 
 ### Test-suite stanzas
 
@@ -278,7 +275,7 @@ Per doctrine §Test Organization, each tier is a separate cabal stanza:
 | Stanza | Tier | Scope |
 |---|---|---|
 | `mcts-unit` | pure logic | engine invariants, parser tests (`execParserPure`), property/semantic tests for `CommandSpec` output and `inspect show` rendering, transcript codec roundtrips using in-memory or temporary data, RNG mixer properties |
-| `mcts-integration` | subprocess | exercises the real `mcts` binary across the FFI to every backend; same-backend determinism (same seed and logical game inputs ⇒ same determinism payloads, three seeds per backend); decoded real-binary transcript determinism generated during the test run; bounded report-card divergence and cached recompute-sidecar checks using temporary cache roots; live-envelope stamping/stale-cache coverage when foreign shared libraries are present |
+| `mcts-integration` | subprocess | same-backend determinism (same seed and logical game inputs ⇒ same determinism payloads, three seeds per backend); decoded real-binary transcript determinism for Haskell and Rust when the Rust cdylib is present; bounded report-card divergence and cached recompute-sidecar checks using temporary cache roots; Rust live FFI smoke/envelope/stale-cache coverage when available; C++ live coverage is carried by `mcts-cross-backend`, `mcts-legacy-parity`, and the report-card path after `mcts test all` builds the C++ artefacts |
 | `mcts-cross-backend` | round-robin verify | real `mcts verify` subprocesses for the live FFI-capable `--rng cpp` cohort covering backends (ii), (iii), (iv), (v); backend (i) excluded by the `VerifyBackend` type; test cases run serially around the process-pinned foreign-library and C++ RNG bridge path |
 | `mcts-legacy-parity` | legacy-envelope verify | live FFI-capable `verify legacy-parity` across all five backend slots with `max_plies = 10000` pinned and a fixture seed; Q7 checks liveness/overflow rather than backend (i)-vs-steelman visit-vector equality |
 | `mcts-haskell-style` | lint | pinned style-tool `fourmolu --mode check`, `hlint --with-group=default --with-group=extra + .hlint.yaml` with only `Error:` findings blocking, `cabal format` round-trip equality |
@@ -293,7 +290,7 @@ The report-card workload runs *after* `cabal test` succeeds and answers:
 2. **Q2.** Does pure Haskell match backend (ii) on benchmark (b) self-play, single-threaded and on 8 workers?
 3. **Q3.** Do backend slots (ii), (iii), (iv), (v) produce bit-for-bit identical determinism payloads under `--rng cpp` (round-robin verify on both rollouts and self-play)?
 4. **Q4.** Does same-backend determinism hold across runs (same backend, same seed, same logical game inputs ⇒ identical determinism payloads) for every backend?
-5. **Q5.** How does each backend scale from `--threading single` to `--threading multi --workers 8`? The text summary block highlights Haskell and C++ (ii) as the two anchors; JSON exposes the full per-backend scaling table.
+5. **Q5.** How do the Haskell and live C++ (ii) anchor rows scale from `--threading single` to `--threading multi --workers 8`?
 6. **Q6.** Does the verbatim port (i) faithfully reproduce `MCTS_legacy` on benchmark (b)?
 7. **Q7.** Can all five backend slots complete the legacy-parity envelope (`max_plies = 10000`, fixture seed where live (i) does not throw) without overflow or envelope errors?
 
@@ -301,10 +298,10 @@ The report-card workload runs *after* `cabal test` succeeds and answers:
 
 A fixed, deterministic battery, identical across hosts. `mcts test all` measures
 Q1/Q2/Q5 internally with the same inputs as `mcts bench` but deliberately does
-not retain or write the 100k-game transcript batches; the standalone `bench`
-commands remain the operator-facing way to generate comparable ad hoc wall-clock
-numbers and cache transcripts for smaller inspection runs. The explicit
-subprocess plan covers the deterministic verification cohorts:
+not retain or write transcript batches; the standalone `bench` commands remain
+the operator-facing way to generate comparable ad hoc wall-clock numbers and
+cache transcripts for smaller inspection runs. The explicit subprocess plan
+covers the deterministic verification cohorts:
 
 ```bash
 # Q3 — cross-backend determinism, backend (i) excluded by the VerifyBackend type
@@ -361,7 +358,7 @@ The same data is available as `mcts test all --format json` for CI consumption; 
 
 ### Doctrine compliance
 
-- **Plan / Apply.** `mcts test all` is a Plan/Apply command. `build :: TestInputs -> Either AppError TestPlan` produces the typed list of canonical backend builds, Cabal stanzas, and verify subprocesses (modelled per doctrine §Subprocesses as Typed Values); `apply :: Env -> TestPlan -> IO ExitCode` runs it before the measured report-card builder renders Q1/Q2/Q5 and the divergence rows. `--dry-run` prints the rendered plan and exits 0; `--plan-file <path>` writes the rendered plan for out-of-band review.
+- **Plan / Apply.** `mcts test all` is a Plan/Apply command. `build :: TestInputs -> Either AppError TestPlan` produces the typed sequence owned by [`unit_testing_policy.md`](documents/engineering/unit_testing_policy.md), covering lint/docs prerequisites, warning-clean build, canonical backend builds, Cabal stanzas, verify subprocesses, and the measured report-card builder. `apply :: Env -> TestPlan -> IO ExitCode` runs that sequence; `--dry-run` prints the rendered plan and exits 0; `--plan-file <path>` writes the rendered plan for out-of-band review.
 - **Prerequisites.** Active build/test prerequisites are encoded as one
   `prerequisiteRegistry` per doctrine §Prerequisites as Typed Effects. Current coverage
   includes exact GHC/Cabal, C++ compiler, LLVM/BOLT, Rust 1.95.0, LLD, `mimalloc`,
@@ -505,7 +502,7 @@ Default `--top 10`; `--top 0` shows all legal moves. With `--with-equity`, the c
 
 - Layout: board on the left; on the right, a context panel with the current move index, the move actually played, and the top-N legal-move list (visits, equity, action). Status line at the bottom: `<hash> | move M / total | press ? for help`.
 - Keybinds: `→` / `l` next move, `←` / `h` prev move, `Home` / `End` jump to start / end, `g` opens a "jump to move N" prompt, `+` / `-` adjust the top-N cutoff live, `?` toggles a keybind overlay, `q` quits.
-- **Equity is recomputed on the fly.** Equities and alternative moves are not stored in the transcript — that omission is by design (the transcript wire format excludes floats to keep its hash byte-exact). When navigating to move M, the replay engine reconstructs the game state by replaying moves 0..M-1 with the persistent tree carried forward as in the original search, runs move M's search using the seed and budget from the transcript header, then reads sorted actions back from the tree through the instrumentation interface (FFI for backends (i)–(iv), a direct module call for (v)). The visit counts produced must equal the transcript record byte-for-byte; this doubles as a built-in determinism check that fires on every navigation. Equity is derived from the same search's value backups. The cross-language determinism guarantee in [Cross-backend verification](#cross-backend-verification) is what makes this recompute trustworthy.
+- **Equity overlays are cached out-of-band.** Equities and alternative moves are not stored in the transcript — that omission is by design (the transcript wire format excludes floats to keep its hash byte-exact). On open, replay loads cached `.eq` overlays and prepares a missing originator overlay when the originator backend is available. Pressing `r` synchronously recomputes the next missing backend column through the matching Haskell or foreign recompute path. Same-backend originator recompute under `--rng cpp` validates chosen actions and visits before writing; foreign columns are marked as foreign-view or diverged when they disagree with the recorded move.
 - **State caching.** The last `replayCacheStates` MCTS states (default 20, `--cache-states N`) are kept in memory so back-navigation past those is incremental. Eviction is LRU on the cached-state map; jumping past the cache window triggers a forward re-replay from the nearest earlier cached state, not always from move 0. For typical game lengths (60 moves × 10k sims) this is seconds, not minutes.
 
 ---
@@ -747,7 +744,7 @@ Move notation matches the legacy engine: `*(x,y)` for pawn moves, `H(x,y)` / `V(
 
 ---
 
-## Repository layout (target)
+## Repository layout
 
 ```
 MCTS/
@@ -772,7 +769,7 @@ MCTS/
   AGENTS.md / CLAUDE.md -- agent guardrails
 ```
 
-This layout is the target; not all directories exist yet.
+This is the current supported layout.
 
 ---
 

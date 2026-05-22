@@ -204,10 +204,12 @@ The `mcts build rust` Plan/Apply command runs:
   `rust/pgo-profile/merged.profdata` → `RUSTFLAGS="-C target-cpu=native -C
   link-arg=-fuse-ld=lld -C
   profile-use=/workspace/MCTS/rust/pgo-profile/merged.profdata"`.
-- **BOLT** post-link: instrument the PGO cdylib, install the instrumented cdylib
-  at the canonical FFI load name for a one-game `--sims 50` training run, restore
-  the PGO cdylib, then optimize with `-reorder-blocks=ext-tsp` when `.fdata`
-  exists or copy the PGO artefact as the fallback.
+- **BOLT** post-link: temporarily install the BOLT-instrumented copy of the PGO
+  cdylib at the canonical FFI load name for a one-game `--sims 50` training run,
+  restore the PGO cdylib, then optimize with `-reorder-blocks=ext-tsp` when
+  `.fdata` exists or copy the PGO artefact as the fallback. This is training
+  instrumentation only; the supported Rust contract publishes one optimized
+  `libmcts_rust.so`, not a separate `_instrumented` artefact.
 - **`mimalloc`** as `#[global_allocator]` (via the `mimalloc` crate).
 
 Current implementation baseline: `docker compose run --rm --build mcts mcts build
@@ -257,10 +259,10 @@ not enable those two flags: they remain deferred on the documented aarch64
 assembler limitation below. LLVM itself is still active through `-fllvm`, and
 the LLVM version is pinned in `docker/Dockerfile` so codegen is reproducible.
 
-#### Currently landed (Phase 8 Sprint 8.1 baseline)
+#### Currently landed (Phase 8 Sprint 8.9 baseline)
 
-The full doctrine flag list including `-fllvm` is landed in each relevant
-`mcts.cabal` library, executable, test, and benchmark stanza:
+The performance-relevant `mcts.cabal` library, executable, and benchmark stanzas
+carry the full doctrine flag list including `-fllvm`:
 
 ```
 -O2
@@ -273,6 +275,13 @@ The full doctrine flag list including `-fllvm` is landed in each relevant
 -fworker-wrapper
 -fstatic-argument-transformation
 ```
+
+The Cabal test-suite stanzas carry the same warning and optimization envelope but
+do not duplicate `-fllvm` in their own `ghc-options`. They compile small test
+runners that link against the already optimized library code; duplicating `-fllvm`
+there would slow validation without changing the backend (v) hot path being tested.
+The `mcts-haskell-style` stanza is likewise a validation runner, not performance
+evidence.
 
 `-optlo-mcpu=native` and `-optlc-mcpu=native` remain deferred on the documented
 aarch64 assembler limitation: enabling them inside the pinned container can emit
