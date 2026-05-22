@@ -150,7 +150,8 @@ None.
 
 **Status**: Done
 **Implementation**: `src/MCTS/FFI/Common.hs`, `src/MCTS/Engine/ForeignRecompute.hs`,
-foreign `c-abi/envelope.*`
+`cpp-functional/c-abi/mcts_cpp_functional.{h,cc}`, `rust/src/envelope.rs`,
+`rust/src/c_abi.rs`
 **Docs to update**: `documents/engineering/backend_ffi_contract.md`,
 `documents/engineering/determinism_contract.md`
 

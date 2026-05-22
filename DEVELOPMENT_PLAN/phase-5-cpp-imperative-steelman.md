@@ -129,14 +129,16 @@ Ensure backend (ii) represents serious optimized C++ rather than a strawman.
 
 2026-05-21 closure evidence:
 
-- `mcts build cpp-imperative --dry-run` and `mcts build cpp-functional --dry-run`
-  rendered the shared 18-step C++ PGO/BOLT Plan/Apply sequence.
-- `mcts build cpp-imperative` and `mcts build cpp-functional` both completed through
+- `docker compose run --rm mcts mcts build cpp-imperative --dry-run` and
+  `docker compose run --rm mcts mcts build cpp-functional --dry-run` rendered the
+  shared 18-step C++ PGO/BOLT Plan/Apply sequence.
+- `docker compose run --rm mcts mcts build cpp-imperative` and
+  `docker compose run --rm mcts mcts build cpp-functional` both completed through
   PGO generate/use, BOLT instrument/optimize, and canonical install. On amd64,
   `llvm-bolt` emitted no usable `.fdata`; the Makefile fallback copied the PGO
   artefacts as the bolted artefacts.
-- `mcts-unit` passed 27 cases, including the new C++ PGO/BOLT plan and prerequisite
-  coverage assertions.
+- `docker compose run --rm --build mcts mcts test mcts-unit` passed 28 cases,
+  including the C++ PGO/BOLT plan and prerequisite coverage assertions.
 
 ### Remaining Work
 

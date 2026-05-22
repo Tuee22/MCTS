@@ -486,7 +486,7 @@ layered cohort-invariant vs per-backend-slot semantics.
 - Same-backend envelope stamping: the Phase `2` codec accepts and preserves a full
   `Envelope` value in every transcript. The current baseline stamps logical
   envelopes from the Haskell driver; replacing those logical values with live
-  backend `get_envelope` FFI structs is owned by Sprints `3.6`, `4.7`, `5.5`,
+  backend `get_envelope` FFI structs is owned by Sprints `3.6`, `4.2`, `5.5`,
   and `6.5`.
 
 ### Validation
@@ -531,7 +531,7 @@ layered cohort-invariant vs per-backend-slot semantics.
   `playTranscriptHash` invariance under per-backend envelope changes for all five
   backend tags.
 - Replacing logical envelope values with live backend envelope capture is explicitly owned
-  by Sprints `3.6`, `4.7`, `5.5`, and `6.5`. The Phase `2` codec surface is closed on
+  by Sprints `3.6`, `4.2`, `5.5`, and `6.5`. The Phase `2` codec surface is closed on
   the envelope wire format and reader/writer behavior.
 
 ### Remaining Work
@@ -587,7 +587,7 @@ and `castWord64ToDouble` round-trips.
   `cache prune` walks the cache and deletes sidecars selected by the plan. The
   current Phase `2` baseline treats the `logical` build label as current for
   logical sidecar slots; live-envelope pruning against backend `get_envelope` FFI structs is
-  owned by Sprints `3.6`, `4.7`, `5.5`, `6.5`, and `7.5`.
+  owned by Sprints `3.6`, `4.2`, `5.5`, `6.5`, and `7.5`.
 - Originator-vs-foreign discrimination: the codec exposes a helper
   `isOriginator :: TranscriptHeader -> EqSidecar -> Bool` that
   compares the `.eq`'s embedded `backend` against the transcript's
@@ -644,7 +644,7 @@ and `castWord64ToDouble` round-trips.
 - `mcts inspect cache prune` is Plan/Apply-shaped: `--dry-run` renders the deletion plan,
   `--plan-file` writes it, and apply deletes `.eq` plus `.envelope` neighbours.
 - Logical `logical` build-label stale detection remains the Phase `2` baseline. Live
-  `mcts_<backend>_get_envelope()` matching is owned by Sprints `3.6`, `4.7`, `5.5`,
+  `mcts_<backend>_get_envelope()` matching is owned by Sprints `3.6`, `4.2`, `5.5`,
   `6.5`, and `7.5`.
 - `MCTS.Transcript.EquitySidecar.loadMatchingOriginatorSidecar` now filters
   sidecars by transcript hash, origin backend, build label, and exact neighbouring

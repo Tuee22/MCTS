@@ -78,10 +78,10 @@ its terminal-state semantics differ from the steelman cohort (see
 
 ### Flag Default on `verify`
 
-The `mcts verify` subtree pins `RngSource = CppRng` at parse time. The
-`VerifyOptions` record has no `verifyRng` field. The native RNG cannot validate
-cross-backend bit equality, so attempting `--rng native` on `verify` is rejected
-at parse time.
+The `mcts verify` subtree pins `inputRng = CppRng` in the shared `RunInputs`
+value at parse time. There is no separate verify-specific RNG option; the native
+RNG cannot validate cross-backend bit equality, so attempting `--rng native` on
+`verify` is rejected at parse time.
 
 ## Per-Game Seed Derivation
 
@@ -505,8 +505,8 @@ rollout stream per game. The project never parallelises the search within a
 single game per [../../README.md → Threading](../../README.md): this is a
 non-negotiable architectural axis, not an implementation default. Multi-threading
 is only ever about running independent games concurrently. The default
-`MultiThreaded { workers = 8 }` dispatches a batch of games across 8 workers;
-each worker plays one game at a time, single-threaded internally.
+`MultiThreaded 8` dispatches a batch of games across 8 workers; each worker plays
+one game at a time, single-threaded internally.
 
 Per the per-game seed derivation, running 32 games on 1 worker and 32 games on 8
 workers produces identical determinism payloads; only wall-clock and

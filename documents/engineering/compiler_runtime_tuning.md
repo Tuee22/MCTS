@@ -501,10 +501,10 @@ lands inside the 5–15% band still renders `Shortfall <ratio>` — the PGO note
 is attached as the attribution, not as an exemption. Only a shortfall of
 `<= 5%` clears the bar.
 
-The constant is mirrored in `cabal.project` as
-`HASKELL_PARITY_TOLERANCE = 0.05` so `src/MCTS/ReportCard.hs` can reference
-it symbolically. Any change to the threshold must update both this section
-and `cabal.project` in lock-step.
+The implemented threshold lives in `src/MCTS/CLI/Test.hs` as
+`haskellParityTolerance = 0.05`; `cabal.project` mirrors the report-card workload
+knobs, not this verdict threshold. Any threshold change must update that source
+constant and this section in lock-step.
 
 ## Toolchain Pin
 

@@ -345,18 +345,15 @@ wall-clock time from a single `GHC.Clock.getMonotonicTimeNSec`, emit
 
 ### Deliverables
 
-- `src/MCTS/CLI/Bench.hs` owns `mcts bench rollouts` and `mcts bench selfplay` for
-  the `BenchOptions` schema in the project [README → CLI command
-  topology](../README.md):
-  - `benchBackends :: NonEmpty Backend` — Phase 3 supports `Haskell` only;
-    Phases 4–6 add the four FFI backends.
-  - `benchRng :: RngSource` — `NativeRng` or `CppRng` (Phase 3 supports
-    `NativeRng` only on the Haskell side; `CppRng` lands in Phase 4 after the
-    C++ split-seed fixture is exposed for cross-language validation).
-  - `benchThreading :: Threading` — `SingleThreaded` or `MultiThreaded { workers
-    = N }`; default `MultiThreaded { workers = 8 }`.
-  - `benchGames`, `benchSeed`, `benchMaxPlies` (default 200; ignored for backend
-    (i)), `benchSims` (default `FixedSims 10_000`).
+- `src/MCTS/CLI/Bench.hs` owns `mcts bench rollouts` and `mcts bench selfplay`
+  over the current `BenchCommand` plus shared `RunInputs` surface:
+  - parsed backend cohort `[Backend]` — Phase 3 lands the `Haskell` baseline;
+    later backend phases extend the same surface to the foreign backends.
+  - `inputRng :: RngSource` — `NativeRng` or `CppRng`.
+  - `inputThreading :: Threading` — `SingleThreaded` or `MultiThreaded N`;
+    default `MultiThreaded 8`.
+  - `inputGames`, `inputSeed`, `inputMaxPlies` (default 200 and recorded in the
+    transcript header), `inputSims` (default `FixedSims 10_000` on the CLI).
   - The `--sims` flag parses two forms per
     [../README.md → CLI command topology](../README.md): `--sims N` ⇒
     `FixedSims N`; `--sims N0:N1` ⇒ `RampedSims N0 N1` (initial-move budget `N0`,
@@ -388,10 +385,12 @@ wall-clock time from a single `GHC.Clock.getMonotonicTimeNSec`, emit
 
 ### Validation
 
-1. `mcts bench rollouts --backend haskell --threading single --rng native --games
-   100 --seed 42` runs to completion and emits a games/sec number.
-2. `mcts bench selfplay --backend haskell --threading multi --workers 8 --rng
-   native --games 32 --seed 42 --sims 1000` runs to completion.
+1. `docker compose run --rm mcts mcts bench rollouts --backend haskell --threading
+   single --rng native --games 100 --seed 42` runs to completion and emits a
+   games/sec number.
+2. `docker compose run --rm mcts mcts bench selfplay --backend haskell --threading
+   multi --workers 8 --rng native --games 32 --seed 42 --sims 1000` runs to
+   completion.
 3. Same-backend determinism (Q4): the transcripts in `.mcts-cache/transcripts/`
    for `--games 32 --threading single` and `--games 32 --threading multi
    --workers 8` decode to identical determinism payload sets; only wall-clock and
@@ -406,7 +405,7 @@ wall-clock time from a single `GHC.Clock.getMonotonicTimeNSec`, emit
   test-injectable variant `runBenchWithClock` accepts any `IO Word64`
   clock, and the `mcts-unit` stanza asserts the bracket calls the clock
   exactly twice per backend (start + stop) under the test hook.
-- `MultiThreaded { workers = N }` dispatch now runs game generation through a
+- `MultiThreaded N` dispatch now runs game generation through a
   deterministic worker pool in `MCTS.Driver`, restores game order before
   transcript hashing/writing, and preserves the single monotonic-clock bracket
   around each backend batch.

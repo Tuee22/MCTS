@@ -242,8 +242,8 @@ uses the selected backend's dynamic FFI search path for AI turns when the
 matching shared library exists (falling back to the logical Haskell path only
 when the library is absent). The Rust backend drives a real Corridors gameplay
 loop (pawn moves + wall placement + BFS escapability) emitting canonical action
-IDs. The restored five-backend surface remains the baseline; focused evidence-surface
-reclosure is active in the owning phases listed below.
+IDs. The restored five-backend surface remains the baseline, and the focused
+evidence-surface reclosure has closed in the owning phases listed below.
 
 ## Document Index
 
@@ -305,8 +305,8 @@ A sprint can move to `Done` only when all of the following are true:
 
 The repository has moved past bootstrap into a five-backend implementation
 baseline with the 2026-05-19 alignment sweep and 2026-05-21 C++ PGO/BOLT /
-optimized-C++ report-card evidence recorded. The active reclosure work is narrower:
-it aligns governed docs, comments, and evidence labels with the code that already
+optimized-C++ report-card evidence recorded. The 2026-05-21 reclosure work
+aligned governed docs, comments, and evidence labels with the code that already
 supports the proof.
 Implemented in the worktree:
 
@@ -440,9 +440,9 @@ transcript, sidecar, report-card, backend-equivalence, or renderer data in memor
 under a temporary root, and a clean clone without `test/golden/` generated artifacts is
 the supported validation shape.
 
-The restored five-backend surface remains first-class. Phase `8` reclosure now waits
-on the focused evidence-surface sprints so generated evidence, sidecar labels, ABI docs,
-and compiler-tuning docs all describe the same supported implementation.
+The restored five-backend surface remains first-class. Phase `8` reclosure is closed
+alongside the focused evidence-surface sprints, so generated evidence, sidecar labels,
+ABI docs, and compiler-tuning docs all describe the same supported implementation.
 
 ## Sprint Dependencies
 

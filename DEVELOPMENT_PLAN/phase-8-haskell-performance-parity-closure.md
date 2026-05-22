@@ -336,13 +336,16 @@ C++-stream-compatible.
 - Rebuilt `mcts test all` passed all five Cabal stanzas plus Q3 `(ii)..(v)` and Q7
   all-five legacy-envelope gates; smoke-baseline report-card verdict:
   `Within tolerance`.
-- `mcts docs check`, `mcts check-code`, and `git diff --check` passed after the
-  temporary trace hooks were removed.
+- `docker compose run --rm mcts mcts docs check`,
+  `docker compose run --rm mcts mcts check-code`, and `git diff --check` passed
+  after the temporary trace hooks were removed.
 
 2026-05-21 closure evidence:
 
-- `mcts build cpp-imperative --dry-run`, `mcts build cpp-functional --dry-run`,
-  `mcts build cpp-imperative`, and `mcts build cpp-functional` passed through the
+- `docker compose run --rm mcts mcts build cpp-imperative --dry-run`,
+  `docker compose run --rm mcts mcts build cpp-functional --dry-run`,
+  `docker compose run --rm mcts mcts build cpp-imperative`, and
+  `docker compose run --rm mcts mcts build cpp-functional` passed through the
   supported C++ PGO/BOLT Plan/Apply path.
 - `docker compose run --rm mcts mcts test all` passed all five Cabal stanzas, Q3
   `(ii)..(v)`, Q7 all-five legacy-envelope checks, and the optimized-C++ report-card

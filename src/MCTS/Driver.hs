@@ -321,9 +321,9 @@ effectiveMaxPlies inputs =
         _ -> max 1 (inputMaxPlies inputs)
 
 -- | Build the engine envelope for the in-process logical baseline. The
--- per-backend-slot fields are zero-initialized stand-ins until real
--- backend drivers exist (see Phase 3.6 / 4.7 / 5.5 / 6.5). The
--- cohort-invariant fields (`envelopeRngSource`, `envelopeHostArch`) are
--- captured from the active run.
+-- per-backend-slot fields are zero-initialized for logical fallback
+-- transcripts; live foreign drivers replace them with backend envelope
+-- payloads from Sprints 4.2 / 5.5 / 6.5. The cohort-invariant fields
+-- (`envelopeRngSource`, `envelopeHostArch`) are captured from the active run.
 makeLogicalEnvelope :: Backend -> RngSource -> Envelope
 makeLogicalEnvelope = makeEngineEnvelope

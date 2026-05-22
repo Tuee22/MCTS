@@ -266,7 +266,7 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
   data RngSource  = NativeRng | CppRng
                     deriving stock (Show, Eq)
 
-  data Threading  = SingleThreaded | MultiThreaded { workers :: Int }
+  data Threading  = SingleThreaded | MultiThreaded Int -- worker count
                     deriving stock (Show, Eq)
 
   data Side       = Hero | Villain
@@ -298,7 +298,7 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
     , playRng      :: RngSource
     , playSeed     :: Maybe Word64          -- Nothing → fresh random, recorded in transcript
     , playSims     :: SimBudget
-    , playMaxPlies :: Word16                -- default: 200; ignored if playBackend is (i)
+    , playMaxPlies :: Word16                -- default: 200
     , playCacheDir :: Maybe FilePath        -- default cache root when omitted
     -- no threading field: a single game is always single-threaded internally
     } deriving stock (Show, Eq)
@@ -329,8 +329,8 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
     } deriving stock (Show, Eq)
   ```
 
-  `TestCommand = TestAll PlanOptions | TestStanza Text` plus any neutral parity/audit
-  helper needed by Phase `8` is declared by
+  `TestCommand = TestAll PlanOptions | TestParityAnchor ParityAnchorOptions |
+  TestStanza String` is declared by
   [phase-7-cross-backend-verify-and-report-card.md → Sprint 7.3](phase-7-cross-backend-verify-and-report-card.md)
   alongside the `mcts test all` runner and report-card helper surfaces;
   the top-level `Command` constructor `Test TestCommand` above is the Phase 1
@@ -372,9 +372,10 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
 
 ### Validation
 
-1. `mcts commands` lists every subcommand; `mcts commands --tree` renders the tree
-   per the README example; `mcts commands --json` emits valid JSON that schema-checks
-   against an enumerated set of expected keys.
+1. `docker compose run --rm mcts mcts commands` lists every subcommand;
+   `docker compose run --rm mcts mcts commands --tree` renders the tree per the
+   README example; `docker compose run --rm mcts mcts commands --json` emits valid
+   JSON that schema-checks against an enumerated set of expected keys.
 2. Parser tests via `execParserPure` cover leaf happy paths and unhappy paths
    (Sprint 7.1 owns the `mcts-unit` stanza placement; this sprint provides the
    `execParserPure`-friendly parser shape).
@@ -474,12 +475,15 @@ text-artefact derived from the `CommandSpec` registry.
 
 ### Validation
 
-1. `mcts docs check` exits 0 on a freshly-generated worktree.
-2. `mcts docs generate` is idempotent: running it twice produces no diff.
-3. Hand-editing a marker region produces a `mcts docs check` failure with the
-   three-element error message.
-4. Hand-editing a `trackingGeneratedPaths` entry produces an `mcts lint files`
-   failure.
+1. `docker compose run --rm mcts mcts docs check` exits 0 on a freshly-generated
+   worktree.
+2. `docker compose run --rm mcts mcts docs generate` is idempotent: running it
+   twice produces no diff.
+3. Hand-editing a marker region produces a
+   `docker compose run --rm mcts mcts docs check` failure with the three-element
+   error message.
+4. Hand-editing a `trackingGeneratedPaths` entry produces a
+   `docker compose run --rm mcts mcts lint files` failure.
 
 ### Closure Notes
 

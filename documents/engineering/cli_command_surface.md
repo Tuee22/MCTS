@@ -117,10 +117,11 @@ The command registry in `src/MCTS/CLI/Spec.hs` is the source of truth for the
 operator command tree and generated command artefacts. Concrete command, option,
 backend ADTs, and verify-cohort GADTs — `Command`, `BenchCommand`,
 `VerifyCommand`, `BuildCommand`, `InspectCommand`, `TestCommand`, `LintCommand`,
-`DocsCommand`, `CommandsOptions`, `HelpOptions`, `BenchOptions`,
-`VerifyOptions`, `PlayOptions`, `ShowOptions`, `ReplayOptions`, `Backend`,
-`VerifyBackend`, `SimBudget`, `Threading`, `RngSource`, `Side`,
-`TranscriptRef` — live in `src/MCTS/CLI/Command.hs` and related type modules.
+`DocsCommand`, `CommandsOptions`, `HelpOptions`, `PlayOptions`, `ShowOptions`,
+`ReplayOptions`, `CacheCommand`, `DivergenceOptions`, `ParityAnchorOptions`,
+`LegacyFixtureOptions`, `RunInputs`, `PlanOptions`, `Backend`, `VerifyBackend`,
+`SimBudget`, `Threading`, `RngSource`, `Side`, `TranscriptRef` — live in
+`src/MCTS/CLI/Command.hs` and related type modules.
 This document does not duplicate their full Haskell declarations; it elaborates
 the generated operator-facing matrix and the per-command flag semantics in the
 Flag Reference below. Worked invocation examples live in

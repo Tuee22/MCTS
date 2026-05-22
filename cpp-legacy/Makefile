@@ -13,7 +13,7 @@ smoke:
 	$(MAKE) envelope-build-id
 
 # Post-link envelope patch per
-# DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md → Sprint 4.7.
+# DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md → Sprint 4.2.
 # Hashes the linked shared library and writes the digest into the
 # `.envelope_build_id` ELF section so `mcts_legacy_get_envelope()`
 # reports it as `engine_build_id`. The patch is bytewise idempotent
