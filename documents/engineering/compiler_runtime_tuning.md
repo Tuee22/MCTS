@@ -2,14 +2,15 @@
 
 **Status**: Authoritative source
 **Supersedes**: N/A
-**Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md, ../../DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, ../../DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md, ../../DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md, ../../DEVELOPMENT_PLAN/phase-6-cpp-functional-and-rust.md, ../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, ../documentation_standards.md, ./README.md, ./backend_ffi_contract.md
+**Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md, ../../DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, ../../DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md, ../../DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md, ../../DEVELOPMENT_PLAN/phase-6-cpp-functional-and-rust.md, ../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, ../documentation_standards.md, ./README.md, ./backend_ffi_contract.md, ./unit_testing_policy.md
 **Generated sections**: none
 
 > **Purpose**: Authoritative spec of the per-backend compiler, RTS, and code-level
 > tuning stacks: the backend (i) verbatim exemption, the backend (ii)/(iii)
 > doctrine-flag set with PGO+BOLT+`mimalloc`, the backend (iv) Rust
 > `[profile.release]`, the backend (v) Haskell GHC/LLVM/RTS stack, and the
-> mandatory Dockerfile-time PGO+BOLT contract plus Haskell PGO asymmetry note.
+> mandatory Dockerfile-time blended PGO/BOLT training contract plus Haskell PGO
+> asymmetry note.
 
 This document owns its content. The toolchain pin (GHC `9.14.1`, Cabal `3.16.1.0`)
 is doctrine-owned; the per-backend tuning stacks are project-specific.
@@ -32,6 +33,37 @@ Normal host validation enters through
 artefacts. Rebuild the image with the same one-shot Compose shape, for example
 `docker compose run --rm --build mcts mcts test all --dry-run`. Direct host
 toolchain use is unsupported.
+
+## PGO/BOLT Training Workload Doctrine
+
+The accepted steelman C++ and Rust artefacts are built once during
+`docker/Dockerfile` image construction. Runtime commands do not retrain PGO, rerun
+BOLT, switch between per-workload optimized shared libraries, or install fallback
+artefacts. The supported runtime contract is one canonical bolted shared library per
+foreign steelman backend, generated from the Dockerfile-owned profile pipeline.
+
+The profile workload is not fully automatic. The build harness must run the binary
+through workload examples that resemble the project questions being optimized. For
+this repository that means a blended Q1/Q2 report-card training suite:
+
+- random rollouts and MCTS self-play;
+- single-threaded and `--threading multi --workers 8` batches;
+- `--rng native`, because Q1/Q2 headline throughput uses backend-native RNG;
+- several deterministic seeds rather than only seed `42`;
+- self-play simulation budgets representative of `S_BENCH = 500`.
+
+BOLT may use a shorter version of the same workload shape to keep image builds
+practical, but its `.fdata` must still come from the Dockerfile build. Missing PGO
+profile data, failed profile merge, missing BOLT `.fdata`, failed BOLT optimization,
+or a crashing installed library is an image-build failure.
+
+Current implementation baseline: the fail-closed mechanics are implemented, but
+`src/MCTS/CLI/Build.hs` still trains PGO/BOLT with a narrow single-threaded
+self-play smoke workload (`--rng native`, seed `42`, one game, `--sims 100` for
+PGO and `--sims 50` for BOLT). Sprint `8.10` in
+[../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md](../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md)
+owns replacing that residue with the blended training suite above and rerunning the
+report-card proof against the resulting artefacts.
 
 ## Backend (i) — `cpp-legacy` (Exempt)
 
@@ -82,13 +114,13 @@ checked-in generated data.
 
 1. **Two-stage PGO.** Instrumented build via
    `-fprofile-generate=$(abspath $(PGO_DIR))`; each generated `_bench` and
-   `_instrumented` artefact is installed to the canonical FFI load name for a
-   one-game, `--sims 100` training run before the canonical `.gcda` files are
-   copied back to artefact-specific profile names; optimised build with
+   `_instrumented` artefact is installed to the canonical FFI load name for the
+   blended Q1/Q2 training suite before the canonical `.gcda` files are copied
+   back to artefact-specific profile names; optimised build with
    `-fprofile-use=$(abspath $(PGO_DIR)) -fprofile-correction`.
 2. **BOLT post-link.** `llvm-bolt -instrument` produces a `_bench.inst.so` /
    `_instrumented.inst.so`; each is installed to the canonical FFI load name for
-   a one-game, `--sims 50` training run. `llvm-bolt -reorder-blocks=ext-tsp`
+   a shorter blended Q1/Q2 training suite. `llvm-bolt -reorder-blocks=ext-tsp`
    consumes the resulting `.fdata`. The `.fdata` files are mandatory Dockerfile
    build outputs; a missing file, failed BOLT invocation, or attempt to copy a
    PGO-only/unoptimized artefact to a `.bolted.so` or canonical load name must
@@ -113,7 +145,10 @@ profile directories, builds and trains `_bench` and `_instrumented` PGO artefact
 runs BOLT instrument/training/optimize steps, and installs the canonical shared
 library. The 2026-05-23 reclosure makes that sequence fail closed when
 `llvm-bolt` cannot produce usable `.fdata`, uses LLVM objcopy for post-BOLT
-envelope patching, and smokes the installed bolted libraries.
+envelope patching, and smokes the installed bolted libraries. The remaining gap is
+profile representativeness: the current training runner is still the narrow
+self-play smoke described in [PGO/BOLT Training Workload Doctrine](#pgobolt-training-workload-doctrine),
+not the blended report-card suite required by Sprint `8.10`.
 
 ### Code-Level Requirements
 
@@ -211,13 +246,13 @@ Plan/Apply leaf:
 - **Two-stage PGO** via
   `RUSTFLAGS="-C target-cpu=native -C link-arg=-fuse-ld=lld -C
   link-arg=-Wl,--emit-relocs -C
-  profile-generate=/workspace/MCTS/rust/pgo-profile"` → train on benchmark (b)
-  with `--games 1 --sims 100` → hard-failing `llvm-profdata merge` into
+  profile-generate=/workspace/MCTS/rust/pgo-profile"` → blended Q1/Q2 training
+  suite → hard-failing `llvm-profdata merge` into
   `rust/pgo-profile/merged.profdata` → `RUSTFLAGS="-C target-cpu=native -C
   link-arg=-fuse-ld=lld -C link-arg=-Wl,--emit-relocs -C
   profile-use=/workspace/MCTS/rust/pgo-profile/merged.profdata"`.
 - **BOLT** post-link: temporarily install the BOLT-instrumented copy of the PGO
-  cdylib at the canonical FFI load name for a one-game `--sims 50` training run,
+  cdylib at the canonical FFI load name for a shorter blended Q1/Q2 training run,
   restore the PGO cdylib, then optimize with `-reorder-blocks=ext-tsp` when
   `.fdata` exists. Missing `.fdata` or a failed BOLT invocation must fail the
   Dockerfile build; copying the PGO cdylib as a fallback is forbidden. This is
@@ -233,7 +268,9 @@ pinned Rust toolchain, inherited subprocess environment, absolute profile paths,
 the `lld` linker flag in both PGO Cargo builds, profile merge guard, canonical
 install path `rust/target/release/libmcts_rust.so`, local `SystemMiMalloc` global
 allocator, LLVM objcopy post-link `engine_build_id` patching, and final installed
-cdylib smoke inside the pinned amd64 container.
+cdylib smoke inside the pinned amd64 container. Like C++, Rust still uses the
+current narrow self-play training runner until Sprint `8.10` replaces it with the
+blended report-card profile suite.
 
 ### Code-Level Requirements
 
@@ -385,7 +422,8 @@ GCC/Clang `-fprofile-use` or `rustc -Cprofile-use`. The Haskell backend
 therefore competes against container-built C++ and Rust artefacts that completed
 their mandatory PGO+BOLT workflows without an equivalent Haskell feedback loop.
 This asymmetry does not permit PGO-only, non-BOLT, or unoptimized foreign
-artefacts; missing BOLT data is a failed Dockerfile build, not a benchmark input.
+artefacts; missing BOLT data or narrow training residue is not accepted final
+parity evidence.
 
 This is the asymmetry that most concretely tests the project hypothesis: if
 Haskell matches under these conditions, the result is meaningful; if it falls
@@ -393,9 +431,12 @@ short by 5–15%, that gap is plausibly attributable to the missing PGO loop
 rather than to any property of pure functional code per se. We document this
 rather than paper over it.
 
-The Phase 8 Sprint 8.3 parity verdict records the result honestly: either
-`Within tolerance` or `Shortfall <ratio>` per the [Parity Tolerance](#parity-tolerance)
-section below, with the gap attributed to this asymmetry where appropriate.
+The Phase 8 Sprint 8.3 parity verdict records the result honestly for the
+then-current fail-closed artefacts: either `Within tolerance` or `Shortfall <ratio>`
+per the [Parity Tolerance](#parity-tolerance) section below, with the gap attributed
+to this asymmetry where appropriate. Sprint `8.10` now owns the stricter final gate:
+the same report-card verdict after the C++ and Rust PGO/BOLT profiles are trained on
+the blended Q1/Q2 workload suite.
 
 ### Sprint 8.3 — Measured Q1 Snapshot
 
@@ -455,7 +496,7 @@ optimization beyond the `thread_local` move buffer.
 The live Rust and C++ backend install surfaces are fail-closed. On amd64, the
 Dockerfile-invoked `rustPgoBoltPlan` in `src/MCTS/CLI/Build.hs` completes cargo
 `-Cprofile-generate` with `-C target-cpu=native -C link-arg=-fuse-ld=lld
--C link-arg=-Wl,--emit-relocs`, the one-game PGO training run,
+-C link-arg=-Wl,--emit-relocs`, the current narrow PGO training run,
 `llvm-profdata merge`, `-Cprofile-use` with the same target CPU/linker/relocation
 flags, BOLT instrumentation/training, canonical install, LLVM objcopy
 `engine_build_id` patching, and a final installed-library smoke. The C++ Makefiles
@@ -470,6 +511,12 @@ On architectures where BOLT cannot instrument the shared libraries or cannot pro
 usable `.fdata`, the Dockerfile build fails. That is a supported fail-closed result,
 not a reason to publish a PGO-only cdylib or C++ shared library at the canonical
 location.
+
+That status proves the PGO/BOLT pipeline is mandatory and fail-closed; it does not
+prove the profile workload is sufficiently representative. Sprint `8.10` keeps
+Phase 8 active until the current single-threaded self-play training run is replaced
+by the blended Q1/Q2 report-card training suite and the report card is rerun against
+the resulting artefacts.
 
 The optimized-C++ Sprint 8.3 verdict was refreshed on 2026-05-23 by
 `docker compose run --rm --build mcts mcts test all` against the canonical workload
@@ -492,7 +539,9 @@ subprocesses.
 | Q5 Haskell MT scaling | 0.98x | 0.5 -> 0.5 games/s |
 | Q5 cpp-imperative MT scaling | 3.70x | 0.0 -> 0.1 games/s |
 
-The refreshed Sprint 8.3 verdict is **`Within tolerance`**.
+The refreshed Sprint 8.3 verdict is **`Within tolerance`** for the fail-closed
+pipeline then in the worktree. Sprint `8.10` supersedes it as final parity closure
+by requiring blended-profile training first.
 
 ## Parity Tolerance
 

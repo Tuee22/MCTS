@@ -25,7 +25,12 @@ This repository continues from `MCTS_legacy`, a hand-tuned imperative C++ implem
 > Dockerfile build. Missing PGO profiles, missing BOLT `.fdata`, or an attempted
 > PGO-only/unoptimized install under a canonical load name must fail the image build.
 > The installed bolted C++ and Rust libraries are smoke-tested during image
-> construction before runtime commands can consume them.
+> construction before runtime commands can consume them. Phase 8 is reopened for
+> Sprint 8.10 because the current build harness trains those profiles on a narrow
+> self-play-only smoke workload; accepted parity evidence now requires Dockerfile-time
+> PGO/BOLT training over the blended Q1/Q2 report-card shape: random rollouts and
+> MCTS self-play, single-threaded and 8-worker batches, native RNG, multiple fixed
+> seeds, and self-play budgets representative of `S_BENCH = 500`.
 > The authoritative phase-by-phase status remains
 > [`DEVELOPMENT_PLAN/README.md`](DEVELOPMENT_PLAN/README.md).
 
@@ -43,7 +48,7 @@ We want a runtime that is:
 2. **Purely functional at the API surface** in its final form, so that algorithmic changes (search policies, evaluators, prior shaping) are local edits rather than rewrites. Internally, the engine is free to use `ST`-monad mutable unboxed arrays — that is the only realistic way to match optimised imperative C++, and the local-reasoning property is preserved as long as the public types and operations stay pure.
 3. **Deterministic inside the documented envelope**: same-backend runs are reproducible for the same seed, RNG source, and logical inputs; cross-backend bit equality is asserted for backends (ii)..(v) under `--rng cpp`; backend (i) is covered by the legacy-parity envelope rather than the Q3 equality cohort. Reproducibility is a first-class invariant, not a debugging aid.
 
-The contest is rigged in favour of imperative C++ and Rust. The target for backends (ii), (iii), and (iv) is every reasonable optimisation — `-O3`, `-march=native`, full LTO, two-stage PGO, BOLT post-link, `mimalloc`, arena-allocated tree nodes, scratch-board rollouts, branch hints. Rust and the two steelman C++ backends are built by the Dockerfile through mandatory PGO+BOLT paths; if any stage cannot produce its required profile data or BOLT `.fdata`, or if the final bolted shared library cannot pass its smoke run, the Dockerfile build fails instead of installing a PGO-only or unoptimized fallback artifact. Backend (i) is a strictly verbatim port used to prove faithful reproduction of the legacy engine; backend (ii) is the performance ceiling against which (v) Haskell must compete. The hypothesis is only meaningful when tested against a maximally-tuned imperative baseline rather than a strawman.
+The contest is rigged in favour of imperative C++ and Rust. The target for backends (ii), (iii), and (iv) is every reasonable optimisation — `-O3`, `-march=native`, full LTO, two-stage PGO, BOLT post-link, `mimalloc`, arena-allocated tree nodes, scratch-board rollouts, branch hints. Rust and the two steelman C++ backends are built by the Dockerfile through mandatory PGO+BOLT paths; if any stage cannot produce its required profile data or BOLT `.fdata`, or if the final bolted shared library cannot pass its smoke run, the Dockerfile build fails instead of installing a PGO-only or unoptimized fallback artifact. Fully leveraging that stack also means the generated profiles are trained on the same kind of work used to judge the project: Q1 random rollouts plus Q2 MCTS self-play, single-threaded plus 8-worker batches, native RNG, several deterministic seeds, and self-play sim budgets representative of the report card. Backend (i) is a strictly verbatim port used to prove faithful reproduction of the legacy engine; backend (ii) is the performance ceiling against which (v) Haskell must compete. The hypothesis is only meaningful when tested against a maximally-tuned imperative baseline rather than a strawman.
 
 To get there without a single big-bang rewrite, we keep multiple implementations alive in the same repo, expose them through a single tool, and benchmark them against each other on every change.
 
@@ -551,7 +556,9 @@ without rebuilding them. The steelman C++ and Rust image-build recipes are
 fail-closed: PGO training data, merged profile data, BOLT instrumentation data, and
 the final optimized shared libraries must all be produced inside the Dockerfile
 build, and the installed bolted libraries must pass their smoke runs, or the image
-build exits non-zero. Host-level toolchain fallback is unsupported; in particular,
+build exits non-zero. Sprint 8.10 owns broadening the current narrow self-play
+training harness into the blended report-card training suite described in
+[Compiler and runtime tuning](#compiler-and-runtime-tuning). Host-level toolchain fallback is unsupported; in particular,
 Fourmolu and HLint must never be taken from the host `PATH`. A host-level
 `.build/` directory is unsupported residue under this policy. Runtime project
 configuration is expressed with CLI flags, not application-specific environment
@@ -616,8 +623,8 @@ Exempt from this section. (i) is strictly verbatim from `MCTS_legacy`; only FFI 
 
 **Build workflow:**
 
-- **Two-stage PGO**: instrumented build via `-fprofile-generate=<dir>`, training run on benchmark (b) at a representative game count, optimised build with `-fprofile-use=<dir> -fprofile-correction`.
-- **BOLT** post-link binary reordering after PGO — the canonical PGO+BOLT stack used by perf-critical C++ services. BOLT `.fdata` is required; copying the PGO artefact or an unoptimized artefact into the bolted/canonical load path is not an accepted fallback.
+- **Two-stage PGO**: instrumented build via `-fprofile-generate=<dir>`, training during the Dockerfile build on the blended report-card workload shape, then optimised build with `-fprofile-use=<dir> -fprofile-correction`. The target training mix includes Q1 random rollouts and Q2 self-play, single-threaded and 8-worker batches, native RNG, several fixed seeds, and self-play sim budgets representative of `S_BENCH = 500`.
+- **BOLT** post-link binary reordering after PGO — the canonical PGO+BOLT stack used by perf-critical C++ services. BOLT `.fdata` is required; copying the PGO artefact or an unoptimized artefact into the bolted/canonical load path is not an accepted fallback. BOLT training may use a shorter version of the same blended workload shape, but it is still generated inside the Dockerfile build and still fails the image build if `.fdata` is absent.
 - **`mimalloc`** as the system allocator through the container's `libmimalloc-dev` package for C++ and Rust; Rust links the system library through a local `GlobalAlloc` wrapper rather than a crates.io allocator dependency.
 
 **Code-level requirements**, grouped by priority. Top-tier items are non-negotiable; the rest are required unless profiling shows the change is neutral or harmful.
@@ -626,7 +633,7 @@ Exempt from this section. (i) is strictly verbatim from `MCTS_legacy`; only FFI 
 
 1. **Arena-allocated tree, children referenced by `uint32_t` indices.** One contiguous `std::vector<uct_node>` per game, expanded in place, freed in bulk at game end. Replaces the legacy's `std::vector<std::shared_ptr<uct_node>>` + `new uct_node` (`MCTS_legacy/backend/core/mcts.hpp:145`). Eliminates refcount traffic, double indirection, per-node destruction, and most cache misses during tree descent. This is the single largest structural change and the principal reason (i) cannot serve as the steelman.
 2. **Per-rollout scratch board with undo, or one snapshot per game.** Reuses one `board` instance per game — rollouts either undo moves at end-of-rollout or restore from a snapshot taken at expansion time. Eliminates the per-rollout `board_copy` allocation that the legacy pays on every simulation.
-3. **PGO + BOLT pipeline.** Two-stage feedback-directed optimisation, as in the build workflow above. The branch-heavy UCT descent and the rollout's terminal-check loop are exactly the workloads FDO was designed for.
+3. **PGO + BOLT pipeline.** Two-stage feedback-directed optimisation, as in the build workflow above. The branch-heavy UCT descent, self-play tree policy, and random-rollout terminal-check loop are exactly the workloads FDO was designed for.
 
 *Correctness requirement (also top tier):*
 
@@ -674,8 +681,8 @@ strip = "debuginfo"
 
 Build workflow:
 
-- **Two-stage PGO** via `rustc -Cprofile-generate=<dir>` → train on benchmark (b) → `-Cprofile-use=<dir>`.
-- **BOLT** post-link, same as C++. BOLT profile data is mandatory inside the Dockerfile build; PGO-only or unoptimized fallback installs are forbidden.
+- **Two-stage PGO** via `rustc -Cprofile-generate=<dir>` → Dockerfile-time blended Q1/Q2 report-card training → `-Cprofile-use=<dir>`.
+- **BOLT** post-link, same as C++. BOLT profile data is mandatory inside the Dockerfile build; PGO-only or unoptimized fallback installs are forbidden. Runtime commands never switch between per-workload optimized binaries; the accepted contract is one canonical Rust cdylib produced from the blended profile.
 - **`mimalloc`** as `#[global_allocator]` through the container system library and the local `SystemMiMalloc` wrapper.
 
 Code-level requirements:
@@ -739,7 +746,7 @@ Code-level requirements:
 
 ### One known asymmetry: PGO
 
-GHC 9.14 has no production-grade profile-guided optimisation comparable to GCC/Clang `-fprofile-use` or `rustc -Cprofile-use`. The accepted comparison is Haskell against C++ and Rust artefacts that completed their Dockerfile-time PGO+BOLT workflows. The asymmetry is only that Haskell lacks an equivalent feedback loop; it is not permission to accept PGO-only, non-BOLT, or unoptimized foreign artefacts. The 2026-05-21 amd64 run where C++ BOLT produced no usable `.fdata` remains historical fallback evidence only. The 2026-05-23 `docker compose run --rm --build mcts mcts test all` run refreshed the parity gate against fail-closed Dockerfile-built artefacts and recorded Q1 ST 0.05x, Q1 MT8 0.45x, Q2 ST 0.06x, Q2 MT8 0.22x, Q5 Haskell 0.98x, Q5 C++ (ii) 3.70x, Q7 PASS, and `Verdict: Within tolerance`.
+GHC 9.14 has no production-grade profile-guided optimisation comparable to GCC/Clang `-fprofile-use` or `rustc -Cprofile-use`. The accepted comparison is Haskell against C++ and Rust artefacts that completed their Dockerfile-time PGO+BOLT workflows. The asymmetry is only that Haskell lacks an equivalent feedback loop; it is not permission to accept PGO-only, non-BOLT, unoptimized, or narrowly trained foreign artefacts. The 2026-05-21 amd64 run where C++ BOLT produced no usable `.fdata` remains historical fallback evidence only. The 2026-05-23 `docker compose run --rm --build mcts mcts test all` run refreshed the parity gate against fail-closed Dockerfile-built artefacts and recorded Q1 ST 0.05x, Q1 MT8 0.45x, Q2 ST 0.06x, Q2 MT8 0.22x, Q5 Haskell 0.98x, Q5 C++ (ii) 3.70x, Q7 PASS, and `Verdict: Within tolerance`; Sprint 8.10 supersedes that closure requirement by requiring the same report-card proof after blended Q1/Q2 PGO+BOLT training replaces the current narrow self-play training recipe.
 
 ---
 

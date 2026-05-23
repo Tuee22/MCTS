@@ -2,7 +2,7 @@
 
 **Status**: Authoritative source
 **Supersedes**: N/A
-**Referenced by**: ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, ../documentation_standards.md, ./README.md
+**Referenced by**: ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, ../../DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md, ../../DEVELOPMENT_PLAN/phase-6-cpp-functional-and-rust.md, ../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, ../documentation_standards.md, ./README.md
 **Generated sections**: none
 
 > **Purpose**: Describe how the MCTS project uses the doctrine's Haskell patterns —
@@ -58,11 +58,15 @@ The MCTS commands that consume the `Plan / Apply` pattern are:
   `mcts build cpp-functional` — Dockerfile-invoked Plan/Apply recipes for the C++
   backend build leaves. The steelman C++ leaves drive the shared PGO/BOLT target
   sequence and install the canonical shared libraries only after PGO and BOLT both
-  produce their required profile data. Runtime validation does not rebuild them, and
-  PGO-only/unoptimized fallback installs are forbidden.
+  produce their required profile data. Sprint `8.10` owns replacing the current
+  narrow self-play training step with the blended Q1/Q2 report-card training suite
+  while keeping the same fail-closed Dockerfile boundary. Runtime validation does
+  not rebuild them, and PGO-only/unoptimized fallback installs are forbidden.
 - `mcts build rust` — Plan/Apply over
   the Dockerfile-invoked foreign backend two-stage PGO + BOLT post-link +
-  system `mimalloc` link pipeline, including the final installed-cdylib smoke.
+  system `mimalloc` link pipeline, including the final installed-cdylib smoke and,
+  after Sprint `8.10`, the same blended training workload as the steelman C++
+  backends.
 - `mcts build legacy-fixtures` — Plan/Apply over the backend (i) optional external
   evidence generator. Its outputs belong in ignored/external artifact roots, not in
   normal test inputs.

@@ -33,7 +33,10 @@ The 2026-05-21 report-card refresh remains historical fallback-backed evidence.
 The 2026-05-23 report-card refresh against the fail-closed Dockerfile PGO+BOLT
 build path recorded Q1 ST 0.05x, Q1 MT8 0.45x, Q2 ST 0.06x, Q2 MT8 0.22x,
 Q5 Haskell 0.98x, Q5 C++ (ii) 3.70x, Q7 liveness PASS, zero live-cohort
-divergence, and verdict `Within tolerance`.
+divergence, and verdict `Within tolerance`. Phase `7` remains closed for the report-card
+machinery itself; Phase `8` Sprint `8.10` owns the later requirement that the
+Dockerfile-built steelman artefacts measured by that machinery be trained on the
+blended Q1/Q2 PGO/BOLT workload suite before final parity closure.
 
 ## Sprint 7.1: Cabal Test Organization ✅
 

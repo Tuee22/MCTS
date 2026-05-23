@@ -57,12 +57,17 @@ Plan/Apply leaves for Rust and the steelman C++ backends, then installs the
 PGO+BOLT-optimized shared library at the canonical load name before runtime
 validation starts. Missing PGO profile data, missing BOLT `.fdata`, or any attempt
 to install a PGO-only/unoptimized fallback under that load name is a Dockerfile
-build failure. Post-BOLT envelope patching uses LLVM `objcopy`, and the final
+build failure. The accepted steelman artefact is one canonical shared library per
+backend, trained during the Dockerfile build on the blended Q1/Q2 workload suite
+defined in [compiler_runtime_tuning.md → PGO/BOLT Training Workload Doctrine](./compiler_runtime_tuning.md#pgobolt-training-workload-doctrine);
+runtime FFI loading does not switch between workload-specific libraries or trigger
+PGO/BOLT retraining. Post-BOLT envelope patching uses LLVM `objcopy`, and the final
 installed C++/Rust library must pass a bounded smoke run before the image can be
 published. The C++ backends also retain concrete `_instrumented` Makefile outputs
 for C++ investigations, but the supported Haskell FFI loader names the canonical
 shared libraries above. Rust publishes one optimized `cdylib` contract, not a
-parallel `_instrumented` artefact.
+parallel `_instrumented` artefact. The current narrow self-play training residue is
+owned by Phase 8 Sprint `8.10`, not by the FFI contract.
 
 ## C ABI Shape
 

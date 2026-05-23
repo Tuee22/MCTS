@@ -38,6 +38,12 @@ instrumentation or optimization cannot produce usable data, the image build must
 instead of installing a PGO-only or unoptimized artefact under a bolted or canonical
 load name.
 
+Phase `5` remains closed for the backend (ii) source, ABI, fail-closed PGO/BOLT
+mechanics, and canonical artefact installation surfaces. Phase `8` Sprint `8.10`
+owns the later requirement that the Dockerfile-time PGO/BOLT training workload be
+broadened from the current narrow self-play smoke into the blended Q1/Q2 report-card
+profile suite before final parity evidence is accepted.
+
 ## Sprint 5.1: Source Tree and Engine Shape ✅
 
 **Status**: Done
@@ -129,6 +135,8 @@ Ensure backend (ii) represents serious optimized C++ rather than a strawman.
 - LLVM objcopy patches the `engine_build_id` section on BOLT-produced shared
   objects; the build then smoke-tests the installed bolted canonical libraries so
   a corrupted or crashing artefact fails the Dockerfile build.
+- The final Phase `8` parity gate broadens the training workload through Sprint
+  `8.10`; this sprint owns fail-closed mechanics rather than the later workload mix.
 
 ### Validation
 

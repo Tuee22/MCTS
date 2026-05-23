@@ -51,10 +51,16 @@ closed and smoked the installed bolted cdylib.
 Phase `7` reclosed Sprint `7.6` on 2026-05-21 after replay/divergence evidence
 labels passed validation. Phase `8` reclosed Sprint `8.3` on 2026-05-23 after
 the parity report card passed against successful Dockerfile-time PGO+BOLT
-artefacts, not the historical fallback artefacts. Phases `3` and `4`
-remain `Done` on their owned engine and legacy-port surfaces.
+artefacts, not the historical fallback artefacts. Phase `8` is now reopened for
+Sprint `8.10` because the implemented PGO/BOLT training workload in
+`src/MCTS/CLI/Build.hs` is still a narrow single-threaded self-play smoke run,
+not the blended Q1/Q2 report-card training suite required for final steelman
+evidence. Phases `3` and `4` remain `Done` on their owned engine and legacy-port
+surfaces. Phases `5` and `6` remain `Done` for fail-closed PGO/BOLT mechanics,
+ABI contracts, and canonical artefact installation; Sprint `8.10` owns the later
+profile-representativeness dependency.
 
-This reclosure does not change the project hypothesis: one Haskell CLI keeps
+This active reopening does not change the project hypothesis: one Haskell CLI keeps
 all five backend slots live, Q3 proves visit-count equivalence for `(ii)..(v)`
 under `--rng cpp`, Q7 covers all five slots under the legacy envelope, and Q1/Q2
 measure backend (v) Haskell against backend (ii) `cpp-imperative`.
@@ -81,7 +87,7 @@ The Phase `7` reclosure was validated with
 `docker compose run --rm mcts mcts test mcts-integration`,
 `docker compose run --rm mcts mcts docs check`,
 `docker compose run --rm mcts mcts check-code`, and `git diff --check`.
-The Phase `8` reclosure was validated with
+The Phase `8` reclosure before Sprint `8.10` was validated with
 `docker compose run --rm mcts mcts docs check`,
 `docker compose run --rm mcts mcts check-code`,
 `docker compose run --rm --build mcts mcts test mcts-cross-backend`,
@@ -91,7 +97,10 @@ The Sprint `8.3` fail-closed report-card refresh was validated on 2026-05-23 wit
 Dockerfile-owned PGO+BOLT artefacts, passed docs, file, style, unit, integration,
 cross-backend, and legacy-parity checks, and recorded Q1 ST 0.05x, Q1 MT8 0.45x,
 Q2 ST 0.06x, Q2 MT8 0.22x, Q5 Haskell 0.98x, Q5 C++ (ii) 3.70x, Q7 PASS, and
-`Verdict: Within tolerance`.
+`Verdict: Within tolerance`. Under Sprint `8.10`, those numbers remain
+fail-closed pipeline evidence but no longer constitute final parity closure until
+the Dockerfile-owned PGO/BOLT training suite covers Q1 random rollouts and Q2
+self-play, single-threaded and MT8, with native RNG and multiple fixed seeds.
 The later Sprint `8.8` cleanup revalidated the focused and aggregate Compose
 gates without checked-in generated validation data.
 
@@ -259,7 +268,9 @@ matching shared library exists (falling back to the logical Haskell path only
 when the library is absent). The Rust backend drives a real Corridors gameplay
 loop (pawn moves + wall placement + BFS escapability) emitting canonical action
 IDs. The restored five-backend surface remains the baseline, and the focused
-evidence-surface reclosure has closed in the owning phases listed below.
+evidence-surface reclosure has closed in the owning phases listed below, except
+that Phase `8` is active again for Sprint `8.10` until the PGO/BOLT training
+workload matches the blended report-card profile doctrine.
 
 ## Document Index
 
@@ -315,7 +326,7 @@ A sprint can move to `Done` only when all of the following are true:
 | 5 | Backend (ii) C++ Imperative Steelman with PGO+BOLT | ✅ Done (Sprint `5.3` fail-closed C++ PGO/BOLT reclosure and Sprint `5.5` compact C ABI contract reclosure are complete) | [phase-5-cpp-imperative-steelman.md](phase-5-cpp-imperative-steelman.md) |
 | 6 | Backends (iii) C++ Functional-Style and (iv) Rust | ✅ Done (Sprint `6.4` fail-closed Rust PGO/BOLT reclosure and Sprint `6.6` compact ABI/build wording reclosure are complete) | [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md) |
 | 7 | Cross-Backend Verify, Test Stanzas, POC Report Card | ✅ Done (Sprint `7.6` replay/divergence evidence labels closed 2026-05-21) | [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md) |
-| 8 | Haskell Performance Parity Closure and Five-Backend Restoration | ✅ Done (Sprint `8.3` fail-closed report-card refresh closed 2026-05-23; Sprint `8.9` wording reclosure remains historical) | [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md) |
+| 8 | Haskell Performance Parity Closure and Five-Backend Restoration | 🔄 Active (Sprint `8.10` replaces narrow self-play PGO/BOLT training with blended Q1/Q2 report-card training before final parity reclosure) | [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md) |
 
 ## Current Plan Status
 
@@ -325,11 +336,16 @@ report-card evidence, and 2026-05-23 fail-closed report-card refresh recorded.
 The 2026-05-21 reclosure work aligned governed docs, comments, and evidence labels
 with the code that already supports the proof, while the 2026-05-22 fail-closed
 doctrine was closed by the 2026-05-23 PGO/BOLT build and parity-evidence gates.
+The current active gap is profile representativeness: `src/MCTS/CLI/Build.hs`
+still trains PGO/BOLT with one-game single-threaded self-play at small sim counts,
+so Sprint `8.10` keeps Phase `8` open until Dockerfile-time training covers the
+blended Q1/Q2 report-card suite and the report card is rerun.
 Implemented in the worktree:
 
 - `mcts.cabal`, `cabal.project`, `app/Main.hs`, `src/MCTS/**`, `test/**`,
   `documents/cli/commands.md`, `share/man/man1/mcts.1`,
-  `share/completion/{bash,zsh,fish}/`, `fourmolu.yaml`, `.hlint.yaml`, `.gitignore`.
+  `share/completion/{bash,zsh,fish}/`, `fourmolu.yaml`, `.hlint.yaml`, `.gitignore`,
+  `.dockerignore`.
 - CLI command families: `bench`, `verify`, `inspect`, `test`, `lint`, `docs`,
   `commands`, `help`, `check-code`, `build`, and `play` with an interactive TUI
   plus a non-interactive fallback.
@@ -464,7 +480,9 @@ labels, ABI docs, and compiler-tuning docs describe the same supported implement
 The PGO/BOLT build doctrine is now fail-closed for the steelman foreign backends:
 PGO and BOLT complete inside the Dockerfile build, missing profile data crashes the
 image build, and the installed bolted C++/Rust libraries are smoked before runtime
-validation starts.
+validation starts. The remaining active Phase `8` work is not fallback behavior; it
+is the Sprint `8.10` requirement that the profile data be trained on the blended
+Q1/Q2 report-card workload suite before final parity closure.
 
 ## Sprint Dependencies
 
@@ -501,10 +519,12 @@ performance ceiling and its functional sibling, and backend (iv) Rust is the
 cross-language second opinion. Phase `7` joins the five backend slots in the
 cross-backend evidence surface and emits the POC report card. Phase `8` closes the
 Haskell tuning loop once backend (v) matches backend (ii) within tolerance on Q1 and
-Q2 against successful Dockerfile-time PGO+BOLT artefacts. Sprint `8.9` revalidated
-the historical handoff after the evidence-surface alignment sprints closed, and Sprint
-`8.3` reclosed the report-card evidence against the fail-closed build artefacts on
-2026-05-23.
+Q2 against successful Dockerfile-time PGO+BOLT artefacts trained on the blended
+Q1/Q2 report-card workload suite. Sprint `8.9` revalidated the historical handoff
+after the evidence-surface alignment sprints closed, Sprint `8.3` reclosed the
+report-card evidence against fail-closed build artefacts on 2026-05-23, and Sprint
+`8.10` now reopens Phase `8` to replace the narrow training run before final
+parity closure.
 
 ## Exit Definition
 

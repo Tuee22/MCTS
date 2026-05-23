@@ -38,6 +38,12 @@ BOLT instrumentation, BOLT training, or BOLT optimization cannot produce the
 required optimized cdylib. The final installed Rust cdylib is smoke-tested before
 the image is published.
 
+Phase `6` remains closed for backend (iii)/(iv) source, ABI, fail-closed PGO/BOLT
+mechanics, Rust allocator/toolchain integration, and canonical artefact installation.
+Phase `8` Sprint `8.10` owns the later requirement that the Dockerfile-time
+PGO/BOLT training workload be broadened from the current narrow self-play smoke into
+the blended Q1/Q2 report-card profile suite before final parity evidence is accepted.
+
 ## Sprint 6.1: C++ Functional-Style Engine ✅
 
 **Status**: Done
@@ -156,6 +162,8 @@ Build Rust under a serious systems-language optimization envelope.
 - LLVM objcopy patches the installed bolted cdylib's `engine_build_id`, and the
   build smokes the canonical `rust/target/release/libmcts_rust.so` before the
   image is published.
+- The final Phase `8` parity gate broadens the training workload through Sprint
+  `8.10`; this sprint owns fail-closed mechanics rather than the later workload mix.
 
 ### Validation
 

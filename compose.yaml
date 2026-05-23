@@ -3,4 +3,3 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    working_dir: /workspace/MCTS
