@@ -23,10 +23,15 @@
 
 ✅ **Done.** The Haskell tuning work, no-generated-validation-data cleanup,
 five-backend restoration, and optimized-C++ report-card refresh previously closed.
-Sprint `5.3` routes `mcts build cpp-imperative` and `mcts build cpp-functional`
-through the shared C++ PGO/BOLT target sequence, and Sprint `8.3` refreshed the
-report-card evidence on 2026-05-21 against the canonical backend (ii) artefact
-produced by that build surface. Sprint `8.9` reclosed Phase `8` on 2026-05-21
+Sprint `5.3` routes the Dockerfile-invoked `mcts build cpp-imperative` and
+`mcts build cpp-functional` recipes through the shared C++ PGO/BOLT target sequence,
+and Sprint `8.3` refreshed the report-card evidence on 2026-05-21 against the
+canonical backend (ii) artefact produced by that Dockerfile-invoked build surface.
+The 2026-05-23 fail-closed reclosure removed PGO-only/BOLT-missing fallback
+installs from Sprints `5.3` and `6.4`; Sprint `8.3` then refreshed the report
+card against successful Dockerfile-time PGO+BOLT artefacts and reclosed.
+Sprint `8.9`
+reclosed Phase `8` on 2026-05-21
 after compiler-tuning wording and final handoff revalidation passed through the
 root Compose entrypoint. The stale two-backend drift remains corrected: `cpp-legacy`,
 `cpp-imperative`, and `cpp-functional` are live parser/build/verify/FFI
@@ -35,9 +40,8 @@ participants alongside `rust` and `haskell`.
 The restored end state is:
 
 - Q1/Q2 performance rows measure backend (v) Haskell against live backend (ii)
-  `cpp-imperative` where its shared library is available; the 2026-05-21 evidence
-  uses the supported C++ PGO/BOLT build path, with the documented BOLT no-`.fdata`
-  fallback on amd64.
+  `cpp-imperative` where its shared library is available; accepted closure evidence
+  must use Dockerfile-built artefacts that completed PGO and BOLT without fallback.
 - Performance benchmarks use each backend's own/native deterministic RNG contract.
 - Q3 logical-equivalence verification covers `(ii)..(v)` under `--rng cpp`.
 - Q7 legacy-envelope verification covers all five backend slots.
@@ -93,7 +97,8 @@ comparison against backend (ii).
 ### Validation
 
 The updated Q1 ST snapshot moved Haskell-vs-`cpp-imperative` from 10.76x slower to
-0.89x of the non-PGO smoke library, making the full report-card comparison plausible.
+0.89x of the historical non-PGO smoke library. That made the full report-card
+comparison plausible, but smoke-library evidence is not a current closure gate.
 
 ### Remaining Work
 
@@ -105,7 +110,8 @@ None.
 **Implementation**: `src/MCTS/CLI/Test.hs`,
 `../documents/engineering/compiler_runtime_tuning.md`
 **Docs to update**: `README.md`, `00-overview.md`, `system-components.md`,
-`../documents/engineering/compiler_runtime_tuning.md`
+`legacy-tracking-for-deletion.md`, `../documents/engineering/compiler_runtime_tuning.md`,
+`../documents/engineering/unit_testing_policy.md`
 
 ### Objective
 
@@ -114,12 +120,21 @@ target within `HASKELL_PARITY_TOLERANCE = 0.05`.
 
 ### Deliverables
 
+- The 2026-05-23 fail-closed report-card run recorded Q1 ST 0.05x
+  (`640.3` vs `34.4` games/s), Q1 MT8 0.45x (`592.9` vs `269.5` games/s),
+  Q2 ST 0.06x (`0.5` vs `0.0` games/s), Q2 MT8 0.22x
+  (`0.5` vs `0.1` games/s), Q5 Haskell 0.98x, Q5 C++ (ii) 3.70x,
+  Q7 liveness PASS, zero live-cohort divergence, and verdict
+  `Within tolerance` against backend (ii)'s Dockerfile-built artefact after C++
+  and Rust PGO+BOLT completed without fallback.
 - The 2026-05-21 report-card run recorded Q1 ST 0.05x
   (`740.0` vs `39.2` games/s), Q1 MT8 0.43x (`690.7` vs `294.7` games/s),
   Q2 ST 0.06x (`0.6` vs `0.0` games/s), Q2 MT8 0.19x
   (`0.6` vs `0.1` games/s), Q5 Haskell 1.04x, Q5 `cpp-imperative` 3.64x,
-  Q7 liveness PASS, and verdict `Within tolerance` against the canonical
-  backend (ii) artefact built by `mcts build cpp-imperative`.
+  Q7 liveness PASS, and verdict `Within tolerance` against the then-canonical
+  backend (ii) artefact built by `docker/Dockerfile` through the
+  `mcts build cpp-imperative` recipe. This is historical evidence because C++ BOLT
+  did not produce `.fdata` in that run.
 - The report-card numbers remain audit evidence, not checked-in generated validation
   inputs.
 - The 2026-05-19 report-card run remains historical smoke-baseline audit context:
@@ -135,7 +150,7 @@ target within `HASKELL_PARITY_TOLERANCE = 0.05`.
 The report-card evidence was produced through:
 
 ```bash
-docker compose run --rm mcts mcts test all
+docker compose run --rm --build mcts mcts test all
 ```
 
 The focused parity-anchor surface is validated by:
@@ -147,11 +162,10 @@ docker compose run --rm mcts mcts test parity-anchor cpp-imperative haskell --dr
 ### Current Validation State
 
 The report-card path measures live backend (ii) where the C++ shared library is
-present. The 2026-05-21 aggregate run rebuilt the C++ PGO/BOLT artefacts first and
-then passed all Cabal stanzas, Q3 `(ii)..(v)`, Q7 all-five legacy-envelope checks,
-and the report-card verdict. On amd64, C++ BOLT instrumentation produced no usable
-`.fdata`, so the Makefile installed the documented PGO fallback as the bolted
-artefact.
+present. The 2026-05-23 aggregate run rebuilt the Dockerfile-owned C++ and Rust
+PGO/BOLT artefacts first, required non-empty BOLT profiles and passing
+installed-library smokes, then passed all Cabal stanzas, Q3 `(ii)..(v)`, Q7
+all-five legacy-envelope checks, and the report-card verdict.
 
 ### Remaining Work
 
@@ -207,7 +221,8 @@ Restore the first-class backend surface for `cpp-legacy`, `cpp-imperative`,
 - `VerifyBackend` covers Q3 `(ii)..(v)`.
 - `mcts verify legacy-parity` validates the Q7 `(i)..(v)` cohort.
 - `mcts build cpp-legacy`, `mcts build cpp-imperative`, `mcts build cpp-functional`,
-  `mcts build rust`, and `mcts build legacy-fixtures` are live Plan/Apply leaves.
+  and `mcts build rust` are Dockerfile-invoked Plan/Apply build recipes; the
+  `legacy-fixtures` build leaf remains an explicit external evidence generator.
 - The generated command docs describe parity/equivalence surfaces without two-backend
   language.
 
@@ -215,9 +230,8 @@ Restore the first-class backend surface for `cpp-legacy`, `cpp-imperative`,
 
 - `docker compose run --rm mcts mcts docs check`
 - `docker compose run --rm mcts mcts test mcts-unit`
-- `docker compose run --rm mcts mcts build cpp-legacy --dry-run`
-- `docker compose run --rm mcts mcts build cpp-imperative --dry-run`
-- `docker compose run --rm mcts mcts build cpp-functional --dry-run`
+- Backend build-recipe dry-runs for `cpp-legacy`, `cpp-imperative`, and
+  `cpp-functional`
 
 ### Remaining Work
 
@@ -248,8 +262,7 @@ Make the C++ backends live peers of Rust in bench/play/verify/inspect dispatch.
 
 ### Validation
 
-- `docker compose run --rm mcts mcts build cpp-imperative`
-- `docker compose run --rm mcts mcts build cpp-functional`
+- `docker compose run --rm --build mcts mcts test mcts-cross-backend`
 - `docker compose run --rm mcts mcts bench rollouts --backend cpp-imperative,haskell --threading single --rng native --games 8 --seed 42 --cache-dir /tmp/mcts-cpp-smoke`
 - `docker compose run --rm mcts mcts inspect divergence <hash-prefix>` with a C++ sidecar
   candidate when a suitable transcript exists.
@@ -342,17 +355,26 @@ C++-stream-compatible.
 
 2026-05-21 closure evidence:
 
-- `docker compose run --rm mcts mcts build cpp-imperative --dry-run`,
-  `docker compose run --rm mcts mcts build cpp-functional --dry-run`,
-  `docker compose run --rm mcts mcts build cpp-imperative`, and
-  `docker compose run --rm mcts mcts build cpp-functional` passed through the
-  supported C++ PGO/BOLT Plan/Apply path.
+- The `cpp-imperative` and `cpp-functional` build-recipe dry-runs passed, and the
+  Dockerfile-owned C++ build path passed through the supported C++ PGO/BOLT
+  Plan/Apply sequence.
 - `docker compose run --rm mcts mcts test all` passed all five Cabal stanzas, Q3
   `(ii)..(v)`, Q7 all-five legacy-envelope checks, and the optimized-C++ report-card
   refresh with verdict `Within tolerance`.
 - Documentation SSoT alignment updated README, `DEVELOPMENT_PLAN/`, and `documents/`
   to defer exact test sequencing, replay overlay behavior, sidecar labels, and
   recompute mismatch semantics to their owning documents.
+
+2026-05-23 fail-closed closure evidence:
+
+- `docker compose run --rm --build mcts mcts test all` rebuilt C++ and Rust
+  Dockerfile-owned PGO+BOLT artefacts, required non-empty BOLT profile data,
+  patched BOLT-produced shared libraries with LLVM objcopy, smoked the installed
+  canonical C++/Rust libraries, and passed docs, file, style, unit, integration,
+  cross-backend, legacy-parity, and report-card validation.
+- The report-card refresh recorded Q1 ST 0.05x, Q1 MT8 0.45x, Q2 ST 0.06x,
+  Q2 MT8 0.22x, Q5 Haskell 0.98x, Q5 C++ (ii) 3.70x, Q7 liveness PASS, zero
+  live-cohort divergence, and verdict `Within tolerance`.
 
 ### Remaining Work
 
@@ -408,8 +430,11 @@ Sprint `8.9` reclosed on 2026-05-21. Validation passed with:
 - `docker compose run --rm --build mcts mcts test all`
 - `git diff --check`
 
-The final `mcts test all` report-card verdict was `Within tolerance`; Q3 passed for
-`(ii)..(v)`, Q7 passed across all five backend slots, and all five Cabal stanzas passed.
+The 2026-05-21 `mcts test all` report-card verdict was `Within tolerance`; Q3
+passed for `(ii)..(v)`, Q7 passed across all five backend slots, and all five Cabal
+stanzas passed. Under the 2026-05-22 fail-closed doctrine this remains historical
+fallback evidence. Sprint `8.3` refreshed the parity evidence on 2026-05-23
+against successful PGO+BOLT artefacts.
 
 ## Documentation Requirements
 
@@ -424,8 +449,8 @@ The final `mcts test all` report-card verdict was `Within tolerance`; Q3 passed 
 - `documents/engineering/unit_testing_policy.md` — live `mcts-cross-backend` and
   `mcts-legacy-parity` roles without checked-in generated validation data.
 - `documents/engineering/compiler_runtime_tuning.md` — performance parity against live
-  backend (ii), native-RNG benchmark semantics, and Sprint `8.9` Cabal-stanza flag
-  wording.
+  backend (ii), mandatory Dockerfile-time PGO+BOLT success for accepted evidence,
+  native-RNG benchmark semantics, and Sprint `8.9` Cabal-stanza flag wording.
 - `documents/engineering/haskell_code_guide.md` — command/build surface examples.
 
 **Product docs to create/update:**
@@ -438,8 +463,8 @@ The final `mcts test all` report-card verdict was `Within tolerance`; Q3 passed 
   [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md) where cleanup
   ownership is referenced.
 - Keep [README.md](README.md), [00-overview.md](00-overview.md), and
-  [system-components.md](system-components.md) aligned with the closed reclosure sprint
-  statuses.
+  [system-components.md](system-components.md) aligned with reopened Sprint `8.3`,
+  active Sprints `5.3`/`6.4`, and the pending fail-closed build residue.
 
 ## Related Documents
 

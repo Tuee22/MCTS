@@ -18,10 +18,15 @@ This repository continues from `MCTS_legacy`, a hand-tuned imperative C++ implem
 > steelmanned imperative C++ baseline while the five implementations preserve the
 > same MCTS logic under the controlled C++-RNG verification mode. Normal tests pass
 > from a clean clone without checked-in transcripts, throughput anchors, snapshots,
-> or other generated validation data. The C++ PGO/BOLT Plan/Apply wiring is closed:
-> `mcts build cpp-imperative` and `mcts build cpp-functional` now drive the shared
-> C++ PGO/BOLT target sequence, with the documented BOLT fallback when no usable
-> `.fdata` is produced. The authoritative phase-by-phase status remains
+> or other generated validation data. The Dockerfile owns the foreign backend build:
+> it invokes the C++ and Rust PGO/BOLT build leaves while constructing the image, so
+> runtime commands consume canonical shared libraries instead of rebuilding them.
+> Successful PGO+BOLT is mandatory for the steelman foreign backends inside that
+> Dockerfile build. Missing PGO profiles, missing BOLT `.fdata`, or an attempted
+> PGO-only/unoptimized install under a canonical load name must fail the image build.
+> The installed bolted C++ and Rust libraries are smoke-tested during image
+> construction before runtime commands can consume them.
+> The authoritative phase-by-phase status remains
 > [`DEVELOPMENT_PLAN/README.md`](DEVELOPMENT_PLAN/README.md).
 
 > **Plan and doctrine:** The authoritative execution-ordered plan lives at [`DEVELOPMENT_PLAN/README.md`](DEVELOPMENT_PLAN/README.md); the authoritative CLI doctrine lives at [`HASKELL_CLI_TOOL.md`](HASKELL_CLI_TOOL.md); the documentation-topology rules live at [`documents/documentation_standards.md`](documents/documentation_standards.md).
@@ -38,7 +43,7 @@ We want a runtime that is:
 2. **Purely functional at the API surface** in its final form, so that algorithmic changes (search policies, evaluators, prior shaping) are local edits rather than rewrites. Internally, the engine is free to use `ST`-monad mutable unboxed arrays — that is the only realistic way to match optimised imperative C++, and the local-reasoning property is preserved as long as the public types and operations stay pure.
 3. **Deterministic inside the documented envelope**: same-backend runs are reproducible for the same seed, RNG source, and logical inputs; cross-backend bit equality is asserted for backends (ii)..(v) under `--rng cpp`; backend (i) is covered by the legacy-parity envelope rather than the Q3 equality cohort. Reproducibility is a first-class invariant, not a debugging aid.
 
-The contest is rigged in favour of imperative C++ and Rust. The target for backends (ii), (iii), and (iv) is every reasonable optimisation — `-O3`, `-march=native`, full LTO, two-stage PGO, BOLT post-link, `mimalloc`, arena-allocated tree nodes, scratch-board rollouts, branch hints. Rust and the two steelman C++ backends are wired through supported PGO/BOLT build paths; C++ uses the documented PGO fallback when BOLT cannot produce usable `.fdata`. Backend (i) is a strictly verbatim port used to prove faithful reproduction of the legacy engine; backend (ii) is the performance ceiling against which (v) Haskell must compete. The hypothesis is only meaningful when tested against a maximally-tuned imperative baseline rather than a strawman.
+The contest is rigged in favour of imperative C++ and Rust. The target for backends (ii), (iii), and (iv) is every reasonable optimisation — `-O3`, `-march=native`, full LTO, two-stage PGO, BOLT post-link, `mimalloc`, arena-allocated tree nodes, scratch-board rollouts, branch hints. Rust and the two steelman C++ backends are built by the Dockerfile through mandatory PGO+BOLT paths; if any stage cannot produce its required profile data or BOLT `.fdata`, or if the final bolted shared library cannot pass its smoke run, the Dockerfile build fails instead of installing a PGO-only or unoptimized fallback artifact. Backend (i) is a strictly verbatim port used to prove faithful reproduction of the legacy engine; backend (ii) is the performance ceiling against which (v) Haskell must compete. The hypothesis is only meaningful when tested against a maximally-tuned imperative baseline rather than a strawman.
 
 To get there without a single big-bang rewrite, we keep multiple implementations alive in the same repo, expose them through a single tool, and benchmark them against each other on every change.
 
@@ -103,9 +108,9 @@ The `mcts verify` subcommands run the requested backend slots under `--rng cpp` 
 
 **Foreign instrumentation contract.** Steelman C++ backends (ii) and (iii) keep
 concrete paired Makefile outputs for bench-shaped and instrumented-shaped artefacts.
-The supported Haskell FFI loader uses the canonical shared libraries installed by
-`mcts build cpp-imperative` and `mcts build cpp-functional`, whose search and
-recompute ABIs return visit vectors directly. Backend (iv) Rust currently publishes
+The supported Haskell FFI loader uses the canonical shared libraries produced during
+the Dockerfile build by the `mcts build cpp-imperative` and `mcts build cpp-functional`
+leaves, whose search and recompute ABIs return visit vectors directly. Backend (iv) Rust currently publishes
 one optimized `cdylib` at `rust/target/release/libmcts_rust.so`; there is no
 supported Rust `_instrumented` companion artefact. Backend (i) is the legacy
 exemption, with transcript writing and instrumentation layered around the C ABI
@@ -264,7 +269,7 @@ Backend (i)'s throughput is published for reference only and is **not on the sam
 
 ## `mcts test all`
 
-The doctrine-mandatory canonical test command. `mcts test all` is the developer-facing entrypoint for the current validation surface. The exact Plan/Apply sequence is owned by [`documents/engineering/unit_testing_policy.md`](documents/engineering/unit_testing_policy.md); at a high level it checks lint/docs prerequisites, verifies a warning-clean build, builds the canonical foreign backend artefacts, runs the Cabal test-suite stanzas, executes the pinned no-write report-card workload, and prints one tidy summary block.
+The doctrine-mandatory canonical test command. `mcts test all` is the developer-facing entrypoint for the current validation surface. The exact Plan/Apply sequence is owned by [`documents/engineering/unit_testing_policy.md`](documents/engineering/unit_testing_policy.md); at a high level it checks lint/docs prerequisites, verifies a warning-clean build, consumes the Dockerfile-built foreign backend artefacts, runs the Cabal test-suite stanzas, executes the pinned no-write report-card workload, and prints one tidy summary block.
 
 Failure of any lint/docs prerequisite, build step, Cabal stanza, verify cohort, or report-card measurement exits non-zero.
 
@@ -275,7 +280,7 @@ Per doctrine §Test Organization, each tier is a separate cabal stanza:
 | Stanza | Tier | Scope |
 |---|---|---|
 | `mcts-unit` | pure logic | engine invariants, parser tests (`execParserPure`), property/semantic tests for `CommandSpec` output and `inspect show` rendering, transcript codec roundtrips using in-memory or temporary data, RNG mixer properties |
-| `mcts-integration` | subprocess | same-backend determinism (same seed and logical game inputs ⇒ same determinism payloads, three seeds per backend); decoded real-binary transcript determinism for Haskell and Rust when the Rust cdylib is present; bounded report-card divergence and cached recompute-sidecar checks using temporary cache roots; Rust live FFI smoke/envelope/stale-cache coverage when available; C++ live coverage is carried by `mcts-cross-backend`, `mcts-legacy-parity`, and the report-card path after `mcts test all` builds the C++ artefacts |
+| `mcts-integration` | subprocess | same-backend determinism (same seed and logical game inputs ⇒ same determinism payloads, three seeds per backend); decoded real-binary transcript determinism for Haskell and Rust when the Rust cdylib is present; bounded report-card divergence and cached recompute-sidecar checks using temporary cache roots; Rust live FFI smoke/envelope/stale-cache coverage when available; C++ live coverage is carried by `mcts-cross-backend`, `mcts-legacy-parity`, and the report-card path against the Dockerfile-built C++ artefacts |
 | `mcts-cross-backend` | round-robin verify | real `mcts verify` subprocesses for the live FFI-capable `--rng cpp` cohort covering backends (ii), (iii), (iv), (v); backend (i) excluded by the `VerifyBackend` type; test cases run serially around the process-pinned foreign-library and C++ RNG bridge path |
 | `mcts-legacy-parity` | legacy-envelope verify | live FFI-capable `verify legacy-parity` across all five backend slots with `max_plies = 10000` pinned and a fixture seed; Q7 checks liveness/overflow rather than backend (i)-vs-steelman visit-vector equality |
 | `mcts-haskell-style` | lint | pinned style-tool `fourmolu --mode check`, `hlint --with-group=default --with-group=extra + .hlint.yaml` with only `Error:` findings blocking, `cabal format` round-trip equality |
@@ -318,7 +323,7 @@ docker compose run --rm mcts mcts verify legacy-parity selfplay \
     --games $G_LP --seed $S_LP --sims $S_LP_SIMS
 ```
 
-Game counts (`$G_R`, `$G_S`, `$G_V`, `$G_LP`), per-move sim budgets (`$S_BENCH`, `$S_VERIFY`, `$S_LP_SIMS`), and the legacy-parity seed (`$S_LP`) are implemented in `MCTS.CLI.Test` and mirrored in `cabal.project` comments. The pinned values are: `G_R = 1_000`, `G_S = 4`, `G_V = 4`, `G_LP = 2`, `S_BENCH = 500`, `S_VERIFY = 500`, `S_LP_SIMS = 10_000`, `S_LP = 42`. `mcts test all` measures Q1/Q2/Q5 with the production monotonic clock through `runBatchNoWriteDispatch`, uses native RNG for headline throughput rows, and requires canonical backend artefacts built earlier in the same container. Q3/Q7 use `runBatchDispatch` under `--rng cpp`, so the headline determinism rows exercise live FFI engines when cdylibs are present and fall back to the in-process runner only when needed for self-contained local stanzas. Q3 compares nonzero visit vectors for backends (ii)..(v). Q7 is a legacy-envelope liveness/overflow gate for all five backend slots; it intentionally does not require the steelman engines to reproduce backend (i)'s tree visit counts or chosen moves outside the envelope. Q4 (same-backend determinism) is covered by the `mcts-integration` stanza, including decoded real-binary transcript determinism generated during the test run. Q6 decodes backend (i) evidence generated during the test run or under an explicit temporary artifact root, not checked-in transcript fixtures.
+Game counts (`$G_R`, `$G_S`, `$G_V`, `$G_LP`), per-move sim budgets (`$S_BENCH`, `$S_VERIFY`, `$S_LP_SIMS`), and the legacy-parity seed (`$S_LP`) are implemented in `MCTS.CLI.Test` and mirrored in `cabal.project` comments. The pinned values are: `G_R = 1_000`, `G_S = 4`, `G_V = 4`, `G_LP = 2`, `S_BENCH = 500`, `S_VERIFY = 500`, `S_LP_SIMS = 10_000`, `S_LP = 42`. `mcts test all` measures Q1/Q2/Q5 with the production monotonic clock through `runBatchNoWriteDispatch`, uses native RNG for headline throughput rows, and requires canonical backend artefacts produced by `docker/Dockerfile` before the runtime command starts. Q3/Q7 use `runBatchDispatch` under `--rng cpp`, so the headline determinism rows exercise live FFI engines when cdylibs are present and fall back to the in-process runner only when needed for self-contained local stanzas. Q3 compares nonzero visit vectors for backends (ii)..(v). Q7 is a legacy-envelope liveness/overflow gate for all five backend slots; it intentionally does not require the steelman engines to reproduce backend (i)'s tree visit counts or chosen moves outside the envelope. Q4 (same-backend determinism) is covered by the `mcts-integration` stanza, including decoded real-binary transcript determinism generated during the test run. Q6 decodes backend (i) evidence generated during the test run or under an explicit temporary artifact root, not checked-in transcript fixtures.
 
 ### Tidy summary block
 
@@ -358,7 +363,7 @@ The same data is available as `mcts test all --format json` for CI consumption; 
 
 ### Doctrine compliance
 
-- **Plan / Apply.** `mcts test all` is a Plan/Apply command. `build :: TestInputs -> Either AppError TestPlan` produces the typed sequence owned by [`unit_testing_policy.md`](documents/engineering/unit_testing_policy.md), covering lint/docs prerequisites, warning-clean build, canonical backend builds, Cabal stanzas, verify subprocesses, and the measured report-card builder. `apply :: Env -> TestPlan -> IO ExitCode` runs that sequence; `--dry-run` prints the rendered plan and exits 0; `--plan-file <path>` writes the rendered plan for out-of-band review.
+- **Plan / Apply.** `mcts test all` is a Plan/Apply command. `build :: TestInputs -> Either AppError TestPlan` produces the typed sequence owned by [`unit_testing_policy.md`](documents/engineering/unit_testing_policy.md), covering lint/docs prerequisites, warning-clean build, Cabal stanzas, verify subprocesses, and the measured report-card builder. Runtime execution checks the Dockerfile-built backend artefacts through typed prerequisites before applying the sequence. `apply :: Env -> TestPlan -> IO ExitCode` runs that sequence; `--dry-run` prints the rendered plan and exits 0; `--plan-file <path>` writes the rendered plan for out-of-band review.
 - **Prerequisites.** Active build/test prerequisites are encoded as one
   `prerequisiteRegistry` per doctrine §Prerequisites as Typed Effects. Current coverage
   includes exact GHC/Cabal, C++ compiler, LLVM/BOLT, Rust 1.95.0, LLD, `mimalloc`,
@@ -428,14 +433,13 @@ docker compose run --rm mcts mcts inspect replay 7a2f --top 15
 # Doctrine-alignment gate: lint files + docs + haskell, then the container-owned warning-clean build
 docker compose run --rm mcts mcts check-code
 
-# Build Rust's optimized library (Plan/Apply: PGO instrument -> train -> rebuild -> BOLT -> mimalloc link)
-docker compose run --rm mcts mcts build rust --dry-run
-docker compose run --rm mcts mcts build rust
+# Backend shared libraries are Dockerfile outputs; --build refreshes the image
+docker compose run --rm --build mcts mcts test all --dry-run
 ```
 
 The `verify` subtree pins `--rng cpp`, drives every requested backend over the same seed and same move sequence, and round-robin-compares their decoded determinism payloads (see [Cross-backend verification](#cross-backend-verification) above). Same-backend determinism tests live alongside as `tasty` cases under the `mcts-integration` stanza (see [`mcts test all`](#mcts-test-all)).
 
-`mcts check-code` is the canonical doctrine-alignment gate: it dispatches `mcts lint files`, `mcts lint docs`, `mcts lint haskell`, then the container-owned warning-clean build step, and fails if any step is non-clean. `mcts build <backend>` is a Plan/Apply harness per doctrine §Subprocesses as Typed Values; `--dry-run` and `--plan-file <path>` apply identically to the way they do on [`mcts test all`](#mcts-test-all).
+`mcts check-code` is the canonical doctrine-alignment gate: it dispatches `mcts lint files`, `mcts lint docs`, `mcts lint haskell`, then the container-owned warning-clean build step, and fails if any step is non-clean. Backend shared libraries are image-build artefacts; the backend `mcts build <backend>` leaves remain typed recipes invoked by `docker/Dockerfile` and available for focused diagnostics, but normal validation and benchmarking do not rebuild them at runtime.
 
 ### Progressive introspection
 
@@ -528,10 +532,10 @@ same CLI, the same measurement clock, and the same C++-RNG equivalence harness.
 ## Build and run
 
 The project ships `docker/Dockerfile` and a root-level `compose.yaml`
-(inspired by `MCTS_legacy/docker/`) so the toolchain and installed `mcts`
-binary are reproducible. All supported development, validation, formatting,
-linting, benchmark, and backend build work enters through this host command
-shape:
+(inspired by `MCTS_legacy/docker/`) so the toolchain, installed `mcts`
+binary, and all four foreign backend shared libraries are reproducible. All
+supported development, validation, formatting, linting, benchmark, and runtime
+work enters through this host command shape:
 
 ```bash
 docker compose run --rm mcts mcts <command>
@@ -540,9 +544,14 @@ docker compose run --rm mcts mcts <command>
 There is no long-running project daemon. `docker compose up` is not part of the
 workflow, and the Compose service intentionally has no bind mount, no
 environment-variable block, and no `sleep infinity` placeholder. The first
-`docker compose run --rm` invocation builds the image when it is absent; source
-and build artefacts then live inside that container image and its short-lived
-runtime filesystem. Host-level toolchain fallback is unsupported; in particular,
+`docker compose run --rm` invocation builds the image when it is absent; source,
+the installed `mcts` binary, and canonical backend shared libraries are produced
+inside the image. The short-lived runtime container consumes those artefacts
+without rebuilding them. The steelman C++ and Rust image-build recipes are
+fail-closed: PGO training data, merged profile data, BOLT instrumentation data, and
+the final optimized shared libraries must all be produced inside the Dockerfile
+build, and the installed bolted libraries must pass their smoke runs, or the image
+build exits non-zero. Host-level toolchain fallback is unsupported; in particular,
 Fourmolu and HLint must never be taken from the host `PATH`. A host-level
 `.build/` directory is unsupported residue under this policy. Runtime project
 configuration is expressed with CLI flags, not application-specific environment
@@ -608,8 +617,8 @@ Exempt from this section. (i) is strictly verbatim from `MCTS_legacy`; only FFI 
 **Build workflow:**
 
 - **Two-stage PGO**: instrumented build via `-fprofile-generate=<dir>`, training run on benchmark (b) at a representative game count, optimised build with `-fprofile-use=<dir> -fprofile-correction`.
-- **BOLT** post-link binary reordering after PGO — the canonical PGO+BOLT stack used by perf-critical C++ services.
-- **`mimalloc`** as the system allocator through the container's `libmimalloc-dev` package for C++ and the locked Rust crate for backend (iv).
+- **BOLT** post-link binary reordering after PGO — the canonical PGO+BOLT stack used by perf-critical C++ services. BOLT `.fdata` is required; copying the PGO artefact or an unoptimized artefact into the bolted/canonical load path is not an accepted fallback.
+- **`mimalloc`** as the system allocator through the container's `libmimalloc-dev` package for C++ and Rust; Rust links the system library through a local `GlobalAlloc` wrapper rather than a crates.io allocator dependency.
 
 **Code-level requirements**, grouped by priority. Top-tier items are non-negotiable; the rest are required unless profiling shows the change is neutral or harmful.
 
@@ -658,16 +667,16 @@ opt-level = 3
 lto = "fat"
 codegen-units = 1
 panic = "abort"
-strip = "symbols"
+strip = "debuginfo"
 ```
 
-`RUSTFLAGS`: `-C target-cpu=native -C link-arg=-fuse-ld=lld`.
+`RUSTFLAGS`: `-C target-cpu=native -C link-arg=-fuse-ld=lld -C link-arg=-Wl,--emit-relocs`.
 
 Build workflow:
 
 - **Two-stage PGO** via `rustc -Cprofile-generate=<dir>` → train on benchmark (b) → `-Cprofile-use=<dir>`.
-- **BOLT** post-link, same as C++.
-- **`mimalloc`** as `#[global_allocator]` (via the `mimalloc` crate).
+- **BOLT** post-link, same as C++. BOLT profile data is mandatory inside the Dockerfile build; PGO-only or unoptimized fallback installs are forbidden.
+- **`mimalloc`** as `#[global_allocator]` through the container system library and the local `SystemMiMalloc` wrapper.
 
 Code-level requirements:
 
@@ -730,7 +739,7 @@ Code-level requirements:
 
 ### One known asymmetry: PGO
 
-GHC 9.14 has no production-grade profile-guided optimisation comparable to GCC/Clang `-fprofile-use` or `rustc -Cprofile-use`. The current comparison is Haskell against the C++ and Rust PGO/BOLT build surfaces without an equivalent Haskell feedback loop; on the 2026-05-21 amd64 run, C++ BOLT instrumentation produced no usable `.fdata`, so the documented C++ PGO fallback was the canonical artefact. This is the asymmetry that most concretely tests the hypothesis: if Haskell matches under those conditions, the result is meaningful; if it falls short by 5–15%, that gap is plausibly attributable to the missing PGO loop rather than to any property of pure functional code per se. We document this rather than paper over it.
+GHC 9.14 has no production-grade profile-guided optimisation comparable to GCC/Clang `-fprofile-use` or `rustc -Cprofile-use`. The accepted comparison is Haskell against C++ and Rust artefacts that completed their Dockerfile-time PGO+BOLT workflows. The asymmetry is only that Haskell lacks an equivalent feedback loop; it is not permission to accept PGO-only, non-BOLT, or unoptimized foreign artefacts. The 2026-05-21 amd64 run where C++ BOLT produced no usable `.fdata` remains historical fallback evidence only. The 2026-05-23 `docker compose run --rm --build mcts mcts test all` run refreshed the parity gate against fail-closed Dockerfile-built artefacts and recorded Q1 ST 0.05x, Q1 MT8 0.45x, Q2 ST 0.06x, Q2 MT8 0.22x, Q5 Haskell 0.98x, Q5 C++ (ii) 3.70x, Q7 PASS, and `Verdict: Within tolerance`.
 
 ---
 

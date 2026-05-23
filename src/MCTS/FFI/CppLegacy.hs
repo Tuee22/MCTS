@@ -1,8 +1,8 @@
 -- | Haskell-side bindings for backend (i) C++ legacy.
 --
--- The shared object is built by `mcts build cpp-legacy` and loaded
--- dynamically so Cabal does not need platform-specific C++ linker
--- settings. The exported C ABI uses the historical `mcts_legacy`
+-- The Dockerfile builds the shared object through `mcts build cpp-legacy`;
+-- Haskell loads it dynamically so Cabal does not need platform-specific
+-- C++ linker settings. The exported C ABI uses the historical `mcts_legacy`
 -- symbol prefix.
 module MCTS.FFI.CppLegacy
     ( CppLegacyGame

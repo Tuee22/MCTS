@@ -42,8 +42,8 @@ operator surface. The operator-facing bench/play/divergence paths and
 Q3/Q7/report-card surfaces use the real visit-vector and recompute ABIs for
 available foreign backends. The direct live-FFI integration smoke cases currently
 exercise the Rust search/recompute/envelope path; C++ live coverage is carried by
-Q3 `verify`, Q7 legacy parity, and report-card measurement after `mcts test all`
-builds the C++ artefacts. Q3 `verify` uses live visit-vector ABI for visit-count
+Q3 `verify`, Q7 legacy parity, and report-card measurement against the
+Dockerfile-built C++ artefacts. Q3 `verify` uses live visit-vector ABI for visit-count
 equality across `(ii)..(v)`, and Q7 uses live backend slots `(i)..(v)` under the
 legacy envelope. Q3 uses the live cdylib when the matching
 library is present and the requested batch can use the fixed 60-ply foreign
@@ -52,12 +52,17 @@ stanzas stay self-contained.
 
 The **FFI load name** is the canonical install path matching
 [../../README.md → Repository layout (target)](../../README.md); the Haskell FFI
-binds against this name. Current `mcts build` behavior runs the supported PGO/BOLT
-Plan/Apply sequence for Rust and the steelman C++ backends, then installs the
-bolted-or-PGO-fallback shared library at the canonical load name. The C++ backends
-also retain concrete `_instrumented` Makefile outputs for C++ investigations, but
-the supported Haskell FFI loader names the canonical shared libraries above. Rust
-publishes one optimized `cdylib` contract, not a parallel `_instrumented` artefact.
+binds against this name. `docker/Dockerfile` invokes the supported `mcts build`
+Plan/Apply leaves for Rust and the steelman C++ backends, then installs the
+PGO+BOLT-optimized shared library at the canonical load name before runtime
+validation starts. Missing PGO profile data, missing BOLT `.fdata`, or any attempt
+to install a PGO-only/unoptimized fallback under that load name is a Dockerfile
+build failure. Post-BOLT envelope patching uses LLVM `objcopy`, and the final
+installed C++/Rust library must pass a bounded smoke run before the image can be
+published. The C++ backends also retain concrete `_instrumented` Makefile outputs
+for C++ investigations, but the supported Haskell FFI loader names the canonical
+shared libraries above. Rust publishes one optimized `cdylib` contract, not a
+parallel `_instrumented` artefact.
 
 ## C ABI Shape
 
@@ -209,7 +214,8 @@ backends patch
 `engine_build_id` after link through their Makefile `envelope-build-id` targets;
 Rust stamps `compiler_version` from
 `rustc --version` through `rust/build.rs` / `MCTS_RUSTC_VERSION` and patches the
-`.envelope_build_id` slot during `mcts build rust`. Runtime CPU/FP/libm probes are
+`.envelope_build_id` slot during the Dockerfile-invoked `mcts build rust` leaf.
+Runtime CPU/FP/libm probes are
 live for the foreign envelope surfaces; `MCTS.Driver.Dispatch` stamps FFI-produced
 transcripts with the live payload, and `MCTS.Verify.Envelope.checkTranscriptEnvelopesLive`
 compares cached transcript envelopes against `mcts_<backend>_get_envelope()` when

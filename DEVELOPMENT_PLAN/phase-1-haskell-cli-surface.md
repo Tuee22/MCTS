@@ -693,7 +693,7 @@ for free.
   `docker compose run --rm mcts mcts test mcts-unit`,
   `docker compose run --rm mcts mcts test all --dry-run --plan-file /tmp/mcts-test-plan.txt`,
   `docker compose run --rm mcts mcts docs generate --dry-run --plan-file /tmp/mcts-docs-plan.txt`,
-  and `docker compose run --rm mcts mcts build rust --dry-run --plan-file /tmp/mcts-build-plan.txt`.
+  and a Rust backend build-recipe dry-run with `--plan-file`.
 
 ### Remaining Work
 
@@ -810,10 +810,9 @@ typed boundary and emits structured remedy hints on failure.
   version-aware probes for `ghcup`, `ghc-9.14.1`, `cabal`, `c++`,
   `llvm-config` (LLVM `19.x`), `llvm-bolt` (LLVM `19.x`), `rustup`,
   `cargo` / `rustc` (`1.95.0`), LLD `19`, and `mimalloc` via library-path probes,
-  plus the `.build/profiles` and `rust/pgo-profile` directory probes, the
-  C++ profile-directory probes, `logical-backends` node, and canonical foreign
-  shared-library artefact nodes. C++ PGO/BOLT profile and artefact prerequisite
-  coverage closed in Sprint `5.3`.
+  plus backend-local C++ and Rust profile-directory probes, the `logical-backends`
+  node, and canonical foreign shared-library artefact nodes. C++ PGO/BOLT profile
+  and artefact prerequisite coverage closed in Sprint `5.3`.
 - `nodeDependsOn` carries dependency edges (`cargo`/`rustc` depend on
   `rustup`; `bolt` depends on `llvm`; `ghc-9.14.1`/`cabal-3.16.1.0` depend
   on `ghcup`). `prerequisitesForBuild` and `prerequisitesForTest` resolve
@@ -887,7 +886,7 @@ Thread one shared `Env` record through every command runner via `ReaderT Env IO`
   `docker compose run --rm mcts mcts commands --tree`,
   `docker compose run --rm mcts mcts docs check`,
   `docker compose run --rm mcts mcts lint files`, and
-  `docker compose run --rm mcts mcts build rust --dry-run`, plus a container
+  a Rust backend build-recipe dry-run, plus a container
   signature check showing every public command runner returns `Env.App ExitCode`.
 
 ### Remaining Work

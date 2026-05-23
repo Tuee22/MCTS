@@ -54,7 +54,7 @@ compile inside this repository and expose a C ABI.
 
 ### Validation
 
-`docker compose run --rm mcts mcts build cpp-legacy`
+`docker compose run --rm --build mcts mcts test mcts-legacy-parity`
 
 ### Remaining Work
 
@@ -80,7 +80,7 @@ Bind the legacy C ABI through the same dynamic-load pattern used by Rust.
 
 ### Validation
 
-- `docker compose run --rm mcts mcts build cpp-legacy`
+- `docker compose run --rm --build mcts mcts test mcts-legacy-parity`
 - `docker compose run --rm mcts mcts test mcts-integration`
 
 ### Remaining Work

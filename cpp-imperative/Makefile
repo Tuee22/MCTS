@@ -14,7 +14,7 @@ CXX ?= g++
 # shim's defensive `try`/`catch (...)` wrappers were also removed
 # because no exception can propagate from the engine TU.
 CXXFLAGS ?= -std=c++23 -O3 -march=native -mtune=native -flto -fno-plt -fno-semantic-interposition -fvisibility=hidden -fvisibility-inlines-hidden -fno-exceptions -fPIC -Wno-pessimizing-move -Iengine
-LDFLAGS ?= -shared -flto
+LDFLAGS ?= -shared -flto -Wl,--emit-relocs
 LDLIBS ?= -lmimalloc
 
 ENGINE_SRCS = engine/board.cpp engine/search.cpp c-abi/mcts_cpp_imperative.cc
@@ -82,44 +82,42 @@ bolt-bench-instrument:
 	llvm-bolt build/libmcts_cpp_imperative_bench.so -instrument \
 	    -o build/libmcts_cpp_imperative_bench.inst.so \
 	    --instrumentation-file=$(abspath $(BOLT_DIR))/bench.fdata \
-	    --instrumentation-file-append-pid 2>/dev/null || \
-	  echo "[bolt] bench instrument skipped: $$?"
+	    --instrumentation-file-append-pid
+	test -s build/libmcts_cpp_imperative_bench.inst.so
 
 bolt-instr-instrument:
 	mkdir -p $(BOLT_DIR)
 	llvm-bolt build/libmcts_cpp_imperative_instrumented.so -instrument \
 	    -o build/libmcts_cpp_imperative_instrumented.inst.so \
 	    --instrumentation-file=$(abspath $(BOLT_DIR))/instr.fdata \
-	    --instrumentation-file-append-pid 2>/dev/null || \
-	  echo "[bolt] instrumented instrument skipped: $$?"
+	    --instrumentation-file-append-pid
+	test -s build/libmcts_cpp_imperative_instrumented.inst.so
 
 # Stage 4: BOLT optimize. Read the BOLT profile and produce the
 # post-link reordered `.bolted.so`. The doctrine reorder choice is
 # `ext-tsp` (the cache-aware extension to TSP block layout).
 bolt-bench-optimize:
-	@if [ -s $(BOLT_DIR)/bench.fdata ] || ls $(BOLT_DIR)/bench.fdata.* >/dev/null 2>&1; then \
-	  fdata=$$(ls -t $(BOLT_DIR)/bench.fdata* 2>/dev/null | head -1); \
-	  llvm-bolt build/libmcts_cpp_imperative_bench.so \
-	      -o build/libmcts_cpp_imperative_bench.bolted.so \
-	      -data $$fdata -reorder-blocks=ext-tsp 2>/dev/null || \
-	    cp build/libmcts_cpp_imperative_bench.so build/libmcts_cpp_imperative_bench.bolted.so; \
-	else \
-	  echo "[bolt] no bench.fdata; copying PGO output as bolted artefact"; \
-	  cp build/libmcts_cpp_imperative_bench.so build/libmcts_cpp_imperative_bench.bolted.so; \
-	fi
+	@fdata=$$(ls -t $(BOLT_DIR)/bench.fdata* 2>/dev/null | head -1 || true); \
+	if [ -z "$$fdata" ]; then \
+	  echo "[bolt] missing bench.fdata; failing mandatory BOLT build" >&2; \
+	  exit 1; \
+	fi; \
+	llvm-bolt build/libmcts_cpp_imperative_bench.so \
+	    -o build/libmcts_cpp_imperative_bench.bolted.so \
+	    -data $$fdata -reorder-blocks=ext-tsp; \
+	test -s build/libmcts_cpp_imperative_bench.bolted.so
 	$(MAKE) envelope-build-id LIB=build/libmcts_cpp_imperative_bench.bolted.so
 
 bolt-instr-optimize:
-	@if [ -s $(BOLT_DIR)/instr.fdata ] || ls $(BOLT_DIR)/instr.fdata.* >/dev/null 2>&1; then \
-	  fdata=$$(ls -t $(BOLT_DIR)/instr.fdata* 2>/dev/null | head -1); \
-	  llvm-bolt build/libmcts_cpp_imperative_instrumented.so \
-	      -o build/libmcts_cpp_imperative_instrumented.bolted.so \
-	      -data $$fdata -reorder-blocks=ext-tsp 2>/dev/null || \
-	    cp build/libmcts_cpp_imperative_instrumented.so build/libmcts_cpp_imperative_instrumented.bolted.so; \
-	else \
-	  echo "[bolt] no instr.fdata; copying PGO output as bolted artefact"; \
-	  cp build/libmcts_cpp_imperative_instrumented.so build/libmcts_cpp_imperative_instrumented.bolted.so; \
-	fi
+	@fdata=$$(ls -t $(BOLT_DIR)/instr.fdata* 2>/dev/null | head -1 || true); \
+	if [ -z "$$fdata" ]; then \
+	  echo "[bolt] missing instr.fdata; failing mandatory BOLT build" >&2; \
+	  exit 1; \
+	fi; \
+	llvm-bolt build/libmcts_cpp_imperative_instrumented.so \
+	    -o build/libmcts_cpp_imperative_instrumented.bolted.so \
+	    -data $$fdata -reorder-blocks=ext-tsp; \
+	test -s build/libmcts_cpp_imperative_instrumented.bolted.so
 	$(MAKE) envelope-build-id LIB=build/libmcts_cpp_imperative_instrumented.bolted.so
 
 # Stage 5 (install): rename `_bench.bolted.so` to the canonical FFI
@@ -134,12 +132,14 @@ install-bench:
 
 # Post-link engine_build_id patch (mirrors the cpp-legacy target).
 envelope-build-id:
-	@if command -v objcopy >/dev/null 2>&1 && [ -n "$(LIB)" ]; then \
+	@objcopy_tool=$$(command -v llvm-objcopy-19 || command -v llvm-objcopy || command -v objcopy || true); \
+	if [ -n "$$objcopy_tool" ] && [ -n "$(LIB)" ]; then \
 		sha=$$(sha256sum $(LIB) | cut -c1-64); \
 		python3 -c "import sys; sys.stdout.buffer.write(bytes.fromhex(sys.argv[1]))" "$$sha" \
 			> $(LIB).envelope.bin; \
-		objcopy --update-section .envelope_build_id=$(LIB).envelope.bin \
-			$(LIB) 2>/dev/null || true; \
+		"$$objcopy_tool" --update-section .envelope_build_id=$(LIB).envelope.bin \
+			$(LIB); \
+		rm -f $(LIB).envelope.bin; \
 	fi
 
 clean:

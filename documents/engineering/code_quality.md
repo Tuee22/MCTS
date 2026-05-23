@@ -82,8 +82,9 @@ one canonical `mcts` operator surface:
   refused. Per-backend Makefiles under `cpp-legacy/`, `cpp-imperative/`,
   `cpp-functional/`, and per-backend `Cargo.toml` under `rust/` are allowed and
   expected.
-- Host-level `.build/` — build artefacts belong inside the Compose-built image or
-  short-lived container filesystem.
+- Host-level `.build/` — canonical foreign backend artefacts belong inside the
+  Compose-built image; runtime caches and temporary outputs belong inside the
+  short-lived container filesystem or explicit operator-provided artifact roots.
 - `bootstrap/` and repository `.sh` scripts — shell-script wrappers are refused
   because the single supported host entrypoint is
   `docker compose run --rm mcts mcts <command>`.

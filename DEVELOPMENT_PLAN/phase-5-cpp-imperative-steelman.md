@@ -16,25 +16,27 @@
 
 ✅ **Done.** `cpp-imperative/` contains the arena-MCTS steelman source, live
 parser/build/verify/FFI dispatch, Makefile-level PGO/BOLT/`mimalloc` targets, and
-supported `mcts build cpp-imperative` / `mcts build cpp-functional` Plan/Apply
-wiring through the shared C++ PGO/BOLT target sequence. The 2026-05-21 validation
-run closed Sprint `5.3`; Phase `8` then refreshed the report-card evidence against
-the canonical backend (ii) artefact produced by that build surface. Sprint `5.5`
-reclosed Phase `5` on 2026-05-21 by aligning the backend (ii) C ABI contract with
-the compact live evidence ABI that exists, not speculative tree/rng lifecycle
-handles.
+Dockerfile-invoked `mcts build cpp-imperative` / `mcts build cpp-functional`
+Plan/Apply recipes through the shared C++ PGO/BOLT target sequence. Sprint `5.3`
+reclosed on 2026-05-23: C++ BOLT `.fdata` production is mandatory, PGO-only or
+unoptimized fallback installs are removed, LLVM objcopy patches BOLT-produced
+shared objects without corrupting them, and the Dockerfile build smokes the
+installed bolted libraries before publishing the image. Sprint `5.5` reclosed
+Phase `5` on 2026-05-21 by aligning the backend (ii) C ABI contract with the
+compact live evidence ABI that exists, not speculative tree/rng lifecycle handles.
 
 ## Phase Summary
 
 Backend (ii) is deliberately steelmanned C++: C++23, GCC, `-O3`, LTO, PGO, BOLT,
 `mimalloc`, arena allocation, flat child ranges, branch hints, `thread_local` scratch
 buffers, a ply-cap draw rule, and a compact C ABI that exposes board lifecycle,
-search, recompute, available visit evidence, and envelope operations. The supported
-CLI build now drives the C++ PGO/BOLT target sequence for both steelman C++ backends
-and installs the canonical shared library.
-On the 2026-05-21 amd64 validation run, BOLT instrumentation produced no usable
-`.fdata`, so the documented Makefile fallback installed the PGO artefact as the
-bolted artefact.
+search, recompute, available visit evidence, and envelope operations. The Dockerfile
+drives the C++ PGO/BOLT Plan/Apply recipes for both steelman C++ backends and
+installs the canonical shared libraries before runtime validation starts.
+PGO profile data and BOLT `.fdata` are required Dockerfile-build outputs. If BOLT
+instrumentation or optimization cannot produce usable data, the image build must fail
+instead of installing a PGO-only or unoptimized artefact under a bolted or canonical
+load name.
 
 ## Sprint 5.1: Source Tree and Engine Shape ✅
 
@@ -57,7 +59,7 @@ Implement the fastest reasonable imperative C++ baseline for the rollout MCTS pr
 
 ### Validation
 
-`docker compose run --rm mcts mcts build cpp-imperative`
+`docker compose run --rm --build mcts mcts test mcts-cross-backend`
 
 ### Remaining Work
 
@@ -84,7 +86,7 @@ Expose backend (ii) as a live C ABI peer of Rust and Haskell.
 
 ### Validation
 
-- `docker compose run --rm mcts mcts build cpp-imperative`
+- `docker compose run --rm --build mcts mcts test mcts-cross-backend`
 - `docker compose run --rm mcts mcts bench rollouts --backend cpp-imperative --threading single --rng native --games 8 --seed 42 --cache-dir /tmp/mcts-cpp-imperative`
 - `docker compose run --rm mcts mcts test mcts-integration`
 
@@ -97,7 +99,10 @@ None.
 **Status**: Done
 **Implementation**: `src/MCTS/CLI/Build.hs`, `src/MCTS/Prerequisite.hs`,
 `test/unit/Main.hs`, `cpp-imperative/Makefile`, `cpp-functional/Makefile`
-**Docs to update**: `documents/engineering/compiler_runtime_tuning.md`
+**Docs to update**: `README.md`, `00-overview.md`, `system-components.md`,
+`legacy-tracking-for-deletion.md`, `documents/engineering/compiler_runtime_tuning.md`,
+`documents/engineering/backend_ffi_contract.md`,
+`documents/engineering/haskell_code_guide.md`
 
 ### Objective
 
@@ -111,38 +116,40 @@ Ensure backend (ii) represents serious optimized C++ rather than a strawman.
 - No `-ffast-math` and no `-Ofast`.
 - Makefile-level two-stage PGO train/use targets for `cpp-imperative` and
   `cpp-functional`.
-- Makefile-level BOLT post-link targets with documented fallback when no usable
-  `.fdata` is produced.
+- Makefile-level BOLT post-link targets that require usable `.fdata` for each
+  optimized C++ shared library.
 - `mimalloc` linked for the steelman backends.
-- Supported `mcts build cpp-imperative` and `mcts build cpp-functional` Plan/Apply
-  wiring through the PGO/BOLT target sequence.
+- Dockerfile-invoked `mcts build cpp-imperative` and `mcts build cpp-functional`
+  Plan/Apply recipes through the PGO/BOLT target sequence.
 - C++ build prerequisite coverage for PGO/BOLT profile directories and canonical
   shared-library artefacts.
+- Dockerfile build failure when PGO training data, BOLT `.fdata`, or final
+  optimized shared libraries are absent; PGO-only and unoptimized failover installs
+  are forbidden.
+- LLVM objcopy patches the `engine_build_id` section on BOLT-produced shared
+  objects; the build then smoke-tests the installed bolted canonical libraries so
+  a corrupted or crashing artefact fails the Dockerfile build.
 
 ### Validation
 
-- `docker compose run --rm mcts mcts build cpp-imperative --dry-run`
-- `docker compose run --rm mcts mcts build cpp-imperative`
-- `docker compose run --rm mcts mcts build cpp-functional --dry-run`
-- `docker compose run --rm mcts mcts build cpp-functional`
 - `docker compose run --rm --build mcts mcts test mcts-unit`
 
-2026-05-21 closure evidence:
-
-- `docker compose run --rm mcts mcts build cpp-imperative --dry-run` and
-  `docker compose run --rm mcts mcts build cpp-functional --dry-run` rendered the
-  shared 18-step C++ PGO/BOLT Plan/Apply sequence.
-- `docker compose run --rm mcts mcts build cpp-imperative` and
-  `docker compose run --rm mcts mcts build cpp-functional` both completed through
-  PGO generate/use, BOLT instrument/optimize, and canonical install. On amd64,
-  `llvm-bolt` emitted no usable `.fdata`; the Makefile fallback copied the PGO
-  artefacts as the bolted artefacts.
-- `docker compose run --rm --build mcts mcts test mcts-unit` passed 28 cases,
-  including the C++ PGO/BOLT plan and prerequisite coverage assertions.
+The 2026-05-23 validation rebuilt the Docker image, ran both C++ steelman
+PGO/BOLT paths during the Dockerfile backend layer, produced non-empty BOLT
+profiles for `cpp-imperative` and `cpp-functional`, installed bolted canonical
+libraries, smoked each installed library with `bench selfplay --games 1 --sims 4`,
+and passed `mcts-unit` including the 19-step C++ PGO/BOLT plan assertions.
 
 ### Remaining Work
 
 None.
+
+### Closure Notes
+
+Sprint `5.3` reclosed on 2026-05-23. The earlier 2026-05-21 amd64 run where
+C++ BOLT produced no usable `.fdata` remains historical evidence only; the
+current Dockerfile build fails closed on missing `.fdata` and validates the
+installed bolted libraries before runtime commands can consume them.
 
 ## Sprint 5.4: Bench and Verify Participation ✅
 
@@ -196,16 +203,16 @@ determinism proof, without adding object-model APIs that do not improve the proo
   contract unless the implementation actually exposes and uses them.
 - Instrumentation wording states exactly which backend (ii) artefact is used for
   benchmark, verify, play, replay, and divergence evidence. The current contract names
-  only concrete artefacts produced by `mcts build cpp-imperative`; no unimplemented
-  zero-overhead paired-target claim remains.
+  only concrete artefacts produced by the Dockerfile-invoked
+  `mcts build cpp-imperative` recipe; no unimplemented zero-overhead paired-target
+  claim remains.
 - Haskell FFI bindings and C header comments use the same symbol names and argument
   shapes as the governed ABI document.
 
 ### Validation
 
-- `docker compose run --rm mcts mcts build cpp-imperative --dry-run`
-- `docker compose run --rm mcts mcts build cpp-imperative`
-- `docker compose run --rm mcts mcts test mcts-unit`
+- Backend (ii) build-recipe dry-run
+- `docker compose run --rm --build mcts mcts test mcts-unit`
 - `docker compose run --rm mcts mcts docs check`
 - `git diff --check`
 
@@ -215,10 +222,8 @@ determinism proof, without adding object-model APIs that do not improve the proo
 
 ### Closure Notes
 
-- Closed on 2026-05-21 after
-  `docker compose run --rm mcts mcts build cpp-imperative --dry-run`,
-  `docker compose run --rm mcts mcts build cpp-imperative`,
-  `docker compose run --rm mcts mcts test mcts-unit`,
+- Closed on 2026-05-21 after the backend (ii) build-recipe dry-run,
+  Dockerfile-owned build validation through `docker compose run --rm --build mcts mcts test mcts-unit`,
   `docker compose run --rm mcts mcts docs check`, and `git diff --check` passed.
 - Sprint `6.6` retains the shared compact-ABI wording validation for backend (iii)
   and backend (iv).
@@ -227,10 +232,14 @@ determinism proof, without adding object-model APIs that do not improve the proo
 
 **Engineering docs to create/update:**
 
-- `documents/engineering/compiler_runtime_tuning.md` — C++ steelman flags, PGO/BOLT,
-  parity tolerance, and native-RNG benchmark semantics.
+- `documents/engineering/compiler_runtime_tuning.md` — C++ steelman flags, mandatory
+  Dockerfile-time PGO+BOLT success, parity tolerance, and native-RNG benchmark
+  semantics.
 - `documents/engineering/backend_ffi_contract.md` — imperative C ABI symbols, using the
-  compact live ABI surface owned by Sprint `5.5`.
+  compact live ABI surface owned by Sprint `5.5`, and canonical load-name install
+  requirements that reject PGO-only/unoptimized fallback artefacts.
+- `documents/engineering/haskell_code_guide.md` — Plan/Apply examples for the
+  Dockerfile-invoked fail-closed C++ build leaves.
 - `documents/engineering/determinism_contract.md` — Q3 equivalence participation.
 
 **Product docs to create/update:**
@@ -241,8 +250,10 @@ determinism proof, without adding object-model APIs that do not improve the proo
 
 - Keep [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md)
   aligned with live backend (ii) measurement.
-- `legacy-tracking-for-deletion.md` carries Sprint `5.5` ABI overclaim residue until
-  backend (ii)'s governed ABI and headers agree.
+- `legacy-tracking-for-deletion.md` carries Sprint `5.3` fail-open C++ PGO/BOLT
+  residue until the Makefile/CLI path fails the Dockerfile build on missing `.fdata`;
+  it carries Sprint `5.5` ABI overclaim residue until backend (ii)'s governed ABI
+  and headers agree.
 
 ## Related Documents
 

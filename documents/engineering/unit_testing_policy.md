@@ -86,8 +86,8 @@ through `MCTS.Subprocess.capture` for Haskell and Rust when the Rust cdylib is
 present, a bounded measured report-card builder check, a cached recompute-sidecar
 `mcts inspect divergence` subprocess check, plus bounded Rust foreign-backend
 smoke games through foreign backend drivers. Live C++ FFI coverage is carried by
-the cross-backend, legacy-parity, and report-card surfaces after `mcts test all`
-builds the C++ artefacts. The cross-backend stanza asserts
+the cross-backend, legacy-parity, and report-card surfaces against the
+Dockerfile-built C++ artefacts. The cross-backend stanza asserts
 successful `verify rollouts` and `verify selfplay` subprocess output for its
 focused Q3 smoke cohorts. Its `tasty` tree uses `NumThreads 1` so the Q3
 subprocess cases do not concurrently exercise the same process-pinned shared
@@ -132,8 +132,11 @@ from normal `mcts test all`.
 The doctrine-mandatory canonical test command. Phase 7 Sprint 7.3 owns the
 implementation. From the host, run it as
 `docker compose run --rm mcts mcts test all`; the first run builds the image when
-needed. Internally, the plan is a typed `[Subprocess]` sequence run via
-`Plan / Apply`:
+needed, including the Dockerfile-owned foreign backend artefacts. Before applying
+the plan, `checkPrerequisites prerequisitesForTest` checks the pinned Haskell
+toolchain, logical backend coverage, and the Dockerfile-built foreign shared
+libraries. Runtime validation then consumes those artefacts. Internally, the plan
+is a typed `[Subprocess]` sequence run via `Plan / Apply`:
 
 1. `mcts lint files` (rendered as `cabal exec mcts -- lint files` in the current
    apply plan; whitespace, final newline, `forbiddenPathRegistry`,
@@ -143,28 +146,25 @@ needed. Internally, the plan is a typed `[Subprocess]` sequence run via
    drift on the `GeneratedSectionRule` registry).
 3. Inside the container, `cabal build all` warning-clean under the pinned
    toolchain.
-4. Build the live foreign backend artefacts through the supported build harness:
-   `mcts build cpp-legacy`, the C++ PGO/BOLT paths for `mcts build cpp-imperative`
-   and `mcts build cpp-functional`, and the Rust PGO/BOLT path via `mcts build rust`.
-5. Inside the container, `cabal test mcts-haskell-style` (`cabal format`
+4. Inside the container, `cabal test mcts-haskell-style` (`cabal format`
    temp-file round-trip,
    `/opt/mcts-style-tools/bin/fourmolu --mode check`,
    `/opt/mcts-style-tools/bin/hlint --with-group=default --with-group=extra`
    with only `Error:` findings blocking, and the source-walker guard). The
    style tools are installed inside the container with the separate pinned
    formatter-tools GHC `9.12.4`; ambient host tools are never used as a fallback.
-6. Inside the container, `cabal test mcts-unit`.
-7. Inside the container, `cabal test mcts-integration`.
-8. Inside the container, `cabal test mcts-cross-backend`.
-9. Inside the container, `cabal test mcts-legacy-parity`.
-10. Pinned report-card workload — Q1/Q2/Q5 are measured inside the report-card
+5. Inside the container, `cabal test mcts-unit`.
+6. Inside the container, `cabal test mcts-integration`.
+7. Inside the container, `cabal test mcts-cross-backend`.
+8. Inside the container, `cabal test mcts-legacy-parity`.
+9. Pinned report-card workload — Q1/Q2/Q5 are measured inside the report-card
    builder through the no-write batch runner, while Q3/Q7 are rendered as
    explicit checks through `cabal exec mcts -- ...` so the
    command does not depend on a separate `mcts` executable on `PATH`. Q3 is the
    live visit-vector equality gate for `(ii)..(v)`; Q7 is the all-five
    legacy-envelope liveness/overflow gate. Q1/Q2 measure Haskell against backend (ii)
    without relying on a checked-in throughput file.
-11. Render the tidy summary block from the collected `ReportCard` value,
+10. Render the tidy summary block from the collected `ReportCard` value,
     including the `visit/move` divergence matrix populated from the measured
     `G_V` verify transcripts on the live `mcts test all` path.
 
@@ -178,8 +178,9 @@ and `divergence_matrix` rows.
 The report card answers seven questions, verbatim from
 [../../README.md → POC headline questions](../../README.md):
 Q1/Q2 currently measure against the live backend (ii) artefact that `mcts test all`
-builds through the supported C++ PGO/BOLT path, using the documented PGO fallback
-when BOLT produces no usable `.fdata`.
+consumes from the Dockerfile-built C++ PGO/BOLT path. That path is mandatory and
+fail-closed: missing PGO data, missing BOLT `.fdata`, or PGO-only/unoptimized
+fallback artefacts cannot satisfy the report-card gate.
 
 1. **Q1.** Does pure Haskell match maximally-optimised C++ (backend (ii)) on
    benchmark (a) random rollouts, single-threaded and on 8 workers?
@@ -226,8 +227,8 @@ Knobs](../../DEVELOPMENT_PLAN/system-components.md): `G_R = 1_000`, `G_S =
 4`, `G_V = 4`, `G_LP = 2`, `S_BENCH = 500`, `S_VERIFY = 500`,
 `S_LP_SIMS = 10_000`, `S_LP = 42`.
 
-`mcts test all` builds the live foreign artefacts before running the Cabal stanzas and
-final report card. The measured report-card builder uses the production monotonic clock
+`mcts test all` requires the Dockerfile-built live foreign artefacts before running
+the Cabal stanzas and final report card. The measured report-card builder uses the production monotonic clock
 for live Haskell Q1/Q2/Q5 throughput through `runBatchNoWriteDispatch`, compares those
 rates against live backend (ii) where available, and renders `Evidence pending` only in
 deterministic semantic unit values, not in a live full run. Q7 is the all-five

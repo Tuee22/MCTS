@@ -29,10 +29,11 @@ Q1 ST 0.05x,
 Q1 MT8 0.41x, Q2 ST 0.05x, Q2 MT8 0.20x, Q5 Haskell 0.99x, Q5 `cpp-imperative`
 3.64x, Q7 liveness PASS, and verdict `Within tolerance`.
 
-The 2026-05-21 report-card refresh against the canonical C++ PGO/BOLT build path
-recorded Q1 ST 0.05x, Q1 MT8 0.43x, Q2 ST 0.06x, Q2 MT8 0.19x, Q5 Haskell
-1.04x, Q5 `cpp-imperative` 3.64x, Q7 liveness PASS, and verdict
-`Within tolerance`.
+The 2026-05-21 report-card refresh remains historical fallback-backed evidence.
+The 2026-05-23 report-card refresh against the fail-closed Dockerfile PGO+BOLT
+build path recorded Q1 ST 0.05x, Q1 MT8 0.45x, Q2 ST 0.06x, Q2 MT8 0.22x,
+Q5 Haskell 0.98x, Q5 C++ (ii) 3.70x, Q7 liveness PASS, zero live-cohort
+divergence, and verdict `Within tolerance`.
 
 ## Sprint 7.1: Cabal Test Organization ✅
 

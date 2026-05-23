@@ -69,10 +69,9 @@ const fn fill_ascii<const N: usize>(value: &str) -> [u8; N] {
 static G_ENVELOPE: OnceLock<MctsRustEnvelope> = OnceLock::new();
 
 // Sprint 6.5: writable named section so the build harness can patch
-// the engine_build_id post-link via `objcopy --update-section`. The
-// cdylib's strip step (`[profile.release] strip = "symbols"`) strips
-// symbol tables but preserves named sections, so this 32-byte slot
-// survives into the shipped artifact.
+// the engine_build_id post-link via `llvm-objcopy --update-section`. The
+// release profile strips debuginfo but preserves named sections, so this
+// 32-byte slot survives into the shipped artifact.
 //
 // `#[used]` keeps the static from being optimised out by the
 // linker's dead-code elimination. The section is initialised to
@@ -83,10 +82,9 @@ static G_ENVELOPE: OnceLock<MctsRustEnvelope> = OnceLock::new();
 #[used]
 static G_ENGINE_BUILD_ID: [u8; 32] = [0u8; 32];
 
-// Sprint 6.5: detect the runtime libm at compile time. Rust on
-// Linux statically links its own libm in nightly+, but the cdylib
-// here links the system libm via the `cc`/`mimalloc-sys` chain, so
-// the `target_env` tag is what matters for the envelope.
+// Sprint 6.5: detect the runtime libm at compile time. The cdylib
+// links the system mimalloc library directly, so the `target_env`
+// tag is what matters for the envelope.
 #[cfg(all(target_os = "linux", target_env = "gnu"))]
 const LIBM_ID: &str = "glibc";
 #[cfg(all(target_os = "linux", target_env = "musl"))]

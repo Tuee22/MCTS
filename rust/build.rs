@@ -2,6 +2,7 @@ use std::process::Command;
 
 fn main() {
     println!("cargo:rerun-if-env-changed=MCTS_GIT_COMMIT");
+    println!("cargo:rustc-link-lib=mimalloc");
 
     let version = Command::new("rustc")
         .arg("--version")

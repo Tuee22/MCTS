@@ -64,12 +64,16 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
 
 RUN ln -sf "/usr/bin/llvm-config-${LLVM_VERSION}" /usr/local/bin/llvm-config \
     && if [ -x "/usr/bin/llvm-bolt-${LLVM_VERSION}" ]; then ln -sf "/usr/bin/llvm-bolt-${LLVM_VERSION}" /usr/local/bin/llvm-bolt; fi \
-    && if [ -x "/usr/lib/llvm-${LLVM_VERSION}/bin/llvm-bolt" ]; then ln -sf "/usr/lib/llvm-${LLVM_VERSION}/bin/llvm-bolt" /usr/local/bin/llvm-bolt; fi
+    && if [ -x "/usr/lib/llvm-${LLVM_VERSION}/bin/llvm-bolt" ]; then ln -sf "/usr/lib/llvm-${LLVM_VERSION}/bin/llvm-bolt" /usr/local/bin/llvm-bolt; fi \
+    && mkdir -p /usr/local/lib \
+    && if [ -f "/usr/lib/llvm-${LLVM_VERSION}/lib/libbolt_rt_instr.a" ]; then ln -sf "/usr/lib/llvm-${LLVM_VERSION}/lib/libbolt_rt_instr.a" /usr/local/lib/libbolt_rt_instr.a; fi
 
 ENV LLVM_CONFIG=/usr/local/bin/llvm-config
 ENV CC=gcc
 ENV CXX=g++
 ENV RUSTUP_TOOLCHAIN=${RUST_VERSION}
+ENV CARGO_HTTP_TIMEOUT=120
+ENV CARGO_NET_RETRY=5
 
 WORKDIR /workspace/MCTS
 
@@ -80,3 +84,8 @@ RUN cabal build all \
         --installdir /usr/local/bin \
         --install-method=copy \
         --overwrite-policy=always
+
+RUN mcts build cpp-legacy \
+    && mcts build cpp-imperative \
+    && mcts build cpp-functional \
+    && mcts build rust

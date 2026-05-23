@@ -89,7 +89,7 @@ renderPurpose path spec =
         "mcts inspect cache list" -> "Enumerate equity-sidecar entries per transcript"
         "mcts inspect cache prune" -> "Delete stale equity-sidecar entries"
         "mcts inspect divergence" -> "Emit the cross-backend divergence-rate matrix for a single transcript"
-        "mcts test all" -> "Plan/Apply: backend builds, every Cabal stanza, and pinned report card"
+        "mcts test all" -> "Plan/Apply: Dockerfile-built backends, every Cabal stanza, and pinned report card"
         "mcts test parity-anchor" -> "Plan/Apply: measure a Q1/Q2 parity anchor for explicit backend pairs"
         "mcts test <stanza>" -> "Run a named Cabal test-suite stanza"
         "mcts lint files" -> "Check whitespace, final newlines, forbidden paths, and tracked generated-file drift"
@@ -101,12 +101,12 @@ renderPurpose path spec =
         "mcts commands" -> "Flat, tree, or JSON rendering of the command registry"
         "mcts help" -> "Focused help pointer for a target command"
         "mcts check-code" -> "Doctrine alignment, formatter, HLint, warning-clean build, docs check"
-        "mcts build cpp-legacy" -> "Plan/Apply: C++ legacy backend build harness"
+        "mcts build cpp-legacy" -> "Plan/Apply: Dockerfile C++ legacy backend build recipe"
         "mcts build cpp-imperative" ->
-            "Plan/Apply: C++ imperative backend PGO/BOLT build harness"
+            "Plan/Apply: Dockerfile C++ imperative backend mandatory PGO/BOLT build recipe"
         "mcts build cpp-functional" ->
-            "Plan/Apply: C++ functional-style backend PGO/BOLT build harness"
-        "mcts build rust" -> "Plan/Apply: Rust backend PGO/BOLT build harness"
+            "Plan/Apply: Dockerfile C++ functional-style backend mandatory PGO/BOLT build recipe"
+        "mcts build rust" -> "Plan/Apply: Dockerfile Rust backend mandatory PGO/BOLT build recipe"
         "mcts build legacy-fixtures" -> "Plan/Apply: generate external legacy Q6 evidence"
         _ -> summary spec
 

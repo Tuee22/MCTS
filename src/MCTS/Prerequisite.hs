@@ -105,12 +105,6 @@ prerequisiteRegistry =
         "install libmimalloc-dev; the Docker image uses the Ubuntu Noble package"
         []
         mimallocProbe
-    , PrerequisiteNode
-        "pgo-profiles"
-        "Profile directory root for PGO/BOLT builds"
-        "create container-local .build/profiles when running optimized backend builds"
-        []
-        (doesDirectoryExist ".build/profiles")
     , profileDirectoryNode "cpp-imperative-pgo-profile" "cpp-imperative/pgo-profile"
     , profileDirectoryNode "cpp-imperative-bolt-profile" "cpp-imperative/bolt-profile"
     , profileDirectoryNode "cpp-functional-pgo-profile" "cpp-functional/pgo-profile"
@@ -126,25 +120,25 @@ prerequisiteRegistry =
     , PrerequisiteNode
         "libmcts-rust-built"
         "Rust cdylib exists for dynamic FFI smoke tests"
-        "run docker compose run --rm mcts mcts build rust"
+        "rebuild the Docker image; backend artefacts are produced by docker/Dockerfile"
         ["cargo", "rustc"]
         (doesFileExist "rust/target/release/libmcts_rust.so")
     , sharedLibraryNode
         "libmcts-cpp-legacy-built"
         "C++ legacy shared library exists for dynamic FFI smoke tests"
-        "run docker compose run --rm mcts mcts build cpp-legacy"
+        "rebuild the Docker image; backend artefacts are produced by docker/Dockerfile"
         ["cxx"]
         "cpp-legacy/build/libmcts_cpp_legacy.so"
     , sharedLibraryNode
         "libmcts-cpp-imperative-built"
         "C++ imperative shared library exists for dynamic FFI smoke tests"
-        "run docker compose run --rm mcts mcts build cpp-imperative"
+        "rebuild the Docker image; backend artefacts are produced by docker/Dockerfile"
         ["cxx", "mimalloc"]
         "cpp-imperative/build/libmcts_cpp_imperative.so"
     , sharedLibraryNode
         "libmcts-cpp-functional-built"
         "C++ functional shared library exists for dynamic FFI smoke tests"
-        "run docker compose run --rm mcts mcts build cpp-functional"
+        "rebuild the Docker image; backend artefacts are produced by docker/Dockerfile"
         ["cxx", "mimalloc"]
         "cpp-functional/build/libmcts_cpp_functional.so"
     ]
@@ -164,7 +158,16 @@ prerequisitesForBuild backend =
 
 prerequisitesForTest :: [PrerequisiteNode]
 prerequisitesForTest =
-    transitiveClosure prerequisiteRegistry ["ghc-9.14.1", "cabal-3.16.1.0", "logical-backends"]
+    transitiveClosure
+        prerequisiteRegistry
+        [ "ghc-9.14.1"
+        , "cabal-3.16.1.0"
+        , "logical-backends"
+        , "libmcts-cpp-legacy-built"
+        , "libmcts-cpp-imperative-built"
+        , "libmcts-cpp-functional-built"
+        , "libmcts-rust-built"
+        ]
 
 executableNode :: String -> String -> String -> [String] -> String -> PrerequisiteNode
 executableNode ident description remedy deps exe =
@@ -175,8 +178,8 @@ profileDirectoryNode ident path =
     PrerequisiteNode
         ident
         ("Profile directory exists: " <> path)
-        ("create " <> path <> " before running the full optimized backend build")
-        ["pgo-profiles"]
+        ("rebuild the Docker image so the Dockerfile-owned optimized backend build creates " <> path)
+        []
         (doesDirectoryExist path)
 
 sharedLibraryNode :: String -> String -> String -> [String] -> FilePath -> PrerequisiteNode

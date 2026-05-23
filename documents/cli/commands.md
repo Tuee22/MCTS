@@ -33,8 +33,8 @@
 - `mcts commands` - Show command registry
 - `mcts help <subcommand>` - Focused help
 - `mcts check-code` - Run code-quality gate
-- `mcts build cpp-legacy` - Build C++ legacy backend
-- `mcts build cpp-imperative` - Build C++ imperative backend
-- `mcts build cpp-functional` - Build C++ functional backend
-- `mcts build rust` - Build Rust backend
+- `mcts build cpp-legacy` - C++ legacy backend build recipe
+- `mcts build cpp-imperative` - C++ imperative backend build recipe
+- `mcts build cpp-functional` - C++ functional backend build recipe
+- `mcts build rust` - Rust backend build recipe
 - `mcts build legacy-fixtures` - Generate external legacy Q6 evidence

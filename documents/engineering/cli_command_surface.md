@@ -57,7 +57,7 @@ From the host, run any listed logical command as
 | `mcts inspect cache list` | Enumerate equity-sidecar entries per transcript |
 | `mcts inspect cache prune [--keep-current] [--dry-run] [--plan-file <path>]` | Delete stale equity-sidecar entries |
 | `mcts inspect divergence <hash-prefix>` | Emit the cross-backend divergence-rate matrix for a single transcript |
-| `mcts test all [--dry-run] [--plan-file <path>]` | Plan/Apply: backend builds, every Cabal stanza, and pinned report card |
+| `mcts test all [--dry-run] [--plan-file <path>]` | Plan/Apply: Dockerfile-built backends, every Cabal stanza, and pinned report card |
 | `mcts test parity-anchor <baseline> <candidate> [--dry-run] [--plan-file <path>]` | Plan/Apply: measure a Q1/Q2 parity anchor for explicit backend pairs |
 | `mcts test <stanza>` | Run a named Cabal test-suite stanza |
 | `mcts lint files [--write]` | Check whitespace, final newlines, forbidden paths, and tracked generated-file drift |
@@ -69,10 +69,10 @@ From the host, run any listed logical command as
 | `mcts commands [--tree\|--json]` | Flat, tree, or JSON rendering of the command registry |
 | `mcts help <subcommand>` | Focused help pointer for a target command |
 | `mcts check-code` | Doctrine alignment, formatter, HLint, warning-clean build, docs check |
-| `mcts build cpp-legacy [--dry-run] [--plan-file <path>]` | Plan/Apply: C++ legacy backend build harness |
-| `mcts build cpp-imperative [--dry-run] [--plan-file <path>]` | Plan/Apply: C++ imperative backend PGO/BOLT build harness |
-| `mcts build cpp-functional [--dry-run] [--plan-file <path>]` | Plan/Apply: C++ functional-style backend PGO/BOLT build harness |
-| `mcts build rust [--dry-run] [--plan-file <path>]` | Plan/Apply: Rust backend PGO/BOLT build harness |
+| `mcts build cpp-legacy [--dry-run] [--plan-file <path>]` | Plan/Apply: Dockerfile C++ legacy backend build recipe |
+| `mcts build cpp-imperative [--dry-run] [--plan-file <path>]` | Plan/Apply: Dockerfile C++ imperative backend mandatory PGO/BOLT build recipe |
+| `mcts build cpp-functional [--dry-run] [--plan-file <path>]` | Plan/Apply: Dockerfile C++ functional-style backend mandatory PGO/BOLT build recipe |
+| `mcts build rust [--dry-run] [--plan-file <path>]` | Plan/Apply: Dockerfile Rust backend mandatory PGO/BOLT build recipe |
 | `mcts build legacy-fixtures --output-dir <dir> [--seed <u64>] [--games <n>] [--sims <n>] [--dry-run] [--plan-file <path>]` | Plan/Apply: generate external legacy Q6 evidence |
 <!-- mcts:command-matrix:end -->
 

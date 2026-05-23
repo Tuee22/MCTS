@@ -104,33 +104,37 @@ runWithOutput output command =
                                 )
                             pure (ExitFailure 1)
                         else do
-                            code <- runStanzaPlan output plan
-                            if code == ExitSuccess
-                                then do
-                                    anchor <-
-                                        liftIO
-                                            ( buildParityAnchor
-                                                monotonicNanos
-                                                (parityAnchorBaseline opts)
-                                                (parityAnchorCandidate opts)
-                                            )
-                                    case anchor of
-                                        Left err ->
-                                            liftIO (outputLine (renderErrorString output err))
-                                                >> pure (ExitFailure 1)
-                                        Right result -> do
-                                            liftIO
-                                                ( outputLine
-                                                    ( if outputFormat output == JsonFormat
-                                                        then renderParityAnchorJson result
-                                                        else renderParityAnchor result
+                            prerequisites <- liftIO (checkPrerequisites prerequisitesForTest)
+                            case prerequisites of
+                                Left err -> liftIO (outputLine (renderErrorString output err)) >> pure (ExitFailure 1)
+                                Right () -> do
+                                    code <- runStanzaPlan output plan
+                                    if code == ExitSuccess
+                                        then do
+                                            anchor <-
+                                                liftIO
+                                                    ( buildParityAnchor
+                                                        monotonicNanos
+                                                        (parityAnchorBaseline opts)
+                                                        (parityAnchorCandidate opts)
                                                     )
-                                                )
-                                            pure $
-                                                if parityAnchorWithinTolerance result
-                                                    then ExitSuccess
-                                                    else ExitFailure 1
-                                else pure code
+                                            case anchor of
+                                                Left err ->
+                                                    liftIO (outputLine (renderErrorString output err))
+                                                        >> pure (ExitFailure 1)
+                                                Right result -> do
+                                                    liftIO
+                                                        ( outputLine
+                                                            ( if outputFormat output == JsonFormat
+                                                                then renderParityAnchorJson result
+                                                                else renderParityAnchor result
+                                                            )
+                                                        )
+                                                    pure $
+                                                        if parityAnchorWithinTolerance result
+                                                            then ExitSuccess
+                                                            else ExitFailure 1
+                                        else pure code
         TestStanza stanza -> do
             prerequisites <- liftIO (checkPrerequisites prerequisitesForTest)
             case prerequisites of
@@ -148,10 +152,6 @@ testAllPlan =
             [ mctsStep ["lint", "files"]
             , mctsStep ["lint", "docs"]
             , Subprocess "cabal" ["build", "all"] Nothing Nothing
-            , mctsStep ["build", "cpp-legacy"]
-            , mctsStep ["build", "cpp-imperative"]
-            , mctsStep ["build", "cpp-functional"]
-            , mctsStep ["build", "rust"]
             , Subprocess "cabal" ["test", "mcts-haskell-style"] Nothing Nothing
             , Subprocess "cabal" ["test", "mcts-unit"] Nothing Nothing
             , Subprocess "cabal" ["test", "mcts-integration"] Nothing Nothing
@@ -212,25 +212,8 @@ parityAnchorPlan opts =
                 <> " "
                 <> backendIdentifier (parityAnchorCandidate opts)
         , planSteps =
-            Subprocess "cabal" ["build", "all"] Nothing Nothing
-                : concatMap buildStep (uniqueBackends [parityAnchorBaseline opts, parityAnchorCandidate opts])
+            [Subprocess "cabal" ["build", "all"] Nothing Nothing]
         }
-  where
-    buildStep backend =
-        case backend of
-            CppLegacy -> [mctsStep ["build", "cpp-legacy"]]
-            CppImperative -> [mctsStep ["build", "cpp-imperative"]]
-            CppFunctional -> [mctsStep ["build", "cpp-functional"]]
-            Rust -> [mctsStep ["build", "rust"]]
-            Haskell -> []
-
-uniqueBackends :: [Backend] -> [Backend]
-uniqueBackends = go []
-  where
-    go _ [] = []
-    go seen (backend : rest)
-        | backend `elem` seen = go seen rest
-        | otherwise = backend : go (backend : seen) rest
 
 mctsStep :: [String] -> Subprocess
 mctsStep args = Subprocess "cabal" (["exec", "mcts", "--"] <> args) Nothing Nothing
@@ -481,7 +464,7 @@ requireReportCardArtifacts =
                         ( IOErrorText
                             ( "report-card requires canonical backend artefact "
                                 <> path
-                                <> "; run `mcts test all` so the build steps and measurements share one container"
+                                <> "; rebuild the Docker image so Dockerfile-owned backend artefacts are present"
                             )
                         )
                     )

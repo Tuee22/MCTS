@@ -1,7 +1,7 @@
 -- | Haskell-side bindings for backend (iv) Rust.
 --
--- The cdylib is built by `mcts build rust` (PGO + BOLT + `mimalloc`)
--- and lives at `rust/target/release/libmcts_rust.{dylib,so}`. The C ABI
+-- The Dockerfile builds the cdylib through `mcts build rust` (PGO + BOLT +
+-- `mimalloc`) and leaves it at `rust/target/release/libmcts_rust.{dylib,so}`. The C ABI
 -- mirrors the C++ backends' shape; the Rust source declares
 -- `#[repr(C)]` for every type crossing the boundary so layouts match.
 -- Per the FFI doctrine this module routes through `MCTS.FFI.Common`.

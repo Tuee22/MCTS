@@ -21,9 +21,9 @@ import System.Directory (createDirectoryIfMissing)
 import System.Exit (ExitCode (..))
 
 -- | Build-scoped PGO training tuple. This is deliberately smaller
--- than the report-card workloads: `mcts build <backend>` must be a
--- bounded install command that emits representative profile data,
--- while Phase 7/8 report-card commands own the full comparison runs.
+-- than the report-card workloads: the Dockerfile-invoked backend build
+-- recipe must emit representative profile data, while Phase 7/8
+-- report-card commands own the full comparison runs.
 pgoTrainingGames :: Int
 pgoTrainingGames = 1
 
@@ -79,7 +79,6 @@ ensureProfileDirectories backend =
         _ -> pure ()
   where
     ensure paths = do
-        createDirectoryIfMissing True ".build/profiles"
         mapM_ (createDirectoryIfMissing True) paths
 
 buildBackendPlan :: String -> Plan Subprocess
@@ -135,6 +134,8 @@ legacyFixturePlan options =
 --   7. Install: rename `_bench.bolted.so` to the canonical FFI load
 --      name `libmcts_cpp_functional.so`; symlink-equivalent for the
 --      `_instrumented` artefact.
+--   8. Smoke the installed canonical artefact so a crashing BOLT output
+--      fails the Dockerfile build instead of reaching runtime.
 --
 -- The whole pipeline rides the typed `Subprocess` boundary; no
 -- ad-hoc `callProcess` or `System.Process` smart constructors live in
@@ -153,14 +154,15 @@ cppPgoBoltPlan backend =
     , makeTarget "pgo-bench-use"
     , makeTarget "pgo-instr-use"
     , makeTarget "bolt-bench-instrument"
-    , installCppBoltTrainingArtifact "_bench.inst.so" "_bench.so"
+    , installCppBoltTrainingArtifact "_bench.inst.so"
     , trainingRunFor backend boltTrainingGames boltTrainingSims
     , makeTarget "bolt-instr-instrument"
-    , installCppBoltTrainingArtifact "_instrumented.inst.so" "_instrumented.so"
+    , installCppBoltTrainingArtifact "_instrumented.inst.so"
     , trainingRunFor backend boltTrainingGames boltTrainingSims
     , makeTarget "bolt-bench-optimize"
     , makeTarget "bolt-instr-optimize"
     , makeTarget "install-bench"
+    , smokeRunFor backend
     ]
   where
     libraryBase = cppLibraryBase backend
@@ -181,7 +183,7 @@ cppPgoBoltPlan backend =
                 <> backend
                 <> "/pgo-profile "
                 <> backend
-                <> "/bolt-profile .build/profiles"
+                <> "/bolt-profile"
             ]
             Nothing
             Nothing
@@ -193,21 +195,18 @@ cppPgoBoltPlan backend =
             Nothing
             Nothing
 
-    installCppBoltTrainingArtifact instSuffix fallbackSuffix =
+    installCppBoltTrainingArtifact instSuffix =
         Subprocess
             "bash"
             [ "-c"
-            , "if [ -f "
+            , "if [ ! -s "
                 <> cppBuildPath (libraryBase <> instSuffix)
-                <> " ]; then cp "
+                <> " ]; then echo \"[bolt] missing instrumented C++ artefact: "
+                <> cppBuildPath (libraryBase <> instSuffix)
+                <> "\" >&2; exit 1; fi; cp "
                 <> cppBuildPath (libraryBase <> instSuffix)
                 <> " "
                 <> canonicalLibrary
-                <> "; else cp "
-                <> cppBuildPath (libraryBase <> fallbackSuffix)
-                <> " "
-                <> canonicalLibrary
-                <> "; fi"
             ]
             Nothing
             Nothing
@@ -230,7 +229,14 @@ cppLibraryBase backend =
 -- so the Haskell FFI continues to load it from the pinned path.
 rustPgoBoltPlan :: [Subprocess]
 rustPgoBoltPlan =
-    [ -- 1. Instrumented build: rustc -Cprofile-generate. The profile
+    [ Subprocess
+        "bash"
+        [ "-c"
+        , "rm -rf rust/pgo-profile rust/bolt-profile && mkdir -p rust/pgo-profile rust/bolt-profile"
+        ]
+        Nothing
+        Nothing
+    , -- 1. Instrumented build: rustc -Cprofile-generate. The profile
       -- directory is absolute inside the pinned Compose workspace so
       -- the loaded cdylib writes `.profraw` beside the Rust backend
       -- even though the training `mcts` process runs from the repo root.
@@ -268,37 +274,47 @@ rustPgoBoltPlan =
             <> "llvm-bolt rust/target/release/libmcts_rust.so -instrument "
             <> "-o rust/target/release/libmcts_rust.inst.so "
             <> "--instrumentation-file=$(pwd)/rust/bolt-profile/rust.fdata "
-            <> "--instrumentation-file-append-pid 2>/dev/null || true"
+            <> "--instrumentation-file-append-pid && "
+            <> "test -s rust/target/release/libmcts_rust.inst.so"
         ]
         Nothing
         Nothing
     , Subprocess
         "bash"
         [ "-c"
-        , "if [ -f rust/target/release/libmcts_rust.inst.so ]; then "
-            <> "cp rust/target/release/libmcts_rust.inst.so rust/target/release/libmcts_rust.so; "
-            <> "else cp rust/target/release/libmcts_rust.pgo.so rust/target/release/libmcts_rust.so; fi"
+        , "if [ ! -s rust/target/release/libmcts_rust.inst.so ]; then "
+            <> "echo \"[bolt] missing instrumented Rust artefact: rust/target/release/libmcts_rust.inst.so\" >&2; "
+            <> "exit 1; fi; "
+            <> "cp rust/target/release/libmcts_rust.inst.so rust/target/release/libmcts_rust.so"
         ]
         Nothing
         Nothing
     , -- 6. BOLT training run
       trainingRunFor "rust" boltTrainingGames boltTrainingSims
     , Subprocess
-        "cp"
-        ["rust/target/release/libmcts_rust.pgo.so", "rust/target/release/libmcts_rust.so"]
+        "bash"
+        [ "-c"
+        , "if [ ! -s rust/target/release/libmcts_rust.pgo.so ]; then "
+            <> "echo \"[pgo] missing optimized Rust artefact: rust/target/release/libmcts_rust.pgo.so\" >&2; "
+            <> "exit 1; fi; "
+            <> "cp rust/target/release/libmcts_rust.pgo.so rust/target/release/libmcts_rust.so"
+        ]
         Nothing
         Nothing
     , -- 7. BOLT optimize (reorder blocks via ext-tsp)
       Subprocess
         "bash"
         [ "-c"
-        , "fdata=$(ls -t rust/bolt-profile/rust.fdata* 2>/dev/null | head -1); "
-            <> "if [ -n \"$fdata\" ]; then "
+        , "fdata=\"\"; "
+            <> "for candidate in $(ls -t rust/bolt-profile/rust.fdata* 2>/dev/null); do "
+            <> "if [ -s \"$candidate\" ]; then fdata=\"$candidate\"; break; fi; "
+            <> "done; "
+            <> "if [ -z \"$fdata\" ]; then "
+            <> "echo \"[bolt] no usable Rust .fdata under rust/bolt-profile\" >&2; exit 1; fi; "
             <> "llvm-bolt rust/target/release/libmcts_rust.so "
             <> "-o rust/target/release/libmcts_rust.bolted.so "
-            <> "-data $fdata -reorder-blocks=ext-tsp 2>/dev/null || "
-            <> "cp rust/target/release/libmcts_rust.so rust/target/release/libmcts_rust.bolted.so; "
-            <> "else cp rust/target/release/libmcts_rust.so rust/target/release/libmcts_rust.bolted.so; fi"
+            <> "-data \"$fdata\" -reorder-blocks=ext-tsp && "
+            <> "test -s rust/target/release/libmcts_rust.bolted.so"
         ]
         Nothing
         Nothing
@@ -306,7 +322,10 @@ rustPgoBoltPlan =
       Subprocess
         "bash"
         [ "-c"
-        , "cp rust/target/release/libmcts_rust.bolted.so rust/target/release/libmcts_rust.so"
+        , "if [ ! -s rust/target/release/libmcts_rust.bolted.so ]; then "
+            <> "echo \"[bolt] missing optimized Rust artefact: rust/target/release/libmcts_rust.bolted.so\" >&2; "
+            <> "exit 1; fi; "
+            <> "cp rust/target/release/libmcts_rust.bolted.so rust/target/release/libmcts_rust.so"
         ]
         Nothing
         Nothing
@@ -314,23 +333,29 @@ rustPgoBoltPlan =
       -- and overwrite the `.envelope_build_id` section with the
       -- 32-byte digest so `mcts_rust_get_envelope()` reports a
       -- non-zero engine_build_id. Mirrors the C++ backend
-      -- `envelope-build-id` Makefile target. Uses `python3` to
-      -- decode the hex digest because `xxd` is not in the pinned
-      -- container's base image.
+      -- `envelope-build-id` Makefile target. Prefer LLVM objcopy
+      -- because GNU objcopy can rewrite BOLT-produced shared objects
+      -- into crashing artefacts. Uses `python3` to decode the hex
+      -- digest because `xxd` is not in the pinned container's base
+      -- image.
       Subprocess
         "bash"
         [ "-c"
         , "lib=rust/target/release/libmcts_rust.so; "
-            <> "if command -v objcopy >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then "
+            <> "objcopy_tool=$(command -v llvm-objcopy-19 || command -v llvm-objcopy || command -v objcopy || true); "
+            <> "if [ -n \"$objcopy_tool\" ] && command -v python3 >/dev/null 2>&1; then "
             <> "tmpbin=$(mktemp); "
             <> "digest=$(sha256sum \"$lib\" | awk '{print $1}'); "
             <> "python3 -c \"import sys, binascii; sys.stdout.buffer.write(binascii.unhexlify(sys.argv[1]))\" \"$digest\" > \"$tmpbin\"; "
-            <> "objcopy --update-section .envelope_build_id=\"$tmpbin\" \"$lib\" 2>/dev/null || true; "
+            <> "\"$objcopy_tool\" --update-section .envelope_build_id=\"$tmpbin\" \"$lib\"; "
             <> "rm -f \"$tmpbin\"; "
             <> "fi"
         ]
         Nothing
         Nothing
+    , -- 10. Smoke the installed canonical artefact so a crashing
+      -- BOLT output fails during the Docker image build.
+      smokeRunFor "rust"
     ]
   where
     cargoBuild profileDir mode =
@@ -350,6 +375,7 @@ rustPgoBoltPlan =
         unwords
             [ "-C target-cpu=native"
             , "-C link-arg=-fuse-ld=lld"
+            , "-C link-arg=-Wl,--emit-relocs"
             , "-C "
                 <> (if mode == "generate" then "profile-generate=" else "profile-use=")
                 <> absoluteRustProfilePath profileDir
@@ -382,6 +408,10 @@ trainingRunFor backend games sims =
         ]
         Nothing
         Nothing
+
+smokeRunFor :: String -> Subprocess
+smokeRunFor backend =
+    trainingRunFor backend 1 4
 
 -- | Run a backend build plan through the doctrine `apply :: Env -> Plan
 -- a -> IO ExitCode` shape. `Env.defaultEnv` is the production-default

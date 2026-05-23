@@ -11,6 +11,7 @@
 [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md),
 [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md),
 [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md),
+[../documents/engineering/compiler_runtime_tuning.md](../documents/engineering/compiler_runtime_tuning.md),
 [../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md)
 **Generated sections**: none
 
@@ -27,8 +28,16 @@ slots: `cpp-legacy`, `cpp-imperative`, `cpp-functional`, `rust`, and `haskell`.
 The stale two-backend drift from the 2026-05-19 cleanup is corrected. The 2026-05-21
 audit closed the remaining build-surface gap: the supported
 `mcts build cpp-imperative` and `mcts build cpp-functional` Plan/Apply paths now
-drive the C++ PGO/BOLT target sequence, and Sprint `8.3` refreshed the report-card
-evidence against the optimized backend (ii) artefact.
+drive the C++ PGO/BOLT target sequence. The 2026-05-22 Dockerfile migration moved
+normal backend artefact production into image construction, so runtime validation
+checks and consumes the resulting shared libraries instead of rebuilding them.
+The 2026-05-22 fail-closed doctrine now requires the C++ and Rust steelman
+PGO/BOLT workflows to succeed inside the Dockerfile build. The 2026-05-23
+reclosure removed the PGO-only, BOLT-missing, and unoptimized fallback install
+paths, switched post-BOLT envelope patching to LLVM objcopy, and added final
+installed-library smokes so corrupted BOLT outputs fail the image build. Sprint
+`8.3` refreshed the report-card evidence against these successful PGO+BOLT
+artefacts on 2026-05-23.
 
 The validation-data doctrine sweep remains closed: normal tests do not require
 checked-in transcripts, throughput anchors, renderer snapshots, schema fixtures, or
@@ -41,8 +50,9 @@ governed docs or comments overclaim the current code. Sprints `1.10`, `2.8`,
 residue, the Phase `2` transcript/sidecar identity residue, the backend (ii)
 compact ABI contract residue, the backend (iii)/(iv) ABI/build-artifact wording
 residue, the replay/divergence evidence-label residue, and the compiler-tuning
-test-stanza wording residue. No pending row is backend-removal work; all five
-backend slots remain first-class.
+test-stanza wording residue. The 2026-05-23 fail-closed PGO/BOLT reclosure moved
+the build-failover rows to Completed. No pending row is backend-removal work; all
+five backend slots remain first-class.
 
 Two classes of entries populate this ledger over time:
 
@@ -59,19 +69,27 @@ repository.
 
 ## Pending Removal
 
-None.
+| Item | Location | Why remove | Owning Sprint |
+|------|----------|------------|---------------|
+| None | N/A | No pending cleanup residue is currently tracked. | N/A |
 
 ## Pending Removal Notes
 
-No pending-removal rows remain after Sprint `8.9`. Future rows must move to
-`Completed` only after the corrected surface is implemented, governed docs are aligned,
-generated docs are regenerated or checked, and the canonical validation command for that
-surface passes through `docker compose run --rm mcts mcts <command>`.
+Pending-removal rows move to `Completed` only after the corrected surface is
+implemented, governed docs are aligned, generated docs are regenerated or checked,
+and the canonical validation command for that surface passes through
+`docker compose run --rm mcts mcts <command>`. For PGO/BOLT failover rows,
+closure also requires a Dockerfile build that exits non-zero on missing profile
+data instead of publishing a fallback shared library.
 
 ## Completed
 
 | Item | Removed In | Notes |
 |------|------------|-------|
+| Fallback-backed parity report-card evidence | Sprint 8.3, 2026-05-23 | The 2026-05-21 amd64 report card remains historical audit evidence only. `docker compose run --rm --build mcts mcts test all` refreshed the report card against fail-closed Dockerfile PGO+BOLT artefacts and recorded Q1 ST 0.05x, Q1 MT8 0.45x, Q2 ST 0.06x, Q2 MT8 0.22x, Q5 Haskell 0.98x, Q5 C++ (ii) 3.70x, zero live-cohort divergence, Q7 PASS, and verdict `Within tolerance`. |
+| C++ PGO/BOLT fail-open artefact copying | Sprint 5.3, 2026-05-23 | `cpp-imperative/Makefile`, `cpp-functional/Makefile`, and `src/MCTS/CLI/Build.hs` now require non-empty BOLT `.fdata`, surface `llvm-bolt` diagnostics, use LLVM objcopy for BOLT-produced shared objects, and smoke the installed bolted C++ canonical libraries during the Dockerfile build. |
+| Rust BOLT PGO-only fallback install | Sprint 6.4, 2026-05-23 | `src/MCTS/CLI/Build.hs` now requires Rust profraw/profdata, BOLT `.fdata`, a bolted cdylib, LLVM objcopy envelope patching, and a final canonical Rust smoke; no PGO-only cdylib is copied to the supported load name when BOLT fails. |
+| Runtime backend builds in normal validation | Dockerfile backend-build migration, 2026-05-22 | `docker/Dockerfile` now invokes `mcts build cpp-legacy`, `mcts build cpp-imperative`, `mcts build cpp-functional`, and `mcts build rust` during image construction; `mcts test all` and `mcts test parity-anchor` no longer rebuild foreign backend artefacts at runtime. |
 | Generated-section metadata overclaim | Sprint 1.10, 2026-05-21 | `mcts docs check` now verifies governed-doc `**Generated sections**:` metadata against physical marker pairs and the `GeneratedSectionRule` registry; fenced Markdown examples are ignored as examples, not real markers. |
 | `check-code` stage-order drift | Sprint 1.10, 2026-05-21 | `mcts check-code` now runs the documented lint/docs/style/build sequence once per stage; validation output contains a single generated-doc check in the lint phase before the warning-clean build. |
 | Supported-path partial-function wording drift | Sprint 1.10, 2026-05-21 | `documents/engineering/haskell_code_guide.md` and `documents/engineering/code_quality.md` now describe the narrow hot-path invariant-failure exception instead of claiming an unconditional partial-function ban. |
@@ -85,13 +103,13 @@ surface passes through `docker compose run --rm mcts mcts <command>`.
 | Backend (ii) compact C ABI contract | Sprint 5.5, 2026-05-21 | `documents/engineering/backend_ffi_contract.md`, `cpp-imperative/c-abi/`, and the Haskell FFI docs now describe the compact live board/search/recompute/read-visits/envelope surface without speculative tree/rng lifecycle handles. |
 | Backend (iii)/(iv) compact C ABI contract | Sprint 6.6, 2026-05-21 | `documents/engineering/backend_ffi_contract.md`, `cpp-functional/c-abi/`, `rust/src/c_abi.rs`, and the Haskell FFI docs now describe the compact live ABI with no speculative tree/rng lifecycle handles. |
 | Rust instrumented-artefact overclaim | Sprint 6.6, 2026-05-21 | Docs and tooling now describe one optimized Rust FFI artefact; the BOLT-instrumented copy is a temporary build detail, not a supported `_instrumented` artefact. |
-| C++ PGO/BOLT Plan/Apply overclaim | Sprint 5.3, 2026-05-21 | `src/MCTS/CLI/Build.hs` now uses `cppPgoBoltPlan` for `mcts build cpp-imperative` and `mcts build cpp-functional`; dry-run and live build validation passed for both C++ steelman backends, and Sprint 8.3 refreshed the report-card evidence. |
+| C++ PGO/BOLT Plan/Apply overclaim | Sprint 5.3, 2026-05-21; Dockerfile migration updated 2026-05-22 | `src/MCTS/CLI/Build.hs` now uses `cppPgoBoltPlan` for `mcts build cpp-imperative` and `mcts build cpp-functional`; dry-run and Dockerfile-owned build validation cover both C++ steelman backends, and Sprint 8.3 refreshed the report-card evidence. |
 | Unused `perf` prerequisite node | Sprint 5.3, 2026-05-21 | Removed the unused `perf` prerequisite node; the implemented BOLT path uses `llvm-bolt -instrument`, and the build prerequisite closure now covers LLVM/BOLT plus the relevant profile directories and shared-library artefacts. |
 | Multi-game transcript file layout | Sprint 7.5, 2026-05-16 | `writeTranscriptPerGame` in `src/MCTS/Transcript.hs` splits batches into one-game-per-file transcripts with per-game splitmix seeds; `MCTS.Driver.runBatchWithGame` reports the resulting hash/path pairs, and `mcts-unit::exercisePerGameTranscriptWriter` covers the behavior. |
 | C++ Makefile PGO+BOLT target surface | Sprint 5.3 Makefile baseline, updated Sprint 6.4, 2026-05-18; CLI wiring closed 2026-05-21 | `cpp-imperative/Makefile` and `cpp-functional/Makefile` contain PGO generate/use, BOLT instrument/optimize, and canonical install targets. The supported `mcts build` Plan/Apply wiring for those targets is closed by `cppPgoBoltPlan`. |
 | Backend (iv) Rust Corridors gameplay port | Sprint 6.3, 2026-05-16; updated Sprint 7.2, 2026-05-18 | `rust/src/board.rs`, `rust/src/rollout.rs`, and `rust/src/search.rs` carry the real Corridors game state, rollout loop, and arena MCTS, and `MCTS.Driver.Dispatch.runBatchDispatch` routes `--backend rust` through the real FFI engine when the cdylib is present. |
 | Foreign-engine recompute streaming to `.eq` sidecars | Sprint 7.5, 2026-05-16 | `MCTS.Engine.ForeignRecompute.foreignRecomputeEqStream` drives backend recompute ABIs through transcripts, `MCTS.Verify.Divergence.divergenceVsEqStream` scores the resulting `EqStream`, and `mcts inspect divergence` renders cached and available foreign recompute rows. |
-| Measured Q1-Q7 report-card evidence | Sprint 7.3 / Sprint 8.3 evidence closure, updated 2026-05-21 | `docker compose run --rm mcts mcts test all` passed against the canonical workload and recorded Q1 ST 0.05x, Q1 MT8 0.43x, Q2 ST 0.06x, Q2 MT8 0.19x, Q5 Haskell 1.04x, Q5 cpp-imperative 3.64x, zero live-cohort divergence, Q7 liveness evidence PASS, and verdict `Within tolerance`. |
+| Measured Q1-Q7 report-card evidence | Sprint 7.3 / Sprint 8.3 evidence closure, updated 2026-05-23 | `docker compose run --rm --build mcts mcts test all` passed against the canonical workload and fail-closed Dockerfile PGO+BOLT artefacts, recording Q1 ST 0.05x, Q1 MT8 0.45x, Q2 ST 0.06x, Q2 MT8 0.22x, Q5 Haskell 0.98x, Q5 C++ (ii) 3.70x, zero live-cohort divergence, Q7 liveness evidence PASS, and verdict `Within tolerance`. |
 | Pure Haskell parity proof vs backend (ii) | Sprint 8.2 / Sprint 8.3 closure, 2026-05-19 | Sprint 8.1 closed the LLVM/RTS tuning baseline. Sprint 8.2 ran three profile-driven rounds on 2026-05-16: round 1 IntSet (~6.2x speedup), round 2 strict-pair Word64 (regression, reverted), round 3 wavefront-bitmap BFS over `Bits128` (~52x legal-moves / ~33x uct-search vs round 1; combined ~320x / ~200x vs original baseline). |
 | Deterministic placeholder transcript hash | Sprint 2.2 baseline closure | Replaced `pseudoSha256Hex` in `src/MCTS/Transcript.hs` with the pure SHA-256 implementation in `src/MCTS/Crypto/SHA256.hs`; `runConfigHash` and `playTranscriptHash` now emit SHA-256 hex digests. |
 | No-op sidecar cache and divergence inspect placeholders | Sprint 2.7 / Sprint 7.5 baseline closure | Replaced fixed `inspect cache list`, `inspect cache prune`, and `inspect divergence` output with `MCTS.Transcript.EquitySidecar` cache discovery/pruning and `MCTS.Verify.Divergence` metric rendering. |
@@ -105,7 +123,7 @@ surface passes through `docker compose run --rm mcts mcts <command>`.
 | `tasty-golden` renderer/codec providers | Sprint 8.8 closure, 2026-05-19 | The `mcts-unit` stanza no longer depends on `tasty-golden`; command, report-card, inspect, error, subprocess, transcript, known-position, and TUI coverage now asserts typed/semantic contracts without checked-in snapshot files. |
 | Two-backend backend parser and `VerifyBackend` constructors | Phase 8 restoration | `VerifyBackend` now covers `VCppImperative`, `VCppFunctional`, `VRust`, and `VHaskell`; parser tests validate the Q3 `(ii)..(v)` cohort and reject backend (i) at the default-verify boundary. |
 | Missing C++ live dispatch and FFI drivers | Phase 8 restoration | `src/MCTS/FFI/CppLegacy.hs`, `src/MCTS/FFI/CppImperative.hs`, `src/MCTS/FFI/CppFunctional.hs`, and `MCTS.Driver.Dispatch` restore C++ dynamic search/envelope/recompute dispatch following the Rust pattern. |
-| C++ backend build leaves not yet in full validation | Phase 8 restoration | `mcts test all` now builds `cpp-legacy`, `cpp-imperative`, `cpp-functional`, and `rust` before FFI-sensitive stanzas, Q3, Q7, and report-card measurement. |
+| C++ backend build leaves not yet in full validation | Phase 8 restoration; Dockerfile migration updated 2026-05-22 | Phase 8 restored the build leaves to the full validation surface; the Dockerfile migration now invokes those leaves during image construction, and `mcts test all` checks the resulting artefacts before FFI-sensitive stanzas, Q3, Q7, and report-card measurement. |
 | Missing Q7 live legacy-parity stanza | Phase 8 restoration | `mcts.cabal` declares `mcts-legacy-parity`, `test/legacy-parity` validates all five backend slots and incomplete-cohort rejection, and `mcts verify legacy-parity` pins the legacy envelope. |
 | Stale two-backend wording | Phase 8 restoration | `README.md`, `DEVELOPMENT_PLAN/`, governed docs, generated command docs, and source comments now describe the five-backend first-class surface and the native-vs-C++ RNG split. |
 | C++ backend retirement marker files | Phase 8 restoration | Deleted `cpp-legacy/RETIRED.md`, `cpp-imperative/RETIRED.md`, and `cpp-functional/RETIRED.md`; the backend-local READMEs now describe the live first-class roles of `(i)`, `(ii)`, and `(iii)`. |

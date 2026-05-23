@@ -2,14 +2,14 @@
 
 **Status**: Authoritative source
 **Supersedes**: N/A
-**Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, ../../DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md, ../../DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md, ../../DEVELOPMENT_PLAN/phase-6-cpp-functional-and-rust.md, ../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, ../documentation_standards.md, ./README.md, ./backend_ffi_contract.md
+**Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md, ../../DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, ../../DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md, ../../DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md, ../../DEVELOPMENT_PLAN/phase-6-cpp-functional-and-rust.md, ../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, ../documentation_standards.md, ./README.md, ./backend_ffi_contract.md
 **Generated sections**: none
 
 > **Purpose**: Authoritative spec of the per-backend compiler, RTS, and code-level
 > tuning stacks: the backend (i) verbatim exemption, the backend (ii)/(iii)
 > doctrine-flag set with PGO+BOLT+`mimalloc`, the backend (iv) Rust
 > `[profile.release]`, the backend (v) Haskell GHC/LLVM/RTS stack, and the
-> one-known-asymmetry PGO note.
+> mandatory Dockerfile-time PGO+BOLT contract plus Haskell PGO asymmetry note.
 
 This document owns its content. The toolchain pin (GHC `9.14.1`, Cabal `3.16.1.0`)
 is doctrine-owned; the per-backend tuning stacks are project-specific.
@@ -20,16 +20,18 @@ is doctrine-owned; the per-backend tuning stacks are project-specific.
   `9.14.1` and Cabal `3.16.1.0` are the pinned versions for the Haskell binary.
 - [../../HASKELL_CLI_TOOL.md → Architecture → Subprocesses as Typed
   Values](../../HASKELL_CLI_TOOL.md) — supported build harnesses invoke toolchains
-  through typed `Subprocess` values. Rust and the steelman C++ backends are wired
-  through supported PGO/BOLT `mcts build <backend>` paths; see
+  through typed `Subprocess` values. The Dockerfile invokes the Rust and steelman
+  C++ PGO/BOLT `mcts build <backend>` leaves during image construction; see
   [../../DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md](../../DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md).
 - [../../HASKELL_CLI_TOOL.md → Plan / Apply](../../HASKELL_CLI_TOOL.md) — the
-  `mcts build <backend>` commands are Plan/Apply with `--dry-run` and
-  `--plan-file <path>`.
+  `mcts build <backend>` leaves remain Plan/Apply recipes with `--dry-run` and
+  `--plan-file <path>` for Dockerfile use and focused diagnostics.
 
-From the host, run build commands through
-`docker compose run --rm mcts mcts build <backend>`; direct host toolchain use is
-unsupported.
+Normal host validation enters through
+`docker compose run --rm mcts mcts <command>` and consumes Dockerfile-built backend
+artefacts. Rebuild the image with the same one-shot Compose shape, for example
+`docker compose run --rm --build mcts mcts test all --dry-run`. Direct host
+toolchain use is unsupported.
 
 ## Backend (i) — `cpp-legacy` (Exempt)
 
@@ -69,11 +71,14 @@ GCC only — Clang is not supported on the C++ side.
 
 ### Build Workflow
 
-The C++ Plan/Apply command surface is first-class. `mcts build cpp-imperative` and
-`mcts build cpp-functional` drive the steelman PGO/BOLT targets below through typed
-`Subprocess` plans and install the canonical shared libraries. Optional audit
-artifacts may be regenerated, but normal validation does not require checked-in
-generated data.
+The C++ Plan/Apply command surface is first-class, but Dockerfile-owned in normal
+operation. During image construction, `docker/Dockerfile` invokes
+`mcts build cpp-imperative` and `mcts build cpp-functional` to drive the steelman
+PGO/BOLT targets below through typed `Subprocess` plans and install the canonical
+shared libraries. Manual use of those leaves is diagnostic; normal validation and
+benchmarking consume the image-built artefacts and do not rebuild them at runtime.
+Optional audit artifacts may be regenerated, but normal validation does not require
+checked-in generated data.
 
 1. **Two-stage PGO.** Instrumented build via
    `-fprofile-generate=$(abspath $(PGO_DIR))`; each generated `_bench` and
@@ -84,8 +89,12 @@ generated data.
 2. **BOLT post-link.** `llvm-bolt -instrument` produces a `_bench.inst.so` /
    `_instrumented.inst.so`; each is installed to the canonical FFI load name for
    a one-game, `--sims 50` training run. `llvm-bolt -reorder-blocks=ext-tsp`
-   consumes the resulting `.fdata` when present; otherwise the PGO artefact is
-   copied as the `.bolted.so` fallback.
+   consumes the resulting `.fdata`. The `.fdata` files are mandatory Dockerfile
+   build outputs; a missing file, failed BOLT invocation, or attempt to copy a
+   PGO-only/unoptimized artefact to a `.bolted.so` or canonical load name must
+   fail the image build. LLVM objcopy patches the `engine_build_id` section on
+   BOLT-produced shared objects, and the installed bolted libraries must pass a
+   smoke run before the image is published.
 3. **`mimalloc` link.** The current C++ Makefiles link the system `libmimalloc`
    library supplied by the container. Static linking is not required by the current
    build surface.
@@ -98,12 +107,13 @@ generated data.
    [./backend_ffi_contract.md → Backends and Linkage](./backend_ffi_contract.md)
    for the full install-name vs build-intermediate table.
 
-Current implementation baseline: the C++ Plan/Apply surface uses the shared
-`cppPgoBoltPlan` in `src/MCTS/CLI/Build.hs`. The plan resets profile directories,
-builds and trains `_bench` and `_instrumented` PGO artefacts, runs BOLT
-instrument/training/optimize steps, and installs the canonical shared library. On
-the 2026-05-21 amd64 validation run, `llvm-bolt` produced no usable `.fdata`; the
-Makefile fallback copied the PGO artefacts as the bolted artefacts.
+Current implementation baseline: the Dockerfile uses the C++ Plan/Apply surface
+backed by the shared `cppPgoBoltPlan` in `src/MCTS/CLI/Build.hs`. The plan resets
+profile directories, builds and trains `_bench` and `_instrumented` PGO artefacts,
+runs BOLT instrument/training/optimize steps, and installs the canonical shared
+library. The 2026-05-23 reclosure makes that sequence fail closed when
+`llvm-bolt` cannot produce usable `.fdata`, uses LLVM objcopy for post-BOLT
+envelope patching, and smokes the installed bolted libraries.
 
 ### Code-Level Requirements
 
@@ -188,36 +198,42 @@ opt-level = 3
 lto = "fat"
 codegen-units = 1
 panic = "abort"
-strip = "symbols"
+strip = "debuginfo"
 ```
 
-`RUSTFLAGS`: `-C target-cpu=native -C link-arg=-fuse-ld=lld`.
+`RUSTFLAGS`: `-C target-cpu=native -C link-arg=-fuse-ld=lld -C link-arg=-Wl,--emit-relocs`.
 
 ### Build Workflow
 
-The `mcts build rust` Plan/Apply command runs:
+During image construction, `docker/Dockerfile` invokes the `mcts build rust`
+Plan/Apply leaf:
 
 - **Two-stage PGO** via
   `RUSTFLAGS="-C target-cpu=native -C link-arg=-fuse-ld=lld -C
+  link-arg=-Wl,--emit-relocs -C
   profile-generate=/workspace/MCTS/rust/pgo-profile"` → train on benchmark (b)
   with `--games 1 --sims 100` → hard-failing `llvm-profdata merge` into
   `rust/pgo-profile/merged.profdata` → `RUSTFLAGS="-C target-cpu=native -C
-  link-arg=-fuse-ld=lld -C
+  link-arg=-fuse-ld=lld -C link-arg=-Wl,--emit-relocs -C
   profile-use=/workspace/MCTS/rust/pgo-profile/merged.profdata"`.
 - **BOLT** post-link: temporarily install the BOLT-instrumented copy of the PGO
   cdylib at the canonical FFI load name for a one-game `--sims 50` training run,
   restore the PGO cdylib, then optimize with `-reorder-blocks=ext-tsp` when
-  `.fdata` exists or copy the PGO artefact as the fallback. This is training
-  instrumentation only; the supported Rust contract publishes one optimized
-  `libmcts_rust.so`, not a separate `_instrumented` artefact.
-- **`mimalloc`** as `#[global_allocator]` (via the `mimalloc` crate).
+  `.fdata` exists. Missing `.fdata` or a failed BOLT invocation must fail the
+  Dockerfile build; copying the PGO cdylib as a fallback is forbidden. This is
+  training instrumentation only; the supported Rust contract publishes one
+  optimized `libmcts_rust.so`, not a separate `_instrumented` artefact. The
+  installed bolted cdylib is patched with LLVM objcopy and smoked before the image
+  is published.
+- **`mimalloc`** as `#[global_allocator]` through the container system library and
+  the local `SystemMiMalloc` wrapper.
 
-Current implementation baseline: `docker compose run --rm --build mcts mcts build
-rust` validates the pinned Rust toolchain, inherited subprocess environment,
-absolute profile paths, the `lld` linker flag in both PGO Cargo builds, profile
-merge guard, canonical install path `rust/target/release/libmcts_rust.so`,
-`mimalloc::MiMalloc` global allocator, and post-link `engine_build_id` patching
-inside the pinned amd64 container.
+Current implementation baseline: the Dockerfile-owned Rust build validates the
+pinned Rust toolchain, inherited subprocess environment, absolute profile paths,
+the `lld` linker flag in both PGO Cargo builds, profile merge guard, canonical
+install path `rust/target/release/libmcts_rust.so`, local `SystemMiMalloc` global
+allocator, LLVM objcopy post-link `engine_build_id` patching, and final installed
+cdylib smoke inside the pinned amd64 container.
 
 ### Code-Level Requirements
 
@@ -366,9 +382,10 @@ search inner loop. Round 1 takes the rollout's per-step cost from ~1 ms to
 
 GHC `9.14` has no production-grade profile-guided optimisation comparable to
 GCC/Clang `-fprofile-use` or `rustc -Cprofile-use`. The Haskell backend
-therefore competes against the container-built PGO/BOLT backend artefacts without
-an equivalent feedback loop; when C++ BOLT data is absent in the pinned container,
-that means the explicit PGO-only C++ fallback and full Rust PGO/BOLT on amd64.
+therefore competes against container-built C++ and Rust artefacts that completed
+their mandatory PGO+BOLT workflows without an equivalent Haskell feedback loop.
+This asymmetry does not permit PGO-only, non-BOLT, or unoptimized foreign
+artefacts; missing BOLT data is a failed Dockerfile build, not a benchmark input.
 
 This is the asymmetry that most concretely tests the project hypothesis: if
 Haskell matches under these conditions, the result is meaningful; if it falls
@@ -397,8 +414,8 @@ inside the pinned container, wall-clock median of three runs:
 The Haskell-vs-cpp-imperative Q1 ST ratio collapses from **10.76×**
 (`Shortfall 9.76`) at the round-1 baseline to **0.89×** after the
 wavefront BFS lands. At this single Q1 ST datapoint Haskell is *faster*
-than the non-PGO cpp-imperative smoke library — well within the
-`HASKELL_PARITY_TOLERANCE = 0.05` ceiling.
+than the historical non-PGO cpp-imperative smoke library. That smoke evidence made
+the full report-card measurement plausible, but it is not current parity closure.
 
 ### Sprint 8.3 — Measured Q2 Selfplay Snapshot
 
@@ -427,7 +444,7 @@ inside the pinned container, wall-clock median:
 | 1000  | 6.58 | 5.74 | **0.87×** (Haskell faster) |
 
 The Q1 MT8 snapshot also shows Haskell at parity-or-better with the
-non-PGO cpp-imperative smoke library after Sprint 8.2 round 3. GHC's
+historical non-PGO cpp-imperative smoke library after Sprint 8.2 round 3. GHC's
 multi-core RTS pin (`-A64m -n4m -qg1 -qb -T`) helps the Haskell
 backend scale across 8 workers without lock contention; the
 cpp-imperative smoke library is single-process with no thread-local
@@ -435,50 +452,47 @@ optimization beyond the `thread_local` move buffer.
 
 ### Sprint 5.3 / 6.4 / 8.3 PGO+BOLT Status
 
-The live Phase 6 Rust backend install surface is closed. On amd64,
-`rustPgoBoltPlan` in `src/MCTS/CLI/Build.hs` completes cargo
-`-Cprofile-generate` with `-C target-cpu=native -C link-arg=-fuse-ld=lld`,
-the one-game PGO training run, `llvm-profdata merge`, `-Cprofile-use` with the
-same target CPU and linker flags, BOLT instrumentation/training, canonical
-install, and post-link `engine_build_id` patching. The C++ Makefiles contain the
-corresponding PGO/BOLT target surface for `cpp-imperative` and `cpp-functional`,
-and `cppPgoBoltPlan` drives that sequence through `mcts build cpp-imperative` and
-`mcts build cpp-functional`.
+The live Rust and C++ backend install surfaces are fail-closed. On amd64, the
+Dockerfile-invoked `rustPgoBoltPlan` in `src/MCTS/CLI/Build.hs` completes cargo
+`-Cprofile-generate` with `-C target-cpu=native -C link-arg=-fuse-ld=lld
+-C link-arg=-Wl,--emit-relocs`, the one-game PGO training run,
+`llvm-profdata merge`, `-Cprofile-use` with the same target CPU/linker/relocation
+flags, BOLT instrumentation/training, canonical install, LLVM objcopy
+`engine_build_id` patching, and a final installed-library smoke. The C++ Makefiles
+contain the corresponding PGO/BOLT target surface for `cpp-imperative` and
+`cpp-functional`; `cppPgoBoltPlan` drives that sequence through the
+Dockerfile-invoked `mcts build cpp-imperative` and `mcts build cpp-functional`
+leaves, and the installed bolted C++ libraries are smoked before the image is
+published. Sprints `5.3` and `6.4` removed branches that published PGO-only or
+unoptimized fallback artefacts when BOLT data was missing.
 
-On aarch64, the container's `llvm-bolt-19` reports:
+On architectures where BOLT cannot instrument the shared libraries or cannot produce
+usable `.fdata`, the Dockerfile build fails. That is a supported fail-closed result,
+not a reason to publish a PGO-only cdylib or C++ shared library at the canonical
+location.
 
-```
-BOLT-WARNING: non-relocation mode for AArch64 is not fully supported
-BOLT-ERROR: instrumentation runtime libraries require relocations
-```
-
-even with `--allow-stripped`. The cdylib is built with `strip =
-"symbols"` per the pinned `[profile.release]`, and BOLT instrumentation
-on aarch64 requires relocations that the stripped release profile does
-not preserve. The fallback keeps the install path publishing a
-PGO-optimized cdylib at the canonical location.
-
-The optimized-C++ Sprint 8.3 verdict was refreshed on 2026-05-21 by
-`docker compose run --rm mcts mcts test all` against the canonical workload
+The optimized-C++ Sprint 8.3 verdict was refreshed on 2026-05-23 by
+`docker compose run --rm --build mcts mcts test all` against the canonical workload
 (`G_R=1_000`, `G_S=4`, `S_BENCH=500`, MT8 variants)
-and the canonical artefacts produced by that same container run. On amd64,
-Rust completed PGO/BOLT; the C++ shared-library BOLT instrumentation yielded no
-`.fdata`, so the report card measures the documented C++ PGO fallback.
+and fail-closed Dockerfile-built canonical artefacts. The Dockerfile build produced
+C++ and Rust BOLT profiles, bolted canonical shared libraries, LLVM objcopy-patched
+envelopes, and passing final installed-library smokes before the report card ran.
+The earlier 2026-05-21 run where C++ BOLT yielded no `.fdata` remains historical
+fallback evidence only.
 Q1/Q2/Q5 use the production monotonic clock through the no-write batch runner
 rather than the former zero-valued test stub or transcript-retaining benchmark
 subprocesses.
 
 | Row | Ratio | Evidence |
 |-----|------:|----------|
-| Q1 rollouts ST | 0.05x | Haskell 740.0 games/s vs cpp-imperative 39.2 games/s |
-| Q1 rollouts MT8 | 0.43x | Haskell 690.7 games/s vs cpp-imperative 294.7 games/s |
-| Q2 self-play ST | 0.06x | Haskell 0.6 games/s vs cpp-imperative 0.0 games/s |
-| Q2 self-play MT8 | 0.19x | Haskell 0.6 games/s vs cpp-imperative 0.1 games/s |
-| Q5 Haskell MT scaling | 1.04x | 0.6 -> 0.6 games/s |
-| Q5 cpp-imperative MT scaling | 3.64x | 0.0 -> 0.1 games/s |
+| Q1 rollouts ST | 0.05x | Haskell 640.3 games/s vs cpp-imperative 34.4 games/s |
+| Q1 rollouts MT8 | 0.45x | Haskell 592.9 games/s vs cpp-imperative 269.5 games/s |
+| Q2 self-play ST | 0.06x | Haskell 0.5 games/s vs cpp-imperative 0.0 games/s |
+| Q2 self-play MT8 | 0.22x | Haskell 0.5 games/s vs cpp-imperative 0.1 games/s |
+| Q5 Haskell MT scaling | 0.98x | 0.5 -> 0.5 games/s |
+| Q5 cpp-imperative MT scaling | 3.70x | 0.0 -> 0.1 games/s |
 
-The final Sprint 8.3 verdict is **`Within tolerance`**. The PGO asymmetry remains
-documented as context for the comparison, but it is not needed as an exemption.
+The refreshed Sprint 8.3 verdict is **`Within tolerance`**.
 
 ## Parity Tolerance
 
@@ -522,7 +536,8 @@ pinning](../../HASKELL_CLI_TOOL.md) and
 - **Rust** — latest stable, installed via `rustup` with the minor version
   pinned in `docker/Dockerfile`.
 - **`mimalloc`** — Ubuntu `libmimalloc-dev` in the pinned container; C++ links the
-  system library and Rust uses the locked `mimalloc` crate.
+  system library and Rust uses a local `GlobalAlloc` wrapper over the same system
+  library.
 
 ## Cross-References
 

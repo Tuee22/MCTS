@@ -134,14 +134,14 @@ commandSpec =
         , leaf "check-code" "Run code-quality gate" "mcts check-code"
         , node
             "build"
-            "Build backend artefacts"
-            [ leaf "cpp-legacy" "Build C++ legacy backend" "mcts build cpp-legacy --dry-run"
+            "Backend artefact recipes"
+            [ leaf "cpp-legacy" "C++ legacy backend build recipe" "mcts build cpp-legacy --dry-run"
                 `withOptions` planOptions
-            , leaf "cpp-imperative" "Build C++ imperative backend" "mcts build cpp-imperative --dry-run"
+            , leaf "cpp-imperative" "C++ imperative backend build recipe" "mcts build cpp-imperative --dry-run"
                 `withOptions` planOptions
-            , leaf "cpp-functional" "Build C++ functional backend" "mcts build cpp-functional --dry-run"
+            , leaf "cpp-functional" "C++ functional backend build recipe" "mcts build cpp-functional --dry-run"
                 `withOptions` planOptions
-            , leaf "rust" "Build Rust backend" "mcts build rust --dry-run"
+            , leaf "rust" "Rust backend build recipe" "mcts build rust --dry-run"
                 `withOptions` planOptions
             , leaf
                 "legacy-fixtures"

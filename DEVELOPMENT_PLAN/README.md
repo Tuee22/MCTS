@@ -41,19 +41,20 @@ or code overclaimed the implementation. Phase `1` reclosed Sprint `1.10` on
 alignment passed validation. Phase `2` reclosed Sprint `2.8` on 2026-05-21
 after transcript version handling, action-domain wording, and sidecar identity
 passed validation. Phase `5` reclosed Sprint `5.5` on 2026-05-21 after the
-compact backend (ii) C ABI contract passed validation. Phase `6` reclosed Sprint
-`6.6` on 2026-05-21 after backend (iii)/(iv) ABI and Rust
-instrumentation/build-artifact wording passed validation. Phase `7` reclosed
-Sprint `7.6` on 2026-05-21 after replay/divergence evidence labels passed
-validation. Phase `8` reclosed Sprint `8.9` on 2026-05-21 after compiler-tuning
-wording and final handoff validation passed. Phases `3` and `4`
-remain `Done` on their owned engine and
-legacy-port surfaces. Later phases that previously closed remain valid as
-historical implementation work, and the focused 2026-05-21 reclosure handoff is
-complete after governed docs aligned and validation passed through the root Compose
-entrypoint.
+compact backend (ii) C ABI contract passed validation, and reclosed Sprint `5.3`
+on 2026-05-23 after the Dockerfile-owned C++ PGO/BOLT build failed closed on
+missing profile data and smoked the installed bolted C++ libraries.
+Phase `6` reclosed Sprint `6.6` on 2026-05-21 after backend (iii)/(iv) ABI and
+Rust instrumentation/build-artifact wording passed validation, and reclosed
+Sprint `6.4` on 2026-05-23 after the Dockerfile-owned Rust PGO/BOLT build failed
+closed and smoked the installed bolted cdylib.
+Phase `7` reclosed Sprint `7.6` on 2026-05-21 after replay/divergence evidence
+labels passed validation. Phase `8` reclosed Sprint `8.3` on 2026-05-23 after
+the parity report card passed against successful Dockerfile-time PGO+BOLT
+artefacts, not the historical fallback artefacts. Phases `3` and `4`
+remain `Done` on their owned engine and legacy-port surfaces.
 
-The reopened work does not change the project hypothesis: one Haskell CLI keeps
+This reclosure does not change the project hypothesis: one Haskell CLI keeps
 all five backend slots live, Q3 proves visit-count equivalence for `(ii)..(v)`
 under `--rng cpp`, Q7 covers all five slots under the legacy envelope, and Q1/Q2
 measure backend (v) Haskell against backend (ii) `cpp-imperative`.
@@ -67,15 +68,13 @@ The Phase `2` reclosure was validated with
 `docker compose run --rm mcts mcts test mcts-unit`,
 `docker compose run --rm mcts mcts docs check`,
 `docker compose run --rm mcts mcts check-code`, and `git diff --check`.
-The Phase `5` reclosure was validated with
-`docker compose run --rm mcts mcts build cpp-imperative --dry-run`,
-`docker compose run --rm mcts mcts build cpp-imperative`,
-`docker compose run --rm mcts mcts test mcts-unit`,
+The Phase `5` reclosure was validated with the C++ PGO/BOLT build-recipe
+dry-runs, the Dockerfile-owned backend artefact build path,
+`docker compose run --rm --build mcts mcts test mcts-unit`,
 `docker compose run --rm mcts mcts docs check`, and `git diff --check`.
-The Phase `6` reclosure was validated with
-`docker compose run --rm mcts mcts build cpp-functional --dry-run`,
-`docker compose run --rm mcts mcts build rust --dry-run`,
-`docker compose run --rm mcts mcts test mcts-unit`,
+The Phase `6` reclosure was validated with the C++ functional and Rust build-recipe
+dry-runs, the Dockerfile-owned backend artefact build path,
+`docker compose run --rm --build mcts mcts test mcts-unit`,
 `docker compose run --rm mcts mcts docs check`, and `git diff --check`.
 The Phase `7` reclosure was validated with
 `docker compose run --rm mcts mcts test mcts-unit`,
@@ -87,17 +86,33 @@ The Phase `8` reclosure was validated with
 `docker compose run --rm mcts mcts check-code`,
 `docker compose run --rm --build mcts mcts test mcts-cross-backend`,
 `docker compose run --rm --build mcts mcts test all`, and `git diff --check`.
+The Sprint `8.3` fail-closed report-card refresh was validated on 2026-05-23 with
+`docker compose run --rm --build mcts mcts test all`; the run rebuilt the
+Dockerfile-owned PGO+BOLT artefacts, passed docs, file, style, unit, integration,
+cross-backend, and legacy-parity checks, and recorded Q1 ST 0.05x, Q1 MT8 0.45x,
+Q2 ST 0.06x, Q2 MT8 0.22x, Q5 Haskell 0.98x, Q5 C++ (ii) 3.70x, Q7 PASS, and
+`Verdict: Within tolerance`.
 The later Sprint `8.8` cleanup revalidated the focused and aggregate Compose
 gates without checked-in generated validation data.
 
 The 2026-05-19 report-card evidence remains useful smoke-baseline audit context.
 The previous five-backend restoration baseline still provides the starting point:
-normal validation builds the three C++ shared libraries and Rust before
+the Dockerfile builds the three C++ shared libraries and Rust before runtime
 FFI-sensitive tests, `VerifyBackend` accepts the Q3 cohort `(ii)..(v)`, and
 `mcts-legacy-parity` covers Q7 across all five backend slots. The 2026-05-21
 optimized-C++ report-card refresh measures backend (v) Haskell against the
-canonical backend (ii) artefact produced by `mcts build cpp-imperative`; on amd64,
-the documented C++ BOLT no-`.fdata` fallback installed the PGO artefact. The Sprint
+canonical backend (ii) artefact produced by `docker/Dockerfile` through the
+`mcts build cpp-imperative` leaf; because that amd64 run installed a PGO fallback
+when C++ BOLT produced no `.fdata`, it is historical evidence only under the
+2026-05-22 fail-closed doctrine. The 2026-05-23 Dockerfile build no longer
+publishes that fallback shape: C++ and Rust PGO/BOLT builds must produce BOLT
+profiles, bolted canonical libraries, and passing final smokes before runtime
+validation starts. The 2026-05-23 fail-closed report-card refresh records Q1 ST
+**0.05×** (`640.3` vs `34.4` games/s), Q1 MT8 **0.45×** (`592.9` vs `269.5`
+games/s), Q2 ST **0.06×** (`0.5` vs `0.0` games/s), Q2 MT8 **0.22×** (`0.5` vs
+`0.1` games/s), Q5 Haskell **0.98×**, Q5 C++ (ii) **3.70×**, Q7
+legacy-envelope liveness evidence **PASS**, zero live-cohort divergence, and
+`Verdict: Within tolerance`. The Sprint
 `8.8` no-generated-validation-data cleanup remains closed: normal tests do not
 require `test/golden/` or checked-in transcript/report-card fixtures. That
 baseline was validated with
@@ -135,8 +150,8 @@ regressed and was reverted; round 3 (wavefront-bitmap BFS over a strict
 **~52× on legal-moves and ~33× on uct-search** (combined with round 1
 that's **~320× / ~200×** vs the original list-based baseline). The
 updated Q1 ST snapshot collapses Haskell-vs-cpp-imperative from 10.76×
-(`Shortfall 9.76`) to **0.89×** (Haskell *faster* than the non-PGO
-smoke library). The historical 2026-05-19 report card against container-built
+(`Shortfall 9.76`) to **0.89×** against the historical non-PGO smoke library;
+that smoke measurement is not current closure evidence. The historical 2026-05-19 report card against container-built
 artefacts records Q1 ST **0.05×**, Q1 MT8 **0.41×**, Q2 ST **0.05×**,
 Q2 MT8 **0.20×**, Q5 Haskell **0.99×**, Q5 cpp-imperative **3.64×**,
 Q7 legacy-envelope liveness evidence **PASS**, and `Verdict: Within tolerance`.
@@ -184,8 +199,9 @@ loaders for each live foreign backend. Backend (iii)'s C++23 engine, envelope C 
 Makefile-level C++ PGO/BOLT targets remain part of the first-class source tree
 under `cpp-functional/`, and supported CLI wiring for those targets is closed by
 Sprint `5.3`;
-backend (iv) Rust split into the planned module topology with `mimalloc::MiMalloc`
-as the global allocator, a real Corridors gameplay port, the search/recompute/read-visits
+backend (iv) Rust split into the planned module topology with a local
+`SystemMiMalloc` wrapper over the container `libmimalloc` as the global allocator,
+a real Corridors gameplay port, the search/recompute/read-visits
 C ABI, real `--backend rust` dispatch through
 `runForeignSearchGame withRustSearchGame` whenever the cdylib is present, and
 the `rustPgoBoltPlan` Plan/Apply harness validated through PGO train/merge/use
@@ -296,18 +312,19 @@ A sprint can move to `Done` only when all of the following are true:
 | 2 | Transcript Codec, RNG, and Determinism Contract | ✅ Done (Sprint `2.8` transcript/version/action/sidecar identity realignment closed 2026-05-21) | [phase-2-transcript-codec-and-determinism.md](phase-2-transcript-codec-and-determinism.md) |
 | 3 | Backend (v) Haskell Engine | ✅ Done (strict Word64 board baseline, recursive ST-arena UCT, deterministic tie-break, bench wiring, recompute) | [phase-3-haskell-engine.md](phase-3-haskell-engine.md) |
 | 4 | Backend (i) C++ Legacy Port and FFI Bridge | ✅ Done | [phase-4-cpp-legacy-port-and-ffi-bridge.md](phase-4-cpp-legacy-port-and-ffi-bridge.md) |
-| 5 | Backend (ii) C++ Imperative Steelman with PGO+BOLT | ✅ Done (Sprint `5.5` compact C ABI contract realignment closed 2026-05-21; Sprint `5.3` build wiring remains closed) | [phase-5-cpp-imperative-steelman.md](phase-5-cpp-imperative-steelman.md) |
-| 6 | Backends (iii) C++ Functional-Style and (iv) Rust | ✅ Done (Sprint `6.6` compact ABI and Rust instrumentation/build wording closed 2026-05-21) | [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md) |
+| 5 | Backend (ii) C++ Imperative Steelman with PGO+BOLT | ✅ Done (Sprint `5.3` fail-closed C++ PGO/BOLT reclosure and Sprint `5.5` compact C ABI contract reclosure are complete) | [phase-5-cpp-imperative-steelman.md](phase-5-cpp-imperative-steelman.md) |
+| 6 | Backends (iii) C++ Functional-Style and (iv) Rust | ✅ Done (Sprint `6.4` fail-closed Rust PGO/BOLT reclosure and Sprint `6.6` compact ABI/build wording reclosure are complete) | [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md) |
 | 7 | Cross-Backend Verify, Test Stanzas, POC Report Card | ✅ Done (Sprint `7.6` replay/divergence evidence labels closed 2026-05-21) | [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md) |
-| 8 | Haskell Performance Parity Closure and Five-Backend Restoration | ✅ Done (Sprint `8.9` tuning-doc wording and final handoff revalidation closed 2026-05-21) | [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md) |
+| 8 | Haskell Performance Parity Closure and Five-Backend Restoration | ✅ Done (Sprint `8.3` fail-closed report-card refresh closed 2026-05-23; Sprint `8.9` wording reclosure remains historical) | [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md) |
 
 ## Current Plan Status
 
 The repository has moved past bootstrap into a five-backend implementation
-baseline with the 2026-05-19 alignment sweep and 2026-05-21 C++ PGO/BOLT /
-optimized-C++ report-card evidence recorded. The 2026-05-21 reclosure work
-aligned governed docs, comments, and evidence labels with the code that already
-supports the proof.
+baseline with the 2026-05-19 alignment sweep, historical 2026-05-21 optimized-C++
+report-card evidence, and 2026-05-23 fail-closed report-card refresh recorded.
+The 2026-05-21 reclosure work aligned governed docs, comments, and evidence labels
+with the code that already supports the proof, while the 2026-05-22 fail-closed
+doctrine was closed by the 2026-05-23 PGO/BOLT build and parity-evidence gates.
 Implemented in the worktree:
 
 - `mcts.cabal`, `cabal.project`, `app/Main.hs`, `src/MCTS/**`, `test/**`,
@@ -351,8 +368,9 @@ Implemented in the worktree:
   the GHC/Cabal nodes check exact pinned versions via the typed `Subprocess`
   capture boundary, C++/LLVM/Rust/LLD/`mimalloc` toolchain probes are present,
   Rust profile-directory and Rust cdylib probes exist, and the unit suite asserts the
-  registry is acyclic. C++ PGO/BOLT profile and shared-library prerequisite coverage is
-  part of the closed Sprint `5.3` work.
+  registry is acyclic. C++ and Rust PGO/BOLT profile and shared-library prerequisite
+  coverage is present, and Sprints `5.3`/`6.4` make missing BOLT data a Dockerfile
+  build failure.
 - Phase 8 GHC tuning flags landed in the performance-relevant Cabal stanzas:
   `-O2 -fllvm
   -funbox-strict-fields -fspecialise-aggressively
@@ -424,7 +442,8 @@ Implemented in the worktree:
   live Haskell dynamic dispatch, envelope loading, and explicit build leaves.
   Backend (iv) Rust
   is split into the planned module
-  topology and uses `mimalloc::MiMalloc` as its global allocator. The Haskell
+  topology and uses a local `SystemMiMalloc` wrapper over the container
+  `libmimalloc` as its global allocator. The Haskell
   FFI layer has bounded Rust smoke coverage, live envelope loaders for all live
   foreign shared libraries, and verify-time conversion of those envelopes into
   transcript headers when a cdylib is present.
@@ -440,9 +459,12 @@ transcript, sidecar, report-card, backend-equivalence, or renderer data in memor
 under a temporary root, and a clean clone without `test/golden/` generated artifacts is
 the supported validation shape.
 
-The restored five-backend surface remains first-class. Phase `8` reclosure is closed
-alongside the focused evidence-surface sprints, so generated evidence, sidecar labels,
-ABI docs, and compiler-tuning docs all describe the same supported implementation.
+The restored five-backend surface remains first-class. Generated evidence, sidecar
+labels, ABI docs, and compiler-tuning docs describe the same supported implementation.
+The PGO/BOLT build doctrine is now fail-closed for the steelman foreign backends:
+PGO and BOLT complete inside the Dockerfile build, missing profile data crashes the
+image build, and the installed bolted C++/Rust libraries are smoked before runtime
+validation starts.
 
 ## Sprint Dependencies
 
@@ -479,8 +501,10 @@ performance ceiling and its functional sibling, and backend (iv) Rust is the
 cross-language second opinion. Phase `7` joins the five backend slots in the
 cross-backend evidence surface and emits the POC report card. Phase `8` closes the
 Haskell tuning loop once backend (v) matches backend (ii) within tolerance on Q1 and
-Q2, and Sprint `8.9` revalidated that handoff after the evidence-surface alignment
-sprints closed.
+Q2 against successful Dockerfile-time PGO+BOLT artefacts. Sprint `8.9` revalidated
+the historical handoff after the evidence-surface alignment sprints closed, and Sprint
+`8.3` reclosed the report-card evidence against the fail-closed build artefacts on
+2026-05-23.
 
 ## Exit Definition
 
@@ -585,10 +609,11 @@ This plan is complete only when all of the following are true:
     entrypoint is `docker compose run --rm mcts mcts <command>`. There is no
     long-running daemon container, no bind-mounted workspace, no Compose-level
     environment-variable block, and no `sleep infinity` placeholder. The first
-    `docker compose run --rm` call builds the image when it is absent. All supported
-    project work happens through this short-lived container entrypoint. Host-level
-    `.build/` artefacts, repository `.sh` scripts, and `bootstrap/` helpers are
-    unsupported.
+    `docker compose run --rm` call builds the image when it is absent, including
+    the four foreign backend shared libraries. All supported runtime project work
+    happens through this short-lived container entrypoint and consumes those
+    Dockerfile-built artefacts without rebuilding them. Host-level `.build/`
+    artefacts, repository `.sh` scripts, and `bootstrap/` helpers are unsupported.
 24. [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md) tracks the
     stale tooling residue; stale two-backend wording and two-backend code paths are
     corrected or explicitly tracked until corrected.

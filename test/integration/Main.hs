@@ -389,10 +389,10 @@ foreignFfiEnvelope libraryPath backend loader = do
                     -- `.envelope_build_id` section where the build harness
                     -- patches it.
                     -- Sprint 6.5: Rust now exposes a `.envelope_build_id`
-                    -- ELF section that `mcts build rust` patches post-
-                    -- link. A fresh `cargo build --release` leaves the
-                    -- section all-zero; the integration test accepts
-                    -- either state so it remains robust to whichever
+                    -- ELF section that the Dockerfile-invoked Rust build
+                    -- recipe patches post-link. Fresh cargo release builds
+                    -- leave the section all-zero; the integration test
+                    -- accepts either state so it remains robust to whichever
                     -- build was last run.
                     case backend of
                         CppLegacy ->
@@ -400,8 +400,8 @@ foreignFfiEnvelope libraryPath backend loader = do
                                 "cpp-legacy engine_build_id is patched"
                                 (engineEnvBuildId envelope /= replicate 64 '0')
                         Rust ->
-                            -- Either zero (smoke cargo build) or
-                            -- patched (post `mcts build rust` install).
+                            -- Either zero (smoke cargo build) or patched
+                            -- by the Dockerfile-owned Rust install path.
                             pure ()
                         _ -> engineEnvBuildId envelope @?= replicate 64 '0'
                     engineEnvCompilerId envelope @?= expectedCompilerId backend

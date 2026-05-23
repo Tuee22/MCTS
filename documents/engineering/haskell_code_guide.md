@@ -53,13 +53,16 @@ forbidden-primitives list.
 The MCTS commands that consume the `Plan / Apply` pattern are:
 
 - `mcts test all` — Plan/Apply over the five live Cabal stanzas plus the report-card
-  workload (Phase 7 Sprint 7.3).
+  workload, consuming Dockerfile-built backend artefacts (Phase 7 Sprint 7.3).
 - `mcts build cpp-legacy`, `mcts build cpp-imperative`, and
-  `mcts build cpp-functional` — Plan/Apply over the C++ backend build leaves.
-  The steelman C++ leaves drive the shared PGO/BOLT target sequence and install the
-  canonical shared libraries, with the documented BOLT no-`.fdata` fallback.
+  `mcts build cpp-functional` — Dockerfile-invoked Plan/Apply recipes for the C++
+  backend build leaves. The steelman C++ leaves drive the shared PGO/BOLT target
+  sequence and install the canonical shared libraries only after PGO and BOLT both
+  produce their required profile data. Runtime validation does not rebuild them, and
+  PGO-only/unoptimized fallback installs are forbidden.
 - `mcts build rust` — Plan/Apply over
-  the live foreign backend two-stage PGO + BOLT post-link + `mimalloc` link pipeline
+  the Dockerfile-invoked foreign backend two-stage PGO + BOLT post-link +
+  system `mimalloc` link pipeline, including the final installed-cdylib smoke.
 - `mcts build legacy-fixtures` — Plan/Apply over the backend (i) optional external
   evidence generator. Its outputs belong in ignored/external artifact roots, not in
   normal test inputs.

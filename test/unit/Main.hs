@@ -61,6 +61,7 @@ import MCTS.CLI.Spec
     , renderCommandList
     , renderCommandTree
     )
+import MCTS.CLI.Test (testAllPlan)
 import MCTS.CLI.Tui.Board (renderBoardText, renderStatusText)
 import MCTS.CLI.Tui.Play
     ( PlayState (..)
@@ -560,6 +561,7 @@ exercisePrerequisiteSurface = do
 exercisePlanSurface :: IO ()
 exercisePlanSurface = do
     exercisePlanShape
+    exerciseTestAllPlanConsumesDockerfileArtifacts
     exerciseApplyWithEnv
 
 exerciseSubprocessSurface :: IO ()
@@ -1028,7 +1030,6 @@ exercisePrerequisiteClosure = do
     let cppBuildClosure = map nodeId (prerequisitesForBuild "cpp-imperative")
     assert "C++ optimized build prerequisite includes BOLT" ("bolt" `elem` cppBuildClosure)
     assert "C++ optimized build prerequisite includes LLVM" ("llvm" `elem` cppBuildClosure)
-    assert "C++ optimized build prerequisite includes pgo root" ("pgo-profiles" `elem` cppBuildClosure)
     assert
         "C++ optimized build prerequisite includes pgo dir"
         ("cpp-imperative-pgo-profile" `elem` cppBuildClosure)
@@ -1044,6 +1045,16 @@ exercisePrerequisiteClosure = do
     assert "test prerequisite closure includes ghc" ("ghc-9.14.1" `elem` testClosure)
     assert "test prerequisite closure includes cabal" ("cabal-3.16.1.0" `elem` testClosure)
     assert "test prerequisite closure includes ghcup dependency" ("ghcup" `elem` testClosure)
+    assert
+        "test prerequisite closure includes cpp-legacy artefact"
+        ("libmcts-cpp-legacy-built" `elem` testClosure)
+    assert
+        "test prerequisite closure includes cpp-imperative artefact"
+        ("libmcts-cpp-imperative-built" `elem` testClosure)
+    assert
+        "test prerequisite closure includes cpp-functional artefact"
+        ("libmcts-cpp-functional-built" `elem` testClosure)
+    assert "test prerequisite closure includes rust artefact" ("libmcts-rust-built" `elem` testClosure)
 
 exercisePlanShape :: IO ()
 exercisePlanShape = do
@@ -1071,6 +1082,21 @@ exercisePlanShape = do
     -- applySubprocessPlan is callable as a smoke check on an empty plan
     emptyCode <- applySubprocessPlan (Plan "empty" [])
     assert "applySubprocessPlan succeeds on empty plan" (emptyCode == ExitSuccess)
+
+exerciseTestAllPlanConsumesDockerfileArtifacts :: IO ()
+exerciseTestAllPlanConsumesDockerfileArtifacts = do
+    let renderedSteps = map renderSubprocess (planSteps testAllPlan)
+        runtimeBackendBuild step =
+            any
+                (`List.isInfixOf` step)
+                [ " build cpp-legacy"
+                , " build cpp-imperative"
+                , " build cpp-functional"
+                , " build rust"
+                ]
+    assert
+        "test all does not rebuild backend artefacts at runtime"
+        (not (any runtimeBackendBuild renderedSteps))
 
 exercisePlanOptionMetadata :: IO ()
 exercisePlanOptionMetadata = do
@@ -1440,37 +1466,44 @@ exerciseRustBuildPlan = do
             case subprocessEnvironment (steps !! index) of
                 Just env -> maybe "" id (List.lookup "RUSTFLAGS" env)
                 Nothing -> ""
-        generateFlags = rustFlagsAt 0
-        useFlags = rustFlagsAt 3
-    assert "Rust PGO+BOLT plan has 12 typed Subprocess steps" (length steps == 12)
+        generateFlags = rustFlagsAt 1
+        useFlags = rustFlagsAt 4
+    assert "Rust PGO+BOLT plan has 14 typed Subprocess steps" (length steps == 14)
     assert "Rust PGO+BOLT plan is the same as buildBackendPlan output" (planSteps plan == steps)
     assert
+        "Rust PGO+BOLT plan starts by resetting profile directories"
+        ( commands !! 0 == "bash"
+            && any ("rust/pgo-profile" `contains`) (argsOf !! 0)
+            && any ("rust/bolt-profile" `contains`) (argsOf !! 0)
+        )
+    assert
         "Rust PGO step 1 is cargo build --release"
-        (case commands of (c : _) -> c == "cargo"; _ -> False)
+        (commands !! 1 == "cargo")
     assert
         "Rust PGO generate flags include target CPU, lld linker, and profile-generate"
         ( all
             (`List.isInfixOf` generateFlags)
             [ "-C target-cpu=native"
             , "-C link-arg=-fuse-ld=lld"
+            , "-C link-arg=-Wl,--emit-relocs"
             , "-C profile-generate=/workspace/MCTS/rust/pgo-profile"
             ]
         )
     assert
         "Rust PGO training step invokes bench selfplay --rng native"
-        ( commands !! 1 == "cabal"
-            && "selfplay" `elem` argsOf !! 1
-            && "native" `elem` argsOf !! 1
-            && show pgoTrainingGames `elem` argsOf !! 1
-            && show pgoTrainingSims `elem` argsOf !! 1
+        ( commands !! 2 == "cabal"
+            && "selfplay" `elem` argsOf !! 2
+            && "native" `elem` argsOf !! 2
+            && show pgoTrainingGames `elem` argsOf !! 2
+            && show pgoTrainingSims `elem` argsOf !! 2
         )
     assert
         "Rust BOLT training step invokes bench selfplay --rng native"
-        ( commands !! 7 == "cabal"
-            && "selfplay" `elem` argsOf !! 7
-            && "native" `elem` argsOf !! 7
-            && show boltTrainingGames `elem` argsOf !! 7
-            && show boltTrainingSims `elem` argsOf !! 7
+        ( commands !! 8 == "cabal"
+            && "selfplay" `elem` argsOf !! 8
+            && "native" `elem` argsOf !! 8
+            && show boltTrainingGames `elem` argsOf !! 8
+            && show boltTrainingSims `elem` argsOf !! 8
         )
     assert
         "Rust PGO use flags include target CPU, lld linker, and profile-use"
@@ -1478,12 +1511,28 @@ exerciseRustBuildPlan = do
             (`List.isInfixOf` useFlags)
             [ "-C target-cpu=native"
             , "-C link-arg=-fuse-ld=lld"
+            , "-C link-arg=-Wl,--emit-relocs"
             , "-C profile-use=/workspace/MCTS/rust/pgo-profile/merged.profdata"
             ]
         )
     assert
+        "Rust BOLT install and optimize fail closed without fallback copies"
+        ( any ("libmcts_rust.inst.so" `contains`) (argsOf !! 7)
+            && not (any ("libmcts_rust.pgo.so rust/target/release/libmcts_rust.so; fi" `contains`) (argsOf !! 7))
+            && any ("no usable Rust .fdata" `contains`) (argsOf !! 10)
+            && not (any ("|| cp" `contains`) (argsOf !! 10))
+        )
+    assert
         "Rust final step patches engine_build_id"
-        (case reverse argsOf of (a : _) -> argContains a ".envelope_build_id"; _ -> False)
+        (case reverse argsOf of (_smoke : patch : _) -> argContains patch ".envelope_build_id"; _ -> False)
+    assert
+        "Rust final step smokes the installed BOLT artefact"
+        ( commands !! 13 == "cabal"
+            && "rust" `elem` argsOf !! 13
+            && "selfplay" `elem` argsOf !! 13
+            && "1" `elem` argsOf !! 13
+            && "4" `elem` argsOf !! 13
+        )
     assert "buildBackendPlan is idempotent" (buildBackendPlan "rust" == plan)
     assert
         "PGO+BOLT plan name is build rust"
@@ -1570,7 +1619,7 @@ exerciseCppBuildPlan = do
         trainingIndexes = [3, 6, 11, 14]
         pgoTrainingArgs = argsOf !! 3
         boltTrainingArgs = argsOf !! 11
-    assert "C++ PGO+BOLT plan has 18 typed Subprocess steps" (length steps == 18)
+    assert "C++ PGO+BOLT plan has 19 typed Subprocess steps" (length steps == 19)
     assert "C++ PGO+BOLT plan is the same as buildBackendPlan output" (planSteps plan == steps)
     assert "C++ PGO+BOLT plan name is build cpp-imperative" (planName plan == "build cpp-imperative")
     assert
@@ -1615,6 +1664,14 @@ exerciseCppBuildPlan = do
         "C++ plan trains PGO and BOLT artefacts through cabal exec"
         (all (\idx -> commands !! idx == "cabal" && "exec" `elem` argsOf !! idx) trainingIndexes)
     assert
+        "C++ final step smokes the installed BOLT artefact"
+        ( commands !! 18 == "cabal"
+            && "cpp-imperative" `elem` argsOf !! 18
+            && "selfplay" `elem` argsOf !! 18
+            && "1" `elem` argsOf !! 18
+            && "4" `elem` argsOf !! 18
+        )
+    assert
         "C++ bench and instrumented artefacts are installed to the canonical load path for training"
         ( argsOf !! 2
             == [ "cpp-imperative/build/libmcts_cpp_imperative_bench.so"
@@ -1626,11 +1683,13 @@ exerciseCppBuildPlan = do
                    ]
         )
     assert
-        "C++ BOLT training install falls back to the PGO artefact"
+        "C++ BOLT training install requires instrumented artefacts without fallback"
         ( any ("libmcts_cpp_imperative_bench.inst.so" `contains`) (argsOf !! 10)
-            && any ("libmcts_cpp_imperative_bench.so" `contains`) (argsOf !! 10)
+            && any ("[bolt] missing instrumented C++ artefact" `contains`) (argsOf !! 10)
+            && not (any ("libmcts_cpp_imperative_bench.so" `contains`) (argsOf !! 10))
             && any ("libmcts_cpp_imperative_instrumented.inst.so" `contains`) (argsOf !! 13)
-            && any ("libmcts_cpp_imperative_instrumented.so" `contains`) (argsOf !! 13)
+            && any ("[bolt] missing instrumented C++ artefact" `contains`) (argsOf !! 13)
+            && not (any ("libmcts_cpp_imperative_instrumented.so" `contains`) (argsOf !! 13))
         )
     assert
         "C++ functional plan uses functional library names"
@@ -2368,7 +2427,9 @@ exerciseTuiReplayRenderer = do
                         , "move played: " <> renderMove (moveChosen record)
                         ]
                             <> renderOverlayRowsText (currentOverlayRows stateAtOne)
-            assert "TUI replay renders status row" ("status" `contains` rendered)
+            assert
+                "TUI replay renders status row"
+                ("aaaaaaaa" `contains` rendered && "move 1 / 1" `contains` rendered)
             assert "TUI replay renders originator overlay" ("originator" `contains` rendered)
             assert "TUI replay renders divergence column" ("divergence" `contains` rendered)
 

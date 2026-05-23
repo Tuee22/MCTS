@@ -18,7 +18,10 @@
 ✅ **Done.** Rust and `cpp-functional/` are live backends. Backend (iii)
 remains first-class because it isolates C++ style from C++ optimization when
 compared with backend (ii). The shared C++ PGO/BOLT Plan/Apply wiring closed in
-Sprint `5.3`; Phase `6` does not duplicate that build harness. Sprint `6.6`
+Sprint `5.3`; Phase `6` does not duplicate that build harness. Sprint `6.4`
+reclosed on 2026-05-23: Rust PGO profile data, merged `profdata`, BOLT `.fdata`,
+the bolted cdylib, LLVM objcopy envelope patching, and the final installed
+canonical Rust smoke run are all mandatory Dockerfile-build steps. Sprint `6.6`
 reclosed this phase on 2026-05-21 by aligning backend (iii)'s compact ABI wording
 with backend (ii), and by making Rust's instrumentation/build-artifact contract
 match the code rather than a speculative paired-target description.
@@ -29,7 +32,11 @@ Backend (iii) keeps backend (ii)'s data layout, performance budget, compact C AB
 roles, and Makefile-level optimization target surface while expressing search flow
 with functional-style C++ APIs and data flow. Backend (iv) Rust provides a second
 systems-language implementation with its own release profile, supported PGO/BOLT
-Plan/Apply path, `mimalloc` allocator, Corridors gameplay port, and C ABI.
+Plan/Apply recipe invoked by the Dockerfile, `mimalloc` allocator, Corridors
+gameplay port, and C ABI. Its Dockerfile build must fail if PGO profile merge,
+BOLT instrumentation, BOLT training, or BOLT optimization cannot produce the
+required optimized cdylib. The final installed Rust cdylib is smoke-tested before
+the image is published.
 
 ## Sprint 6.1: C++ Functional-Style Engine ✅
 
@@ -49,12 +56,13 @@ effort.
 - Same arena memory layout and optimization stack as backend (ii).
 - Functional-style move application, selection outcomes, and descent state transitions.
 - C ABI with the same search/recompute/visit/envelope roles as backend (ii).
-- The C++ functional PGO/BOLT Makefile targets mirror backend (ii); canonical CLI
-  wiring for the shared C++ PGO/BOLT sequence closed in Sprint `5.3`.
+- The C++ functional PGO/BOLT Makefile targets mirror backend (ii); the
+  Dockerfile-invoked recipe for the shared C++ PGO/BOLT sequence closed in
+  Sprint `5.3`.
 
 ### Validation
 
-`docker compose run --rm mcts mcts build cpp-functional`
+`docker compose run --rm --build mcts mcts test mcts-cross-backend`
 
 ### Remaining Work
 
@@ -81,7 +89,7 @@ Make backend (iii) participate in bench, play, inspect, recompute, and Q3 verify
 
 ### Validation
 
-- `docker compose run --rm mcts mcts build cpp-functional`
+- `docker compose run --rm --build mcts mcts test mcts-cross-backend`
 - `docker compose run --rm mcts mcts verify rollouts --backend cpp-imperative,cpp-functional,rust,haskell --threading single --games 4 --seed 42 --max-plies 200`
 
 ### Remaining Work
@@ -111,7 +119,7 @@ style used by the C++ backends.
 
 ### Validation
 
-- `docker compose run --rm mcts mcts build rust`
+- `docker compose run --rm --build mcts mcts test mcts-cross-backend`
 - `docker compose run --rm mcts mcts bench rollouts --backend rust --threading single --rng native --games 8 --seed 42 --cache-dir /tmp/mcts-rust-smoke`
 
 ### Remaining Work
@@ -121,8 +129,12 @@ None for the Rust source/ABI baseline.
 ## Sprint 6.4: Rust PGO/BOLT Build Harness ✅
 
 **Status**: Done
-**Implementation**: `src/MCTS/CLI/Build.hs`, `rust/Cargo.toml`, `docker/Dockerfile`
-**Docs to update**: `documents/engineering/compiler_runtime_tuning.md`
+**Implementation**: `src/MCTS/CLI/Build.hs`, `rust/Cargo.toml`, `rust/build.rs`,
+`rust/src/allocator.rs`, `docker/Dockerfile`
+**Docs to update**: `README.md`, `00-overview.md`, `system-components.md`,
+`legacy-tracking-for-deletion.md`, `documents/engineering/compiler_runtime_tuning.md`,
+`documents/engineering/backend_ffi_contract.md`,
+`documents/engineering/haskell_code_guide.md`
 
 ### Objective
 
@@ -131,20 +143,40 @@ Build Rust under a serious systems-language optimization envelope.
 ### Deliverables
 
 - `[profile.release]` with `opt-level = 3`, fat LTO, one codegen unit,
-  `panic = "abort"`, and stripped symbols.
-- `RUSTFLAGS=-C target-cpu=native -C link-arg=-fuse-ld=lld`.
-- `mimalloc::MiMalloc` as global allocator.
+  `panic = "abort"`, and `strip = "debuginfo"` so BOLT can read symbols.
+- `RUSTFLAGS=-C target-cpu=native -C link-arg=-fuse-ld=lld
+  -C link-arg=-Wl,--emit-relocs`.
+- `mimalloc` as the global allocator through the container system library and the
+  local `SystemMiMalloc` `GlobalAlloc` wrapper; no crates.io allocator dependency is
+  required for the Dockerfile build.
 - Two-stage rustc PGO and BOLT post-link training/install path.
+- Dockerfile build failure when `llvm-profdata`, BOLT `.fdata`, or the final
+  optimized cdylib cannot be produced; PGO-only and unoptimized fallback installs
+  are forbidden.
+- LLVM objcopy patches the installed bolted cdylib's `engine_build_id`, and the
+  build smokes the canonical `rust/target/release/libmcts_rust.so` before the
+  image is published.
 
 ### Validation
 
-- `docker compose run --rm mcts mcts build rust --dry-run`
-- `docker compose run --rm mcts mcts build rust`
-- `docker compose run --rm mcts mcts test mcts-unit`
+- `docker compose run --rm --build mcts mcts test mcts-unit`
+
+The 2026-05-23 validation rebuilt the Docker image, ran Rust PGO
+generate/train/merge/use, BOLT instrument/train/optimize, patched the installed
+bolted cdylib with LLVM objcopy, smoked the canonical Rust library with
+`bench selfplay --games 1 --sims 4`, and passed `mcts-unit` including the 14-step
+Rust PGO/BOLT plan assertions.
 
 ### Remaining Work
 
 None.
+
+### Closure Notes
+
+Sprint `6.4` reclosed on 2026-05-23. The Rust build now links the container
+`libmimalloc` directly, keeps release symbols available to BOLT with
+`strip = "debuginfo"`, emits relocations for BOLT, fails on missing `.fdata`, and
+does not publish a PGO-only fallback cdylib.
 
 ## Sprint 6.5: Shared Foreign Envelope and Recompute ✅
 
@@ -207,13 +239,13 @@ instrumentation shapes that are not present in the supported code path.
   of a Rust paired instrumentation artefact is not confused with the C++ performance
   ceiling.
 - Rust and C++ functional header comments, Haskell FFI bindings, and compiler-tuning
-  docs agree on the actual artefact names produced by the supported build commands.
+  docs agree on the actual artefact names produced by the Dockerfile-invoked build
+  recipes.
 
 ### Validation
 
-- `docker compose run --rm mcts mcts build cpp-functional --dry-run`
-- `docker compose run --rm mcts mcts build rust --dry-run`
-- `docker compose run --rm mcts mcts test mcts-unit`
+- C++ functional and Rust backend build-recipe dry-runs
+- `docker compose run --rm --build mcts mcts test mcts-unit`
 - `docker compose run --rm mcts mcts docs check`
 - `git diff --check`
 
@@ -225,9 +257,8 @@ None.
 
 Sprint `6.6` reclosed on 2026-05-21. Validation passed with:
 
-- `docker compose run --rm mcts mcts build cpp-functional --dry-run`
-- `docker compose run --rm mcts mcts build rust --dry-run`
-- `docker compose run --rm mcts mcts test mcts-unit`
+- C++ functional and Rust backend build-recipe dry-runs
+- `docker compose run --rm --build mcts mcts test mcts-unit`
 - `docker compose run --rm mcts mcts docs check`
 - `git diff --check`
 
@@ -237,8 +268,11 @@ Sprint `6.6` reclosed on 2026-05-21. Validation passed with:
 
 - `documents/engineering/backend_ffi_contract.md` — C++ functional and Rust ABI roles,
   including Sprint `6.6` compact-ABI and Rust artefact wording.
-- `documents/engineering/compiler_runtime_tuning.md` — C++ functional/Rust tuning flags and
-  the concrete Rust build-artifact contract.
+- `documents/engineering/compiler_runtime_tuning.md` — C++ functional/Rust tuning flags,
+  mandatory Dockerfile-time PGO+BOLT success, and the concrete Rust build-artifact
+  contract.
+- `documents/engineering/haskell_code_guide.md` — Plan/Apply examples for the
+  Dockerfile-invoked fail-closed Rust build leaf.
 - `documents/engineering/determinism_contract.md` — Q3 participation and envelope fields.
 
 **Product docs to create/update:**
@@ -250,8 +284,10 @@ Sprint `6.6` reclosed on 2026-05-21. Validation passed with:
 - Keep [system-components.md](system-components.md) and
   [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md)
   aligned with backend (iii) and backend (iv) live status.
-- `legacy-tracking-for-deletion.md` records Sprint `6.6` Rust/instrumentation residue
-  as completed after governed docs and build comments agreed.
+- `legacy-tracking-for-deletion.md` records Sprint `6.4` Rust BOLT fallback residue
+  until the Dockerfile build fails on missing `.fdata`, and records Sprint `6.6`
+  Rust/instrumentation residue as completed after governed docs and build comments
+  agreed.
 
 ## Related Documents
 
