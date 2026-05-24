@@ -35,8 +35,8 @@ build path recorded Q1 ST 0.05x, Q1 MT8 0.45x, Q2 ST 0.06x, Q2 MT8 0.22x,
 Q5 Haskell 0.98x, Q5 C++ (ii) 3.70x, Q7 liveness PASS, zero live-cohort
 divergence, and verdict `Within tolerance`. Phase `7` remains closed for the report-card
 machinery itself; Phase `8` Sprint `8.10` has since revalidated that machinery
-against Dockerfile-built steelman artefacts trained on the blended Q1/Q2 PGO/BOLT
-workload suite for final parity closure.
+against Dockerfile-built steelman artefacts trained on the bounded Q1/Q2-shaped
+PGO/BOLT profile suite for final parity closure.
 
 ## Sprint 7.1: Cabal Test Organization ✅
 
@@ -238,6 +238,47 @@ Sprint `7.6` reclosed on 2026-05-21. Validation passed with:
 - `docker compose run --rm mcts mcts docs check`
 - `docker compose run --rm mcts mcts check-code`
 - `git diff --check`
+
+## Sprint 7.7: Verifier Gate and Divergence Metric Realignment ✅
+
+**Status**: Done
+**Implementation**: `src/MCTS/Verify/Envelope.hs`,
+`src/MCTS/Verify/Divergence.hs`, `test/unit/Main.hs`
+**Docs to update**: `documents/engineering/determinism_contract.md`,
+`documents/engineering/cli_command_surface.md`,
+`documents/engineering/transcript_format.md`,
+`DEVELOPMENT_PLAN/README.md`, `DEVELOPMENT_PLAN/00-overview.md`,
+`DEVELOPMENT_PLAN/system-components.md`, `DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md`
+
+### Objective
+
+Keep the verifier focused on reproducibility-affecting envelope fields and describe
+divergence metrics at the precision actually produced by the current sidecar format.
+
+### Deliverables
+
+- Live and cached envelope checks hard-fail cohort-invariant disagreements, gate
+  backend-slot substrate fields, and leave `engine_git_commit` plus display/cache
+  `build_id` as provenance.
+- `--allow-stale` remains a forensic downgrade only for backend-slot mismatches.
+- Divergence documentation states that `EqStream` carries chosen-action equity and
+  that `equity_l2_drift` is RMS over the per-move chosen-action series.
+
+### Validation
+
+- `docker compose run --rm mcts mcts test mcts-unit`
+- `docker compose run --rm mcts mcts docs check`
+- `docker compose run --rm mcts mcts check-code`
+- `git diff --check`
+
+### Remaining Work
+
+None.
+
+### Closure Notes
+
+Closed on 2026-05-24 after verifier behavior, CLI stale-envelope wording, and
+divergence metric docs were aligned.
 
 ## Documentation Requirements
 

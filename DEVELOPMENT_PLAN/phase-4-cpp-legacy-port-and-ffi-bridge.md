@@ -144,6 +144,46 @@ Generate optional Q6 audit evidence without checking generated transcripts into 
 
 None.
 
+## Sprint 4.5: FFI Domain-Conversion Contract Realignment ✅
+
+**Status**: Done
+**Implementation**: `src/MCTS/Types.hs`, `src/MCTS/FFI/Common.hs`,
+`src/MCTS/FFI/CppLegacy.hs`, `src/MCTS/FFI/CppImperative.hs`,
+`src/MCTS/FFI/CppFunctional.hs`, `src/MCTS/FFI/Rust.hs`
+**Docs to update**: `documents/engineering/backend_ffi_contract.md`,
+`documents/engineering/haskell_code_guide.md`,
+`DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md`
+
+### Objective
+
+Align the FFI contract with the actual Haskell-side dynamic-loader and action-domain
+conversion model.
+
+### Deliverables
+
+- The FFI contract describes dynamic `dlopen`/`dlsym` loaders, opaque handles,
+  `foreign import ccall "dynamic"` function pointers, and per-backend typed openers.
+- Action-domain conversion is documented through the implemented `Action` ADT plus
+  `actionId` / `actionFromId`; foreign-returned action bytes are revalidated at the
+  Haskell boundary.
+- Obsolete claims about `.hsc` / `.chs` generators and generic `fromDomain` /
+  `toDomain` smart-constructor wrappers are removed.
+
+### Validation
+
+- `docker compose run --rm mcts mcts docs check`
+- `docker compose run --rm mcts mcts check-code`
+- `git diff --check`
+
+### Remaining Work
+
+None.
+
+### Closure Notes
+
+Closed on 2026-05-24 after governed FFI docs described the implemented dynamic-load
+and action-conversion boundary.
+
 ## Documentation Requirements
 
 **Engineering docs to create/update:**

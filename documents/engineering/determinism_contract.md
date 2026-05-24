@@ -108,8 +108,8 @@ is zero-extension — `fromIntegral :: Word32 -> Word64` in GHC zeroes the high
 `uint64_t` whose upper half is always zero, and the byte-for-byte agreement
 between the Haskell `mix :: Word64 -> Word64 -> Word64` and `cpp_rng_split`
 holds trivially for every wire-format-representable `game_index`. The wire
-width is fixed by the README's `game_id u32` (see
-[../../README.md → Cross-backend verification](../../README.md)); no benchmark
+width is fixed by the transcript `game_id u32` field (see
+[transcript_format.md → Per-Game Body](./transcript_format.md#per-game-body)); no benchmark
 or verify cohort exceeds 2^32 games, so the truncation never matters in
 practice.
 
@@ -250,7 +250,10 @@ Cross-backend determinism is enforced on visit counts only, not on equity.
 ### Visit Counts
 
 Integer, order-independent under summation. The live verify cohort under `--rng cpp`
-produce identical visit counts byte-for-byte. Visit counts are what `mcts verify`
+produces identical canonical visit payloads byte-for-byte. The verifier canonicalizes
+each move by sorting `(action, visits)` pairs and eliding zero-visit entries before
+hashing or comparing, because different backend ABIs may enumerate unvisited legal
+actions differently. Non-zero visit counts and chosen moves are what `mcts verify`
 compares.
 
 ### Equity
@@ -295,8 +298,7 @@ input to the equity calculation.
 ### Replay Equity Guarantees
 
 The replay equity guarantee is asymmetric between same-backend and cross-backend.
-The contract below is lifted verbatim from
-[../../README.md → Cross-backend verification → Replay equity guarantees](../../README.md).
+This document owns the replay equity guarantee.
 
 **Same backend that wrote the transcript (same compiled binary, same hardware).**
 Equities are **bit-identical** to those the original search computed. The chain
@@ -309,8 +311,9 @@ of guarantees is:
    float-accumulation order.
 4. Identical float arithmetic on identical hardware produces identical bits.
 
-Tree persistence carries this property across moves because the inherited tree
-at move M is itself a deterministic function of moves 0..M-1.
+The current Haskell baseline carries this property across moves by rebuilding each
+per-move search from deterministic inputs; at move M, search state is a deterministic
+function of the seed and moves 0..M-1.
 
 **Different backend.** Equities are **not** bit-equal. Float accumulation order
 can differ subtly between GCC, `rustc`, and GHC-via-LLVM even under
@@ -328,9 +331,8 @@ Q3 `verify` compares (see
 
 ## Byte-Consumption Contract
 
-Byte-consumption order is itself part of the determinism contract per
-[../../README.md → Cross-backend verification → Byte-consumption order as
-contract](../../README.md). Every backend must:
+Byte-consumption order is itself part of the determinism contract. Every backend
+must:
 
 - Draw the **same number** of `u64` values from its RNG per rollout.
 - Use Haskell's signed-machine-`Int` modulo semantics for legal-move selection:
@@ -347,9 +349,8 @@ comparator surfaces the mismatch.
 
 ## Backprop Traversal Contract
 
-Backprop traversal order is also part of the determinism contract per
-[../../README.md → Cross-backend verification → Backprop traversal order as
-contract](../../README.md). All backends must:
+Backprop traversal order is also part of the determinism contract. All backends
+must:
 
 - Walk the path from the selected leaf to the root in the **same order**.
 - Apply visit-count increments at the **same logical step**.
@@ -403,8 +404,7 @@ UCT search path.
 ## Verify Mismatch Output
 
 When `mcts verify rollouts` or `mcts verify selfplay` finds a disagreement
-between two backends in the Q3 cohort, the output protocol is two-phase per
-[../../README.md → Cross-backend verification → Typical transcript sizes](../../README.md):
+between two backends in the Q3 cohort, the output protocol is two-phase:
 
 1. **Determinism-payload digest first.** Decode each backend-specific
    transcript file and compute the SHA-256 of a canonical byte projection over
@@ -456,33 +456,28 @@ a backend's own determinism has broken — different operational meaning,
 different downstream handling, different telemetry. Phase 3 Sprint 3.3
 (`src/MCTS/Engine/Recompute.hs`) owns the emission path.
 
-## Tree Persistence
+## Tree State Scope
 
-Visits persist across moves within a single game. When a move is played, the
-chosen child becomes the new root and its accumulated visits are kept; the rest
-of the tree is discarded incrementally. The next search starts warm. Tree
-persistence is per-game; in multi-threaded batches multiple per-game trees live
-concurrently in memory, each independent — there is never more than one thread
-touching a given tree.
+The current Haskell driver allocates a fresh `STUArray` arena for each per-move
+search. `treeReroot` exists and is unit-tested as an arena primitive, but
+across-move tree persistence is not implemented in the closed baseline. In
+multi-threaded batches, workers run independent games; there is never more than
+one thread touching a given per-move search arena.
 
-Trees are memory-resident only — nothing is serialised between runs. Tree state
-is losslessly recoverable: Monte Carlo draws are seeded deterministically, so
-any tree state is reproducible by replaying the seed and move sequence. This is
-what justifies keeping the tree in memory only.
+Trees are memory-resident only — nothing is serialised between runs. Search
+state is losslessly recoverable: Monte Carlo draws are seeded deterministically,
+so any per-move search result is reproducible by replaying the seed and move
+sequence. This is what justifies keeping tree state in memory only.
 
-Incremental truncation of the discarded subtree is a memory-management lever,
-not a correctness concern per
-[../../README.md → Tree persistence and determinism](../../README.md): the shape
-of the tree at any given moment is an optimisation; the visit counts it
-represents are reproducible from the seed and move sequence regardless of when
-or how aggressively the discarded subtree is freed.
+Across-move persistence is a performance option, not a correctness concern:
+the shape of the tree at any given moment is an optimisation; visit counts are
+reproducible from the seed and move sequence.
 
 ## Monotonic Clock Contract
 
 All cross-backend wall-clock comparisons in `mcts bench` and the report-card
 workload share a single monotonic clock: `GHC.Clock.getMonotonicTimeNSec`
-(nanosecond resolution). Per
-[../../README.md → Benchmarks](../../README.md):
+(nanosecond resolution).
 
 - The clock starts inside the Haskell driver **just before** the first game is
   dispatched into the worker pool.
@@ -502,8 +497,8 @@ own clock.
 
 Each individual game is single-threaded internally — one tree, one search, one
 rollout stream per game. The project never parallelises the search within a
-single game per [../../README.md → Threading](../../README.md): this is a
-non-negotiable architectural axis, not an implementation default. Multi-threading
+single game. This is a non-negotiable architectural axis, not an implementation
+default. Multi-threading
 is only ever about running independent games concurrently. The default
 `MultiThreaded 8` dispatches a batch of games across 8 workers; each worker plays
 one game at a time, single-threaded internally.
@@ -579,21 +574,26 @@ the determinism contract for the cohort and `verify` hard-fails with
 
 Differ across backends in a cohort *by design* — the whole point of
 cross-backend `verify` is to compare bit-equality between different
-binaries. These fields must match between a cached transcript and the
-*live* binary for the same backend slot. Mismatch on that axis (the
-stale-cache case) hard-fails with `AppError EngineEnvelopeMismatch
-(BackendSlot b) field expected got`.
+binaries. The substrate-affecting fields named below must match between a
+cached transcript and the *live* binary for the same backend slot. Mismatch on
+that axis (the stale-cache case) hard-fails with `AppError
+EngineEnvelopeMismatch (BackendSlot b) field expected got`.
 
 | Field | Width | Notes |
 |-------|-------|-------|
 | `engine_build_id` | 32 bytes | SHA-256 of the loaded backend shared library / executable. The identity of "this binary." |
 | `engine_git_commit` | 40 ASCII bytes | Project repo commit SHA at build time. Informational; does **not** gate `verify`. |
 | `compiler_id` | u8 | `0 = gcc`, `1 = clang`, `2 = rustc`, `3 = ghc`. |
-| `compiler_version` | `u8` `compiler_version_len` (≤63) + ASCII bytes (no NUL terminator) | E.g., `"13.2.0"`. Wire layout: see [transcript_format.md → Envelope Block](./transcript_format.md). |
+| `compiler_version` | `u8` `compiler_version_len` (≤63) + 63-byte ASCII/NUL-padded slot | E.g., `"13.2.0"`. Wire layout: see [transcript_format.md → Envelope Block](./transcript_format.md). |
 | `fp_flags` | u32 bitfield | One bit per FP-relevant compiler flag actually active at build time: `FP_FAST_MATH` (bit 0), `FP_FMA_ALLOWED` (bit 1), `FP_CONTRACT_ON` (bit 2), `FP_DENORMALS_ON` (bit 3), `FP_X87_USED` (bit 4). Remaining bits reserved, must be zero. The build harness derives these from the actual compiler invocation. |
-| `libm_id` | `u8` `libm_id_len` (≤63) + ASCII bytes (no NUL terminator) | `"glibc-2.39"`, `"musl-1.2.5"`, `"rust-libm-0.2.7"`, or empty (length 0) for a backend whose engine hot path makes no libm transcendental calls. Wire layout: see [transcript_format.md → Envelope Block](./transcript_format.md). |
+| `libm_id` | `u8` `libm_id_len` (≤63) + 63-byte ASCII/NUL-padded slot | `"glibc-2.39"`, `"musl-1.2.5"`, `"rust-libm-0.2.7"`, or empty (length 0) for a backend whose engine hot path makes no libm transcendental calls. Wire layout: see [transcript_format.md → Envelope Block](./transcript_format.md). |
 | `cpu_features` | u32 bitfield | CPU features the binary's runtime dispatch actually selected: `AVX2` (bit 0), `AVX512F` (bit 1), `BMI2` (bit 2), `FMA3` (bit 3), `NEON` (bit 4), `SVE` (bit 5). Remaining bits reserved. Captured at `new_engine` time via `__builtin_cpu_supports` (C++), `is_x86_feature_detected!` (Rust), or build-flag inspection (Haskell). |
 | `fp_env` | u8 | FP environment at engine-run time: rounding mode (bits 0-1: `0=RNE`, `1=RZ`, `2=RD`, `3=RU`), FTZ (bit 2), DAZ (bit 3). `0` = IEEE defaults. |
+
+The verifier gates on substrate-affecting backend-slot fields:
+`engine_build_id`, `compiler_id`, `compiler_version`, `fp_flags`, `libm_id`,
+`cpu_features`, and `fp_env`. The project-local display/cache `build_id`
+accessor and `engine_git_commit` remain provenance only.
 
 ### Wire Format
 
@@ -667,13 +667,15 @@ for the on-disk layout and the `.eq` wire format, and
 38](../../DEVELOPMENT_PLAN/00-overview.md) for the constraint pin.
 
 Current implementation baseline: `inspect show --with-equity` reads an
-envelope-matched originator sidecar before recomputing and writing a replacement,
-`inspect replay` fills a missing originator column
-before TUI startup and uses `r` to recompute/write the next missing backend
-column on demand, `inspect cache list` enumerates sidecar slots with originator /
-foreign / unknown markers, and `inspect cache prune --keep-current` retains
-the current logical `<backend>-logical` sidecar slots through a Plan/Apply deletion
-plan. Live-envelope
+envelope-matched originator sidecar before recomputing. Originator cache misses
+write replacements only through the same backend/build recompute path; stale,
+unavailable, fallback, or foreign recompute evidence is labelled as such and is
+not written as originator evidence. `inspect replay` fills a missing originator
+column before TUI startup only through the matching backend/build and uses `r`
+to recompute/write the next missing backend column on demand, `inspect cache
+list` enumerates sidecar slots with originator / foreign / unknown markers, and
+`inspect cache prune --keep-current` retains the current logical
+`<backend>-logical` sidecar slots through a Plan/Apply deletion plan. Live-envelope
 stamping and verify-time comparison are implemented for present cdylibs.
 `mcts-integration` also writes a recomputed `.eq` sidecar and consumes it through
 the real `mcts inspect divergence` subprocess. Sprint `7.5` also publishes the
@@ -682,7 +684,7 @@ bounded report-card divergence matrix through `mcts test all`.
 Baseline layered envelope verification exists in `MCTS.Verify.Envelope`: verify
 cohorts check `host_arch`, envelope version, `rng_source`,
 `shared_rng_build_id`, and `cohort_config_hash` at cohort level, compare each
-transcript's backend-slot fields against either the live
+transcript's gating backend-slot fields against either the live
 `mcts_<backend>_get_envelope()` payload or the in-process fallback, and honor
 `--allow-stale` only for backend-slot mismatches. The CLI parser stores default
 verify cohorts as `[VerifyBackend]`, so Q3 membership is enforced before dispatch.
@@ -719,7 +721,8 @@ active Phase 7 blocker.
 Current implementation baseline: `MCTS.Verify.Divergence.divergenceRate`
 computes visit and chosen-move disagreement rates for two decoded transcripts,
 and `MCTS.Verify.Divergence.divergenceVsEqStream` scores a transcript against a
-cached or recomputed `EqStream`, including `equity_l2_drift`. `MCTS.ReportCard`
+cached or recomputed chosen-action `EqStream`, including `equity_l2_drift`.
+`MCTS.ReportCard`
 renders the report-card divergence matrix in both table and JSON
 form from typed rows; `mcts test all` populates those rows from the measured
 `G_V = 4` self-play verify cohort after the Plan/Apply subprocess sequence
@@ -741,10 +744,10 @@ For a pair `(backend_A, backend_B)` against the same transcript
   ·]) ≠ argmax_action(visits_B[m, ·]))` / `count(moves)`. Zero under
   `--rng cpp` within the live cohort by contract; small (<0.1%) expected under
   `--rng native` or cross-build comparisons.
-- **`equity_l2_drift(A, B)`** = `‖equity_A − equity_B‖₂` over the
-  per-move-per-action equity vectors, normalised by vector length.
-  Always nonzero across backends (libm differences); meaningful when
-  bounded against the threshold table below.
+- **`equity_l2_drift(A, B)`** = root-mean-square drift over the sidecar's
+  per-move chosen-action equity series. Transcript wire data excludes equities,
+  so the current sidecar metric compares recomputed chosen-action values against
+  the transcript baseline rather than full per-action vectors.
 
 ### Thresholds
 

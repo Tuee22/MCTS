@@ -16,7 +16,7 @@ module MCTS.Search.UCT
 
 import Control.Monad.ST (ST, runST)
 import Data.Bits (xor)
-import Data.Int (Int32)
+import Data.Int (Int32, Int64)
 import Data.List (sortOn)
 import Data.STRef (newSTRef, readSTRef, writeSTRef)
 import Data.Word (Word32, Word64)
@@ -270,7 +270,7 @@ rollout = go 0
                         [] -> 0.0
                         moves ->
                             let n = length moves
-                                pick = fromIntegral (seed `xor` fromIntegral step) `mod` n
+                                pick = signedModulo (seed `xor` fromIntegral step) n
                                 action = chooseAction pick moves
                                 next = applyMove action board
                                 nextSeed = mix seed (fromIntegral step)
@@ -280,6 +280,13 @@ rollout = go 0
         case indexAt (max 0 (min (length moves - 1) idx)) moves of
             Just action -> action
             Nothing -> fallback
+
+    signedModulo :: Word64 -> Int -> Int
+    signedModulo draw n =
+        let signed = fromIntegral draw :: Int64
+            width = fromIntegral n :: Int64
+            remainder = signed `rem` width
+         in fromIntegral (if remainder < 0 then remainder + width else remainder)
 
 indexAt :: Int -> [a] -> Maybe a
 indexAt n _

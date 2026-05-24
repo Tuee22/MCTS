@@ -350,7 +350,6 @@ authoritative source, with `mcts lint files` refusing drift on paths such as:
 
 - `documents/cli/commands.md`
 - `share/man/man1/mcts.1`
-- `share/man/man1/mcts-*.1`
 - `share/completion/bash/mcts`
 - `share/completion/zsh/_mcts`
 - `share/completion/fish/mcts.fish`

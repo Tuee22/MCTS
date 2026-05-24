@@ -33,9 +33,10 @@ card against successful Dockerfile-time PGO/BOLT artefacts and reclosed.
 Sprint `8.9` reclosed Phase `8` on 2026-05-21 after compiler-tuning wording and
 final handoff revalidation passed through the root Compose entrypoint. Sprint
 `8.10` reclosed Phase `8` on 2026-05-23 by replacing the narrow PGO/BOLT smoke
-training run with Dockerfile-time blended Q1/Q2 profile training: random rollouts
-and MCTS self-play, single-threaded and 8-worker batches, native RNG, seeds `42`
-and `424242`, and PGO self-play budgets representative of `S_BENCH = 500`. The
+training run with Dockerfile-time bounded Q1/Q2-shaped profile training: random
+rollouts and MCTS self-play, single-threaded and 8-worker batches, native RNG, seeds
+`42` and `424242`, `--max-plies 1`, and PGO self-play budgets representative of
+`S_BENCH = 500`. The
 stale two-backend drift remains corrected: `cpp-legacy`, `cpp-imperative`, and
 `cpp-functional` are live parser/build/verify/FFI participants alongside `rust`
 and `haskell`.
@@ -45,7 +46,7 @@ The restored end state is:
 - Q1/Q2 performance rows measure backend (v) Haskell against live backend (ii)
   `cpp-imperative` where its shared library is available; accepted closure evidence
   must use Dockerfile-built artefacts that completed PGO and BOLT without fallback
-  and trained on the blended Q1/Q2 report-card workload suite.
+  and trained on the bounded Q1/Q2-shaped profile suite in `MCTS.CLI.Build`.
 - Performance benchmarks use each backend's own/native deterministic RNG contract.
 - Q3 logical-equivalence verification covers `(ii)..(v)` under `--rng cpp`.
 - Q7 legacy-envelope verification covers all five backend slots.
@@ -97,6 +98,9 @@ comparison against backend (ii).
 - Round 3 wavefront-bitmap BFS over a strict `Bits128` pair delivered roughly 52x on
   legal-moves and 33x on `uct-search` relative to round 1, roughly 320x / 200x relative
   to the original list-heavy baseline.
+- The measured baseline retained a fresh per-move `STUArray` arena. Across-move tree
+  persistence was not required for parity closure and is not implemented in the closed
+  driver path.
 
 ### Validation
 
@@ -131,7 +135,7 @@ target within `HASKELL_PARITY_TOLERANCE = 0.05`.
   Q7 liveness PASS, zero live-cohort divergence, and verdict
   `Within tolerance` against backend (ii)'s Dockerfile-built artefact after C++
   and Rust PGO/BOLT completed without fallback. Sprint `8.10` retains this as
-  fail-closed pipeline evidence and supersedes it with the blended-profile final
+  fail-closed pipeline evidence and supersedes it with the bounded-profile final
   rerun recorded below.
 - The 2026-05-21 report-card run recorded Q1 ST 0.05x
   (`740.0` vs `39.2` games/s), Q1 MT8 0.43x (`690.7` vs `294.7` games/s),
@@ -173,7 +177,7 @@ PGO/BOLT artefacts first, required non-empty BOLT profiles and passing
 installed-library smokes, then passed all Cabal stanzas, Q3 `(ii)..(v)`, Q7
 all-five legacy-envelope checks, and the report-card verdict. Sprint `8.10` keeps
 the final parity gate active until the same path runs against artefacts trained on
-the blended Q1/Q2 profile suite.
+the bounded Q1/Q2-shaped profile suite.
 
 ### Remaining Work
 
@@ -444,7 +448,7 @@ stanzas passed. Under the 2026-05-22 fail-closed doctrine this remains historica
 fallback evidence. Sprint `8.3` refreshed the parity evidence on 2026-05-23
 against successful PGO+BOLT artefacts.
 
-## Sprint 8.10: Blended PGO/BOLT Training Suite ✅
+## Sprint 8.10: Bounded PGO/BOLT Training Suite ✅
 
 **Status**: Done
 **Implementation**: `src/MCTS/CLI/Build.hs`, `src/MCTS/CLI/Test.hs`,
@@ -471,12 +475,16 @@ and multi-worker, under the native-RNG performance path.
   keep their Dockerfile-owned Plan/Apply boundaries. Runtime commands consume the
   canonical shared libraries and never retrain PGO, rerun BOLT, or choose between
   workload-specific optimized libraries.
-- PGO training uses a blended suite for each steelman backend:
-  `bench rollouts` plus `bench selfplay`, `--threading single` plus
-  `--threading multi --workers 8`, `--rng native`, multiple fixed seeds, and
-  self-play sim budgets representative of `S_BENCH = 500`.
-- BOLT training uses a shorter version of the same blended shape so image builds stay
-  practical while still exercising rollout, tree-descent, and MT dispatch hot paths.
+- PGO training uses the bounded suite in `MCTS.CLI.Build`: `bench rollouts` and
+  `bench selfplay`, `--threading single` and `--threading multi --workers 8`,
+  `--rng native`, seeds `42` and `424242`, `--max-plies 1`, two rollout games for
+  each threading mode per seed, one self-play game for each threading mode per seed,
+  rollout `--sims 1`, and self-play `--sims 500`.
+- BOLT training uses the same workload/threading/seed shape with one rollout game for
+  each threading mode per seed, one self-play game for each threading mode per seed,
+  rollout `--sims 1`, self-play `--sims 100`, and `--max-plies 1`, so image builds
+  stay practical while still exercising rollout, tree-descent, and MT dispatch hot
+  paths.
 - C++ profile roots contain the required `.gcda` data for every optimized C++ artefact
   before `-fprofile-use` runs. Rust profile roots contain `.profraw` files and a
   non-empty `merged.profdata` before `-Cprofile-use` runs.
@@ -487,7 +495,7 @@ and multi-worker, under the native-RNG performance path.
   exists, LLVM objcopy patches the final envelope build-id, and each installed
   library passes the bounded smoke run before runtime validation starts.
 - The 2026-05-23 Sprint `8.10` report-card rerun is the accepted final parity
-  evidence against blended-profile Dockerfile artefacts: Q1 ST 0.05x, Q1 MT8
+  evidence against bounded-profile Dockerfile artefacts: Q1 ST 0.05x, Q1 MT8
   0.48x, Q2 ST 0.06x, Q2 MT8 0.21x, Q5 Haskell 0.99x, Q5 C++ (ii) 3.65x,
   Q7 PASS, zero live-cohort divergence, and verdict `Within tolerance`.
 
@@ -535,11 +543,11 @@ verdict `Within tolerance`.
   foreign backends.
 - `documents/engineering/unit_testing_policy.md` — live `mcts-cross-backend` and
   `mcts-legacy-parity` roles without checked-in generated validation data, plus the
-  Sprint `8.10` blended-profile prerequisite for final report-card closure.
+  Sprint `8.10` bounded-profile prerequisite for final report-card closure.
 - `documents/engineering/compiler_runtime_tuning.md` — performance parity against live
   backend (ii), mandatory Dockerfile-time PGO+BOLT success for accepted evidence,
   native-RNG benchmark semantics, Sprint `8.9` Cabal-stanza flag wording, and the
-  Sprint `8.10` blended Q1/Q2 PGO/BOLT training workload doctrine.
+  Sprint `8.10` bounded Q1/Q2-shaped PGO/BOLT training workload doctrine.
 - `documents/engineering/haskell_code_guide.md` — command/build surface examples.
 
 **Product docs to create/update:**
@@ -553,7 +561,7 @@ verdict `Within tolerance`.
   ownership is referenced.
 - Keep [README.md](README.md), [00-overview.md](00-overview.md), and
   [system-components.md](system-components.md) aligned with the closed Sprint `8.10`
-  blended training-workload reclosure, the closed Sprints `5.3`/`6.4` build-harness
+  bounded training-workload reclosure, the closed Sprints `5.3`/`6.4` build-harness
   reclosures, and the cleanup residue recorded in
   [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md).
 

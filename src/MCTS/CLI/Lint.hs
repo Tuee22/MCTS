@@ -14,16 +14,25 @@ import MCTS.CLI.Output (outputLine, renderErrorString)
 import qualified MCTS.Env as Env
 import MCTS.Generated.Paths (generatedFiles)
 import MCTS.Subprocess (Subprocess (..), runStreaming)
-import System.Directory (doesDirectoryExist, doesFileExist, listDirectory)
+import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
 import System.Exit (ExitCode (..))
-import System.FilePath ((</>))
+import System.FilePath (takeDirectory, (</>))
 
 runLint :: LintCommand -> Env.App ExitCode
 runLint command =
     case command of
-        LintFiles _ -> report "files" =<< liftIO lintFiles
-        LintDocs _ -> runDocs DocsCheck
-        LintHaskell _ -> runStyleStanza
+        LintFiles write -> do
+            if write then liftIO fixLintFiles else pure ()
+            report "files" =<< liftIO lintFiles
+        LintDocs write ->
+            if write
+                then do
+                    code <- runDocs (DocsGenerate False Nothing)
+                    if code == ExitSuccess then runDocs DocsCheck else pure code
+                else runDocs DocsCheck
+        LintHaskell write -> do
+            code <- if write then runStyleWrite else pure ExitSuccess
+            if code == ExitSuccess then runStyleStanza else pure code
         LintAll -> do
             a <- runLint (LintFiles False)
             b <- runLint (LintDocs False)
@@ -43,6 +52,29 @@ runStyleStanza = do
         Right _ -> liftIO (outputLine "haskell lint PASS") >> pure ExitSuccess
         Left err -> liftIO (outputLine (renderErrorString (Env.envOutputOptions env) err)) >> pure (ExitFailure 1)
 
+runStyleWrite :: Env.App ExitCode
+runStyleWrite = do
+    env <- Env.askEnv
+    formatCode <-
+        liftIO
+            ( runStreaming
+                ( Subprocess
+                    "/opt/mcts-style-tools/bin/fourmolu"
+                    ["--mode", "inplace", "app", "src", "test"]
+                    Nothing
+                    Nothing
+                )
+            )
+    case formatCode of
+        Left err -> liftIO (outputLine (renderErrorString (Env.envOutputOptions env) err)) >> pure (ExitFailure 1)
+        Right code
+            | code /= ExitSuccess -> pure code
+            | otherwise -> do
+                cabalCode <- liftIO (runStreaming (Subprocess "cabal" ["format", "mcts.cabal"] Nothing Nothing))
+                case cabalCode of
+                    Left err -> liftIO (outputLine (renderErrorString (Env.envOutputOptions env) err)) >> pure (ExitFailure 1)
+                    Right code' -> pure code'
+
 maxExitCode :: [ExitCode] -> ExitCode
 maxExitCode codes =
     if all (== ExitSuccess) codes
@@ -56,6 +88,31 @@ lintFiles = do
     trailing <- fmap concat (mapM trailingProblems files)
     generated <- generatedDriftProblems
     pure (map ("forbidden path exists: " <>) forbidden <> trailing <> generated)
+
+fixLintFiles :: IO ()
+fixLintFiles = do
+    files <- walk "."
+    mapM_ fixTrailingFile files
+    mapM_ writeGeneratedFile generatedFiles
+
+fixTrailingFile :: FilePath -> IO ()
+fixTrailingFile path = do
+    content <- readFile path
+    let fixed =
+            if null content
+                then content
+                else unlines (map stripTrailing (lines content))
+    if fixed == content then pure () else writeFile path fixed
+
+stripTrailing :: String -> String
+stripTrailing = reverse . dropWhile isTrailingSpace . reverse
+  where
+    isTrailingSpace ch = ch == ' ' || ch == '\t'
+
+writeGeneratedFile :: (FilePath, String) -> IO ()
+writeGeneratedFile (path, rendered) = do
+    createDirectoryIfMissing True (takeDirectory path)
+    writeFile path rendered
 
 -- | A doctrine-forbidden path. Each entry records why it's forbidden so
 -- a future operator-facing error message can cite the rationale rather

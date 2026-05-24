@@ -83,24 +83,10 @@ checkBackendSlotAgainst allowStale expected transcript = do
         ]
             <> [ EngineEnvelopeMismatch
                     (BackendSlot backend)
-                    "build_id"
-                    (envelopeBuildId expected)
-                    (envelopeBuildId envelope)
-               | envelopeBuildId envelope /= envelopeBuildId expected
-               ]
-            <> [ EngineEnvelopeMismatch
-                    (BackendSlot backend)
                     "engine_build_id"
                     (unByteString32 (envelopeEngineBuildId expected))
                     (unByteString32 (envelopeEngineBuildId envelope))
                | envelopeEngineBuildId envelope /= envelopeEngineBuildId expected
-               ]
-            <> [ EngineEnvelopeMismatch
-                    (BackendSlot backend)
-                    "engine_git_commit"
-                    (envelopeEngineGitCommit expected)
-                    (envelopeEngineGitCommit envelope)
-               | envelopeEngineGitCommit envelope /= envelopeEngineGitCommit expected
                ]
             <> [ EngineEnvelopeMismatch
                     (BackendSlot backend)

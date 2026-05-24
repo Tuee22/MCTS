@@ -72,7 +72,7 @@ records of `(action_id, visits)` sorted ascending by action ID, equity excluded.
   - `209..254` reserved
   - `255` sentinel / invalid
 - `src/MCTS/Transcript.hs` carries the header layout per
-  [../README.md → Cross-backend verification → Transcript wire format](../README.md).
+  [../documents/engineering/transcript_format.md → Header](../documents/engineering/transcript_format.md).
   Little-endian, no padding, fixed-width fields in this exact order:
   - `magic u32 = "MCTR"` — ASCII bytes `0x4D 0x43 0x54 0x52`.
   - `version u16` — wire-format version; v1 in this sprint.
@@ -113,7 +113,7 @@ records of `(action_id, visits)` sorted ascending by action ID, equity excluded.
   - Terminator: `0xFFFF u16 | winner u8 | total_moves u16`, with
     `winner ∈ {0 = hero, 1 = villain, 2 = draw}`. `winner = 2` (draw) is invalid for
     `backend = cpp-legacy` transcripts (backend (i) has no draw rule per
-    [../README.md → Draw rule](../README.md)); the decoder rejects this combination
+    [../documents/engineering/determinism_contract.md → Backend (i)](../documents/engineering/determinism_contract.md)); the decoder rejects this combination
     with `AppError TranscriptFormatUnsupported`.
 - `src/MCTS/Transcript/Codec.hs` exposes pure `encode` and `decode` functions
   satisfying the canonical property invariant `decode . encode == id` per
@@ -144,10 +144,11 @@ records of `(action_id, visits)` sorted ascending by action ID, equity excluded.
   one-game `runGameIndex` from the body `game_id` for `decode . encode`
   roundtrips in the hand-rolled unit suite. `encodeRecord` now
   emits the per-move `(action, visits)` list sorted ascending by `action_id`
-  per [../README.md → Cross-backend verification → Transcript wire
-  format](../README.md), and `decodeTranscript` rejects `cpp-legacy` transcripts
-  that carry a `Draw` winner (`AppError TranscriptFormatUnsupported`) per
-  [../README.md → Draw rule](../README.md). Sprint `8.8` removed the former
+  per [../documents/engineering/transcript_format.md → Per-Game Body](../documents/engineering/transcript_format.md),
+  and `decodeTranscript` rejects `cpp-legacy` transcripts that carry a `Draw`
+  winner (`AppError TranscriptFormatUnsupported`) per
+  [../documents/engineering/determinism_contract.md → Backend (i)](../documents/engineering/determinism_contract.md).
+  Sprint `8.8` removed the former
   checked-in byte-golden fixtures for representative transcripts and replaced
   them with in-memory byte-layout and determinism-payload assertions so host
   architecture differences cannot make the clean-clone suite flaky.
@@ -194,8 +195,9 @@ the `.gitignore` entry that keeps the cache out of version control.
      container
   The `mcts` binary does not read a cache-root environment variable.
 - On-disk layout under the cache root: `transcripts/<arch>/<sha>.tr`, where
-  `<arch>` is `amd64` or `arm64` per [../README.md → Architecture
-  envelope](../README.md). The full sha is the hex-encoded `sha256` digest.
+  `<arch>` is `amd64` or `arm64` per
+  [../documents/engineering/determinism_contract.md → Architecture Envelope](../documents/engineering/determinism_contract.md).
+  The full sha is the hex-encoded `sha256` digest.
 - `.gitignore` excludes `.mcts-cache/` when the cache resolves inside the project
   tree.
 
@@ -316,12 +318,12 @@ Sprint 7.4.
     by mtime descending. Honours `--format json|table|plain`.
   - `mcts inspect show <hash-prefix>` resolves the prefix via Sprint 2.3, decodes
     the transcript, prints the header summary followed by per-move records in the
-    legacy notation per the project [README](../README.md). Default `--top 10`;
+    legacy notation. Default `--top 10`;
     `--top 0` shows all legal moves.
   - **`--with-equity` column.** When `--with-equity` is set, the per-move record
     renderer emits an `equity=<float>` column on every line per
-    [../README.md → Interactive modes → `inspect show <hash-prefix>`](../README.md)
-    (README lines 538–540). The equity values are produced by the same pure
+    [../documents/engineering/cli_command_surface.md → Replay and Equity Semantics](../documents/engineering/cli_command_surface.md).
+    The equity values are produced by the same pure
     rendering function that the `inspect replay` TUI's context panel uses
     (Sprint 7.4), so the two surfaces stay aligned. The recompute path itself
     (re-running the deterministic search to populate the equity values) lands
@@ -391,7 +393,7 @@ consumer is wired in Phase 4 once the FFI bridge exists.
   [00-overview.md → Hard Constraints item 4](00-overview.md). The game-index
   argument is `Word64` to match the C ABI's `cpp_rng_split(uint64_t master_seed,
   uint64_t game_index)` from
-  [../README.md → Cross-backend verification → RNG FFI contract](../README.md);
+  [../documents/engineering/backend_ffi_contract.md → `--rng cpp` Plumbing](../documents/engineering/backend_ffi_contract.md);
   callers that hold a `Word32` wire-format `runConfigGameIndex` widen with
   `fromIntegral` at the call site. Tests pin the mixer output for a known
   `(master_seed, game_index)` pair to a known `Word64`.
@@ -520,8 +522,10 @@ layered cohort-invariant vs per-backend-slot semantics.
   cohort-level checks now compare `rng_source`, `shared_rng_build_id`,
   and `cohort_config_hash` (in addition to `host_arch` and
   `envelope_version`); backend-slot checks now compare `engine_build_id`,
-  `compiler_id`, `fp_flags`, `cpu_features`, and `fp_env` (in addition to
-  `backend` and the convenience `build_id`).
+  `compiler_id`, `compiler_version`, `fp_flags`, `libm_id`,
+  `cpu_features`, and `fp_env` (in addition to `backend`). The display/cache
+  `build_id` accessor and `engine_git_commit` are provenance only and do not
+  gate stale-envelope verification.
 - The current suite uses generated in-memory layout assertions and property
   coverage for this envelope shape.
 - Keep `envelope_byte_length` forward-compatible: the current decoder tolerates
@@ -709,6 +713,52 @@ strict, current, and impossible to mislabel.
   `docker compose run --rm mcts mcts check-code`, and `git diff --check` passed.
 - Sprint `7.6` retains the CLI replay/divergence evidence-label validation on top of
   this corrected transcript/sidecar identity contract.
+
+## Sprint 2.9: Transcript and Envelope Doctrine Realignment ✅
+
+**Status**: Done
+**Implementation**: `src/MCTS/Types.hs`, `src/MCTS/Verify/Envelope.hs`,
+`test/unit/Main.hs`
+**Docs to update**: `documents/engineering/transcript_format.md`,
+`documents/engineering/determinism_contract.md`,
+`documents/engineering/cli_command_surface.md`,
+`documents/engineering/unit_testing_policy.md`, `DEVELOPMENT_PLAN/README.md`,
+`DEVELOPMENT_PLAN/00-overview.md`, `DEVELOPMENT_PLAN/system-components.md`,
+`DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md`
+
+### Objective
+
+Make the transcript envelope documentation, verifier gates, and cache identity
+language match the implemented v1 codec and the current verification goal.
+
+### Deliverables
+
+- The v1 envelope wire docs pin the fixed 63-byte `compiler_version` and `libm_id`
+  slots, their length bytes, field offsets, and the 282-byte fixed envelope block.
+- Backend-slot stale checks compare only fields that can affect substrate behavior:
+  `backend`, `engine_build_id`, `compiler_id`, `compiler_version`, `fp_flags`,
+  `libm_id`, `cpu_features`, and `fp_env`.
+- `engine_git_commit` and the display/cache `build_id` accessor are provenance only;
+  unit coverage proves changing only those fields does not fail stale-envelope checks.
+- Determinism docs describe canonical visit-payload comparison, chosen-action equity
+  streams, and the current `equity_l2_drift` metric without claiming unavailable
+  per-action equity-vector proof.
+
+### Validation
+
+- `docker compose run --rm mcts mcts test mcts-unit`
+- `docker compose run --rm mcts mcts docs check`
+- `docker compose run --rm mcts mcts check-code`
+- `git diff --check`
+
+### Remaining Work
+
+None.
+
+### Closure Notes
+
+Closed on 2026-05-24 after the envelope gate, wire-format docs, and unit coverage
+were brought back into agreement.
 
 ## Documentation Requirements
 

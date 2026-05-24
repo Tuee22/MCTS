@@ -63,9 +63,12 @@ through the single `renderError :: AppError -> Text` boundary.
 ## Lint Stack
 
 `mcts lint files`, `mcts lint docs`, `mcts lint haskell`, and the aggregate
-`mcts lint all` are implemented under `src/MCTS/CLI/Lint.hs`. Each subcommand accepts
-`--write` to apply auto-fixes where applicable per the doctrine's paired check/write
-discipline.
+`mcts lint all` are implemented under `src/MCTS/CLI/Lint.hs`. The leaf subcommands
+accept `--write` for fixable drift: file lint trims trailing whitespace, restores
+final newlines, and rewrites fully generated paths; docs lint runs the generated-doc
+writer before rechecking; Haskell lint runs the pinned Fourmolu inplace formatter and
+`cabal format` before re-running the style stanza. Non-fixable findings such as
+forbidden paths and HLint hard errors remain failures.
 
 ### Forbidden Paths
 
@@ -143,8 +146,7 @@ The hard Haskell style gate combines `.hlint.yaml` with the
 ### HLint Invocation
 
 The `mcts-haskell-style` Cabal stanza invokes `hlint` with the exact flag pair
-pinned by [../../README.md → `mcts test all` → Test-suite
-stanzas](../../README.md):
+pinned by [unit_testing_policy.md → Test Stanza Layout](./unit_testing_policy.md):
 
 ```bash
 # Example: hlint invocation pinned by mcts-haskell-style

@@ -41,7 +41,7 @@ only project-specific elaborations. The four project-specific docs
 | [determinism_contract.md](./determinism_contract.md) | RNG split, per-game `splitmix64(master_seed, game_index)` seed derivation, ply-cap draw rule, visit-count vs equity asymmetry, legacy parity envelope |
 | [transcript_format.md](./transcript_format.md) | Little-endian binary wire format, single-byte action enumeration, content addressing, git-style hash-prefix lookup |
 | [backend_ffi_contract.md](./backend_ffi_contract.md) | C ABI shape across the live C-ABI backends, `unsafe`/`safe` import policy, `--rng cpp` plumbing, canonical FFI load names, and the one-bolted-library-per-backend runtime contract |
-| [compiler_runtime_tuning.md](./compiler_runtime_tuning.md) | Per-backend tuning stack: legacy (i) exemption, (ii)/(iii) doctrine flag set, mandatory Dockerfile-time blended PGO/BOLT success for steelman foreign backends, (iv) Rust `[profile.release]`, (v) Haskell GHC/LLVM/RTS tuning, Haskell PGO asymmetry note |
+| [compiler_runtime_tuning.md](./compiler_runtime_tuning.md) | Per-backend tuning stack: legacy (i) exemption, (ii)/(iii) doctrine flag set, mandatory Dockerfile-time bounded PGO/BOLT success for steelman foreign backends, (iv) Rust `[profile.release]`, (v) Haskell GHC/LLVM/RTS tuning, Haskell PGO asymmetry note |
 
 ## Quick Navigation
 

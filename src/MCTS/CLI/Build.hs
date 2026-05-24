@@ -168,12 +168,12 @@ legacyFixturePlan options =
 -- per the backend (ii)/(iii) steelman build sprints:
 --
 --   1. PGO-instrumented bench + instrumented artefacts.
---   2. Blended PGO training suite under `--rng native` writes
+--   2. Bounded PGO training suite under `--rng native` writes
 --      `<backend>/pgo-profile/*.gcda`.
 --   3. PGO-optimized rebuild of both artefacts with `-fprofile-use`.
 --   4. BOLT instrument pass for both artefacts (writes
 --      `<backend>/bolt-profile/*.fdata`).
---   5. Short blended BOLT training suite produces the BOLT profile data.
+--   5. Short bounded BOLT training suite produces the BOLT profile data.
 --   6. BOLT optimize pass produces `*_bench.bolted.so` and
 --      `*_instrumented.bolted.so`.
 --   7. Install: rename `_bench.bolted.so` to the canonical FFI load

@@ -54,22 +54,25 @@ The MCTS commands that consume the `Plan / Apply` pattern are:
 
 - `mcts test all` — Plan/Apply over the five live Cabal stanzas plus the report-card
   workload, consuming Dockerfile-built backend artefacts (Phase 7 Sprint 7.3).
+- `mcts test parity-anchor` — focused Plan/Apply over explicit backend-pair Q1/Q2
+  parity-anchor measurement.
 - `mcts build cpp-legacy`, `mcts build cpp-imperative`, and
   `mcts build cpp-functional` — Dockerfile-invoked Plan/Apply recipes for the C++
   backend build leaves. The steelman C++ leaves drive the shared PGO/BOLT target
   sequence and install the canonical shared libraries only after PGO and BOLT both
-  produce their required profile data from the blended Q1/Q2 report-card training
-  suite. Runtime validation does not rebuild them, and PGO-only/unoptimized fallback
+  produce their required profile data from the bounded Q1/Q2-shaped training suite.
+  Runtime validation does not rebuild them, and PGO-only/unoptimized fallback
   installs are forbidden.
 - `mcts build rust` — Plan/Apply over
   the Dockerfile-invoked foreign backend two-stage PGO + BOLT post-link +
   system `mimalloc` link pipeline, including the final installed-cdylib smoke and
-  the same blended training workload as the steelman C++ backends.
+  the same bounded Q1/Q2-shaped training workload as the steelman C++ backends.
 - `mcts build legacy-fixtures` — Plan/Apply over the backend (i) optional external
   evidence generator. Its outputs belong in ignored/external artifact roots, not in
   normal test inputs.
 - `mcts docs generate` — internally Plan/Apply over the rendered marker
   substitutions and the `trackingGeneratedPaths` writes (Phase 1 Sprint 1.3).
+- `mcts inspect cache prune` — Plan/Apply over equity-sidecar deletion plans.
 
 Host invocations wrap these logical commands as
 `docker compose run --rm mcts mcts <command>`.
@@ -124,8 +127,8 @@ through `renderError`.
 ### `AppError` and `renderError`
 
 The single `AppError` ADT (Phase 1 Sprint 1.9) declares the canonical 19-variant
-set. The set matches
-[../../README.md → Output and error discipline](../../README.md) exactly;
+set. The rendering boundary is governed by
+[code_quality.md → Output Boundary](./code_quality.md#output-boundary);
 `SubprocessFailed`, `FFIFailure`, `DocsCheckDrift`, and
 `EngineEnvelopeMismatch` are the MCTS-specific failure surfaces named
 alongside the user-facing variants:
@@ -234,13 +237,13 @@ list, `readMaybe` from `Text.Read` for parses, a local total helper returning
 calls are permitted only for impossible hot-path invariants in the Haskell
 engine, where changing the inner-loop type to carry `AppError` would alter the
 measured surface. The hot inner loops of the Haskell engine (see
-[../../README.md → Backend (v) — Haskell](../../README.md)) use unboxed mutable
+[compiler_runtime_tuning.md → Backend (v) — Haskell](./compiler_runtime_tuning.md#backend-v--haskell)) use unboxed mutable
 arrays inside `ST s`, so the forbidden partial-function set on lists rarely
 shows up in the engine itself — but it bites in the CLI, transcript, and FFI
 marshalling layers, which is exactly where determinism damage would propagate
 the furthest.
 
-### Smart Constructors for Bounded Domain Types
+### Bounded Domain Conversion
 
 The transcript wire format and the determinism contract pin two
 range-bounded domains the type system can make unrepresentable when
@@ -252,60 +255,38 @@ violated:
   not admitted by the `Action` domain. See
   [transcript_format.md → Action Enumeration](./transcript_format.md) for
   the layout the wire format pins and
-  [../../README.md → Cross-backend verification](../../README.md) for the
-  contract.
+  [determinism_contract.md → Move Generation and Tie-Breaking](./determinism_contract.md)
+  for the contract.
 - **Ply counter** (`Word16` per board state). Valid: `0..max_plies`
   (default `200`; pinned at `MAX_ROLLOUT_ITERS = 10000` for the
   legacy-parity envelope). See
-  [../../README.md → Draw rule](../../README.md) and
   [determinism_contract.md → Ply-Cap Draw Rule](./determinism_contract.md).
 
-The canonical pattern is a newtype with a smart constructor that returns
-`Either AppError`, the data constructor hidden from the module's exports,
-and a paired raw accessor for the inverse direction:
+The current `Action` domain is implemented as the algebraic type exported from
+`MCTS.Types`:
 
 ```haskell
--- Example: newtype + smart-constructor + raw-accessor pattern
--- | Single-byte action identifier per the transcript wire format.
---   Valid: 0..208 ∪ {255}.  209..254 reserved (must be rejected on decode).
-newtype ActionId = ActionId Word8
-  deriving stock (Eq, Ord, Show)
-  -- ^ Data constructor NOT exported from MCTS.Action.
+-- File: src/MCTS/Types.hs
+data Action
+    = Pawn !Int !Int
+    | WallH !Int !Int
+    | WallV !Int !Int
 
-mkActionId :: Word8 -> Either AppError ActionId
-mkActionId w
-  | w <= 208 || w == 255 = Right (ActionId w)
-  | otherwise            = Left (TranscriptFormatUnsupported ...)
-
-unActionId :: ActionId -> Word8
-unActionId (ActionId w) = w
-
--- | Game-state ply counter bounded by the run configuration's max_plies.
-newtype Ply = Ply Word16
-  deriving stock (Eq, Ord, Show)
-
-mkPly :: Word16 -> Word16 -> Either AppError Ply
-mkPly maxPlies w
-  | w <= maxPlies = Right (Ply w)
-  | otherwise     = Left (LegacyParityRolloutOverflow ...)
+actionId :: Action -> Word8
+actionFromId :: Word8 -> Maybe Action
 ```
 
-Two consequences worth pinning:
+The conversion boundary is therefore `actionFromId`: readers accept only
+`0..208`, reject `209..254`, and treat `255` as sentinel-only in the specific
+terminator contexts that admit it. Writers emit bytes only through `actionId`.
+The Phase 2 `decode . encode == id` property holds on the valid action subset
+because the decoder cannot construct an `Action` from a reserved byte.
 
-1. **Phase 2's `decode . encode == id` property holds vacuously on the
-   valid-range subset.** Decoding constructs `ActionId` via the smart
-   constructor; the only `Word8` values the decoder will accept are exactly
-   the ones the encoder emits, so the QuickCheck generator over
-   `Word8 \ {209..254}` round-trips without further axioms.
-2. **The reserved range and the sentinel are encoded once.** Every reader
-   of the format reuses the smart constructor; there is no second copy of
-   the predicate to drift.
-
-The same pattern applies to other bounded scalars introduced later (sim
-budgets enforced positive, worker counts enforced `>= 1`, etc.). New
-bounded domains land alongside their smart constructor — adding the raw
-type without the constructor and validating ad-hoc at call sites is
-forbidden by review.
+New bounded scalar domains should use the tighter smart-constructor pattern
+when the raw representation is otherwise easy to misuse. Existing public
+domains may keep their current algebraic shape, but all raw wire/FFI inputs
+must still pass through one named conversion function rather than ad hoc range
+checks at call sites.
 
 ## Stack Deviations from Doctrine
 
@@ -332,10 +313,10 @@ Two recorded deviations from
 
 ## Doctrine Out of Scope
 
-[../../README.md → Doctrine scope](../../README.md) marks the following
-sections of `HASKELL_CLI_TOOL.md` as informational only — not binding on this
-project. Each is read as background context; none imposes obligations on the
-code:
+[../../DEVELOPMENT_PLAN/00-overview.md → Doctrine Scope](../../DEVELOPMENT_PLAN/00-overview.md#doctrine-scope)
+marks the following sections of `HASKELL_CLI_TOOL.md` as informational only —
+not binding on this project. Each is read as background context; none imposes
+obligations on the code:
 
 - **Long-Running Daemons in the Same Binary** (the CLI is short-running only;
   this also covers the daemon-internal "Configuration: Dhall file with
@@ -349,8 +330,8 @@ code:
 - **Pulumi-Orchestrated Infrastructure Tests** (no cloud surface).
 
 Adding new code that invokes any of these patterns is a doctrine-scope change
-and requires updating
-[../../README.md → Doctrine scope](../../README.md) first.
+and requires updating [../../DEVELOPMENT_PLAN/00-overview.md](../../DEVELOPMENT_PLAN/00-overview.md)
+first.
 
 ## Editor / IDE Setup
 
@@ -380,7 +361,7 @@ backend-build workflow.
 
 Adding any other host-side build pathway is a doctrine change and requires
 updating the root operator/agent guidance and
-[../../README.md → Build and run](../../README.md).
+[README.md → Supported Workflow](../../README.md#supported-workflow).
 
 ## Cross-References
 

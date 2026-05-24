@@ -10,7 +10,7 @@
 **Generated sections**: none
 
 > **Purpose**: Stand up the Haskell CLI binary, the `CommandSpec` registry that
-> generates every parser-and-doc artefact, the typed effect boundary
+> drives command topology and generated CLI artefacts, the typed effect boundary
 > (`Subprocess` / `Plan` / `prerequisiteRegistry` / `Env` / `AppError`), the output
 > discipline, the lint stack, and the `mcts-haskell-style` test stanza, so every later
 > phase plugs new subcommands into a stable typed scaffold.
@@ -32,10 +32,12 @@ doctrine surface.
 ## Phase Summary
 
 Phase `1` establishes the Haskell CLI surface as the single execution surface for the
-project. The `mcts` binary is the only operator-facing entry point; the parser is
-generated from a separate `CommandSpec` registry that also feeds the markdown command
-reference, the manpages, the shell completion scripts, the JSON command schema, and the
-command tree rendering. The phase adopts every in-scope doctrine surface — `CommandSpec`
+project. The `mcts` binary is the only operator-facing entry point; `CommandSpec`
+is the registry for command topology, command-tree rendering, examples, generated
+markdown command reference, manpage command list, shell-completion metadata, and JSON
+command schema. `Parser.hs` renders the top-level/subcommand topology from that
+registry while retaining explicit semantic parsers for leaf options. The phase adopts
+every in-scope doctrine surface — `CommandSpec`
 + Generated Artifacts, Progressive Introspection, `Subprocess` as typed values,
 `Plan / Apply`, `prerequisiteRegistry`, `ReaderT Env IO`, the single `AppError` ADT with
 `renderError` boundary, Output Rules, Library-first layout, Toolchain pinning — and
@@ -152,8 +154,9 @@ None.
 
 ### Objective
 
-Make the `CommandSpec` registry the source of truth and reduce the parser to a renderer
-of it. Add progressive introspection (`mcts commands`, `mcts help`).
+Make the `CommandSpec` registry the source of truth for command topology, generated
+command artefacts, and progressive introspection (`mcts commands`, `mcts help`) while
+keeping leaf option parsing explicit in `Parser.hs`.
 
 ### Deliverables
 
@@ -260,7 +263,7 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
     VRust          :: VerifyBackend
     VHaskell       :: VerifyBackend
     -- (i) excluded at the type level per
-    -- [../README.md → Cross-backend verification](../README.md)
+    -- [../documents/engineering/determinism_contract.md → Cross-Backend Determinism (Q3)](../documents/engineering/determinism_contract.md)
     -- and [00-overview.md → Hard Constraints item 7](00-overview.md).
 
   data RngSource  = NativeRng | CppRng
@@ -336,17 +339,18 @@ of it. Add progressive introspection (`mcts commands`, `mcts help`).
   the top-level `Command` constructor `Test TestCommand` above is the Phase 1
   registry/parser obligation.
 
-- `src/MCTS/CLI/Parser.hs` generates the `optparse-applicative` `Parser` from the
-  `CommandSpec` registry. The parser is **not** the source of truth.
+- `src/MCTS/CLI/Parser.hs` renders the `optparse-applicative` command topology from
+  the `CommandSpec` registry. The parser module keeps explicit leaf option parsers but
+  does not own a competing command tree.
 - `mcts commands` (flat), `mcts commands --tree`, `mcts commands --json`, and
   `mcts help <subcommand>` are wired per
   [../HASKELL_CLI_TOOL.md → Progressive Introspection](../HASKELL_CLI_TOOL.md). The
   `--json` form is the externally-stable schema for downstream tooling.
 - `src/MCTS/CLI/Tree.hs` and `src/MCTS/CLI/Json.hs` carry the renderers; both share
   the same `CommandSpec` value as input.
-- The twelve worked invocations in
-  [../README.md → CLI command topology → Concrete invocations](../README.md)
-  are bound to the registry as seed `Example` entries on the
+- The worked invocations in the generated
+  [../documents/cli/commands.md](../documents/cli/commands.md) reference are bound
+  to the registry as seed `Example` entries on the
   corresponding `CommandSpec` leaves so the `mcts <subcommand> --help` text, the
   `documents/cli/commands.md` rendering, and the `mcts commands --json` schema
   all carry them. Sprint 7.1's `mcts-unit` semantic renderer assertions over
@@ -498,7 +502,7 @@ text-artefact derived from the `CommandSpec` registry.
   by `<!-- mcts:command-matrix:start -->` /
   `<!-- mcts:command-matrix:end -->`, declares
   `**Generated sections**: command-matrix`, and is rendered from the same
-  `CommandSpec` registry that drives parser and generated CLI artefacts.
+  `CommandSpec` registry that drives parser topology and generated CLI artefacts.
 - `runDocs` traverses both registries: `mcts docs check` checks
   fully-generated paths and marker-delimited sections; `mcts docs generate`
   writes fully-generated files and splices each section rule. File reads are
@@ -573,8 +577,8 @@ forbidden-symbol HLint rules behind the `mcts-haskell-style` test stanza plus th
   --with-group=extra` (with `.hlint.yaml` picked up from the repo root) runs and emits
   no `Error:` findings, and `cabal format` round-trips byte-equally via a temp file. The
   exact `hlint` flag pair is pinned per
-  [../README.md → `mcts test all` → Test-suite stanzas](../README.md) and
-  [system-components.md → Test Stanzas](system-components.md).
+  [../documents/engineering/unit_testing_policy.md → Test Stanza Layout](../documents/engineering/unit_testing_policy.md)
+  and [system-components.md → Test Stanzas](system-components.md).
 
 ### Validation
 
@@ -682,10 +686,12 @@ for free.
 - `MCTS.Plan` exports the doctrine-shaped `buildPlan`, `applyPlan`,
   `applySubprocessPlan`, `applyWithEnv`, and `applySubprocessWithEnv` helpers.
   Plan rendering is deterministic and byte-stable over repeated renders.
-- `mcts test all`, `mcts docs generate`, and `mcts build *` all support
-  `--dry-run` and `--plan-file <path>` at the parser level and declare those
-  options in their `CommandSpec` leaf metadata. `mcts-unit` asserts the
-  metadata for every current Plan/Apply leaf.
+- `mcts test all`, `mcts test parity-anchor`, `mcts docs generate`,
+  `mcts inspect cache prune`, `mcts build <backend>`, and
+  `mcts build legacy-fixtures` all support `--dry-run` and
+  `--plan-file <path>` at the parser level and declare those options in their
+  `CommandSpec` leaf metadata. `mcts-unit` asserts the metadata for every current
+  Plan/Apply leaf.
 - `MCTS.CLI.Build` executes backend plans through `applySubprocessWithEnv`, and
   `MCTS.CLI.Test` now uses `applyWithEnv` with a custom `runStep` that preserves
   its explicit `renderError` output on subprocess failure.
@@ -916,7 +922,8 @@ Implement the single `AppError` ADT, the `renderError` boundary, and the `--form
   `SubprocessFailed`, `FFIFailure`, `DocsCheckDrift`, `UnknownCommand`,
   `InvalidMove`, `ParseError`, `IOErrorText` per
   [../HASKELL_CLI_TOOL.md → Error Handling](../HASKELL_CLI_TOOL.md). The set
-  matches [../README.md → Output and error discipline](../README.md) exactly;
+  matches [../HASKELL_CLI_TOOL.md → Error Handling](../HASKELL_CLI_TOOL.md)
+  exactly;
   `SubprocessFailed`, `FFIFailure`, `DocsCheckDrift`, and
   `EngineEnvelopeMismatch` are the MCTS-specific failure surfaces enumerated
   alongside the user-facing variants.
@@ -930,8 +937,7 @@ Implement the single `AppError` ADT, the `renderError` boundary, and the `--form
     extensions); see
     [phase-2-transcript-codec-and-determinism.md → Sprint 2.1](phase-2-transcript-codec-and-determinism.md).
   - `ArchEnvelopeMismatch` is raised when a verify cohort or `inspect` comparison
-    spans more than one `host_arch` per
-    [../README.md → Architecture envelope](../README.md); see
+    spans more than one `host_arch`; see
     [../documents/engineering/determinism_contract.md → Architecture Envelope](../documents/engineering/determinism_contract.md).
   - `EngineEnvelopeMismatch` is raised by `mcts verify` when the layered
     engine-envelope check finds a disagreement: either a cohort-invariant
@@ -1060,6 +1066,55 @@ enforce the metadata checks the governed documentation topology requires.
   `docker compose run --rm mcts mcts lint docs`,
   `docker compose run --rm mcts mcts test mcts-haskell-style`,
   `docker compose run --rm mcts mcts check-code`, and `git diff --check` passed.
+
+## Sprint 1.11: README and Lint-Write Contract Realignment ✅
+
+**Status**: Done
+**Implementation**: `README.md`, `src/MCTS/CLI/Lint.hs`,
+`src/MCTS/Generated/Paths.hs`, `test/unit/Main.hs`
+**Docs to update**: `documents/documentation_standards.md`,
+`documents/engineering/code_quality.md`, `documents/engineering/cli_command_surface.md`,
+`documents/engineering/haskell_code_guide.md`, `DEVELOPMENT_PLAN/README.md`,
+`DEVELOPMENT_PLAN/00-overview.md`, `DEVELOPMENT_PLAN/system-components.md`,
+`DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md`
+
+### Objective
+
+Restore the root README to its operator-facing role and make the lint `--write`
+flags repair the fixable drift they advertise.
+
+### Deliverables
+
+- `README.md` is reference-only: it keeps project intent, the Compose entrypoint,
+  backend cohort summary, short operator commands, validation gates, and links to
+  authoritative contracts instead of duplicating transcript, FFI, determinism, or
+  performance doctrine.
+- Governed docs and plan files cite the owning contract documents directly when they
+  need detailed rules formerly duplicated in README prose.
+- `mcts lint files --write` trims trailing whitespace/final-newline drift and rewrites
+  fully generated command/man/completion files from the generated-file registry before
+  rechecking.
+- `mcts lint docs --write` runs the generated-document writer before `docs check`.
+- `mcts lint haskell --write` runs the pinned Fourmolu formatter and `cabal format`
+  before the Haskell style stanza.
+
+### Validation
+
+- `docker compose run --rm mcts mcts lint files --write`
+- `docker compose run --rm mcts mcts lint docs --write`
+- `docker compose run --rm mcts mcts lint haskell --write`
+- `docker compose run --rm mcts mcts check-code`
+- `git diff --check`
+
+### Remaining Work
+
+None.
+
+### Closure Notes
+
+Closed on 2026-05-24 after the root README, generated-document standards, lint
+documentation, and command implementation were aligned with the documented
+single-entrypoint workflow.
 
 ## Documentation Requirements
 

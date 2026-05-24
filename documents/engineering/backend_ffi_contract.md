@@ -50,16 +50,17 @@ library is present and the requested batch can use the fixed 60-ply foreign
 search horizon; otherwise it falls back to the in-process runner so Cabal
 stanzas stay self-contained.
 
-The **FFI load name** is the canonical install path matching
-[../../README.md → Repository layout (target)](../../README.md); the Haskell FFI
-binds against this name. `docker/Dockerfile` invokes the supported `mcts build`
-Plan/Apply leaves for Rust and the steelman C++ backends, then installs the
-PGO+BOLT-optimized shared library at the canonical load name before runtime
-validation starts. Missing PGO profile data, missing BOLT `.fdata`, or any attempt
-to install a PGO-only/unoptimized fallback under that load name is a Dockerfile
-build failure. The accepted steelman artefact is one canonical shared library per
-backend, trained during the Dockerfile build on the blended Q1/Q2 workload suite
-defined in [compiler_runtime_tuning.md → PGO/BOLT Training Workload Doctrine](./compiler_runtime_tuning.md#pgobolt-training-workload-doctrine);
+The **FFI load name** is the canonical install path named by
+[DEVELOPMENT_PLAN/system-components.md → Artefact Locations](../../DEVELOPMENT_PLAN/system-components.md);
+the Haskell FFI binds against this name. `docker/Dockerfile` invokes the
+supported `mcts build` Plan/Apply leaves for Rust and the steelman C++
+backends, then installs the PGO+BOLT-optimized shared library at the canonical
+load name before runtime validation starts. Missing PGO profile data, missing
+BOLT `.fdata`, or any attempt to install a PGO-only/unoptimized fallback under
+that load name is a Dockerfile build failure. The accepted steelman artefact is
+one canonical shared library per backend, trained during the Dockerfile build
+on the bounded Q1/Q2-shaped profile suite defined in
+[compiler_runtime_tuning.md → PGO/BOLT Training Workload Doctrine](./compiler_runtime_tuning.md#pgobolt-training-workload-doctrine);
 runtime FFI loading does not switch between workload-specific libraries or trigger
 PGO/BOLT retraining. Post-BOLT envelope patching uses LLVM `objcopy`, and the final
 installed C++/Rust library must pass a bounded smoke run before the image can be
@@ -356,7 +357,7 @@ For the Q3 verification cohort, the `--rng cpp` flag selects C++-generated
 verification seeds and suppresses backend-native benchmark RNGs. The
 legacy RNG fixture lives in `cpp-legacy/c-abi/rng.{h,cc}` and
 exposes the canonical symbols required by
-[../../README.md → Cross-backend verification → RNG FFI contract](../../README.md):
+[determinism_contract.md → `--rng cpp`](./determinism_contract.md#rng-cpp):
 
 ```c
 // Example: legacy cpp_rng C ABI (unprefixed canonical symbols)
@@ -424,7 +425,7 @@ twice.
 Because the bench binary has nothing to disable, no benchmark phase is needed to
 demonstrate zero overhead — the instrumentation code literally does not exist in
 it. This is the "Compile-time toggle for instrumentation" property in the
-project [../../README.md → Cross-backend verification](../../README.md).
+foreign-backend contract for evidence-producing artefacts.
 
 Backend (iv) Rust currently publishes one concrete optimized FFI artefact at
 `rust/target/release/libmcts_rust.so`. It exports search, recompute, read-visits,
@@ -490,45 +491,38 @@ The Haskell domain types — `Board`, `Action`, `Move`, `Tree`, `RunConfig` —
 `CSize`, `CUChar`, or any other `Foreign.C.Types` member; they never expose
 `Storable` instances; and they never carry pinned `ForeignPtr` fields on
 their public surface. The domain is unambiguously Haskell-shaped: an
-`Action` is an `ActionId` (the bounded `Word8` newtype from
-[transcript_format.md → Action Enumeration](./transcript_format.md)), a
-`Move` is `(Action, Side)`, and so on.
+`Action` is the `Pawn | WallH | WallV` algebraic domain from `MCTS.Types`,
+with `actionId` / `actionFromId` as the named byte conversion boundary.
 
-The conversion lives at the FFI boundary module and only there:
+The conversion lives at the FFI boundary modules and only there:
 
-- C struct shapes live in `src/MCTS/FFI/<Backend>.hsc` (or `.chs` if
-  `c2hs` is preferred for a given backend). The `.hsc` file `#include`s
-  the corresponding `<backend>/c-abi/mcts_<backend>.h` and exposes
-  `Storable` instances on FFI-only newtypes (e.g. `FFIBoardPtr`,
-  `FFIActionByte`). These newtypes are not re-exported
-  from `MCTS.FFI.<Backend>` — the module re-exports only typed Haskell
-  surface (`SearchHandle`, `BoardHandle`, ...) and the dynamic board/search
-  bracket helpers.
-- Marshalling functions are named `fromDomain` and `toDomain` (one
-  matched pair per domain type per backend), live next to the `foreign
-  import` declarations, and are the only functions in the module that
-  touch both a domain type and an FFI type. They are total when the
-  domain type's smart constructor has already enforced the input range
-  (`fromDomain (a :: Action) :: FFIActionByte` is total because `Action`
-  carries only `0..208`); the inverse `toDomain :: FFIActionByte
-  -> Either AppError Action` re-validates on decode because the C ABI
-  side may return arbitrary bytes.
+- `src/MCTS/FFI/Common.hs` owns the shared dynamic FFI machinery:
+  `dlopen`/`dlsym`, opaque board/game handles, C function-pointer wrappers,
+  bracket helpers, and the `EngineEnvelope` record mirrored from the C ABI
+  structs. It uses `foreign import ccall "dynamic"` because the supported
+  runtime loader names canonical shared libraries produced by the Dockerfile.
+- `src/MCTS/FFI/CppLegacy.hs`, `src/MCTS/FFI/CppImperative.hs`,
+  `src/MCTS/FFI/CppFunctional.hs`, and `src/MCTS/FFI/Rust.hs` provide the
+  typed per-backend openers and envelope loaders. They do not re-export raw
+  C function pointers.
+- Domain conversion is named at the call sites that cross the boundary:
+  `actionId` converts Haskell `Action` values to ABI bytes, and every byte
+  returned by a foreign search/recompute surface is revalidated with
+  `actionFromId` before it becomes an `Action`.
 - Engine modules under `src/MCTS/Engine/` and CLI modules under
   `src/MCTS/CLI/` import the typed Haskell surface only. A `Ptr CChar`
   in `src/MCTS/Engine/Search.hs` would fail review.
 
-The benefit is concentrated, not theoretical: when a Haskell-level
-refactor reshuffles `Action` or `Board`, only the four FFI boundary
-modules need to update their marshalling. When a backend reshapes its
-struct layout (e.g. Phase 6's Rust backend changing `repr(C)`), only
-that backend's `.hsc` updates. The engine, the CLI, and the determinism
-property tests stay put.
+The benefit is concentrated, not theoretical: when a Haskell-level refactor
+reshuffles `Action` or `Board`, only the four FFI boundary modules and
+`MCTS.FFI.Common` need to update their marshalling. When a backend reshapes its
+C ABI, the dynamic loader and the corresponding backend wrapper absorb that
+change. The engine, the CLI, and the determinism property tests stay put.
 
-This discipline also keeps the `unsafe`/`safe` import policy easy to
-audit: every `foreign import ccall` is co-located with its
-`fromDomain` / `toDomain` pair, so the per-symbol classification (hot
-path → `unsafe`, lifecycle → `safe`) can be eyeballed by reading one
-file per backend rather than chasing call sites.
+This discipline also keeps the `unsafe`/`safe` import policy easy to audit:
+the dynamic FFI imports and symbol wrappers are concentrated in
+`MCTS.FFI.Common`, so hot-path and lifecycle classification can be reviewed in
+one shared boundary instead of being spread through engine or CLI modules.
 
 ## Cross-References
 

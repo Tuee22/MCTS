@@ -10,7 +10,7 @@
 **Generated sections**: none
 
 > **Purpose**: Land the native Haskell Corridors engine — bitboard game state, MCTS
-> search and rollout core in `ST s`, tree persistence, the pure search API, and the
+> search and rollout core in `ST s`, tree-arena primitives, the pure search API, and the
 > per-game splitmix RNG — so backend (v) is reachable from `mcts bench` and writes
 > transcripts in the Phase 2 wire format.
 
@@ -22,9 +22,10 @@ search in `ST s` over a structure-of-arrays `STUArray` arena, transcript writing
 monotonic bench timing, logical envelope stamping through `MCTS.Engine.Envelope`,
 `non_terminal_rank` implemented and pinned to the imported legacy source for
 inspection/tests, current verifier-cohort UCT tie-breaking by action ID/highest
-visit count per Sprint `7.2`, and in-process equity recompute. Tree persistence,
-per-rollout scratch boards,
-post-link build-id stamping, and performance parity remain owned by Phase `8`; foreign
+visit count per Sprint `7.2`, and in-process equity recompute. Across-move tree
+persistence and per-rollout scratch boards remain profile-driven future work outside
+the current closed baseline; post-link build-id stamping and performance parity are
+closed in Phase `8`; foreign
 backend dispatch and foreign recompute coverage remain owned by Phases `4` through `7`.
 
 ## Phase Summary
@@ -34,8 +35,10 @@ as strict `Word64` pawn slots and wall bitsets manipulated with `Data.Bits`, a
 `Word16` ply counter living in the same board record, MCTS tree state as a
 structure-of-arrays `STUArray` arena of unboxed fields, UCT child selection and
 random-rollout leaf evaluation in the `ST s` monad, and a pure search API at the
-boundary. The optimization stack, tree persistence across played moves, per-rollout
-scratch boards, and performance proof land in Phase `8` once the cross-backend `verify`
+boundary. The current driver allocates a fresh arena for each per-move search; the
+`treeReroot` arena primitive is tested but is not an across-move persistence path in the
+closed baseline. The optimization stack and performance proof land in Phase `8` once
+the cross-backend `verify`
 baseline pins what `correct` means. `mcts bench rollouts --backend haskell` and
 `mcts bench selfplay --backend haskell` run end-to-end after this phase closes.
 
@@ -88,9 +91,9 @@ the ply-cap draw rule for backends (ii)–(v)), and legal-move enumeration.
 - `src/MCTS/Engine.hs` exposes `legalMoves :: Board -> [Action]`; a
   caller-provided-buffer variant is deferred to Phase `8` profiling work if the
   current list boundary remains hot.
-- The legal-move generator must enforce the Corridors path-existence invariant per
-  [../README.md → Game: Corridors](../README.md): walls cannot fully enclose
-  either player. A wall placement is legal only if both pawns retain at least one
+- The legal-move generator must enforce the Corridors path-existence invariant:
+  walls cannot fully enclose either player. A wall placement is legal only if
+  both pawns retain at least one
   path to their respective goal rows after the placement. The invariant is
   checked by a flood-fill (BFS) on the wall-bitboard-derived graph against each
   candidate wall placement; pawn moves do not need this check. The brute-force
@@ -167,8 +170,8 @@ value-backup fields.
 
 ### Validation
 
-1. Property test: round-trip via `treeReroot` then `treeRoot` preserves visit
-   counts on the new root subtree.
+1. Property test: `treeReroot` returns the selected node and preserves that node's
+   visit count and value sum inside the arena.
 2. Property test: arena bounds checks are correct on 10k random
    expand/select/backup sequences.
 3. Unit test: tree memory is released on `freeTree`.
@@ -250,10 +253,9 @@ ancestor path).
   (d) visits sorted ascending by action_id, (e) total root-child visits
   equals the sim budget.
 - The current UCT recursively descends through lazily expanded children in the
-  `ST` arena and backpropagates along the descent path. The Phase `8` optimized
-  version owns tree persistence across played moves, a per-rollout scratch board to skip
-  the per-step `applyMove` copy, and profiling-driven representation changes behind the
-  exported API.
+  `ST` arena and backpropagates along the descent path. Across-move tree persistence
+  and a per-rollout scratch board remain future profile-driven work, not part of the
+  current measured baseline; representation changes stay behind the exported API.
 - `non_terminal_rank` is now implemented in `MCTS.Engine` and cited in
   `documents/engineering/determinism_contract.md` against
   `cpp-legacy/legacy-core/board.cpp:395` and
@@ -317,7 +319,8 @@ in the Phase 2 wire format.
 - Baseline landed: `MCTS.Driver.runGame`, `runBatch`, `makeRunConfig`, per-game
   splitmix seeding, transcript writing, and logical envelope stamping exist.
 - The game loop dispatches each per-move choice through `MCTS.Search.UCT.uctSearch`.
-  Tree persistence across played moves is owned by Phase `8` as a performance feature.
+  The closed baseline allocates a fresh arena per move; across-move tree persistence is
+  not implemented.
 - Atomic transcript writes landed in Sprint 2.2; keep the driver covered by the
   transcript write/read tests as the backend dispatch changes.
 - The paired bench/instrumented build-target split is not retained for the logical
@@ -355,7 +358,8 @@ wall-clock time from a single `GHC.Clock.getMonotonicTimeNSec`, emit
   - `inputGames`, `inputSeed`, `inputMaxPlies` (default 200 and recorded in the
     transcript header), `inputSims` (default `FixedSims 10_000` on the CLI).
   - The `--sims` flag parses two forms per
-    [../README.md → CLI command topology](../README.md): `--sims N` ⇒
+    [../documents/engineering/cli_command_surface.md → Global Option Defaults](../documents/engineering/cli_command_surface.md):
+    `--sims N` ⇒
     `FixedSims N`; `--sims N0:N1` ⇒ `RampedSims N0 N1` (initial-move budget `N0`,
     per-move budget `N1` thereafter). The colon-separated form is the on-wire
     `RampedSims` discriminator that the Phase 2 header layout encodes as
@@ -365,7 +369,8 @@ wall-clock time from a single `GHC.Clock.getMonotonicTimeNSec`, emit
   [00-overview.md → Hard Constraints items 2–4](00-overview.md), per-game RNG
   streams are independent of worker scheduling.
 - **Monotonic clock contract** per
-  [../README.md → Benchmarks](../README.md) (line 177). The clock is
+  [../documents/engineering/determinism_contract.md → Monotonic Clock Contract](../documents/engineering/determinism_contract.md).
+  The clock is
   `GHC.Clock.getMonotonicTimeNSec` (monotonic, nanosecond resolution).
   It is started inside the Haskell driver **just before the first game is
   dispatched** into the worker pool and stopped **just after the last game's
@@ -503,13 +508,51 @@ Recompute](../documents/engineering/backend_ffi_contract.md).
 
 None.
 
+## Sprint 3.7: Rollout Byte-Consumption Realignment ✅
+
+**Status**: Done
+**Implementation**: `src/MCTS/Search/UCT.hs`, `test/unit/Main.hs`
+**Docs to update**: `documents/engineering/determinism_contract.md`,
+`documents/engineering/haskell_code_guide.md`,
+`DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md`
+
+### Objective
+
+Make the Haskell rollout move picker implement the documented signed-`Int`
+modulo byte-consumption rule used by the cross-backend determinism contract.
+
+### Deliverables
+
+- `MCTS.Search.UCT.rollout` chooses the rollout action with signed `Int64`
+  remainder semantics over the consumed `Word64` draw before mapping into the legal
+  move list.
+- The implementation keeps the existing deterministic seed schedule and legal-move
+  order while removing the unsigned modulo contradiction.
+- The determinism contract remains explicit that byte consumption, not rejection
+  sampling, is the verification surface.
+
+### Validation
+
+- `docker compose run --rm mcts mcts test mcts-unit`
+- `docker compose run --rm mcts mcts check-code`
+- `git diff --check`
+
+### Remaining Work
+
+None.
+
+### Closure Notes
+
+Closed on 2026-05-24 after the rollout move picker and determinism docs matched the
+documented signed-modulo rule.
+
 ## Documentation Requirements
 
 **Engineering docs to create/update:**
 
 - `documents/engineering/determinism_contract.md` — extend with the engine-side
   story: same-backend determinism (Q4), the per-game splitmix derivation, the
-  tree-persistence-is-deterministic property.
+  fresh per-move arena scope, and deterministic replay property.
 - `documents/engineering/transcript_format.md` — confirm that the Haskell engine
   writes the format Phase 2 specified.
 - `documents/engineering/cli_command_surface.md` — fill in the `mcts bench` matrix

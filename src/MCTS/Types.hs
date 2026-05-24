@@ -288,7 +288,7 @@ data Envelope = Envelope
     , envelopeCpuFeatures :: !Word32
     , envelopeFpEnv :: !Word8
     , envelopeBuildId :: !String
-    -- ^ Convenience: short identifier matching the engine_build_id.
+    -- ^ Display/cache convenience label derived from engine_build_id.
     }
     deriving (Eq, Show, Read)
 

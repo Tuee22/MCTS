@@ -728,15 +728,31 @@ exerciseEnvelopeChecks transcript = do
             transcript
                 { transcriptEnvelope =
                     (transcriptEnvelope transcript)
-                        { envelopeBuildId = "haskell-old"
+                        { envelopeEngineBuildId = ByteString32 (replicate 64 'a')
                         }
                 }
-        expectedStale = EngineEnvelopeMismatch (BackendSlot Haskell) "build_id" "logical" "haskell-old"
+        displayOnly =
+            transcript
+                { transcriptEnvelope =
+                    (transcriptEnvelope transcript)
+                        { envelopeBuildId = "haskell-old"
+                        , envelopeEngineGitCommit = "different-commit"
+                        }
+                }
+        expectedStale =
+            EngineEnvelopeMismatch
+                (BackendSlot Haskell)
+                "engine_build_id"
+                (unByteString32 zeroDigest)
+                (replicate 64 'a')
     assert
         "cohort arch mismatch"
         (checkCohortInvariant [transcript, archMismatch] == Left (ArchEnvelopeMismatch hostArch "other-arch"))
     assert "backend slot stale hard fail" (checkBackendSlot False stale == Left expectedStale)
     assert "backend slot stale warning" (checkBackendSlot True stale == Right [expectedStale])
+    assert
+        "display-only envelope fields do not gate stale checks"
+        (checkBackendSlot False displayOnly == Right [])
     -- Additional cohort-invariant fields: rng_source, shared_rng_build_id, cohort_config_hash.
     let rngMismatch =
             transcript
@@ -1481,7 +1497,7 @@ exerciseRustBuildPlan = do
                 Nothing -> ""
         generateFlags = rustFlagsAt 1
         useFlags = rustFlagsAt useIndex
-    assert "Rust PGO+BOLT plan has expanded blended training steps" (length steps == 28)
+    assert "Rust PGO+BOLT plan has expanded bounded training steps" (length steps == 28)
     assert "Rust PGO+BOLT plan is the same as buildBackendPlan output" (planSteps plan == steps)
     assert
         "Rust PGO+BOLT plan starts by resetting profile directories"
@@ -1503,17 +1519,17 @@ exerciseRustBuildPlan = do
             ]
         )
     assert
-        "Rust PGO training emits blended rollouts/selfplay ST/MT8 native runs"
+        "Rust PGO training emits bounded rollouts/selfplay ST/MT8 native runs"
         ( all (== "cabal") pgoTrainingCommands
             && allCabalTraining pgoTrainingArgs
-            && trainingCoversBlendedShape pgoTrainingArgs
+            && trainingCoversBoundedShape pgoTrainingArgs
             && any ("500" `elem`) pgoTrainingArgs
         )
     assert
-        "Rust BOLT training emits shorter blended native runs"
+        "Rust BOLT training emits shorter bounded native runs"
         ( all (== "cabal") boltTrainingCommands
             && allCabalTraining boltTrainingArgs
-            && trainingCoversBlendedShape boltTrainingArgs
+            && trainingCoversBoundedShape boltTrainingArgs
             && any ("100" `elem`) boltTrainingArgs
         )
     assert
@@ -1638,8 +1654,8 @@ allCabalTraining =
                 && "--cache-dir" `elem` args
         )
 
-trainingCoversBlendedShape :: [[String]] -> Bool
-trainingCoversBlendedShape args =
+trainingCoversBoundedShape :: [[String]] -> Bool
+trainingCoversBoundedShape args =
     all
         (`any` args)
         [ elem "rollouts"
@@ -1696,7 +1712,7 @@ exerciseCppBuildPlan = do
                 <> [instrBoltStart .. instrBoltStart + boltCount - 1]
         pgoTrainingArgs = take pgoCount (drop benchPgoStart argsOf)
         boltTrainingArgs = take boltCount (drop benchBoltStart argsOf)
-    assert "C++ PGO+BOLT plan has expanded blended training steps" (length steps == 48)
+    assert "C++ PGO+BOLT plan has expanded bounded training steps" (length steps == 48)
     assert "C++ PGO+BOLT plan is the same as buildBackendPlan output" (planSteps plan == steps)
     assert "C++ PGO+BOLT plan name is build cpp-imperative" (planName plan == "build cpp-imperative")
     assert
@@ -1720,16 +1736,16 @@ exerciseCppBuildPlan = do
                ]
         )
     assert
-        "C++ PGO training emits blended rollouts/selfplay ST/MT8 native runs"
+        "C++ PGO training emits bounded rollouts/selfplay ST/MT8 native runs"
         ( allCabalTraining pgoTrainingArgs
-            && trainingCoversBlendedShape pgoTrainingArgs
+            && trainingCoversBoundedShape pgoTrainingArgs
             && all ("cpp-imperative" `elem`) pgoTrainingArgs
             && any ("500" `elem`) pgoTrainingArgs
         )
     assert
-        "C++ BOLT training emits shorter blended native runs"
+        "C++ BOLT training emits shorter bounded native runs"
         ( allCabalTraining boltTrainingArgs
-            && trainingCoversBlendedShape boltTrainingArgs
+            && trainingCoversBoundedShape boltTrainingArgs
             && all ("cpp-imperative" `elem`) boltTrainingArgs
             && any ("100" `elem`) boltTrainingArgs
         )

@@ -79,7 +79,7 @@ where the source of truth lives.
   `~/prodbox/DEVELOPMENT_PLAN/`, `~/mattandjames/DEVELOPMENT_PLAN/`, and
   `~/infernix/DEVELOPMENT_PLAN/`.
 - The phase model is the nine-phase surface-oriented decomposition declared in
-  [README.md → Phase Overview](README.md): Phase `0` documentation/planning, Phase `1`
+  [README.md → Phase Overview](README.md#phase-overview): Phase `0` documentation/planning, Phase `1`
   Haskell CLI surface, Phase `2` transcript codec / RNG / determinism contract, Phase
   `3` backend (v) Haskell engine, Phase `4` backend (i) C++ legacy port + FFI bridge,
   Phase `5` backend (ii) C++ imperative steelman, Phase `6` backends (iii) C++

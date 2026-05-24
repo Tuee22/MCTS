@@ -9,7 +9,7 @@
 > tuning stacks: the backend (i) verbatim exemption, the backend (ii)/(iii)
 > doctrine-flag set with PGO+BOLT+`mimalloc`, the backend (iv) Rust
 > `[profile.release]`, the backend (v) Haskell GHC/LLVM/RTS stack, and the
-> mandatory Dockerfile-time blended PGO/BOLT training contract plus Haskell PGO
+> mandatory Dockerfile-time bounded PGO/BOLT training contract plus Haskell PGO
 > asymmetry note.
 
 This document owns its content. The toolchain pin (GHC `9.14.1`, Cabal `3.16.1.0`)
@@ -44,13 +44,14 @@ foreign steelman backend, generated from the Dockerfile-owned profile pipeline.
 
 The profile workload is not fully automatic. The build harness must run the binary
 through workload examples that resemble the project questions being optimized. For
-this repository that means a blended Q1/Q2 report-card training suite:
+this repository that means a bounded Q1/Q2-shaped profile suite:
 
 - random rollouts and MCTS self-play;
 - single-threaded and `--threading multi --workers 8` batches;
 - `--rng native`, because Q1/Q2 headline throughput uses backend-native RNG;
-- several deterministic seeds rather than only seed `42`;
-- self-play simulation budgets representative of `S_BENCH = 500`.
+- fixed deterministic seeds rather than only seed `42`;
+- a bounded ply cap during profile generation, with self-play simulation budgets
+  representative of `S_BENCH = 500` for PGO.
 
 BOLT may use a shorter version of the same workload shape to keep image builds
 practical, but its `.fdata` must still come from the Dockerfile build. Missing PGO
@@ -58,9 +59,12 @@ profile data, failed profile merge, missing BOLT `.fdata`, failed BOLT optimizat
 or a crashing installed library is an image-build failure.
 
 Current implementation baseline: `src/MCTS/CLI/Build.hs` trains PGO/BOLT with the
-blended suite above. PGO uses rollouts plus self-play, ST plus MT8, native RNG,
-seeds `42` and `424242`, and self-play `--sims 500`; BOLT uses the same shape
-with shorter self-play `--sims 100`. C++ training uses scoped dynamic-library
+bounded suite above. PGO uses rollouts plus self-play, ST plus MT8, native RNG,
+seeds `42` and `424242`, `--max-plies 1`, two rollout games for each threading mode
+per seed with rollout `--sims 1`, one self-play game for each threading mode per seed
+with self-play `--sims 500`; BOLT uses the same workload/threading/seed shape with
+one rollout game and one self-play game for each threading mode per seed, rollout
+`--sims 1`, and self-play `--sims 100`. C++ training uses scoped dynamic-library
 loading plus exported GCOV dump hooks so `.gcda` is flushed before `-fprofile-use`;
 Rust training keeps the cdylib pinned and relies on process-exit `.profraw`
 emission before `llvm-profdata merge`.
@@ -91,9 +95,8 @@ Compiler flags per
 -fno-exceptions
 ```
 
-`-fno-exceptions` is mandatory (promoted from Tier 3 conditional per
-[../../README.md → Compiler and runtime tuning](../../README.md)): the engine
-core does not throw, so landing-pad cost is unconditional dead weight.
+`-fno-exceptions` is mandatory for the C++ steelman backends: the engine core
+does not throw, so landing-pad cost is unconditional dead weight.
 
 **Excluded deliberately:** `-ffast-math`, `-Ofast`. Equity backprop is
 summation-order-sensitive and we want backend-internal determinism even though
@@ -113,16 +116,17 @@ Optional audit artifacts may be regenerated, but normal validation does not requ
 checked-in generated data.
 
 1. **Two-stage PGO.** Instrumented build via
-   `-fprofile-generate=$(abspath $(PGO_DIR))`; each generated `_bench` and
-   `_instrumented` artefact is installed to the canonical FFI load name for the
-   blended Q1/Q2 training suite before the canonical `.gcda` files are copied
-   back to artefact-specific profile names; optimised build with
-   `-fprofile-use=$(abspath $(PGO_DIR)) -fprofile-correction`.
-2. **BOLT post-link.** `llvm-bolt -instrument` produces a `_bench.inst.so` /
-   `_instrumented.inst.so`; each is installed to the canonical FFI load name for
-   a shorter blended Q1/Q2 training suite. `llvm-bolt -reorder-blocks=ext-tsp`
-   consumes the resulting `.fdata`. The `.fdata` files are mandatory Dockerfile
-   build outputs; a missing file, failed BOLT invocation, or attempt to copy a
+   `-fprofile-generate=$(abspath $(PGO_DIR))`; the generated `_bench` and
+   `_instrumented` artefacts are build/training intermediates for the bounded
+   Q1/Q2-shaped training suite so `.gcda` profile data exists before the
+   optimized build runs with
+   `-fprofile-use=$(abspath $(PGO_DIR)) -fprofile-correction`. They are not
+   supported runtime FFI load names.
+2. **BOLT post-link.** `llvm-bolt -instrument` produces `_bench.inst.so` /
+   `_instrumented.inst.so` build intermediates for a shorter bounded
+   Q1/Q2-shaped training suite. `llvm-bolt -reorder-blocks=ext-tsp` consumes
+   the resulting `.fdata`. The `.fdata` files are mandatory Dockerfile build
+   outputs; a missing file, failed BOLT invocation, or attempt to copy a
    PGO-only/unoptimized artefact to a `.bolted.so` or canonical load name must
    fail the image build. LLVM objcopy patches the `engine_build_id` section on
    BOLT-produced shared objects, and the installed bolted libraries must pass a
@@ -130,14 +134,13 @@ checked-in generated data.
 3. **`mimalloc` link.** The current C++ Makefiles link the system `libmimalloc`
    library supplied by the container. Static linking is not required by the current
    build surface.
-4. **Install.** The backend (iii) pipeline copies
-   `cpp-functional/build/libmcts_cpp_functional_bench.bolted.so` to
-   `cpp-functional/build/libmcts_cpp_functional.so` — the canonical FFI load
-   name. The `_instrumented.bolted.so` artefact is copied
-   to `cpp-functional/build/libmcts_cpp_functional_instrumented.so` for the
-   verify/play/replay path. See
+4. **Install.** The backend (iii) pipeline installs the final bolted
+   `cpp-functional/build/libmcts_cpp_functional.so` at the canonical FFI load
+   name. The C++ Makefiles may retain `_bench` / `_instrumented` outputs for
+   training and investigation, but verify/play/replay load the canonical shared
+   library named in
    [./backend_ffi_contract.md → Backends and Linkage](./backend_ffi_contract.md)
-   for the full install-name vs build-intermediate table.
+   rather than a parallel `_instrumented` runtime artefact.
 
 Current implementation baseline: the Dockerfile uses the C++ Plan/Apply surface
 backed by the shared `cppPgoBoltPlan` in `src/MCTS/CLI/Build.hs`. The plan resets
@@ -146,15 +149,15 @@ runs BOLT instrument/training/optimize steps, and installs the canonical shared
 library. The 2026-05-23 reclosure makes that sequence fail closed when
 `llvm-bolt` cannot produce usable `.fdata`, uses LLVM objcopy for post-BOLT
 envelope patching, and smokes the installed bolted libraries. Sprint `8.10`
-adds the blended report-card suite described in
+adds the bounded Q1/Q2-shaped profile suite described in
 [PGO/BOLT Training Workload Doctrine](#pgobolt-training-workload-doctrine) to that
 mandatory sequence.
 
 ### Code-Level Requirements
 
-Grouped by priority per the project [../../README.md → Compiler and runtime
-tuning](../../README.md). Top-tier items are non-negotiable; the rest are
-required unless profiling shows the change is neutral or harmful.
+Grouped by priority for the C++ steelman backends. Top-tier items are
+non-negotiable; the rest are required unless profiling shows the change is
+neutral or harmful.
 
 **Top tier** (each expected 1.5–3× over the legacy baseline):
 
@@ -246,13 +249,13 @@ Plan/Apply leaf:
 - **Two-stage PGO** via
   `RUSTFLAGS="-C target-cpu=native -C link-arg=-fuse-ld=lld -C
   link-arg=-Wl,--emit-relocs -C
-  profile-generate=/workspace/MCTS/rust/pgo-profile"` → blended Q1/Q2 training
+  profile-generate=/workspace/MCTS/rust/pgo-profile"` → bounded Q1/Q2-shaped training
   suite → hard-failing `llvm-profdata merge` into
   `rust/pgo-profile/merged.profdata` → `RUSTFLAGS="-C target-cpu=native -C
   link-arg=-fuse-ld=lld -C link-arg=-Wl,--emit-relocs -C
   profile-use=/workspace/MCTS/rust/pgo-profile/merged.profdata"`.
 - **BOLT** post-link: temporarily install the BOLT-instrumented copy of the PGO
-  cdylib at the canonical FFI load name for a shorter blended Q1/Q2 training run,
+  cdylib at the canonical FFI load name for a shorter bounded Q1/Q2-shaped training run,
   restore the PGO cdylib, then optimize with `-reorder-blocks=ext-tsp` when
   `.fdata` exists. Missing `.fdata` or a failed BOLT invocation must fail the
   Dockerfile build; copying the PGO cdylib as a fallback is forbidden. This is
@@ -269,7 +272,7 @@ the `lld` linker flag in both PGO Cargo builds, profile merge guard, canonical
 install path `rust/target/release/libmcts_rust.so`, local `SystemMiMalloc` global
 allocator, LLVM objcopy post-link `engine_build_id` patching, and final installed
 cdylib smoke inside the pinned amd64 container. Like C++, Rust trains on the
-Sprint `8.10` blended report-card profile suite.
+Sprint `8.10` bounded Q1/Q2-shaped profile suite.
 
 ### Code-Level Requirements
 
@@ -435,7 +438,7 @@ then-current fail-closed artefacts: either `Within tolerance` or `Shortfall <rat
 per the [Parity Tolerance](#parity-tolerance) section below, with the gap attributed
 to this asymmetry where appropriate. Sprint `8.10` closes the stricter final gate:
 the same report-card verdict after the C++ and Rust PGO/BOLT profiles are trained
-on the blended Q1/Q2 workload suite.
+on the bounded Q1/Q2-shaped profile suite.
 
 ### Sprint 8.3 — Measured Q1 Snapshot
 
@@ -495,7 +498,7 @@ optimization beyond the `thread_local` move buffer.
 The live Rust and C++ backend install surfaces are fail-closed. On amd64, the
 Dockerfile-invoked `rustPgoBoltPlan` in `src/MCTS/CLI/Build.hs` completes cargo
 `-Cprofile-generate` with `-C target-cpu=native -C link-arg=-fuse-ld=lld
--C link-arg=-Wl,--emit-relocs`, the blended PGO training run,
+-C link-arg=-Wl,--emit-relocs`, the bounded PGO training run,
 `llvm-profdata merge`, `-Cprofile-use` with the same target CPU/linker/relocation
 flags, BOLT instrumentation/training, canonical install, LLVM objcopy
 `engine_build_id` patching, and a final installed-library smoke. The C++ Makefiles
@@ -512,12 +515,12 @@ not a reason to publish a PGO-only cdylib or C++ shared library at the canonical
 location.
 
 That status proves the PGO/BOLT pipeline is mandatory, fail-closed, and trained on
-the representative blended Q1/Q2 profile suite.
+the bounded Q1/Q2-shaped profile suite.
 
 The optimized-C++ Sprint 8.10 verdict was refreshed on 2026-05-23 by
 `docker compose run --rm --build mcts mcts test all` against the canonical workload
 (`G_R=1_000`, `G_S=4`, `S_BENCH=500`, MT8 variants)
-and blended-profile Dockerfile-built canonical artefacts. The Dockerfile build
+and bounded-profile Dockerfile-built canonical artefacts. The Dockerfile build
 produced C++ and Rust BOLT profiles, bolted canonical shared libraries, LLVM
 objcopy-patched envelopes, and passing final installed-library smokes before the
 report card ran. The earlier 2026-05-21 run where C++ BOLT yielded no `.fdata`
@@ -536,7 +539,7 @@ subprocesses.
 | Q5 Haskell MT scaling | 0.99x | 0.5 -> 0.5 games/s |
 | Q5 cpp-imperative MT scaling | 3.65x | 0.0 -> 0.1 games/s |
 
-The refreshed Sprint 8.10 verdict is **`Within tolerance`** for the blended-profile
+The refreshed Sprint 8.10 verdict is **`Within tolerance`** for the bounded-profile
 fail-closed pipeline in the worktree.
 
 ## Parity Tolerance

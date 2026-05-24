@@ -53,11 +53,14 @@ labels passed validation. Phase `8` reclosed Sprint `8.3` on 2026-05-23 after
 the parity report card passed against successful Dockerfile-time PGO+BOLT
 artefacts, not the historical fallback artefacts. Phase `8` reclosed Sprint `8.10`
 on 2026-05-23 after Dockerfile-time C++ and Rust PGO/BOLT training moved from the
-narrow self-play smoke to the blended Q1/Q2 report-card suite and the aggregate
-report-card verdict remained `Within tolerance`. Phases `3` and `4` remain `Done`
-on their owned engine and legacy-port surfaces. Phases `5` and `6` remain `Done`
-for fail-closed PGO/BOLT mechanics, ABI contracts, and canonical artefact
-installation.
+narrow self-play smoke to the bounded Q1/Q2-shaped profile suite and the aggregate
+report-card verdict remained `Within tolerance`. The 2026-05-24 documentation/code
+harmony sweep reclosed Phase `1` Sprint `1.11`, Phase `2` Sprint `2.9`, Phase `3`
+Sprint `3.7`, Phase `4` Sprint `4.5`, and Phase `7` Sprint `7.7` after README
+topology, lint `--write`, transcript envelope gates, rollout byte consumption, FFI
+domain-conversion wording, and divergence metric language were aligned with the
+current implementation. Phases `5` and `6` remain `Done` for fail-closed PGO/BOLT
+mechanics, ABI contracts, and canonical artefact installation.
 
 This closure does not change the project hypothesis: one Haskell CLI keeps
 all five backend slots live, Q3 proves visit-count equivalence for `(ii)..(v)`
@@ -103,6 +106,13 @@ single-threaded and MT8, under native RNG with seeds `42` and `424242`. The
 accepted report card recorded Q1 ST 0.05x, Q1 MT8 0.48x, Q2 ST 0.06x, Q2 MT8
 0.21x, Q5 Haskell 0.99x, Q5 C++ (ii) 3.65x, Q7 PASS, zero live-cohort divergence,
 and `Verdict: Within tolerance`.
+The 2026-05-24 harmony sweep was validated with
+`docker compose run --rm mcts mcts lint files --write`,
+`docker compose run --rm mcts mcts lint docs --write`,
+`docker compose run --rm mcts mcts lint haskell --write`,
+`docker compose run --rm mcts mcts test mcts-unit`,
+`docker compose run --rm mcts mcts docs check`,
+`docker compose run --rm mcts mcts check-code`, and `git diff --check`.
 The later Sprint `8.8` cleanup revalidated the focused and aggregate Compose
 gates without checked-in generated validation data.
 
@@ -186,8 +196,9 @@ addressed by `sha256(run_config || move_history)` (pure dispatcher plus
 write/decode path unit-tested); the shared TUI board
 widget renders pawn cells plus horizontal and vertical wall segments;
 the thin `app/Main.hs`;
-the `CommandSpec` registry; the `optparse-applicative` parser rendered from
-that registry via `commandParserInfo`; the full v1 transcript codec with the
+the `CommandSpec` registry; the `optparse-applicative` parser topology rendered from
+that registry via `commandParserInfo` with explicit leaf option parsers; the full v1
+transcript codec with the
 14-field engine envelope; the `MEQ1` binary equity sidecar with same-directory
 temp-file + rename writes plus fsync parity with the transcript writer;
 the `Env` record and `ReaderT App` monad;
@@ -271,7 +282,7 @@ when the library is absent). The Rust backend drives a real Corridors gameplay
 loop (pawn moves + wall placement + BFS escapability) emitting canonical action
 IDs. The restored five-backend surface remains the baseline, and the focused
 evidence-surface reclosure has closed in the owning phases listed below. Sprint
-`8.10` supplied the final blended report-card profile training doctrine for the
+`8.10` supplied the final bounded report-card profile training doctrine for the
 Dockerfile-time C++ and Rust PGO/BOLT artefacts consumed by Phase `8`.
 
 ## Document Index
@@ -321,14 +332,14 @@ A sprint can move to `Done` only when all of the following are true:
 | Phase | Name | Status | Document |
 |-------|------|--------|----------|
 | 0 | Planning and Documentation Topology | ✅ Done | [phase-0-planning-documentation.md](phase-0-planning-documentation.md) |
-| 1 | Haskell CLI Surface, `CommandSpec`, Lint Stack | ✅ Done (Sprint `1.10` generated-doc metadata and style contract realignment closed 2026-05-21) | [phase-1-haskell-cli-surface.md](phase-1-haskell-cli-surface.md) |
-| 2 | Transcript Codec, RNG, and Determinism Contract | ✅ Done (Sprint `2.8` transcript/version/action/sidecar identity realignment closed 2026-05-21) | [phase-2-transcript-codec-and-determinism.md](phase-2-transcript-codec-and-determinism.md) |
-| 3 | Backend (v) Haskell Engine | ✅ Done (strict Word64 board baseline, recursive ST-arena UCT, deterministic tie-break, bench wiring, recompute) | [phase-3-haskell-engine.md](phase-3-haskell-engine.md) |
-| 4 | Backend (i) C++ Legacy Port and FFI Bridge | ✅ Done | [phase-4-cpp-legacy-port-and-ffi-bridge.md](phase-4-cpp-legacy-port-and-ffi-bridge.md) |
+| 1 | Haskell CLI Surface, `CommandSpec`, Lint Stack | ✅ Done (Sprint `1.11` README/lint-write realignment closed 2026-05-24) | [phase-1-haskell-cli-surface.md](phase-1-haskell-cli-surface.md) |
+| 2 | Transcript Codec, RNG, and Determinism Contract | ✅ Done (Sprint `2.9` transcript/envelope doctrine realignment closed 2026-05-24) | [phase-2-transcript-codec-and-determinism.md](phase-2-transcript-codec-and-determinism.md) |
+| 3 | Backend (v) Haskell Engine | ✅ Done (Sprint `3.7` signed-modulo rollout byte-consumption realignment closed 2026-05-24) | [phase-3-haskell-engine.md](phase-3-haskell-engine.md) |
+| 4 | Backend (i) C++ Legacy Port and FFI Bridge | ✅ Done (Sprint `4.5` FFI domain-conversion contract realignment closed 2026-05-24) | [phase-4-cpp-legacy-port-and-ffi-bridge.md](phase-4-cpp-legacy-port-and-ffi-bridge.md) |
 | 5 | Backend (ii) C++ Imperative Steelman with PGO+BOLT | ✅ Done (Sprint `5.3` fail-closed C++ PGO/BOLT reclosure and Sprint `5.5` compact C ABI contract reclosure are complete) | [phase-5-cpp-imperative-steelman.md](phase-5-cpp-imperative-steelman.md) |
 | 6 | Backends (iii) C++ Functional-Style and (iv) Rust | ✅ Done (Sprint `6.4` fail-closed Rust PGO/BOLT reclosure and Sprint `6.6` compact ABI/build wording reclosure are complete) | [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md) |
-| 7 | Cross-Backend Verify, Test Stanzas, POC Report Card | ✅ Done (Sprint `7.6` replay/divergence evidence labels closed 2026-05-21) | [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md) |
-| 8 | Haskell Performance Parity Closure and Five-Backend Restoration | ✅ Done (Sprint `8.10` blended Q1/Q2 PGO/BOLT training and final report-card reclosure complete) | [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md) |
+| 7 | Cross-Backend Verify, Test Stanzas, POC Report Card | ✅ Done (Sprint `7.7` verifier gate/divergence metric realignment closed 2026-05-24) | [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md) |
+| 8 | Haskell Performance Parity Closure and Five-Backend Restoration | ✅ Done (Sprint `8.10` bounded Q1/Q2-shaped PGO/BOLT training and final report-card reclosure complete) | [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md) |
 
 ## Current Plan Status
 
@@ -339,8 +350,12 @@ The 2026-05-21 reclosure work aligned governed docs, comments, and evidence labe
 with the code that already supports the proof, while the 2026-05-22 fail-closed
 doctrine was closed by the 2026-05-23 PGO/BOLT build and parity-evidence gates.
 Sprint `8.10` closes the profile-representativeness gap: `src/MCTS/CLI/Build.hs`
-now trains C++ and Rust PGO/BOLT with blended Q1/Q2 rollouts/self-play runs across
-ST and MT8, native RNG, and multiple fixed seeds before the report card runs.
+now trains C++ and Rust PGO/BOLT with bounded Q1/Q2-shaped rollouts/self-play runs
+across ST and MT8, native RNG, fixed seeds `42` and `424242`, and `--max-plies 1`
+before the report card runs. The 2026-05-24 sweep keeps README as an operator
+reference, pushes detailed rules into governed engineering docs, and closes the
+remaining code/doc contradictions in lint repair, envelope gating, rollout byte
+consumption, FFI domain conversion, and divergence metric wording.
 Implemented in the worktree:
 
 - `mcts.cabal`, `cabal.project`, `app/Main.hs`, `src/MCTS/**`, `test/**`,
@@ -373,8 +388,9 @@ Implemented in the worktree:
 - `inspect show --envelope` renders the current transcript envelope, and
   `mcts verify ... --allow-stale` is parsed and routed through the layered
   envelope verifier covering `rng_source`, `shared_rng_build_id`,
-  `cohort_config_hash`, `engine_build_id`, `compiler_id`, `fp_flags`,
-  `cpu_features`, `fp_env`; JSON verify output includes structured
+  `cohort_config_hash`, `engine_build_id`, `compiler_id`, `compiler_version`,
+  `fp_flags`, `libm_id`, `cpu_features`, `fp_env`; `engine_git_commit` and
+  display/cache `build_id` remain provenance only. JSON verify output includes structured
   `warning_details` for downgraded backend-slot warnings.
 - The `Env` record and `App` monad (`ReaderT Env IO`) scaffold with the
   monotonic-clock test hook. `MCTS.Plan` exposes the doctrine-shaped
@@ -482,7 +498,7 @@ The PGO/BOLT build doctrine is now fail-closed for the steelman foreign backends
 PGO and BOLT complete inside the Dockerfile build, missing profile data crashes the
 image build, and the installed bolted C++/Rust libraries are smoked before runtime
 validation starts. Sprint `8.10` closed the final Phase `8` profile-workload gate:
-profile data is trained on the blended Q1/Q2 report-card workload suite before the
+profile data is trained on the bounded Q1/Q2-shaped profile suite before the
 accepted parity report card runs.
 
 ## Sprint Dependencies
@@ -520,12 +536,12 @@ performance ceiling and its functional sibling, and backend (iv) Rust is the
 cross-language second opinion. Phase `7` joins the five backend slots in the
 cross-backend evidence surface and emits the POC report card. Phase `8` closes the
 Haskell tuning loop once backend (v) matches backend (ii) within tolerance on Q1 and
-Q2 against successful Dockerfile-time PGO+BOLT artefacts trained on the blended
-Q1/Q2 report-card workload suite. Sprint `8.9` revalidated the historical handoff
+Q2 against successful Dockerfile-time PGO+BOLT artefacts trained on the bounded
+Q1/Q2-shaped profile suite. Sprint `8.9` revalidated the historical handoff
 after the evidence-surface alignment sprints closed, Sprint `8.3` reclosed the
 report-card evidence against fail-closed build artefacts on 2026-05-23, and Sprint
-`8.10` reclosed Phase `8` after replacing the narrow training run with blended
-Q1/Q2 profile training.
+`8.10` reclosed Phase `8` after replacing the narrow training run with bounded
+Q1/Q2-shaped profile training.
 
 ## Exit Definition
 
@@ -581,16 +597,17 @@ This plan is complete only when all of the following are true:
 12. Library-first layout: `app/Main.hs` is thin and logic lives under `src/MCTS/`.
 13. `mcts.cabal` declares the five live test-suite stanzas with
     `type: exitcode-stdio-1.0` and `tasty` as the in-stanza runner.
-14. `CommandSpec` is the source of truth for the parser, command tree
+14. `CommandSpec` is the source of truth for command topology, command tree
     (`mcts commands --tree`), JSON schema (`mcts commands --json`), markdown command
-    reference, manpages, and shell completion scripts. The parser is a renderer of the
-    spec, not the source of truth.
+    reference, manpage command list, shell completion metadata, and examples.
+    `Parser.hs` renders topology from the spec while retaining explicit semantic leaf
+    option parsers.
 15. `Subprocess` is the only IO boundary for subprocess execution. `callProcess`,
     `readCreateProcess`, `System.Process` constructors, and `typed-process` smart
     constructors are hlint-forbidden outside the `runStreaming` / `capture` interpreter.
 16. Every Plan/Apply command supports `--dry-run` and `--plan-file <path>` (`mcts test
-    all`, `mcts test parity-anchor`, the build harness, anything that mutates external
-    state).
+    all`, `mcts test parity-anchor`, `mcts docs generate`, `mcts inspect cache prune`,
+    `mcts build <backend>`, and `mcts build legacy-fixtures`).
 17. One `prerequisiteRegistry` spans the active build/test prerequisite surface and emits
     `AppError PrerequisiteUnmet` carrying the failing `nodeId`, description, and remedy
     hint. Current coverage includes exact GHC/Cabal, C++ compiler, LLVM/BOLT, Rust

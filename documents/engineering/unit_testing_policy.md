@@ -175,15 +175,14 @@ and `divergence_matrix` rows.
 
 ## POC Headline Questions
 
-The report card answers seven questions, verbatim from
-[../../README.md → POC headline questions](../../README.md):
+The report card answers seven project questions owned by this policy:
 Q1/Q2 currently measure against the live backend (ii) artefact that `mcts test all`
 consumes from the Dockerfile-built C++ PGO/BOLT path. That path is mandatory and
 fail-closed: missing PGO data, missing BOLT `.fdata`, or PGO-only/unoptimized
 fallback artefacts cannot satisfy the report-card gate. Phase 8 Sprint `8.10`
 closed the stricter final evidence requirement: the Dockerfile-built steelman C++
-and Rust artefacts consumed by the report card are trained on the blended Q1/Q2
-workload suite described in
+and Rust artefacts consumed by the report card are trained on the bounded Q1/Q2-shaped
+profile suite described in
 [compiler_runtime_tuning.md → PGO/BOLT Training Workload Doctrine](./compiler_runtime_tuning.md#pgobolt-training-workload-doctrine),
 not only on the earlier narrow self-play smoke run.
 
@@ -206,8 +205,8 @@ not only on the earlier narrow self-play smoke run.
 
 **Backend (i) basis caveat.** Backend (i) `cpp-legacy` is a verbatim port and
 inherits the legacy's lack of a game-level ply cap (see
-[../../README.md → Draw rule](../../README.md) and
-[determinism_contract.md](./determinism_contract.md)). Its Q1 / Q2 / Q5
+[determinism_contract.md → Ply-Cap Draw Rule](./determinism_contract.md#ply-cap-draw-rule)).
+Its Q1 / Q2 / Q5
 throughput numbers are therefore **not on the same basis** as backends
 (ii)–(v) under any `max_plies` other than `MAX_ROLLOUT_ITERS = 10000`: (i)'s
 games run to a positional win and are on average longer than the ply-capped
@@ -234,15 +233,14 @@ Knobs](../../DEVELOPMENT_PLAN/system-components.md): `G_R = 1_000`, `G_S =
 
 `mcts test all` requires the Dockerfile-built live foreign artefacts before running
 the Cabal stanzas and final report card. The current gate proves those artefacts are
-present, fail-closed, and produced from the blended Dockerfile-time PGO/BOLT
-training suite. The measured report-card builder uses the production monotonic clock
+present, fail-closed, and produced from the bounded Q1/Q2-shaped Dockerfile-time
+PGO/BOLT training suite. The measured report-card builder uses the production monotonic clock
 for live Haskell Q1/Q2/Q5 throughput through `runBatchNoWriteDispatch`, compares those
 rates against live backend (ii) where available, and renders `Evidence pending` only in
 deterministic semantic unit values, not in a live full run. Q7 is the all-five
 legacy-envelope gate, while Q3 carries the visit-count equality assertion for `(ii)..(v)`.
 
-Summary block format pinned in the project [../../README.md → Tidy summary
-block](../../README.md). Renderer is pure; wall-clock numbers render to fixed
+Summary block format is pinned here. Renderer is pure; wall-clock numbers render to fixed
 precision (two decimals for text ratios, one decimal for text throughputs);
 no timestamps, no locale-dependent ordering, no terminal-width-
 dependent wrapping.

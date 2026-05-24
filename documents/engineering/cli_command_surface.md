@@ -18,7 +18,8 @@ see:
   as ordinary Haskell ADTs.
 - [../../HASKELL_CLI_TOOL.md → Automatically Generated
   Documentation](../../HASKELL_CLI_TOOL.md) — `CommandSpec` + `OptionSpec` record
-  shape, per-leaf `Example` entries, parser as a renderer of the spec.
+  shape, per-leaf `Example` entries, command topology rendered from the spec with
+  explicit semantic leaf option parsers.
 - [../../HASKELL_CLI_TOOL.md → Progressive Introspection](../../HASKELL_CLI_TOOL.md)
   — `commands [--tree|--json]`, focused `help <subcommand>`.
 - [../../HASKELL_CLI_TOOL.md → Generated Artifacts](../../HASKELL_CLI_TOOL.md) —
@@ -77,9 +78,10 @@ From the host, run any listed logical command as
 <!-- mcts:command-matrix:end -->
 
 Current implementation baseline: `src/MCTS/CLI/Parser.hs` exposes
-`commandParserInfo`, an `optparse-applicative` parser rendered from the
-`CommandSpec` tree; verify parsers reject `--rng native` at the option-reader
-boundary. `inspect list` renders backend, seed, games, threading, sims,
+`commandParserInfo`, an `optparse-applicative` parser whose command topology is
+rendered from the `CommandSpec` tree while leaf option parsers remain explicit;
+verify parsers reject `--rng native` at the option-reader boundary. `inspect list`
+renders backend, seed, games, threading, sims,
 total moves, mtime, and path; `inspect show --with-equity` first reads an
 envelope-matched cached originator sidecar, then writes an originator replacement
 only through the transcript's same backend/build recompute path and otherwise
@@ -124,8 +126,9 @@ backend ADTs, and verify-cohort GADTs — `Command`, `BenchCommand`,
 `src/MCTS/CLI/Command.hs` and related type modules.
 This document does not duplicate their full Haskell declarations; it elaborates
 the generated operator-facing matrix and the per-command flag semantics in the
-Flag Reference below. Worked invocation examples live in
-[../../README.md → CLI command topology](../../README.md).
+Flag Reference below. The generated command list lives in
+[../cli/commands.md](../cli/commands.md), and the operator README carries a short
+set of common invocations.
 
 ## Flag Reference
 
@@ -140,10 +143,10 @@ Flag Reference below. Worked invocation examples live in
 | `--games N` | `bench`, `verify`, `build legacy-fixtures` | required for bench/verify; `10` for legacy fixtures | Game count for the run. |
 | `--seed N` | `bench`, `verify`, `play`, `build legacy-fixtures` | required (bench/verify); `Nothing` ⇒ fresh random (play); `42` for legacy fixtures | Master seed; per-game seeds derive via `splitmix64(master_seed, game_index)`. |
 | `--max-plies N` | `bench`, `verify`, `play` | `200` | Part of the determinism contract for the live verifier cohort. |
-| `--sims N` or `--sims N0:N1` | `bench`, `verify`, `play`, `build legacy-fixtures` | `10_000` | `N` parses as `FixedSims N`; `N0:N1` parses as `RampedSims N0 N1` for run commands. `build legacy-fixtures` accepts fixed `N` only. Ignored by `bench rollouts` / `verify rollouts`. |
+| `--sims N` or `--sims N0:N1` | `bench`, `verify`, `play`, `build legacy-fixtures` | `10_000` for `bench`/`verify`; `1_000` for `play`; `10_000` for legacy fixtures | `N` parses as `FixedSims N`; `N0:N1` parses as `RampedSims N0 N1` for run commands. `build legacy-fixtures` accepts fixed `N` only. Ignored by `bench rollouts` / `verify rollouts`. |
 | `--output-dir <path>` | `build legacy-fixtures` | required explicit path | Legacy evidence output root; choose an external or ignored artifact directory. Files land below the host-architecture subdirectory and are not repository validation inputs. |
 | `--top N` | `inspect show`, `inspect replay` | `10`; `0` ⇒ all legal moves | Live-adjustable via `+`/`-` in `inspect replay`. |
-| `--with-equity` | `inspect show` | `False` | Re-runs the deterministic search to populate the equity column. Reads the originator's cached `.eq` if envelope-matched (instant); otherwise recomputes locally and writes a fresh sidecar. |
+| `--with-equity` | `inspect show` | `False` | Reads the originator's cached `.eq` if envelope-matched (instant); on originator cache miss, writes a replacement only through the same backend/build recompute path. Stale, unavailable, fallback, or foreign recompute evidence is labelled and is not written as originator evidence. |
 | `--envelope` | `inspect show` | `False` | Dump the transcript's engine-envelope block as plain text (one field per line) before the per-move output. Useful for scripting (`diff`-friendly) and forensics. |
 | `--cache-states N` | `inspect replay` | `20` | In-memory MCTS-state LRU cache for back-navigation. |
 | `--allow-stale` | `verify rollouts`, `verify selfplay` | off | Downgrade per-backend-slot `EngineEnvelopeMismatch` from hard fail to a warning; Q3 verify proceeds on visit counts. `--format json` includes the downgraded warnings under `warning_details`. Cohort-level mismatches (`host_arch`, `shared_rng_build_id`, `cohort_config_hash`) remain hard fails. Forensic use only. |
@@ -151,7 +154,7 @@ Flag Reference below. Worked invocation examples live in
 | `--cache-dir <path>` | every cache-touching command | `./.mcts-cache/` when omitted | The `mcts` binary does not read cache-root environment variables. |
 | `--format json\|table\|plain` | every non-TUI command | `table` on TTY, `plain` otherwise | Per [HASKELL_CLI_TOOL.md → Output Rules](../../HASKELL_CLI_TOOL.md). TUI commands (`play`, `inspect replay`) ignore the flag. |
 | `--color auto\|always\|never`, `--no-color` | every non-TUI command | `auto` | TUI commands ignore the flag. |
-| `--dry-run` | every Plan/Apply command (`test all`, `build <backend>`, `build legacy-fixtures`, `inspect cache prune`) | off | Renders the typed `Plan` and exits 0. |
+| `--dry-run` | every Plan/Apply command (`test all`, `test parity-anchor`, `docs generate`, `inspect cache prune`, `build <backend>`, `build legacy-fixtures`) | off | Renders the typed `Plan` and exits 0. |
 | `--plan-file <path>` | every Plan/Apply command | unset | Writes the rendered plan to disk for out-of-band review. |
 
 ## Backend Identifiers
@@ -303,11 +306,12 @@ that the user is not looking at originator numbers from the current live backend
   `host_arch`, `rng_source`, `cohort_config_hash`, and `shared_rng_build_id`.
   Mismatch → exit non-zero with `AppError EngineEnvelopeMismatch
   CohortLevel field expected got`. Not overridable by `--allow-stale`.
-- **Per backend slot**: verify compares each transcript against the live
-  envelope for that backend slot when the cdylib is present, and against the
-  in-process fallback envelope when it is not. This path uses
-  `checkTranscriptEnvelopesLive` and supports the same `--allow-stale`
-  downgrade semantics for stale cached transcripts. In JSON
+- **Per backend slot**: verify compares each transcript's substrate-affecting
+  envelope fields against the live envelope for that backend slot when the
+  cdylib is present, and against the in-process fallback envelope when it is
+  not. `engine_git_commit` and the display/cache `build_id` accessor are
+  provenance only. This path uses `checkTranscriptEnvelopesLive` and supports
+  the same `--allow-stale` downgrade semantics for stale cached transcripts. In JSON
   output, downgraded envelope warnings are structured as `warning_details`
   objects with `scope`, `backend`, `field`, `expected`, `got`, and `message`
   fields.

@@ -36,9 +36,8 @@ project-specific.
 
 ## Wire Format
 
-The project [../../README.md → Cross-backend verification](../../README.md)
-sketches the operator-facing format. This section is the authoritative byte-level
-specification. Little-endian everywhere, no padding.
+This section is the authoritative byte-level transcript specification.
+Little-endian everywhere, no padding.
 
 ### Header
 
@@ -92,17 +91,17 @@ The block lives at `envelope_offset` (byte 48 in version-1 transcripts):
 | 72 | 32 | engine_build_id | SHA-256 of the loaded backend shared library / executable that wrote this transcript. |
 | 104 | 40 | engine_git_commit | ASCII; project repo commit SHA at build time. Padded with NULs if shorter than 40 bytes. Informational; does not gate `verify`. |
 | 144 | 1 | compiler_id | `u8`; `0 = gcc`, `1 = clang`, `2 = rustc`, `3 = ghc`. |
-| 145 | 1 | compiler_version_len | `u8`; length of the following ASCII string, ≤63. |
-| 146 | `compiler_version_len` | compiler_version | ASCII; e.g., `"13.2.0"`. No NUL terminator (length-prefixed). |
-| … | 4 | fp_flags | `u32` bitfield. Bit 0 = `FP_FAST_MATH`, bit 1 = `FP_FMA_ALLOWED`, bit 2 = `FP_CONTRACT_ON`, bit 3 = `FP_DENORMALS_ON`, bit 4 = `FP_X87_USED`. All other bits reserved (must be zero). |
-| … | 1 | libm_id_len | `u8`; length of the following ASCII string, ≤63. |
-| … | `libm_id_len` | libm_id | ASCII; e.g., `"glibc-2.39"`. Empty (length 0) if the backend's engine hot path makes no libm transcendental calls. |
-| … | 4 | cpu_features | `u32` bitfield. Bit 0 = `AVX2`, bit 1 = `AVX512F`, bit 2 = `BMI2`, bit 3 = `FMA3`, bit 4 = `NEON`, bit 5 = `SVE`. All other bits reserved (must be zero). |
-| … | 1 | fp_env | `u8`; bits 0-1 = rounding mode (`0=RNE`, `1=RZ`, `2=RD`, `3=RU`), bit 2 = FTZ, bit 3 = DAZ. `0` = IEEE defaults. |
+| 145 | 1 | compiler_version_len | `u8`; number of valid bytes in the following fixed-width field, ≤63. |
+| 146 | 63 | compiler_version | ASCII, NUL-padded to 63 bytes; readers consume only `compiler_version_len` bytes. |
+| 209 | 4 | fp_flags | `u32` bitfield. Bit 0 = `FP_FAST_MATH`, bit 1 = `FP_FMA_ALLOWED`, bit 2 = `FP_CONTRACT_ON`, bit 3 = `FP_DENORMALS_ON`, bit 4 = `FP_X87_USED`. All other bits reserved (must be zero). |
+| 213 | 1 | libm_id_len | `u8`; number of valid bytes in the following fixed-width field, ≤63. |
+| 214 | 63 | libm_id | ASCII, NUL-padded to 63 bytes. Empty (length 0) if the backend's engine hot path makes no libm transcendental calls. |
+| 277 | 4 | cpu_features | `u32` bitfield. Bit 0 = `AVX2`, bit 1 = `AVX512F`, bit 2 = `BMI2`, bit 3 = `FMA3`, bit 4 = `NEON`, bit 5 = `SVE`. All other bits reserved (must be zero). |
+| 281 | 1 | fp_env | `u8`; bits 0-1 = rounding mode (`0=RNE`, `1=RZ`, `2=RD`, `3=RU`), bit 2 = FTZ, bit 3 = DAZ. `0` = IEEE defaults. |
 
-Total block length in version-1 with default-length `compiler_version` and
-`libm_id` is bounded by `145 + 1 + 63 + 4 + 1 + 63 + 4 + 1 = 282` bytes;
-typical values land around 160-200 bytes.
+Total block length in version-1 is fixed at 282 bytes. The two string fields are
+length-prefixed for decoding, but their storage slots are fixed-width so the
+remaining offsets stay stable.
 
 The envelope is excluded from the cross-backend **determinism payload** (see
 [Content Addressing](#content-addressing) below). The cached file hash remains
@@ -345,10 +344,12 @@ Current implementation baseline: `src/MCTS/Transcript/EquitySidecar.hs`
 stores `EqStream` in the binary `MEQ1` format below and writes a neighbouring
 `.envelope` file containing the same binary envelope block used in the transcript.
 `inspect show --with-equity` first loads an envelope-matched originator sidecar
-when one exists, then recomputes and writes the stream only on a cache miss or
-stale envelope. `inspect cache list` marks each sidecar as originator, foreign,
-or unknown and `inspect cache prune --keep-current` exercises the documented
-cache layout through a Plan/Apply deletion plan.
+when one exists. On an originator cache miss, it writes a replacement only
+through the transcript's same backend/build recompute path; stale, unavailable,
+fallback, or foreign recompute evidence is labelled as such and is not written
+as originator evidence. `inspect cache list` marks each sidecar as originator,
+foreign, or unknown and `inspect cache prune --keep-current` exercises the
+documented cache layout through a Plan/Apply deletion plan.
 
 ```text
 # Example: .eq sidecar wire format
