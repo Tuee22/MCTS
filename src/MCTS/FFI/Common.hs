@@ -28,7 +28,7 @@ module MCTS.FFI.Common
     ) where
 
 import Control.Concurrent.MVar (MVar, modifyMVar, newMVar)
-import Control.Exception (SomeException, bracket, try)
+import Control.Exception (SomeException, bracket, finally, try)
 import Data.Char (chr)
 import Data.Int (Int32)
 import Data.Word (Word16, Word32, Word64, Word8)
@@ -45,6 +45,7 @@ import MCTS.Types
     , RngSource (..)
     )
 import Numeric (showHex)
+import System.Environment (lookupEnv)
 import System.IO.Unsafe (unsafePerformIO)
 import qualified System.Posix.DynamicLinker as DL
 
@@ -210,6 +211,7 @@ foreign import ccall "dynamic"
         -> Ptr Double
         -> IO Int32
 foreign import ccall "dynamic" mkDynamicEnvelope :: FunPtr (IO (Ptr ())) -> IO (Ptr ())
+foreign import ccall "dynamic" mkDynamicProfileDump :: FunPtr (IO ()) -> IO ()
 
 {-# NOINLINE pinnedDynamicLibraries #-}
 pinnedDynamicLibraries :: MVar [(FilePath, DL.DL)]
@@ -222,14 +224,18 @@ pinnedDynamicLibraries = unsafePerformIO (newMVar [])
 -- pairs during verification.
 withPinnedDynamicLibrary :: FilePath -> (DL.DL -> IO a) -> IO a
 withPinnedDynamicLibrary libraryPath action = do
-    library <-
-        modifyMVar pinnedDynamicLibraries $ \libraries ->
-            case lookup libraryPath libraries of
-                Just existing -> pure (libraries, existing)
-                Nothing -> do
-                    opened <- DL.dlopen libraryPath [DL.RTLD_NOW]
-                    pure ((libraryPath, opened) : libraries, opened)
-    action library
+    scoped <- (== Just "1") <$> lookupEnv "MCTS_SCOPED_DYNAMIC_LIBRARY"
+    if scoped
+        then bracket (DL.dlopen libraryPath [DL.RTLD_NOW]) DL.dlclose action
+        else do
+            library <-
+                modifyMVar pinnedDynamicLibraries $ \libraries ->
+                    case lookup libraryPath libraries of
+                        Just existing -> pure (libraries, existing)
+                        Nothing -> do
+                            opened <- DL.dlopen libraryPath [DL.RTLD_NOW]
+                            pure ((libraryPath, opened) : libraries, opened)
+            action library
 
 -- | Dynamically load a backend shared library, call its
 -- `mcts_<backend>_new_board` / `mcts_<backend>_free_board` pair, and run
@@ -249,7 +255,8 @@ withDynamicBoard backend libraryPath symbolPrefix body =
         withPinnedDynamicLibrary libraryPath $ \library -> do
             newFun <- DL.dlsym library (symbolPrefix <> "_new_board")
             freeFun <- DL.dlsym library (symbolPrefix <> "_free_board")
-            bracket (mkBoardNew newFun) (mkBoardFree freeFun) body
+            withDynamicProfileFlush library symbolPrefix $
+                bracket (mkBoardNew newFun) (mkBoardFree freeFun) body
 
 withDynamicGame
     :: Backend
@@ -264,13 +271,14 @@ withDynamicGame backend libraryPath symbolPrefix body =
             freeFun <- DL.dlsym library (symbolPrefix <> "_free_board")
             isTerminalFun <- DL.dlsym library (symbolPrefix <> "_is_terminal")
             selectMoveFun <- DL.dlsym library (symbolPrefix <> "_select_uct_move")
-            bracket (mkBoardNew newFun) (mkBoardFree freeFun) $ \board ->
-                body
-                    DynamicGame
-                        { dynamicGameBoard = board
-                        , dynamicGameIsTerminal = (/= 0) <$> mkDynamicIsTerminal isTerminalFun board
-                        , dynamicGameSelectMove = mkDynamicSelectMove selectMoveFun board
-                        }
+            withDynamicProfileFlush library symbolPrefix $
+                bracket (mkBoardNew newFun) (mkBoardFree freeFun) $ \board ->
+                    body
+                        DynamicGame
+                            { dynamicGameBoard = board
+                            , dynamicGameIsTerminal = (/= 0) <$> mkDynamicIsTerminal isTerminalFun board
+                            , dynamicGameSelectMove = mkDynamicSelectMove selectMoveFun board
+                            }
 
 withDynamicSearchGame
     :: Backend
@@ -289,49 +297,50 @@ withDynamicSearchGame backend libraryPath symbolPrefix body =
             let isTerminal board' = (/= 0) <$> mkDynamicIsTerminal isTerminalFun board'
                 applyAction' = mkDynamicApplyAction applyActionFun
                 searchMove' = mkDynamicSearchMove searchMoveFun
-            bracket (mkBoardNew newFun) (mkBoardFree freeFun) $ \board ->
-                body
-                    DynamicSearchGame
-                        { searchGameBoard = board
-                        , searchGameIsTerminal = isTerminal board
-                        , searchGameApplyAction = \actionId -> do
-                            ret <- applyAction' board actionId
-                            pure $
-                                if ret == 0
-                                    then Right ()
-                                    else
-                                        Left $
-                                            FFIFailure
-                                                backend
-                                                (symbolPrefix <> "_apply_action")
-                                                ("apply returned " <> show ret)
-                        , searchGameSearchMove = \seed sims -> do
-                            allocaArray actionCount $ \actionIdsBuf ->
-                                allocaArray actionCount $ \visitsBuf ->
-                                    alloca $ \chosenBuf -> do
-                                        ret <-
-                                            searchMove'
-                                                board
-                                                seed
-                                                sims
-                                                actionIdsBuf
-                                                visitsBuf
-                                                chosenBuf
-                                        if ret < 0
-                                            then
-                                                pure $
-                                                    Left $
-                                                        FFIFailure
-                                                            backend
-                                                            (symbolPrefix <> "_search_move")
-                                                            ("simulate returned " <> show ret)
-                                            else do
-                                                let count = fromIntegral ret
-                                                actionIds <- peekArray count actionIdsBuf
-                                                visits <- peekArray count visitsBuf
-                                                chosen <- peek chosenBuf
-                                                pure $ Right (chosen, zip actionIds visits)
-                        }
+            withDynamicProfileFlush library symbolPrefix $
+                bracket (mkBoardNew newFun) (mkBoardFree freeFun) $ \board ->
+                    body
+                        DynamicSearchGame
+                            { searchGameBoard = board
+                            , searchGameIsTerminal = isTerminal board
+                            , searchGameApplyAction = \actionId -> do
+                                ret <- applyAction' board actionId
+                                pure $
+                                    if ret == 0
+                                        then Right ()
+                                        else
+                                            Left $
+                                                FFIFailure
+                                                    backend
+                                                    (symbolPrefix <> "_apply_action")
+                                                    ("apply returned " <> show ret)
+                            , searchGameSearchMove = \seed sims -> do
+                                allocaArray actionCount $ \actionIdsBuf ->
+                                    allocaArray actionCount $ \visitsBuf ->
+                                        alloca $ \chosenBuf -> do
+                                            ret <-
+                                                searchMove'
+                                                    board
+                                                    seed
+                                                    sims
+                                                    actionIdsBuf
+                                                    visitsBuf
+                                                    chosenBuf
+                                            if ret < 0
+                                                then
+                                                    pure $
+                                                        Left $
+                                                            FFIFailure
+                                                                backend
+                                                                (symbolPrefix <> "_search_move")
+                                                                ("simulate returned " <> show ret)
+                                                else do
+                                                    let count = fromIntegral ret
+                                                    actionIds <- peekArray count actionIdsBuf
+                                                    visits <- peekArray count visitsBuf
+                                                    chosen <- peek chosenBuf
+                                                    pure $ Right (chosen, zip actionIds visits)
+                            }
   where
     actionCount = 209
 
@@ -357,46 +366,47 @@ withDynamicRecomputeGame backend libraryPath symbolPrefix body =
             recomputeFun <- DL.dlsym library (symbolPrefix <> "_recompute_move")
             let isTerminal board' = (/= 0) <$> mkDynamicIsTerminal isTerminalFun board'
                 recompute' = mkDynamicRecomputeMove recomputeFun
-            bracket (mkBoardNew newFun) (mkBoardFree freeFun) $ \board ->
-                body
-                    DynamicRecomputeGame
-                        { recomputeGameBoard = board
-                        , recomputeGameIsTerminal = isTerminal board
-                        , recomputeGameRecomputeMove = \seed sims ->
-                            allocaArray actionCount $ \actionIdsBuf ->
-                                allocaArray actionCount $ \visitsBuf ->
-                                    alloca $ \chosenBuf ->
-                                        alloca $ \equityBuf -> do
-                                            ret <-
-                                                recompute'
-                                                    board
-                                                    seed
-                                                    sims
-                                                    actionIdsBuf
-                                                    visitsBuf
-                                                    chosenBuf
-                                                    equityBuf
-                                            if ret < 0
-                                                then
-                                                    pure $
-                                                        Left $
-                                                            FFIFailure
-                                                                backend
-                                                                (symbolPrefix <> "_recompute_move")
-                                                                ("recompute returned " <> show ret)
-                                                else do
-                                                    let count = fromIntegral ret
-                                                    actionIds <- peekArray count actionIdsBuf
-                                                    visits <- peekArray count visitsBuf
-                                                    chosen <- peek chosenBuf
-                                                    equity <- peek equityBuf
-                                                    pure $
-                                                        Right
-                                                            ( chosen
-                                                            , zip actionIds visits
-                                                            , equity
-                                                            )
-                        }
+            withDynamicProfileFlush library symbolPrefix $
+                bracket (mkBoardNew newFun) (mkBoardFree freeFun) $ \board ->
+                    body
+                        DynamicRecomputeGame
+                            { recomputeGameBoard = board
+                            , recomputeGameIsTerminal = isTerminal board
+                            , recomputeGameRecomputeMove = \seed sims ->
+                                allocaArray actionCount $ \actionIdsBuf ->
+                                    allocaArray actionCount $ \visitsBuf ->
+                                        alloca $ \chosenBuf ->
+                                            alloca $ \equityBuf -> do
+                                                ret <-
+                                                    recompute'
+                                                        board
+                                                        seed
+                                                        sims
+                                                        actionIdsBuf
+                                                        visitsBuf
+                                                        chosenBuf
+                                                        equityBuf
+                                                if ret < 0
+                                                    then
+                                                        pure $
+                                                            Left $
+                                                                FFIFailure
+                                                                    backend
+                                                                    (symbolPrefix <> "_recompute_move")
+                                                                    ("recompute returned " <> show ret)
+                                                    else do
+                                                        let count = fromIntegral ret
+                                                        actionIds <- peekArray count actionIdsBuf
+                                                        visits <- peekArray count visitsBuf
+                                                        chosen <- peek chosenBuf
+                                                        equity <- peek equityBuf
+                                                        pure $
+                                                            Right
+                                                                ( chosen
+                                                                , zip actionIds visits
+                                                                , equity
+                                                                )
+                            }
   where
     actionCount = 209
 
@@ -408,9 +418,27 @@ loadDynamicEnvelope
 loadDynamicEnvelope backend libraryPath symbolPrefix =
     liftFFI backend (symbolPrefix <> "_get_envelope") $
         withPinnedDynamicLibrary libraryPath $ \library -> do
-            envelopeFun <- DL.dlsym library (symbolPrefix <> "_get_envelope")
-            envelopePtr <- mkDynamicEnvelope envelopeFun
-            peekEngineEnvelope backend envelopePtr
+            withDynamicProfileFlush library symbolPrefix $ do
+                envelopeFun <- DL.dlsym library (symbolPrefix <> "_get_envelope")
+                envelopePtr <- mkDynamicEnvelope envelopeFun
+                peekEngineEnvelope backend envelopePtr
+
+withDynamicProfileFlush :: DL.DL -> String -> IO a -> IO a
+withDynamicProfileFlush library symbolPrefix action =
+    action `finally` flushDynamicProfile library symbolPrefix
+
+flushDynamicProfile :: DL.DL -> String -> IO ()
+flushDynamicProfile library symbolPrefix = do
+    scoped <- (== Just "1") <$> lookupEnv "MCTS_SCOPED_DYNAMIC_LIBRARY"
+    if scoped
+        then do
+            dumpResult <-
+                try (DL.dlsym library (symbolPrefix <> "_dump_profile") :: IO (FunPtr (IO ())))
+                    :: IO (Either SomeException (FunPtr (IO ())))
+            case dumpResult of
+                Right dumpProfile -> mkDynamicProfileDump dumpProfile
+                Left _ -> pure ()
+        else pure ()
 
 peekEngineEnvelope :: Backend -> Ptr () -> IO EngineEnvelope
 peekEngineEnvelope backend ptr = do

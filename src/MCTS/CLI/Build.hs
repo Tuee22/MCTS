@@ -4,39 +4,84 @@ module MCTS.CLI.Build
     , legacyFixturePlan
     , cppPgoBoltPlan
     , rustPgoBoltPlan
-    , pgoTrainingGames
-    , pgoTrainingSims
-    , boltTrainingGames
-    , boltTrainingSims
+    , TrainingRun (..)
+    , pgoTrainingRuns
+    , boltTrainingRuns
     ) where
 
 import Control.Monad.IO.Class (liftIO)
+import Data.Word (Word64)
 import MCTS.CLI.Command (BuildCommand (..), LegacyFixtureOptions (..))
 import MCTS.CLI.Output (outputLine, renderErrorString)
 import qualified MCTS.Env as Env
 import MCTS.Plan
 import MCTS.Prerequisite (checkPrerequisites, prerequisitesForBuild)
 import MCTS.Subprocess
+import MCTS.Types (Threading (..), Workload (..), threadingWorkers, workloadName)
 import System.Directory (createDirectoryIfMissing)
 import System.Exit (ExitCode (..))
 
--- | Build-scoped PGO training tuple. This is deliberately smaller
--- than the report-card workloads: the Dockerfile-invoked backend build
--- recipe must emit representative profile data, while Phase 7/8
--- report-card commands own the full comparison runs.
-pgoTrainingGames :: Int
-pgoTrainingGames = 1
+data TrainingRun = TrainingRun
+    { trainingWorkload :: !Workload
+    , trainingThreading :: !Threading
+    , trainingGames :: !Int
+    , trainingSeed :: !Word64
+    , trainingSims :: !Int
+    }
+    deriving (Eq, Show)
 
-pgoTrainingSims :: Int
-pgoTrainingSims = 100
+trainingMaxPlies :: Int
+trainingMaxPlies = 1
 
--- | BOLT instrumentation pass uses a smaller training workload: BOLT
--- profiles are about basic-block edge frequencies, which converge fast.
-boltTrainingGames :: Int
-boltTrainingGames = 1
+trainingMultiWorkers :: Int
+trainingMultiWorkers = 8
 
-boltTrainingSims :: Int
-boltTrainingSims = 50
+pgoTrainingSeeds :: [Word64]
+pgoTrainingSeeds = [42, 424242]
+
+boltTrainingSeeds :: [Word64]
+boltTrainingSeeds = [42, 424242]
+
+-- | Dockerfile-time PGO training mirrors the Q1/Q2 report-card shape:
+-- random rollouts and self-play, ST and MT8, backend-native RNG, and
+-- multiple deterministic seeds. The training subprocess environment
+-- forces foreign dispatch for this bounded one-move ply cap so profile
+-- training cannot silently fall back to the in-process Haskell engine.
+-- Self-play uses S_BENCH's 500-sim per-move budget to profile the hot
+-- search path while keeping the image build usable.
+pgoTrainingRuns :: [TrainingRun]
+pgoTrainingRuns =
+    trainingRuns
+        pgoTrainingSeeds
+        2
+        2
+        1
+        1
+        500
+
+-- | BOLT training keeps the same workload/threading/seed shape with a
+-- shorter self-play budget. BOLT needs block-edge coverage, not the
+-- full report-card duration.
+boltTrainingRuns :: [TrainingRun]
+boltTrainingRuns =
+    trainingRuns
+        boltTrainingSeeds
+        1
+        1
+        1
+        1
+        100
+
+trainingRuns :: [Word64] -> Int -> Int -> Int -> Int -> Int -> [TrainingRun]
+trainingRuns seeds rolloutSingleGames rolloutMultiGames selfplaySingleGames selfplayMultiGames selfplaySims =
+    concatMap runsForSeed seeds
+  where
+    runsForSeed seed =
+        [ TrainingRun Rollouts SingleThreaded rolloutSingleGames seed 1
+        , TrainingRun Rollouts (MultiThreaded trainingMultiWorkers) rolloutMultiGames seed 1
+        , TrainingRun Selfplay SingleThreaded selfplaySingleGames seed selfplaySims
+        , TrainingRun Selfplay (MultiThreaded trainingMultiWorkers) selfplayMultiGames seed selfplaySims
+        ]
 
 runBuild :: BuildCommand -> Env.App ExitCode
 runBuild command = do
@@ -123,12 +168,12 @@ legacyFixturePlan options =
 -- per the backend (ii)/(iii) steelman build sprints:
 --
 --   1. PGO-instrumented bench + instrumented artefacts.
---   2. Training run (self-play under `--rng native`) writes
+--   2. Blended PGO training suite under `--rng native` writes
 --      `<backend>/pgo-profile/*.gcda`.
 --   3. PGO-optimized rebuild of both artefacts with `-fprofile-use`.
 --   4. BOLT instrument pass for both artefacts (writes
 --      `<backend>/bolt-profile/*.fdata`).
---   5. BOLT training run produces the BOLT profile data.
+--   5. Short blended BOLT training suite produces the BOLT profile data.
 --   6. BOLT optimize pass produces `*_bench.bolted.so` and
 --      `*_instrumented.bolted.so`.
 --   7. Install: rename `_bench.bolted.so` to the canonical FFI load
@@ -147,23 +192,28 @@ cppPgoBoltPlan backend =
     [ resetCppProfileDirectories
     , makeTarget "pgo-bench-generate"
     , installCppTrainingArtifact "_bench.so"
-    , trainingRunFor backend pgoTrainingGames pgoTrainingSims
-    , makeTarget "pgo-instr-generate"
-    , installCppTrainingArtifact "_instrumented.so"
-    , trainingRunFor backend pgoTrainingGames pgoTrainingSims
-    , makeTarget "pgo-bench-use"
-    , makeTarget "pgo-instr-use"
-    , makeTarget "bolt-bench-instrument"
-    , installCppBoltTrainingArtifact "_bench.inst.so"
-    , trainingRunFor backend boltTrainingGames boltTrainingSims
-    , makeTarget "bolt-instr-instrument"
-    , installCppBoltTrainingArtifact "_instrumented.inst.so"
-    , trainingRunFor backend boltTrainingGames boltTrainingSims
-    , makeTarget "bolt-bench-optimize"
-    , makeTarget "bolt-instr-optimize"
-    , makeTarget "install-bench"
-    , smokeRunFor backend
     ]
+        <> trainingRunsFor backend pgoTrainingRuns
+        <> [ makeTarget "pgo-instr-generate"
+           , installCppTrainingArtifact "_instrumented.so"
+           ]
+        <> trainingRunsFor backend pgoTrainingRuns
+        <> [ requireCppGcdaProfiles
+           , makeTarget "pgo-bench-use"
+           , makeTarget "pgo-instr-use"
+           , makeTarget "bolt-bench-instrument"
+           , installCppBoltTrainingArtifact "_bench.inst.so"
+           ]
+        <> trainingRunsFor backend boltTrainingRuns
+        <> [ makeTarget "bolt-instr-instrument"
+           , installCppBoltTrainingArtifact "_instrumented.inst.so"
+           ]
+        <> trainingRunsFor backend boltTrainingRuns
+        <> [ makeTarget "bolt-bench-optimize"
+           , makeTarget "bolt-instr-optimize"
+           , makeTarget "install-bench"
+           , smokeRunFor backend
+           ]
   where
     libraryBase = cppLibraryBase backend
     canonicalLibrary = cppBuildPath (libraryBase <> ".so")
@@ -211,6 +261,23 @@ cppPgoBoltPlan backend =
             Nothing
             Nothing
 
+    requireCppGcdaProfiles =
+        Subprocess
+            "bash"
+            [ "-c"
+            , "if ! find "
+                <> backend
+                <> "/pgo-profile -type f -name '*.gcda' -size +0c -print -quit | grep -q .; then "
+                <> "find "
+                <> backend
+                <> " -type f \\( -name '*.gcda' -o -name '*.gcno' -o -name '*gcov*' \\) -print | sort | head -100 >&2; "
+                <> "echo \"[pgo] no non-empty C++ .gcda files under "
+                <> backend
+                <> "/pgo-profile\" >&2; exit 1; fi"
+            ]
+            Nothing
+            Nothing
+
     cppBuildPath file =
         backend <> "/build/" <> file
 
@@ -241,122 +308,125 @@ rustPgoBoltPlan =
       -- the loaded cdylib writes `.profraw` beside the Rust backend
       -- even though the training `mcts` process runs from the repo root.
       cargoBuild "pgo-profile" "generate"
-    , -- 2. Training run: same shape as C++ backends
-      trainingRunFor "rust" pgoTrainingGames pgoTrainingSims
-    , -- 3. Merge LLVM profraw -> profdata (the rustc PGO flow requires
-      -- profdata, not profraw)
-      Subprocess
-        "bash"
-        [ "-c"
-        , "if ! ls rust/pgo-profile/*.profraw >/dev/null 2>&1; then "
-            <> "echo \"[pgo] no Rust profraw files under rust/pgo-profile\" >&2; exit 1; "
-            <> "elif command -v llvm-profdata-19 >/dev/null 2>&1; then "
-            <> "llvm-profdata-19 merge -o rust/pgo-profile/merged.profdata rust/pgo-profile/*.profraw; "
-            <> "elif command -v llvm-profdata >/dev/null 2>&1; then "
-            <> "llvm-profdata merge -o rust/pgo-profile/merged.profdata rust/pgo-profile/*.profraw; "
-            <> "else echo \"[pgo] llvm-profdata not found\" >&2; exit 1; fi"
-        ]
-        Nothing
-        Nothing
-    , -- 4. Optimized rebuild: rustc -Cprofile-use against the
-      -- absolute merged profile path produced above.
-      cargoBuild "pgo-profile/merged.profdata" "use"
-    , Subprocess
-        "cp"
-        ["rust/target/release/libmcts_rust.so", "rust/target/release/libmcts_rust.pgo.so"]
-        Nothing
-        Nothing
-    , -- 5. BOLT instrument (writes profile via -instrument)
-      Subprocess
-        "bash"
-        [ "-c"
-        , "mkdir -p rust/bolt-profile && "
-            <> "llvm-bolt rust/target/release/libmcts_rust.so -instrument "
-            <> "-o rust/target/release/libmcts_rust.inst.so "
-            <> "--instrumentation-file=$(pwd)/rust/bolt-profile/rust.fdata "
-            <> "--instrumentation-file-append-pid && "
-            <> "test -s rust/target/release/libmcts_rust.inst.so"
-        ]
-        Nothing
-        Nothing
-    , Subprocess
-        "bash"
-        [ "-c"
-        , "if [ ! -s rust/target/release/libmcts_rust.inst.so ]; then "
-            <> "echo \"[bolt] missing instrumented Rust artefact: rust/target/release/libmcts_rust.inst.so\" >&2; "
-            <> "exit 1; fi; "
-            <> "cp rust/target/release/libmcts_rust.inst.so rust/target/release/libmcts_rust.so"
-        ]
-        Nothing
-        Nothing
-    , -- 6. BOLT training run
-      trainingRunFor "rust" boltTrainingGames boltTrainingSims
-    , Subprocess
-        "bash"
-        [ "-c"
-        , "if [ ! -s rust/target/release/libmcts_rust.pgo.so ]; then "
-            <> "echo \"[pgo] missing optimized Rust artefact: rust/target/release/libmcts_rust.pgo.so\" >&2; "
-            <> "exit 1; fi; "
-            <> "cp rust/target/release/libmcts_rust.pgo.so rust/target/release/libmcts_rust.so"
-        ]
-        Nothing
-        Nothing
-    , -- 7. BOLT optimize (reorder blocks via ext-tsp)
-      Subprocess
-        "bash"
-        [ "-c"
-        , "fdata=\"\"; "
-            <> "for candidate in $(ls -t rust/bolt-profile/rust.fdata* 2>/dev/null); do "
-            <> "if [ -s \"$candidate\" ]; then fdata=\"$candidate\"; break; fi; "
-            <> "done; "
-            <> "if [ -z \"$fdata\" ]; then "
-            <> "echo \"[bolt] no usable Rust .fdata under rust/bolt-profile\" >&2; exit 1; fi; "
-            <> "llvm-bolt rust/target/release/libmcts_rust.so "
-            <> "-o rust/target/release/libmcts_rust.bolted.so "
-            <> "-data \"$fdata\" -reorder-blocks=ext-tsp && "
-            <> "test -s rust/target/release/libmcts_rust.bolted.so"
-        ]
-        Nothing
-        Nothing
-    , -- 8. Install: rename bolted -> canonical FFI load name
-      Subprocess
-        "bash"
-        [ "-c"
-        , "if [ ! -s rust/target/release/libmcts_rust.bolted.so ]; then "
-            <> "echo \"[bolt] missing optimized Rust artefact: rust/target/release/libmcts_rust.bolted.so\" >&2; "
-            <> "exit 1; fi; "
-            <> "cp rust/target/release/libmcts_rust.bolted.so rust/target/release/libmcts_rust.so"
-        ]
-        Nothing
-        Nothing
-    , -- 9. Post-link engine_build_id patch: hash the installed cdylib
-      -- and overwrite the `.envelope_build_id` section with the
-      -- 32-byte digest so `mcts_rust_get_envelope()` reports a
-      -- non-zero engine_build_id. Mirrors the C++ backend
-      -- `envelope-build-id` Makefile target. Prefer LLVM objcopy
-      -- because GNU objcopy can rewrite BOLT-produced shared objects
-      -- into crashing artefacts. Uses `python3` to decode the hex
-      -- digest because `xxd` is not in the pinned container's base
-      -- image.
-      Subprocess
-        "bash"
-        [ "-c"
-        , "lib=rust/target/release/libmcts_rust.so; "
-            <> "objcopy_tool=$(command -v llvm-objcopy-19 || command -v llvm-objcopy || command -v objcopy || true); "
-            <> "if [ -n \"$objcopy_tool\" ] && command -v python3 >/dev/null 2>&1; then "
-            <> "tmpbin=$(mktemp); "
-            <> "digest=$(sha256sum \"$lib\" | awk '{print $1}'); "
-            <> "python3 -c \"import sys, binascii; sys.stdout.buffer.write(binascii.unhexlify(sys.argv[1]))\" \"$digest\" > \"$tmpbin\"; "
-            <> "\"$objcopy_tool\" --update-section .envelope_build_id=\"$tmpbin\" \"$lib\"; "
-            <> "rm -f \"$tmpbin\"; "
-            <> "fi"
-        ]
-        Nothing
-        Nothing
-    , -- 10. Smoke the installed canonical artefact so a crashing
-      -- BOLT output fails during the Docker image build.
-      smokeRunFor "rust"
     ]
+        <> trainingRunsFor "rust" pgoTrainingRuns
+        <> [ -- 3. Merge LLVM profraw -> profdata (the rustc PGO flow requires
+             -- profdata, not profraw)
+             Subprocess
+                "bash"
+                [ "-c"
+                , "profraw_files=$(find rust/pgo-profile -type f -name '*.profraw' -size +0c -print | sort); "
+                    <> "if [ -z \"$profraw_files\" ]; then "
+                    <> "echo \"[pgo] no non-empty Rust profraw files under rust/pgo-profile\" >&2; exit 1; "
+                    <> "elif command -v llvm-profdata-19 >/dev/null 2>&1; then "
+                    <> "profdata_tool=llvm-profdata-19; "
+                    <> "elif command -v llvm-profdata >/dev/null 2>&1; then "
+                    <> "profdata_tool=llvm-profdata; "
+                    <> "else echo \"[pgo] llvm-profdata not found\" >&2; exit 1; fi; "
+                    <> "$profdata_tool merge -o rust/pgo-profile/merged.profdata $profraw_files; "
+                    <> "test -s rust/pgo-profile/merged.profdata"
+                ]
+                Nothing
+                Nothing
+           , -- 4. Optimized rebuild: rustc -Cprofile-use against the
+             -- absolute merged profile path produced above.
+             cargoBuild "pgo-profile/merged.profdata" "use"
+           , Subprocess
+                "cp"
+                ["rust/target/release/libmcts_rust.so", "rust/target/release/libmcts_rust.pgo.so"]
+                Nothing
+                Nothing
+           , -- 5. BOLT instrument (writes profile via -instrument)
+             Subprocess
+                "bash"
+                [ "-c"
+                , "mkdir -p rust/bolt-profile && "
+                    <> "llvm-bolt rust/target/release/libmcts_rust.so -instrument "
+                    <> "-o rust/target/release/libmcts_rust.inst.so "
+                    <> "--instrumentation-file=$(pwd)/rust/bolt-profile/rust.fdata "
+                    <> "--instrumentation-file-append-pid && "
+                    <> "test -s rust/target/release/libmcts_rust.inst.so"
+                ]
+                Nothing
+                Nothing
+           , Subprocess
+                "bash"
+                [ "-c"
+                , "if [ ! -s rust/target/release/libmcts_rust.inst.so ]; then "
+                    <> "echo \"[bolt] missing instrumented Rust artefact: rust/target/release/libmcts_rust.inst.so\" >&2; "
+                    <> "exit 1; fi; "
+                    <> "cp rust/target/release/libmcts_rust.inst.so rust/target/release/libmcts_rust.so"
+                ]
+                Nothing
+                Nothing
+           ]
+        <> trainingRunsFor "rust" boltTrainingRuns
+        <> [ Subprocess
+                "bash"
+                [ "-c"
+                , "if [ ! -s rust/target/release/libmcts_rust.pgo.so ]; then "
+                    <> "echo \"[pgo] missing optimized Rust artefact: rust/target/release/libmcts_rust.pgo.so\" >&2; "
+                    <> "exit 1; fi; "
+                    <> "cp rust/target/release/libmcts_rust.pgo.so rust/target/release/libmcts_rust.so"
+                ]
+                Nothing
+                Nothing
+           , -- 7. BOLT optimize (reorder blocks via ext-tsp)
+             Subprocess
+                "bash"
+                [ "-c"
+                , "fdata=\"\"; "
+                    <> "for candidate in $(ls -t rust/bolt-profile/rust.fdata* 2>/dev/null); do "
+                    <> "if [ -s \"$candidate\" ]; then fdata=\"$candidate\"; break; fi; "
+                    <> "done; "
+                    <> "if [ -z \"$fdata\" ]; then "
+                    <> "echo \"[bolt] no usable Rust .fdata under rust/bolt-profile\" >&2; exit 1; fi; "
+                    <> "llvm-bolt rust/target/release/libmcts_rust.so "
+                    <> "-o rust/target/release/libmcts_rust.bolted.so "
+                    <> "-data \"$fdata\" -reorder-blocks=ext-tsp && "
+                    <> "test -s rust/target/release/libmcts_rust.bolted.so"
+                ]
+                Nothing
+                Nothing
+           , -- 8. Install: rename bolted -> canonical FFI load name
+             Subprocess
+                "bash"
+                [ "-c"
+                , "if [ ! -s rust/target/release/libmcts_rust.bolted.so ]; then "
+                    <> "echo \"[bolt] missing optimized Rust artefact: rust/target/release/libmcts_rust.bolted.so\" >&2; "
+                    <> "exit 1; fi; "
+                    <> "cp rust/target/release/libmcts_rust.bolted.so rust/target/release/libmcts_rust.so"
+                ]
+                Nothing
+                Nothing
+           , -- 9. Post-link engine_build_id patch: hash the installed cdylib
+             -- and overwrite the `.envelope_build_id` section with the
+             -- 32-byte digest so `mcts_rust_get_envelope()` reports a
+             -- non-zero engine_build_id. Mirrors the C++ backend
+             -- `envelope-build-id` Makefile target. Prefer LLVM objcopy
+             -- because GNU objcopy can rewrite BOLT-produced shared objects
+             -- into crashing artefacts. Uses `python3` to decode the hex
+             -- digest because `xxd` is not in the pinned container's base
+             -- image.
+             Subprocess
+                "bash"
+                [ "-c"
+                , "lib=rust/target/release/libmcts_rust.so; "
+                    <> "objcopy_tool=$(command -v llvm-objcopy-19 || command -v llvm-objcopy || command -v objcopy || true); "
+                    <> "if [ -n \"$objcopy_tool\" ] && command -v python3 >/dev/null 2>&1; then "
+                    <> "tmpbin=$(mktemp); "
+                    <> "digest=$(sha256sum \"$lib\" | awk '{print $1}'); "
+                    <> "python3 -c \"import sys, binascii; sys.stdout.buffer.write(binascii.unhexlify(sys.argv[1]))\" \"$digest\" > \"$tmpbin\"; "
+                    <> "\"$objcopy_tool\" --update-section .envelope_build_id=\"$tmpbin\" \"$lib\"; "
+                    <> "rm -f \"$tmpbin\"; "
+                    <> "fi"
+                ]
+                Nothing
+                Nothing
+           , -- 10. Smoke the installed canonical artefact so a crashing
+             -- BOLT output fails during the Docker image build.
+             smokeRunFor "rust"
+           ]
   where
     cargoBuild profileDir mode =
         Subprocess
@@ -384,34 +454,82 @@ rustPgoBoltPlan =
     absoluteRustProfilePath profileDir =
         "/workspace/MCTS/rust/" <> profileDir
 
-trainingRunFor :: String -> Int -> Int -> Subprocess
-trainingRunFor backend games sims =
+trainingRunsFor :: String -> [TrainingRun] -> [Subprocess]
+trainingRunsFor backend = map (trainingRunFor backend)
+
+trainingRunFor :: String -> TrainingRun -> Subprocess
+trainingRunFor backend run =
     Subprocess
         "cabal"
-        [ "exec"
-        , "mcts"
-        , "--"
-        , "bench"
-        , "selfplay"
-        , "--backend"
-        , backend
-        , "--threading"
-        , "single"
-        , "--rng"
-        , "native"
-        , "--games"
-        , show games
-        , "--seed"
-        , "42"
-        , "--sims"
-        , show sims
-        ]
+        ( [ "exec"
+          , "mcts"
+          , "--"
+          , "bench"
+          , workloadName (trainingWorkload run)
+          , "--backend"
+          , backend
+          ]
+            <> threadingArgs (trainingThreading run)
+            <> [ "--rng"
+               , "native"
+               , "--games"
+               , show (trainingGames run)
+               , "--seed"
+               , show (trainingSeed run)
+               , "--max-plies"
+               , show trainingMaxPlies
+               , "--sims"
+               , show (trainingSims run)
+               , "--cache-dir"
+               , trainingCacheDir backend run
+               ]
+        )
+        (Just (profileTrainingEnv backend))
         Nothing
-        Nothing
+  where
+    threadingArgs threading =
+        case threading of
+            SingleThreaded -> ["--threading", "single"]
+            MultiThreaded workers -> ["--threading", "multi", "--workers", show (threadingWorkers (MultiThreaded workers))]
+
+profileTrainingEnv :: String -> [(String, String)]
+profileTrainingEnv backend =
+    [ ("MCTS_FORCE_FOREIGN_SEARCH", "1")
+    ]
+        <> [ ("MCTS_SCOPED_DYNAMIC_LIBRARY", "1")
+           | backend /= "rust"
+           ]
+
+trainingCacheDir :: String -> TrainingRun -> FilePath
+trainingCacheDir backend run =
+    "/tmp/mcts-profile-training/"
+        <> backend
+        <> "/"
+        <> workloadName (trainingWorkload run)
+        <> "-"
+        <> threadingCacheLabel (trainingThreading run)
+        <> "-"
+        <> show (trainingSeed run)
+        <> "-"
+        <> show (trainingSims run)
+
+threadingCacheLabel :: Threading -> String
+threadingCacheLabel threading =
+    case threading of
+        SingleThreaded -> "single"
+        MultiThreaded workers -> "multi" <> show (threadingWorkers (MultiThreaded workers))
 
 smokeRunFor :: String -> Subprocess
 smokeRunFor backend =
-    trainingRunFor backend 1 4
+    trainingRunFor
+        backend
+        TrainingRun
+            { trainingWorkload = Selfplay
+            , trainingThreading = SingleThreaded
+            , trainingGames = 1
+            , trainingSeed = 42
+            , trainingSims = 4
+            }
 
 -- | Run a backend build plan through the doctrine `apply :: Env -> Plan
 -- a -> IO ExitCode` shape. `Env.defaultEnv` is the production-default

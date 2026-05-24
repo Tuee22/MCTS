@@ -25,12 +25,11 @@ This repository continues from `MCTS_legacy`, a hand-tuned imperative C++ implem
 > Dockerfile build. Missing PGO profiles, missing BOLT `.fdata`, or an attempted
 > PGO-only/unoptimized install under a canonical load name must fail the image build.
 > The installed bolted C++ and Rust libraries are smoke-tested during image
-> construction before runtime commands can consume them. Phase 8 is reopened for
-> Sprint 8.10 because the current build harness trains those profiles on a narrow
-> self-play-only smoke workload; accepted parity evidence now requires Dockerfile-time
-> PGO/BOLT training over the blended Q1/Q2 report-card shape: random rollouts and
-> MCTS self-play, single-threaded and 8-worker batches, native RNG, multiple fixed
-> seeds, and self-play budgets representative of `S_BENCH = 500`.
+> construction before runtime commands can consume them. Phase 8 Sprint 8.10 closed
+> the final profile-workload gate: Dockerfile-time PGO/BOLT training now uses the
+> blended Q1/Q2 report-card shape: random rollouts and MCTS self-play,
+> single-threaded and 8-worker batches, native RNG, multiple fixed seeds, and
+> self-play budgets representative of `S_BENCH = 500`.
 > The authoritative phase-by-phase status remains
 > [`DEVELOPMENT_PLAN/README.md`](DEVELOPMENT_PLAN/README.md).
 
@@ -556,8 +555,7 @@ without rebuilding them. The steelman C++ and Rust image-build recipes are
 fail-closed: PGO training data, merged profile data, BOLT instrumentation data, and
 the final optimized shared libraries must all be produced inside the Dockerfile
 build, and the installed bolted libraries must pass their smoke runs, or the image
-build exits non-zero. Sprint 8.10 owns broadening the current narrow self-play
-training harness into the blended report-card training suite described in
+build exits non-zero. They train on the blended report-card suite described in
 [Compiler and runtime tuning](#compiler-and-runtime-tuning). Host-level toolchain fallback is unsupported; in particular,
 Fourmolu and HLint must never be taken from the host `PATH`. A host-level
 `.build/` directory is unsupported residue under this policy. Runtime project
@@ -746,7 +744,19 @@ Code-level requirements:
 
 ### One known asymmetry: PGO
 
-GHC 9.14 has no production-grade profile-guided optimisation comparable to GCC/Clang `-fprofile-use` or `rustc -Cprofile-use`. The accepted comparison is Haskell against C++ and Rust artefacts that completed their Dockerfile-time PGO+BOLT workflows. The asymmetry is only that Haskell lacks an equivalent feedback loop; it is not permission to accept PGO-only, non-BOLT, unoptimized, or narrowly trained foreign artefacts. The 2026-05-21 amd64 run where C++ BOLT produced no usable `.fdata` remains historical fallback evidence only. The 2026-05-23 `docker compose run --rm --build mcts mcts test all` run refreshed the parity gate against fail-closed Dockerfile-built artefacts and recorded Q1 ST 0.05x, Q1 MT8 0.45x, Q2 ST 0.06x, Q2 MT8 0.22x, Q5 Haskell 0.98x, Q5 C++ (ii) 3.70x, Q7 PASS, and `Verdict: Within tolerance`; Sprint 8.10 supersedes that closure requirement by requiring the same report-card proof after blended Q1/Q2 PGO+BOLT training replaces the current narrow self-play training recipe.
+GHC 9.14 has no production-grade profile-guided optimisation comparable to GCC/Clang
+`-fprofile-use` or `rustc -Cprofile-use`. The accepted comparison is Haskell against
+C++ and Rust artefacts that completed their Dockerfile-time PGO+BOLT workflows. The
+asymmetry is only that Haskell lacks an equivalent feedback loop; it is not permission
+to accept PGO-only, non-BOLT, unoptimized, or narrowly trained foreign artefacts. The
+2026-05-21 amd64 run where C++ BOLT produced no usable `.fdata` remains historical
+fallback evidence only. The earlier 2026-05-23 fail-closed report card recorded Q1
+ST 0.05x, Q1 MT8 0.45x, Q2 ST 0.06x, Q2 MT8 0.22x, Q5 Haskell 0.98x, Q5 C++ (ii)
+3.70x, Q7 PASS, and `Verdict: Within tolerance`; it remains pipeline evidence. The
+accepted Sprint 8.10 blended-profile rerun recorded Q1 ST 0.05x (`646.7` vs `35.1`
+games/s), Q1 MT8 0.48x (`556.0` vs `269.4` games/s), Q2 ST 0.06x (`0.5` vs `0.0`
+games/s), Q2 MT8 0.21x (`0.5` vs `0.1` games/s), Q5 Haskell 0.99x, Q5 C++ (ii)
+3.65x, Q7 PASS, zero live-cohort divergence, and `Verdict: Within tolerance`.
 
 ---
 

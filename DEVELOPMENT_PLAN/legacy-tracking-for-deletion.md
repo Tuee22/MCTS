@@ -37,9 +37,8 @@ reclosure removed the PGO-only, BOLT-missing, and unoptimized fallback install
 paths, switched post-BOLT envelope patching to LLVM objcopy, and added final
 installed-library smokes so corrupted BOLT outputs fail the image build. Sprint
 `8.3` refreshed the report-card evidence against these successful PGO+BOLT
-artefacts on 2026-05-23. Sprint `8.10` now tracks the remaining profile-workload
-residue: the profile pipeline fails closed, but it still trains on a narrow
-single-threaded self-play smoke rather than the blended Q1/Q2 report-card suite.
+artefacts on 2026-05-23. Sprint `8.10` then replaced the remaining
+profile-workload residue with the blended Q1/Q2 report-card suite.
 
 The validation-data doctrine sweep remains closed: normal tests do not require
 checked-in transcripts, throughput anchors, renderer snapshots, schema fixtures, or
@@ -53,9 +52,8 @@ residue, the Phase `2` transcript/sidecar identity residue, the backend (ii)
 compact ABI contract residue, the backend (iii)/(iv) ABI/build-artifact wording
 residue, the replay/divergence evidence-label residue, and the compiler-tuning
 test-stanza wording residue. The 2026-05-23 fail-closed PGO/BOLT reclosure moved
-the build-failover rows to Completed. The pending Sprint `8.10` row is a
-profile-representativeness correction, not backend-removal work; all five backend
-slots remain first-class.
+the build-failover rows to Completed, and Sprint `8.10` moved the profile
+representativeness row to Completed. All five backend slots remain first-class.
 
 Two classes of entries populate this ledger over time:
 
@@ -72,9 +70,7 @@ repository.
 
 ## Pending Removal
 
-| Item | Location | Why remove | Owning Sprint |
-|------|----------|------------|---------------|
-| Narrow PGO/BOLT training workload | `src/MCTS/CLI/Build.hs` (`pgoTrainingGames`, `pgoTrainingSims`, `boltTrainingGames`, `boltTrainingSims`, `trainingRunFor`) | The fail-closed PGO/BOLT pipeline trains C++ and Rust profiles with one-game, single-threaded, native-RNG self-play at seed `42` (`--sims 100` for PGO, `--sims 50` for BOLT). That is smoke coverage, not the blended Q1/Q2 report-card profile workload needed to fully leverage PGO/BOLT for random rollouts and MCTS self-play, ST and MT8. | Sprint 8.10 |
+None.
 
 ## Pending Removal Notes
 
@@ -83,16 +79,15 @@ implemented, governed docs are aligned, generated docs are regenerated or checke
 and the canonical validation command for that surface passes through
 `docker compose run --rm mcts mcts <command>`. For PGO/BOLT failover rows,
 closure also requires a Dockerfile build that exits non-zero on missing profile
-data instead of publishing a fallback shared library. For Sprint `8.10`, closure
-also requires the Dockerfile-owned training suite to cover the blended Q1/Q2
-report-card workload and a refreshed report card against those artefacts.
+data instead of publishing a fallback shared library.
 
 ## Completed
 
 | Item | Removed In | Notes |
 |------|------------|-------|
+| Narrow PGO/BOLT training workload | Sprint 8.10, 2026-05-23 | `src/MCTS/CLI/Build.hs` now trains C++ and Rust PGO/BOLT profiles with a blended Q1/Q2 suite: rollouts plus self-play, ST plus MT8, native RNG, seeds `42` and `424242`, PGO self-play `--sims 500`, and shorter BOLT self-play `--sims 100`. C++ training uses scoped dynamic-library loading plus explicit GCOV dump hooks; Rust training keeps the cdylib pinned and relies on process-exit `.profraw` emission. The Sprint `8.10` report-card rerun recorded Q1 ST 0.05x, Q1 MT8 0.48x, Q2 ST 0.06x, Q2 MT8 0.21x, Q5 Haskell 0.99x, Q5 C++ (ii) 3.65x, zero live-cohort divergence, Q7 PASS, and verdict `Within tolerance`. |
 | Tracked PGO/BOLT profile snapshots | Sprint 8.8 follow-up, 2026-05-23 | Removed checked-in `cpp-imperative/pgo-profile/`, `cpp-functional/pgo-profile/`, and `rust/pgo-profile/` generated profile files, and added the C++/Rust PGO+BOLT profile roots to `.gitignore` and `.dockerignore`. The Dockerfile-owned build recipes regenerate fresh profile data and fail closed on missing profile outputs. |
-| Fallback-backed parity report-card evidence | Sprint 8.3, 2026-05-23 | The 2026-05-21 amd64 report card remains historical audit evidence only. `docker compose run --rm --build mcts mcts test all` refreshed the report card against fail-closed Dockerfile PGO/BOLT artefacts and recorded Q1 ST 0.05x, Q1 MT8 0.45x, Q2 ST 0.06x, Q2 MT8 0.22x, Q5 Haskell 0.98x, Q5 C++ (ii) 3.70x, zero live-cohort divergence, Q7 PASS, and verdict `Within tolerance`; Sprint `8.10` now requires a further refresh after blended profile training. |
+| Fallback-backed parity report-card evidence | Sprint 8.3, 2026-05-23 | The 2026-05-21 amd64 report card remains historical audit evidence only. `docker compose run --rm --build mcts mcts test all` refreshed the report card against fail-closed Dockerfile PGO/BOLT artefacts and recorded Q1 ST 0.05x, Q1 MT8 0.45x, Q2 ST 0.06x, Q2 MT8 0.22x, Q5 Haskell 0.98x, Q5 C++ (ii) 3.70x, zero live-cohort divergence, Q7 PASS, and verdict `Within tolerance`. Sprint `8.10` later superseded this with blended-profile final evidence. |
 | C++ PGO/BOLT fail-open artefact copying | Sprint 5.3, 2026-05-23 | `cpp-imperative/Makefile`, `cpp-functional/Makefile`, and `src/MCTS/CLI/Build.hs` now require non-empty BOLT `.fdata`, surface `llvm-bolt` diagnostics, use LLVM objcopy for BOLT-produced shared objects, and smoke the installed bolted C++ canonical libraries during the Dockerfile build. |
 | Rust BOLT PGO-only fallback install | Sprint 6.4, 2026-05-23 | `src/MCTS/CLI/Build.hs` now requires Rust profraw/profdata, BOLT `.fdata`, a bolted cdylib, LLVM objcopy envelope patching, and a final canonical Rust smoke; no PGO-only cdylib is copied to the supported load name when BOLT fails. |
 | Runtime backend builds in normal validation | Dockerfile backend-build migration, 2026-05-22 | `docker/Dockerfile` now invokes `mcts build cpp-legacy`, `mcts build cpp-imperative`, `mcts build cpp-functional`, and `mcts build rust` during image construction; `mcts test all` and `mcts test parity-anchor` no longer rebuild foreign backend artefacts at runtime. |
@@ -115,7 +110,7 @@ report-card workload and a refreshed report card against those artefacts.
 | C++ Makefile PGO+BOLT target surface | Sprint 5.3 Makefile baseline, updated Sprint 6.4, 2026-05-18; CLI wiring closed 2026-05-21 | `cpp-imperative/Makefile` and `cpp-functional/Makefile` contain PGO generate/use, BOLT instrument/optimize, and canonical install targets. The supported `mcts build` Plan/Apply wiring for those targets is closed by `cppPgoBoltPlan`. |
 | Backend (iv) Rust Corridors gameplay port | Sprint 6.3, 2026-05-16; updated Sprint 7.2, 2026-05-18 | `rust/src/board.rs`, `rust/src/rollout.rs`, and `rust/src/search.rs` carry the real Corridors game state, rollout loop, and arena MCTS, and `MCTS.Driver.Dispatch.runBatchDispatch` routes `--backend rust` through the real FFI engine when the cdylib is present. |
 | Foreign-engine recompute streaming to `.eq` sidecars | Sprint 7.5, 2026-05-16 | `MCTS.Engine.ForeignRecompute.foreignRecomputeEqStream` drives backend recompute ABIs through transcripts, `MCTS.Verify.Divergence.divergenceVsEqStream` scores the resulting `EqStream`, and `mcts inspect divergence` renders cached and available foreign recompute rows. |
-| Measured Q1-Q7 report-card evidence | Sprint 7.3 / Sprint 8.3 evidence closure, updated 2026-05-23 | `docker compose run --rm --build mcts mcts test all` passed against the canonical workload and fail-closed Dockerfile PGO/BOLT artefacts, recording Q1 ST 0.05x, Q1 MT8 0.45x, Q2 ST 0.06x, Q2 MT8 0.22x, Q5 Haskell 0.98x, Q5 C++ (ii) 3.70x, zero live-cohort divergence, Q7 liveness evidence PASS, and verdict `Within tolerance`. Under Sprint `8.10`, this remains fail-closed pipeline evidence until the blended-profile rerun lands. |
+| Measured Q1-Q7 report-card evidence | Sprint 7.3 / Sprint 8.10 evidence closure, updated 2026-05-23 | `docker compose run --rm --build mcts mcts test all` passed against the canonical workload and blended-profile Dockerfile PGO/BOLT artefacts, recording Q1 ST 0.05x, Q1 MT8 0.48x, Q2 ST 0.06x, Q2 MT8 0.21x, Q5 Haskell 0.99x, Q5 C++ (ii) 3.65x, zero live-cohort divergence, Q7 liveness evidence PASS, and verdict `Within tolerance`. The older 2026-05-23 fail-closed-only report card remains historical pipeline evidence. |
 | Pure Haskell parity proof vs backend (ii) | Sprint 8.2 / Sprint 8.3 closure, 2026-05-19 | Sprint 8.1 closed the LLVM/RTS tuning baseline. Sprint 8.2 ran three profile-driven rounds on 2026-05-16: round 1 IntSet (~6.2x speedup), round 2 strict-pair Word64 (regression, reverted), round 3 wavefront-bitmap BFS over `Bits128` (~52x legal-moves / ~33x uct-search vs round 1; combined ~320x / ~200x vs original baseline). |
 | Deterministic placeholder transcript hash | Sprint 2.2 baseline closure | Replaced `pseudoSha256Hex` in `src/MCTS/Transcript.hs` with the pure SHA-256 implementation in `src/MCTS/Crypto/SHA256.hs`; `runConfigHash` and `playTranscriptHash` now emit SHA-256 hex digests. |
 | No-op sidecar cache and divergence inspect placeholders | Sprint 2.7 / Sprint 7.5 baseline closure | Replaced fixed `inspect cache list`, `inspect cache prune`, and `inspect divergence` output with `MCTS.Transcript.EquitySidecar` cache discovery/pruning and `MCTS.Verify.Divergence` metric rendering. |

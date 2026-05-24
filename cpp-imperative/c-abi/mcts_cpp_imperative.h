@@ -63,6 +63,10 @@ typedef struct {
 
 MCTS_IMPERATIVE_API const mcts_imperative_envelope *mcts_imperative_get_envelope(void);
 
+// Optional profile flush hook used by Dockerfile-time PGO training.
+// Non-PGO builds expose the symbol as a no-op.
+MCTS_IMPERATIVE_API void mcts_imperative_dump_profile(void);
+
 // Optional same-board visit cache accessor. The load-bearing search and
 // recompute ABI returns visit vectors directly; this helper is meaningful
 // only for artefacts compiled with MCTS_IMPERATIVE_INSTRUMENTED=1.

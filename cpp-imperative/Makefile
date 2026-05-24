@@ -52,12 +52,10 @@ instrumented:
 pgo-bench-generate:
 	mkdir -p build $(PGO_DIR)
 	$(CXX) $(CXXFLAGS) -fprofile-generate=$(abspath $(PGO_DIR)) -DMCTS_IMPERATIVE_INSTRUMENTED=0 $(LDFLAGS) -fprofile-generate=$(abspath $(PGO_DIR)) $(ENGINE_SRCS) $(LDLIBS) -o build/libmcts_cpp_imperative_bench.so
-	$(MAKE) envelope-build-id LIB=build/libmcts_cpp_imperative_bench.so
 
 pgo-instr-generate:
 	mkdir -p build $(PGO_DIR)
 	$(CXX) $(CXXFLAGS) -fprofile-generate=$(abspath $(PGO_DIR)) -DMCTS_IMPERATIVE_INSTRUMENTED=1 $(LDFLAGS) -fprofile-generate=$(abspath $(PGO_DIR)) $(ENGINE_SRCS) $(LDLIBS) -o build/libmcts_cpp_imperative_instrumented.so
-	$(MAKE) envelope-build-id LIB=build/libmcts_cpp_imperative_instrumented.so
 
 # Stage 2: PGO optimized rebuild. Compile with
 # `-fprofile-use=$(abspath $(PGO_DIR)) -fprofile-correction` so
@@ -65,11 +63,21 @@ pgo-instr-generate:
 # layout decisions.
 pgo-bench-use:
 	mkdir -p build
+	@if ! find $(PGO_DIR) -type f -name '*.gcda' -size +0c -print -quit | grep -q .; then \
+	  find . -type f \( -name '*.gcda' -o -name '*.gcno' -o -name '*gcov*' \) -print | sort | head -100 >&2; \
+	  echo "[pgo] no non-empty .gcda files under $(PGO_DIR); failing mandatory PGO build" >&2; \
+	  exit 1; \
+	fi
 	$(CXX) $(CXXFLAGS) -fprofile-use=$(abspath $(PGO_DIR)) -fprofile-correction -DMCTS_IMPERATIVE_INSTRUMENTED=0 $(LDFLAGS) -fprofile-use=$(abspath $(PGO_DIR)) -fprofile-correction $(ENGINE_SRCS) $(LDLIBS) -o build/libmcts_cpp_imperative_bench.so
 	$(MAKE) envelope-build-id LIB=build/libmcts_cpp_imperative_bench.so
 
 pgo-instr-use:
 	mkdir -p build
+	@if ! find $(PGO_DIR) -type f -name '*.gcda' -size +0c -print -quit | grep -q .; then \
+	  find . -type f \( -name '*.gcda' -o -name '*.gcno' -o -name '*gcov*' \) -print | sort | head -100 >&2; \
+	  echo "[pgo] no non-empty .gcda files under $(PGO_DIR); failing mandatory PGO build" >&2; \
+	  exit 1; \
+	fi
 	$(CXX) $(CXXFLAGS) -fprofile-use=$(abspath $(PGO_DIR)) -fprofile-correction -DMCTS_IMPERATIVE_INSTRUMENTED=1 $(LDFLAGS) -fprofile-use=$(abspath $(PGO_DIR)) -fprofile-correction $(ENGINE_SRCS) $(LDLIBS) -o build/libmcts_cpp_imperative_instrumented.so
 	$(MAKE) envelope-build-id LIB=build/libmcts_cpp_imperative_instrumented.so
 
@@ -97,9 +105,12 @@ bolt-instr-instrument:
 # post-link reordered `.bolted.so`. The doctrine reorder choice is
 # `ext-tsp` (the cache-aware extension to TSP block layout).
 bolt-bench-optimize:
-	@fdata=$$(ls -t $(BOLT_DIR)/bench.fdata* 2>/dev/null | head -1 || true); \
+	@fdata=""; \
+	for candidate in $$(ls -t $(BOLT_DIR)/bench.fdata* 2>/dev/null); do \
+	  if [ -s "$$candidate" ]; then fdata="$$candidate"; break; fi; \
+	done; \
 	if [ -z "$$fdata" ]; then \
-	  echo "[bolt] missing bench.fdata; failing mandatory BOLT build" >&2; \
+	  echo "[bolt] no usable bench.fdata; failing mandatory BOLT build" >&2; \
 	  exit 1; \
 	fi; \
 	llvm-bolt build/libmcts_cpp_imperative_bench.so \
@@ -109,9 +120,12 @@ bolt-bench-optimize:
 	$(MAKE) envelope-build-id LIB=build/libmcts_cpp_imperative_bench.bolted.so
 
 bolt-instr-optimize:
-	@fdata=$$(ls -t $(BOLT_DIR)/instr.fdata* 2>/dev/null | head -1 || true); \
+	@fdata=""; \
+	for candidate in $$(ls -t $(BOLT_DIR)/instr.fdata* 2>/dev/null); do \
+	  if [ -s "$$candidate" ]; then fdata="$$candidate"; break; fi; \
+	done; \
 	if [ -z "$$fdata" ]; then \
-	  echo "[bolt] missing instr.fdata; failing mandatory BOLT build" >&2; \
+	  echo "[bolt] no usable instr.fdata; failing mandatory BOLT build" >&2; \
 	  exit 1; \
 	fi; \
 	llvm-bolt build/libmcts_cpp_imperative_instrumented.so \

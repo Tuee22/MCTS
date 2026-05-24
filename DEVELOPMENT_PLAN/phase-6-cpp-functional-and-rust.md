@@ -40,9 +40,9 @@ the image is published.
 
 Phase `6` remains closed for backend (iii)/(iv) source, ABI, fail-closed PGO/BOLT
 mechanics, Rust allocator/toolchain integration, and canonical artefact installation.
-Phase `8` Sprint `8.10` owns the later requirement that the Dockerfile-time
-PGO/BOLT training workload be broadened from the current narrow self-play smoke into
-the blended Q1/Q2 report-card profile suite before final parity evidence is accepted.
+Phase `8` Sprint `8.10` has since broadened the Dockerfile-time PGO/BOLT training
+workload from the earlier narrow self-play smoke into the blended Q1/Q2 report-card
+profile suite used for final parity evidence.
 
 ## Sprint 6.1: C++ Functional-Style Engine ✅
 

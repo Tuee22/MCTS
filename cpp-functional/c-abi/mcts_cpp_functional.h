@@ -58,6 +58,10 @@ typedef struct {
 
 MCTS_FUNCTIONAL_API const mcts_functional_envelope *mcts_functional_get_envelope(void);
 
+// Optional profile flush hook used by Dockerfile-time PGO training.
+// Non-PGO builds expose the symbol as a no-op.
+MCTS_FUNCTIONAL_API void mcts_functional_dump_profile(void);
+
 #ifdef __cplusplus
 }
 #endif

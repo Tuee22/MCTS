@@ -294,3 +294,15 @@ extern "C" const mcts_imperative_envelope *mcts_imperative_get_envelope(void) {
     fill_envelope_once();
     return &g_envelope;
 }
+
+#if defined(__GNUC__)
+extern "C" void __gcov_dump(void) __attribute__((weak));
+extern "C" void __gcov_reset(void) __attribute__((weak));
+#endif
+
+extern "C" void mcts_imperative_dump_profile(void) {
+#if defined(__GNUC__)
+    if (__gcov_dump) __gcov_dump();
+    if (__gcov_reset) __gcov_reset();
+#endif
+}

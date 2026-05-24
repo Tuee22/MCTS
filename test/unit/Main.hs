@@ -16,13 +16,11 @@ import qualified Data.Text as T
 import Data.Word (Word16, Word8)
 import MCTS.CLI.Bench (monotonicNanos, runBenchWithClock)
 import MCTS.CLI.Build
-    ( boltTrainingGames
-    , boltTrainingSims
+    ( boltTrainingRuns
     , buildBackendPlan
     , cppPgoBoltPlan
     , legacyFixturePlan
-    , pgoTrainingGames
-    , pgoTrainingSims
+    , pgoTrainingRuns
     , rustPgoBoltPlan
     )
 import MCTS.CLI.Command
@@ -1462,13 +1460,28 @@ exerciseRustBuildPlan = do
         steps = rustPgoBoltPlan
         commands = map subprocessPath steps
         argsOf = map subprocessArguments steps
+        pgoStart = 2
+        pgoCount = length pgoTrainingRuns
+        mergeIndex = pgoStart + pgoCount
+        useIndex = mergeIndex + 1
+        boltStart = useIndex + 4
+        boltCount = length boltTrainingRuns
+        restoreIndex = boltStart + boltCount
+        optimizeIndex = restoreIndex + 1
+        smokeIndex = length steps - 1
+        pgoTrainingCommands = take pgoCount (drop pgoStart commands)
+        boltTrainingCommands = take boltCount (drop boltStart commands)
+        pgoTrainingSteps = take pgoCount (drop pgoStart steps)
+        boltTrainingSteps = take boltCount (drop boltStart steps)
+        pgoTrainingArgs = take pgoCount (drop pgoStart argsOf)
+        boltTrainingArgs = take boltCount (drop boltStart argsOf)
         rustFlagsAt index =
             case subprocessEnvironment (steps !! index) of
                 Just env -> maybe "" id (List.lookup "RUSTFLAGS" env)
                 Nothing -> ""
         generateFlags = rustFlagsAt 1
-        useFlags = rustFlagsAt 4
-    assert "Rust PGO+BOLT plan has 14 typed Subprocess steps" (length steps == 14)
+        useFlags = rustFlagsAt useIndex
+    assert "Rust PGO+BOLT plan has expanded blended training steps" (length steps == 28)
     assert "Rust PGO+BOLT plan is the same as buildBackendPlan output" (planSteps plan == steps)
     assert
         "Rust PGO+BOLT plan starts by resetting profile directories"
@@ -1490,21 +1503,22 @@ exerciseRustBuildPlan = do
             ]
         )
     assert
-        "Rust PGO training step invokes bench selfplay --rng native"
-        ( commands !! 2 == "cabal"
-            && "selfplay" `elem` argsOf !! 2
-            && "native" `elem` argsOf !! 2
-            && show pgoTrainingGames `elem` argsOf !! 2
-            && show pgoTrainingSims `elem` argsOf !! 2
+        "Rust PGO training emits blended rollouts/selfplay ST/MT8 native runs"
+        ( all (== "cabal") pgoTrainingCommands
+            && allCabalTraining pgoTrainingArgs
+            && trainingCoversBlendedShape pgoTrainingArgs
+            && any ("500" `elem`) pgoTrainingArgs
         )
     assert
-        "Rust BOLT training step invokes bench selfplay --rng native"
-        ( commands !! 8 == "cabal"
-            && "selfplay" `elem` argsOf !! 8
-            && "native" `elem` argsOf !! 8
-            && show boltTrainingGames `elem` argsOf !! 8
-            && show boltTrainingSims `elem` argsOf !! 8
+        "Rust BOLT training emits shorter blended native runs"
+        ( all (== "cabal") boltTrainingCommands
+            && allCabalTraining boltTrainingArgs
+            && trainingCoversBlendedShape boltTrainingArgs
+            && any ("100" `elem`) boltTrainingArgs
         )
+    assert
+        "Rust training forces foreign dispatch without scoped dlclose cycling"
+        (all rustProfileTrainingEnv (pgoTrainingSteps <> boltTrainingSteps))
     assert
         "Rust PGO use flags include target CPU, lld linker, and profile-use"
         ( all
@@ -1517,21 +1531,31 @@ exerciseRustBuildPlan = do
         )
     assert
         "Rust BOLT install and optimize fail closed without fallback copies"
-        ( any ("libmcts_rust.inst.so" `contains`) (argsOf !! 7)
-            && not (any ("libmcts_rust.pgo.so rust/target/release/libmcts_rust.so; fi" `contains`) (argsOf !! 7))
-            && any ("no usable Rust .fdata" `contains`) (argsOf !! 10)
-            && not (any ("|| cp" `contains`) (argsOf !! 10))
+        ( any ("libmcts_rust.inst.so" `contains`) (argsOf !! (boltStart - 1))
+            && not
+                ( any
+                    ("libmcts_rust.pgo.so rust/target/release/libmcts_rust.so; fi" `contains`)
+                    (argsOf !! (boltStart - 1))
+                )
+            && any ("no usable Rust .fdata" `contains`) (argsOf !! optimizeIndex)
+            && not (any ("|| cp" `contains`) (argsOf !! optimizeIndex))
+        )
+    assert
+        "Rust profile merge consumes non-empty profraw files and requires merged profdata"
+        ( any ("find rust/pgo-profile" `contains`) (argsOf !! mergeIndex)
+            && any ("*.profraw" `contains`) (argsOf !! mergeIndex)
+            && any ("test -s rust/pgo-profile/merged.profdata" `contains`) (argsOf !! mergeIndex)
         )
     assert
         "Rust final step patches engine_build_id"
         (case reverse argsOf of (_smoke : patch : _) -> argContains patch ".envelope_build_id"; _ -> False)
     assert
         "Rust final step smokes the installed BOLT artefact"
-        ( commands !! 13 == "cabal"
-            && "rust" `elem` argsOf !! 13
-            && "selfplay" `elem` argsOf !! 13
-            && "1" `elem` argsOf !! 13
-            && "4" `elem` argsOf !! 13
+        ( commands !! smokeIndex == "cabal"
+            && "rust" `elem` argsOf !! smokeIndex
+            && "selfplay" `elem` argsOf !! smokeIndex
+            && "1" `elem` argsOf !! smokeIndex
+            && "4" `elem` argsOf !! smokeIndex
         )
     assert "buildBackendPlan is idempotent" (buildBackendPlan "rust" == plan)
     assert
@@ -1602,6 +1626,47 @@ exerciseRustBuildPlan = do
     argContains args needle =
         any (T.isInfixOf (T.pack needle) . T.pack) args
 
+allCabalTraining :: [[String]] -> Bool
+allCabalTraining =
+    all
+        ( \args ->
+            "exec" `elem` args
+                && "bench" `elem` args
+                && "native" `elem` args
+                && "--max-plies" `elem` args
+                && "1" `elem` args
+                && "--cache-dir" `elem` args
+        )
+
+trainingCoversBlendedShape :: [[String]] -> Bool
+trainingCoversBlendedShape args =
+    all
+        (`any` args)
+        [ elem "rollouts"
+        , elem "selfplay"
+        , elem "single"
+        , elem "multi"
+        , elem "8"
+        , elem "42"
+        , elem "424242"
+        ]
+
+scopedProfileTrainingEnv :: Subprocess -> Bool
+scopedProfileTrainingEnv step =
+    case subprocessEnvironment step of
+        Just env ->
+            List.lookup "MCTS_SCOPED_DYNAMIC_LIBRARY" env == Just "1"
+                && List.lookup "MCTS_FORCE_FOREIGN_SEARCH" env == Just "1"
+        Nothing -> False
+
+rustProfileTrainingEnv :: Subprocess -> Bool
+rustProfileTrainingEnv step =
+    case subprocessEnvironment step of
+        Just env ->
+            List.lookup "MCTS_FORCE_FOREIGN_SEARCH" env == Just "1"
+                && List.lookup "MCTS_SCOPED_DYNAMIC_LIBRARY" env == Nothing
+        Nothing -> False
+
 -- | Validate the C++ PGO+BOLT plans as typed `[Subprocess]` sequences.
 exerciseCppBuildPlan :: IO ()
 exerciseCppBuildPlan = do
@@ -1616,10 +1681,22 @@ exerciseCppBuildPlan = do
             , subprocessPath step == "make"
             , target <- drop 2 (subprocessArguments step)
             ]
-        trainingIndexes = [3, 6, 11, 14]
-        pgoTrainingArgs = argsOf !! 3
-        boltTrainingArgs = argsOf !! 11
-    assert "C++ PGO+BOLT plan has 19 typed Subprocess steps" (length steps == 19)
+        pgoCount = length pgoTrainingRuns
+        boltCount = length boltTrainingRuns
+        benchPgoStart = 3
+        instrPgoStart = benchPgoStart + pgoCount + 2
+        requireGcdaIndex = instrPgoStart + pgoCount
+        benchBoltStart = requireGcdaIndex + 5
+        instrBoltStart = benchBoltStart + boltCount + 2
+        smokeIndex = length steps - 1
+        trainingIndexes =
+            [benchPgoStart .. benchPgoStart + pgoCount - 1]
+                <> [instrPgoStart .. instrPgoStart + pgoCount - 1]
+                <> [benchBoltStart .. benchBoltStart + boltCount - 1]
+                <> [instrBoltStart .. instrBoltStart + boltCount - 1]
+        pgoTrainingArgs = take pgoCount (drop benchPgoStart argsOf)
+        boltTrainingArgs = take boltCount (drop benchBoltStart argsOf)
+    assert "C++ PGO+BOLT plan has expanded blended training steps" (length steps == 48)
     assert "C++ PGO+BOLT plan is the same as buildBackendPlan output" (planSteps plan == steps)
     assert "C++ PGO+BOLT plan name is build cpp-imperative" (planName plan == "build cpp-imperative")
     assert
@@ -1643,33 +1720,38 @@ exerciseCppBuildPlan = do
                ]
         )
     assert
-        "C++ PGO training step invokes bench selfplay --rng native"
-        ( commands !! 3 == "cabal"
-            && "selfplay" `elem` pgoTrainingArgs
-            && "native" `elem` pgoTrainingArgs
-            && "cpp-imperative" `elem` pgoTrainingArgs
-            && show pgoTrainingGames `elem` pgoTrainingArgs
-            && show pgoTrainingSims `elem` pgoTrainingArgs
+        "C++ PGO training emits blended rollouts/selfplay ST/MT8 native runs"
+        ( allCabalTraining pgoTrainingArgs
+            && trainingCoversBlendedShape pgoTrainingArgs
+            && all ("cpp-imperative" `elem`) pgoTrainingArgs
+            && any ("500" `elem`) pgoTrainingArgs
         )
     assert
-        "C++ BOLT training step invokes bench selfplay --rng native"
-        ( commands !! 11 == "cabal"
-            && "selfplay" `elem` boltTrainingArgs
-            && "native" `elem` boltTrainingArgs
-            && "cpp-imperative" `elem` boltTrainingArgs
-            && show boltTrainingGames `elem` boltTrainingArgs
-            && show boltTrainingSims `elem` boltTrainingArgs
+        "C++ BOLT training emits shorter blended native runs"
+        ( allCabalTraining boltTrainingArgs
+            && trainingCoversBlendedShape boltTrainingArgs
+            && all ("cpp-imperative" `elem`) boltTrainingArgs
+            && any ("100" `elem`) boltTrainingArgs
         )
     assert
         "C++ plan trains PGO and BOLT artefacts through cabal exec"
         (all (\idx -> commands !! idx == "cabal" && "exec" `elem` argsOf !! idx) trainingIndexes)
     assert
+        "C++ training forces scoped foreign library dispatch"
+        (all (scopedProfileTrainingEnv . (steps !!)) trainingIndexes)
+    assert
+        "C++ plan fails closed before profile-use when .gcda data is absent"
+        ( commands !! requireGcdaIndex == "bash"
+            && any ("*.gcda" `contains`) (argsOf !! requireGcdaIndex)
+            && any ("no non-empty C++ .gcda" `contains`) (argsOf !! requireGcdaIndex)
+        )
+    assert
         "C++ final step smokes the installed BOLT artefact"
-        ( commands !! 18 == "cabal"
-            && "cpp-imperative" `elem` argsOf !! 18
-            && "selfplay" `elem` argsOf !! 18
-            && "1" `elem` argsOf !! 18
-            && "4" `elem` argsOf !! 18
+        ( commands !! smokeIndex == "cabal"
+            && "cpp-imperative" `elem` argsOf !! smokeIndex
+            && "selfplay" `elem` argsOf !! smokeIndex
+            && "1" `elem` argsOf !! smokeIndex
+            && "4" `elem` argsOf !! smokeIndex
         )
     assert
         "C++ bench and instrumented artefacts are installed to the canonical load path for training"
@@ -1677,19 +1759,19 @@ exerciseCppBuildPlan = do
             == [ "cpp-imperative/build/libmcts_cpp_imperative_bench.so"
                , "cpp-imperative/build/libmcts_cpp_imperative.so"
                ]
-            && argsOf !! 5
+            && argsOf !! 12
                 == [ "cpp-imperative/build/libmcts_cpp_imperative_instrumented.so"
                    , "cpp-imperative/build/libmcts_cpp_imperative.so"
                    ]
         )
     assert
         "C++ BOLT training install requires instrumented artefacts without fallback"
-        ( any ("libmcts_cpp_imperative_bench.inst.so" `contains`) (argsOf !! 10)
-            && any ("[bolt] missing instrumented C++ artefact" `contains`) (argsOf !! 10)
-            && not (any ("libmcts_cpp_imperative_bench.so" `contains`) (argsOf !! 10))
-            && any ("libmcts_cpp_imperative_instrumented.inst.so" `contains`) (argsOf !! 13)
-            && any ("[bolt] missing instrumented C++ artefact" `contains`) (argsOf !! 13)
-            && not (any ("libmcts_cpp_imperative_instrumented.so" `contains`) (argsOf !! 13))
+        ( any ("libmcts_cpp_imperative_bench.inst.so" `contains`) (argsOf !! 25)
+            && any ("[bolt] missing instrumented C++ artefact" `contains`) (argsOf !! 25)
+            && not (any ("libmcts_cpp_imperative_bench.so" `contains`) (argsOf !! 25))
+            && any ("libmcts_cpp_imperative_instrumented.inst.so" `contains`) (argsOf !! 35)
+            && any ("[bolt] missing instrumented C++ artefact" `contains`) (argsOf !! 35)
+            && not (any ("libmcts_cpp_imperative_instrumented.so" `contains`) (argsOf !! 35))
         )
     assert
         "C++ functional plan uses functional library names"

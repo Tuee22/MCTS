@@ -66,8 +66,9 @@ installed C++/Rust library must pass a bounded smoke run before the image can be
 published. The C++ backends also retain concrete `_instrumented` Makefile outputs
 for C++ investigations, but the supported Haskell FFI loader names the canonical
 shared libraries above. Rust publishes one optimized `cdylib` contract, not a
-parallel `_instrumented` artefact. The current narrow self-play training residue is
-owned by Phase 8 Sprint `8.10`, not by the FFI contract.
+parallel `_instrumented` artefact. The earlier narrow self-play training residue is
+closed by Phase 8 Sprint `8.10`, and runtime FFI selection remains one canonical
+library per backend rather than a profile-workload switch.
 
 ## C ABI Shape
 

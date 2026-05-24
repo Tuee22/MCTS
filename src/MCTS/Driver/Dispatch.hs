@@ -8,10 +8,12 @@
 -- both the engine's real per-move `(action_id, visits)` records and the
 -- live `mcts_<backend>_get_envelope()` payload. The C++/Rust search ABI
 -- currently has a fixed 60-ply search horizon, matching the Haskell
--- rollout cap; runs with lower `max_plies` use the in-process fallback
--- until that ABI grows an explicit per-run search cap. When a library is
--- absent the in-process driver is also used so focused test stanzas stay
--- self-contained.
+-- rollout cap; normal runs with lower `max_plies` use the in-process
+-- fallback until that ABI grows an explicit per-run search cap.
+-- Dockerfile-time profile training sets `MCTS_FORCE_FOREIGN_SEARCH=1`
+-- so short bounded training games still exercise the instrumented
+-- foreign libraries. When a library is absent the in-process driver is
+-- also used so focused test stanzas stay self-contained.
 module MCTS.Driver.Dispatch
     ( runBatchDispatch
     , runBatchNoWriteDispatch
@@ -42,6 +44,7 @@ import MCTS.FFI.Rust (loadRustEnvelope, rustLibraryPath, withRustSearchGame)
 import MCTS.Rng.Cpp (cppMoveSeedsIfAvailable, cppRngAvailable)
 import MCTS.Types (Backend (..), GameTranscript, RngSource (..))
 import System.Directory (doesFileExist)
+import System.Environment (lookupEnv)
 
 runBatchDispatch :: Driver.RunInputs -> IO (Either String Driver.BatchResult)
 runBatchDispatch inputs =
@@ -81,9 +84,10 @@ runBatchNoWriteDispatch inputs =
         Rust -> runForeignNoWriteWhenAvailable rustLibraryPath withRustSearchGame inputs
         Haskell -> Driver.runBatchNoWrite inputs
 
-canUseCappedForeignSearch :: Driver.RunInputs -> Bool
-canUseCappedForeignSearch inputs =
-    Driver.inputMaxPlies inputs >= 60
+canUseCappedForeignSearch :: Driver.RunInputs -> IO Bool
+canUseCappedForeignSearch inputs = do
+    forceForeign <- (== Just "1") <$> lookupEnv "MCTS_FORCE_FOREIGN_SEARCH"
+    pure (forceForeign || Driver.inputMaxPlies inputs >= 60)
 
 runForeignWhenAvailable
     :: FilePath
@@ -93,7 +97,8 @@ runForeignWhenAvailable
     -> IO (Either String Driver.BatchResult)
 runForeignWhenAvailable libraryPath loadEnvelope opener inputs = do
     present <- doesFileExist libraryPath
-    if present && canUseCappedForeignSearch inputs
+    canUseForeign <- canUseCappedForeignSearch inputs
+    if present && canUseForeign
         then
             runWithLiveEnvelope
                 loadEnvelope
@@ -108,7 +113,8 @@ runForeignNoWriteWhenAvailable
     -> IO (Either String ())
 runForeignNoWriteWhenAvailable libraryPath opener inputs = do
     present <- doesFileExist libraryPath
-    if present && canUseCappedForeignSearch inputs
+    canUseForeign <- canUseCappedForeignSearch inputs
+    if present && canUseForeign
         then
             Driver.runBatchNoWriteWithGame
                 (runWithRunner (runForeignSearchGame opener) inputs)
