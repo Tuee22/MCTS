@@ -2,7 +2,7 @@
 
 **Status**: Authoritative source
 **Supersedes**: N/A
-**Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/00-overview.md, ../../DEVELOPMENT_PLAN/phase-2-transcript-codec-and-determinism.md, ../../DEVELOPMENT_PLAN/phase-3-haskell-engine.md, ../../DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md, ../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md, ../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, ../documentation_standards.md, ./README.md, ./transcript_format.md, ./backend_ffi_contract.md, ./unit_testing_policy.md
+**Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/00-overview.md, ../../DEVELOPMENT_PLAN/phase-2-transcript-codec-and-determinism.md, ../../DEVELOPMENT_PLAN/phase-3-haskell-engine.md, ../../DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md, ../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md, ../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, ../documentation_standards.md, ./README.md, ./backend_ffi_contract.md, ./benchmark_metrics.md, ./transcript_format.md, ./unit_testing_policy.md
 **Generated sections**: none
 
 > **Purpose**: Authoritative spec of the MCTS determinism contract — the RNG source
@@ -182,6 +182,11 @@ self-play cohorts; a `VerifyMismatch` is a failing outcome for Q3. The
 `mcts-legacy-parity` stanza uses the same dispatch and envelope-checking path as a Q7
 liveness/overflow gate rather than comparing backend (i)'s visit vectors or chosen moves
 against the steelman engines.
+
+The `verify rollouts` name is a legacy command-surface name. It verifies the
+one-search-iteration-per-move played-game workload; it is not a terminal-playout
+throughput benchmark. Benchmark unit semantics live in
+[benchmark_metrics.md](./benchmark_metrics.md).
 
 ## Ply-Cap Draw Rule
 
@@ -797,7 +802,7 @@ below.
 | 1 | (i) `cpp-legacy` vs steelman cohort | Terminal-state and search-kernel semantics: (i) has no game-level ply cap and retains the legacy search tree; steelman backends treat `ply_count >= max_plies` as a draw with eval `0.0` and use the steelman search contract | (i) is a verbatim port and inherits the legacy's behaviour; the ply-cap draw rule and steelman search shape are behavioural improvements adopted only by the steelman cohort | (i) is excluded from Q3 but included in Q7. Backend (i) visit-count and chosen-move equality with the steelman cohort is not contractual. |
 | 2 | (i) | RNG: always `std::mt19937_64`; no independent native/cpp axis | Verbatim port of the legacy's RNG choice; the legacy ships only `std::mt19937_64` | Q6 and Q7 evidence; Q3 steelman cohorts under `--rng cpp` are unaffected |
 | 3 | Live FFI engines under `--rng native` | RNG: backend-native schedule rather than the shared C++ verification stream | Benchmark streams stay backend-distinct and optimized for each backend. | Bench-only divergence: visit-count bit-equality is not asserted under `--rng native`; Q3 uses `--rng cpp` verification transcripts |
-| 4 | (i) under any `max_plies != MAX_ROLLOUT_ITERS` | Q1 / Q2 / Q5 throughput basis: (i)'s games run to a positional win and are on average longer than the ply-capped games of (ii)–(v) | (i) has no ply cap (#1), so games/sec for (i) is not on the same engine-budget basis as (ii)–(v) | `mcts test all` does not use backend (i) for Q1/Q2 throughput rows; the load-bearing Q1 / Q2 comparison is Haskell (v) vs live C++ (ii). |
+| 4 | (i) under any `max_plies != MAX_ROLLOUT_ITERS` | Played-game throughput basis: (i)'s games run to a positional win and are on average longer than the ply-capped games of (ii)–(v) | (i) has no ply cap (#1), so `games/s` for (i) is not on the same engine-budget basis as (ii)–(v) | `mcts test all` does not use backend (i) for Q1/Q2 throughput rows; the load-bearing Q1 / Q2 comparison is Haskell (v) vs live C++ (ii). |
 | 5 | All backends, amd64 ↔ arm64 | Full determinism evidence, especially equity float bits | `libm`, FMA, denormal handling, SIMD reduction, and runtime dispatch can differ across arches | Cross-arch cohorts are rejected by layered envelope verification with `AppError ArchEnvelopeMismatch`; per-arch cache partitioning makes accidental cross-arch comparison unlikely. No cross-arch bit-equality result is treated as contractual evidence. |
 | 6 | Same backend across different build envelopes | Equity float bits and (under `--rng native`) potentially visit counts | A rebuild changes `engine_build_id`, often `libm_id`/`compiler_version`, and may change `fp_flags`/`cpu_features`. Equity drift is unavoidable; visit drift can occur if FP differences swap a tie-break upstream of a subsequent rollout under `--rng native` | `checkTranscriptEnvelopesLive` hard-fails with `AppError EngineEnvelopeMismatch (BackendSlot b)` unless `--allow-stale` is passed. `mcts inspect replay` shows a persistent yellow banner `envelope: BUILD MISMATCH - recomputed locally; equities may drift at ULP from origin`; multi-build sidecar cache (one `.eq` per `(backend, build_label)`) lets the user compare across builds. Visit drift under cross-build `--rng cpp` is expected to be zero; stale backend-slot envelopes must be explicitly acknowledged with `--allow-stale` before visits are compared |
 

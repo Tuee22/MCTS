@@ -16,7 +16,8 @@
 [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md),
 [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md),
 [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md),
-[../documents/documentation_standards.md](../documents/documentation_standards.md)
+[../documents/documentation_standards.md](../documents/documentation_standards.md),
+[../documents/engineering/benchmark_metrics.md](../documents/engineering/benchmark_metrics.md)
 **Generated sections**: none
 
 > **Purpose**: Provide the single execution-ordered development plan for the MCTS
@@ -53,7 +54,7 @@ labels passed validation. Phase `8` reclosed Sprint `8.3` on 2026-05-23 after
 the parity report card passed against successful Dockerfile-time PGO+BOLT
 artefacts, not the historical fallback artefacts. Phase `8` reclosed Sprint `8.10`
 on 2026-05-23 after Dockerfile-time C++ and Rust PGO/BOLT training moved from the
-narrow self-play smoke to the bounded Q1/Q2-shaped profile suite and the aggregate
+narrow self-play smoke to the bounded played-game profile suite and the aggregate
 report-card verdict remained `Within tolerance`. The 2026-05-24 documentation/code
 harmony sweep reclosed Phase `1` Sprint `1.11`, Phase `2` Sprint `2.9`, Phase `3`
 Sprint `3.7`, Phase `4` Sprint `4.5`, and Phase `7` Sprint `7.7` after README
@@ -62,10 +63,20 @@ domain-conversion wording, and divergence metric language were aligned with the
 current implementation. Phases `5` and `6` remain `Done` for fail-closed PGO/BOLT
 mechanics, ABI contracts, and canonical artefact installation.
 
-This closure does not change the project hypothesis: one Haskell CLI keeps
+The 2026-05-24 benchmark-metric audit reopened the metric suite without changing
+the five-backend hypothesis. Phase `3` Sprint `3.8` now owns explicit terminal
+playout and search-iteration benchmark primitives, Phase `7` Sprint `7.8` owns the
+report-card/Q1-Q7 row refactor, and Phase `8` Sprint `8.11` owns the final parity
+evidence rerun after those metrics land. The Q1/Q2/Q5 numbers recorded before this
+audit remain historical played-game throughput evidence; they are not final
+answers to terminal playout throughput or search-iteration throughput.
+
+This audit does not change the project hypothesis: one Haskell CLI keeps
 all five backend slots live, Q3 proves visit-count equivalence for `(ii)..(v)`
-under `--rng cpp`, Q7 covers all five slots under the legacy envelope, and Q1/Q2
-measure backend (v) Haskell against backend (ii) `cpp-imperative`.
+under `--rng cpp`, Q7 covers all five slots under the legacy envelope, and the
+refactored Q1/Q2 suite measures backend (v) Haskell against backend (ii)
+`cpp-imperative` using the explicit metric units in
+[../documents/engineering/benchmark_metrics.md](../documents/engineering/benchmark_metrics.md).
 
 The Phase `1` reclosure was validated with
 `docker compose run --rm mcts mcts docs check`,
@@ -101,11 +112,14 @@ cross-backend, and legacy-parity checks, and recorded Q1 ST 0.05x, Q1 MT8 0.45x,
 Q2 ST 0.06x, Q2 MT8 0.22x, Q5 Haskell 0.98x, Q5 C++ (ii) 3.70x, Q7 PASS, and
 `Verdict: Within tolerance`. Sprint `8.10` was validated on 2026-05-23 with the
 C++/Rust build-plan dry-runs and `docker compose run --rm --build mcts mcts test
-all`; the image build trained PGO/BOLT on Q1 random rollouts and Q2 self-play,
+all`; the image build trained PGO/BOLT on the legacy Q1 played-game rollout
+workload and Q2 self-play,
 single-threaded and MT8, under native RNG with seeds `42` and `424242`. The
 accepted report card recorded Q1 ST 0.05x, Q1 MT8 0.48x, Q2 ST 0.06x, Q2 MT8
 0.21x, Q5 Haskell 0.99x, Q5 C++ (ii) 3.65x, Q7 PASS, zero live-cohort divergence,
-and `Verdict: Within tolerance`.
+and `Verdict: Within tolerance`. Under the metric taxonomy adopted on 2026-05-24,
+those Q1/Q2/Q5 rows are reclassified as historical played-game evidence and must
+be supplemented by terminal-playout and search-iteration rows.
 The 2026-05-24 harmony sweep was validated with
 `docker compose run --rm mcts mcts lint files --write`,
 `docker compose run --rm mcts mcts lint docs --write`,
@@ -141,7 +155,9 @@ baseline was validated with
 `docker compose run --rm --build mcts mcts test all`,
 `docker compose run --rm mcts mcts docs check`,
 `docker compose run --rm mcts mcts check-code`, `git diff --check`, and the stale-wording
-residue searches named in Sprint `8.8`.
+residue searches named in Sprint `8.8`. Under the metric taxonomy adopted on
+2026-05-24, those Q1/Q2/Q5 rows are reclassified as historical played-game
+evidence and must be supplemented by terminal-playout and search-iteration rows.
 
 The last validated implementation baseline includes:
 a Cabal package with the
@@ -334,12 +350,12 @@ A sprint can move to `Done` only when all of the following are true:
 | 0 | Planning and Documentation Topology | ✅ Done | [phase-0-planning-documentation.md](phase-0-planning-documentation.md) |
 | 1 | Haskell CLI Surface, `CommandSpec`, Lint Stack | ✅ Done (Sprint `1.11` README/lint-write realignment closed 2026-05-24) | [phase-1-haskell-cli-surface.md](phase-1-haskell-cli-surface.md) |
 | 2 | Transcript Codec, RNG, and Determinism Contract | ✅ Done (Sprint `2.9` transcript/envelope doctrine realignment closed 2026-05-24) | [phase-2-transcript-codec-and-determinism.md](phase-2-transcript-codec-and-determinism.md) |
-| 3 | Backend (v) Haskell Engine | ✅ Done (Sprint `3.7` signed-modulo rollout byte-consumption realignment closed 2026-05-24) | [phase-3-haskell-engine.md](phase-3-haskell-engine.md) |
+| 3 | Backend (v) Haskell Engine | 🔄 Active for Sprint `3.8` benchmark metric primitives; correctness baseline remains closed | [phase-3-haskell-engine.md](phase-3-haskell-engine.md) |
 | 4 | Backend (i) C++ Legacy Port and FFI Bridge | ✅ Done (Sprint `4.5` FFI domain-conversion contract realignment closed 2026-05-24) | [phase-4-cpp-legacy-port-and-ffi-bridge.md](phase-4-cpp-legacy-port-and-ffi-bridge.md) |
 | 5 | Backend (ii) C++ Imperative Steelman with PGO+BOLT | ✅ Done (Sprint `5.3` fail-closed C++ PGO/BOLT reclosure and Sprint `5.5` compact C ABI contract reclosure are complete) | [phase-5-cpp-imperative-steelman.md](phase-5-cpp-imperative-steelman.md) |
 | 6 | Backends (iii) C++ Functional-Style and (iv) Rust | ✅ Done (Sprint `6.4` fail-closed Rust PGO/BOLT reclosure and Sprint `6.6` compact ABI/build wording reclosure are complete) | [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md) |
-| 7 | Cross-Backend Verify, Test Stanzas, POC Report Card | ✅ Done (Sprint `7.7` verifier gate/divergence metric realignment closed 2026-05-24) | [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md) |
-| 8 | Haskell Performance Parity Closure and Five-Backend Restoration | ✅ Done (Sprint `8.10` bounded Q1/Q2-shaped PGO/BOLT training and final report-card reclosure complete) | [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md) |
+| 7 | Cross-Backend Verify, Test Stanzas, POC Report Card | 🔄 Active for Sprint `7.8` report-card metric semantics; Q3/Q7 gates remain closed | [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md) |
+| 8 | Haskell Performance Parity Closure and Five-Backend Restoration | 🔄 Active; Sprint `8.11` rerun blocked by Sprint `3.8` and Sprint `7.8` | [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md) |
 
 ## Current Plan Status
 
@@ -349,13 +365,17 @@ report-card evidence, and 2026-05-23 fail-closed report-card refresh recorded.
 The 2026-05-21 reclosure work aligned governed docs, comments, and evidence labels
 with the code that already supports the proof, while the 2026-05-22 fail-closed
 doctrine was closed by the 2026-05-23 PGO/BOLT build and parity-evidence gates.
-Sprint `8.10` closes the profile-representativeness gap: `src/MCTS/CLI/Build.hs`
-now trains C++ and Rust PGO/BOLT with bounded Q1/Q2-shaped rollouts/self-play runs
+Sprint `8.10` closed the fail-closed profile-representativeness gap for the
+then-current played-game report card: `src/MCTS/CLI/Build.hs`
+now trains C++ and Rust PGO/BOLT with bounded legacy rollout/self-play runs
 across ST and MT8, native RNG, fixed seeds `42` and `424242`, and `--max-plies 1`
 before the report card runs. The 2026-05-24 sweep keeps README as an operator
 reference, pushes detailed rules into governed engineering docs, and closes the
 remaining code/doc contradictions in lint repair, envelope gating, rollout byte
 consumption, FFI domain conversion, and divergence metric wording.
+The metric-semantics audit keeps that evidence as historical played-game data and
+reopens Sprints `3.8`, `7.8`, and `8.11` to add terminal `playouts/s` and
+`search-iters/s` rows.
 Implemented in the worktree:
 
 - `mcts.cabal`, `cabal.project`, `app/Main.hs`, `src/MCTS/**`, `test/**`,
@@ -465,9 +485,10 @@ Implemented in the worktree:
   delegates to `cabal test mcts-haskell-style`, and `mcts check-code` runs lint/docs
   plus `cabal build all` through the dedicated `MCTS.CheckCode` module.
 - `mcts test all` routes recursive CLI invocations through `cabal exec mcts -- ...`,
-  `mcts test parity-anchor <baseline> <candidate>` provides a focused Q1/Q2
+  `mcts test parity-anchor <baseline> <candidate>` provides a focused legacy Q1/Q2
   backend-pair parity measurement, and `mcts bench rollouts|selfplay` accepts
-  backend cohorts in the report-card command form.
+  backend cohorts in the report-card command form. The `bench rollouts` spelling is
+  a legacy played-game workload name pending the metric-suite refactor.
 - The live Rust backend source home under `rust/` declares the doctrine-shaped
   envelope struct and the current accessor symbol
   (`mcts_rust_get_envelope`) returning process-static memory. `cpp-legacy/`,
@@ -497,9 +518,9 @@ labels, ABI docs, and compiler-tuning docs describe the same supported implement
 The PGO/BOLT build doctrine is now fail-closed for the steelman foreign backends:
 PGO and BOLT complete inside the Dockerfile build, missing profile data crashes the
 image build, and the installed bolted C++/Rust libraries are smoked before runtime
-validation starts. Sprint `8.10` closed the final Phase `8` profile-workload gate:
-profile data is trained on the bounded Q1/Q2-shaped profile suite before the
-accepted parity report card runs.
+validation starts. Sprint `8.10` closed the fail-closed played-game profile-workload
+gate. Sprint `8.11` remains open to review the profile suite after terminal-playout
+and search-iteration metrics land.
 
 ## Sprint Dependencies
 
@@ -535,13 +556,13 @@ closes — backend (i) is the legacy-compatibility port, backends (ii) and (iii)
 performance ceiling and its functional sibling, and backend (iv) Rust is the
 cross-language second opinion. Phase `7` joins the five backend slots in the
 cross-backend evidence surface and emits the POC report card. Phase `8` closes the
-Haskell tuning loop once backend (v) matches backend (ii) within tolerance on Q1 and
-Q2 against successful Dockerfile-time PGO+BOLT artefacts trained on the bounded
-Q1/Q2-shaped profile suite. Sprint `8.9` revalidated the historical handoff
+Haskell tuning loop once backend (v) matches backend (ii) within tolerance on the
+refactored Q1a/Q1b/Q2 metrics against successful Dockerfile-time PGO/BOLT artefacts.
+Sprint `8.9` revalidated the historical handoff
 after the evidence-surface alignment sprints closed, Sprint `8.3` reclosed the
 report-card evidence against fail-closed build artefacts on 2026-05-23, and Sprint
-`8.10` reclosed Phase `8` after replacing the narrow training run with bounded
-Q1/Q2-shaped profile training.
+`8.10` reclosed the played-game profile-training evidence before the metric-suite
+audit reopened Sprint `8.11`.
 
 ## Exit Definition
 
@@ -551,9 +572,11 @@ This plan is complete only when all of the following are true:
    backend (i) `cpp-legacy/`, backend (ii) `cpp-imperative`, backend (iii)
    `cpp-functional`, backend (iv) `rust`, and backend (v) the native Haskell engine
    under `src/MCTS/`.
-2. `mcts bench rollouts` and `mcts bench selfplay` produce comparable wall-clock numbers
-   across all five backends from a single Cabal-driven monotonic clock
-   (`GHC.Clock.getMonotonicTimeNSec` in the current Haskell baseline).
+2. The benchmark suite reports terminal playout throughput (`playouts/s`),
+   search-iteration throughput (`search-iters/s`), and played-game throughput
+   (`games/s`) with explicit units across the supported backend cohort from a single
+   Cabal-driven monotonic clock (`GHC.Clock.getMonotonicTimeNSec` in the current
+   Haskell baseline).
 3. `mcts verify rollouts` and `mcts verify selfplay` agree bit-for-bit on visit counts
    across `(ii)..(v)` under `--rng cpp`, with the `VerifyBackend` type carrying that
    cohort explicitly.
@@ -567,8 +590,9 @@ This plan is complete only when all of the following are true:
    implemented in `MCTS.CLI.Test` and mirrored in `cabal.project` comments:
    `G_R=1_000`, `G_S=4`, `G_V=4`, `G_LP=2`, `S_BENCH=500`, `S_VERIFY=500`,
    `S_LP_SIMS=10_000`, and `S_LP=42`.
-6. Pure Haskell backend (v) matches backend (ii) C++ steelman on Q1 (random rollouts) and
-   Q2 (self-play) within the parity tolerance per
+6. Pure Haskell backend (v) matches backend (ii) C++ steelman on Q1a terminal
+   playout throughput, Q1b search-iteration throughput, and Q2 played-game self-play
+   throughput within the parity tolerance per
    [../documents/engineering/compiler_runtime_tuning.md → Parity Tolerance](../documents/engineering/compiler_runtime_tuning.md)
    (`HASKELL_PARITY_TOLERANCE = 0.05`), both single-threaded and on 8 workers.
    If Haskell falls short — including shortfalls in the 5–15% PGO-attributable band — the

@@ -6,7 +6,8 @@
 [development_plan_standards.md](development_plan_standards.md),
 [system-components.md](system-components.md),
 [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md),
-[../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md)
+[../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md),
+[../documents/engineering/benchmark_metrics.md](../documents/engineering/benchmark_metrics.md)
 **Generated sections**: none
 
 > **Purpose**: Land the native Haskell Corridors engine — bitboard game state, MCTS
@@ -16,7 +17,8 @@
 
 ## Phase Status
 
-✅ **Done**. The Haskell backend has a deterministic logical Corridors driver,
+🔄 **Active** for the metric-suite follow-up. The Haskell backend correctness surface
+remains closed: it has a deterministic logical Corridors driver,
 strict `Word64` board slots/bitsets with path-preserving wall checks, recursive UCT
 search in `ST s` over a structure-of-arrays `STUArray` arena, transcript writing,
 monotonic bench timing, logical envelope stamping through `MCTS.Engine.Envelope`,
@@ -27,6 +29,9 @@ persistence and per-rollout scratch boards remain profile-driven future work out
 the current closed baseline; post-link build-id stamping and performance parity are
 closed in Phase `8`; foreign
 backend dispatch and foreign recompute coverage remain owned by Phases `4` through `7`.
+Sprint `3.8` is reopened to add explicit terminal-playout and search-iteration
+benchmark primitives so Phase `7` can refactor Q1/Q5 without overloading the legacy
+`bench rollouts` played-game workload.
 
 ## Phase Summary
 
@@ -40,7 +45,10 @@ boundary. The current driver allocates a fresh arena for each per-move search; t
 closed baseline. The optimization stack and performance proof land in Phase `8` once
 the cross-backend `verify`
 baseline pins what `correct` means. `mcts bench rollouts --backend haskell` and
-`mcts bench selfplay --backend haskell` run end-to-end after this phase closes.
+`mcts bench selfplay --backend haskell` run end-to-end after the original Phase `3`
+closure; the metric follow-up must add explicit terminal playout and search-iteration
+benchmarks per
+[../documents/engineering/benchmark_metrics.md](../documents/engineering/benchmark_metrics.md).
 
 ## Sprint 3.1: Corridors Game Engine and Board Representation ✅
 
@@ -296,10 +304,11 @@ in the Phase 2 wire format.
 - `src/MCTS/Transcript.hs` exposes `writeTranscript`, computing the hash, resolving
   the cache root, and writing
   `<sha>.tr` atomically (write to temp, fsync, rename).
-- For random-rollout-only benchmark (`mcts bench rollouts`), the current logical
-  baseline reuses the UCT dispatch with a one-simulation budget so the transcript
-  and visit-table path stays identical to self-play. A future throughput-only
-  no-tree fast path is Phase `8` performance work if profiling justifies it.
+- For the legacy `mcts bench rollouts` command, the current logical baseline reuses
+  the UCT dispatch with a one-simulation budget so the transcript and visit-table
+  path stays identical to self-play. This is a played-game workload, not terminal
+  playout throughput. Sprint `3.8` owns the explicit lower-level benchmark
+  primitives required by the metric taxonomy.
 - The native Haskell backend (v) uses the single container-built `mcts` binary in
   the current correctness baseline. Visit tables are available directly from
   `MCTS.Search.UCT.uctSearch`, so the paired bench/instrumented split is not part
@@ -341,10 +350,11 @@ None.
 
 ### Objective
 
-Wire the bench command into the CLI for `--backend haskell` end-to-end: parse, plan,
+Wire the original game-level bench command into the CLI for `--backend haskell`
+end-to-end: parse, plan,
 prerequisite-check, dispatch through a worker pool (single or multi), measure
 wall-clock time from a single `GHC.Clock.getMonotonicTimeNSec`, emit
-`games/sec` and `sims/sec`.
+`games/s` and the legacy derived `sims/s`.
 
 ### Deliverables
 
@@ -392,7 +402,7 @@ wall-clock time from a single `GHC.Clock.getMonotonicTimeNSec`, emit
 
 1. `docker compose run --rm mcts mcts bench rollouts --backend haskell --threading
    single --rng native --games 100 --seed 42` runs to completion and emits a
-   games/sec number.
+   `games/s` number.
 2. `docker compose run --rm mcts mcts bench selfplay --backend haskell --threading
    multi --workers 8 --rng native --games 32 --seed 42 --sims 1000` runs to
    completion.
@@ -404,7 +414,9 @@ wall-clock time from a single `GHC.Clock.getMonotonicTimeNSec`, emit
 ### Closure Notes
 
 - Baseline landed: `mcts bench rollouts` and `mcts bench selfplay` run through the
-  logical Haskell backend, write transcripts, and render table/JSON throughput output.
+  logical Haskell backend, write transcripts, and render table/JSON game-level
+  throughput output. The `bench rollouts` name is legacy and does not mean terminal
+  `playouts/s`.
   The bench runner now reads the pinned monotonic clock
   (`GHC.Clock.getMonotonicTimeNSec`) via the `monotonicNanos` helper. The
   test-injectable variant `runBenchWithClock` accepts any `IO Word64`
@@ -422,6 +434,46 @@ wall-clock time from a single `GHC.Clock.getMonotonicTimeNSec`, emit
 ### Remaining Work
 
 None.
+
+## Sprint 3.8: Terminal Playout and Search-Iteration Benchmarks 🔄
+
+**Status**: Active
+**Implementation**: `src/MCTS/CLI/Bench.hs`, `src/MCTS/Search/UCT.hs`,
+foreign backend search kernels
+**Docs to update**: `../documents/engineering/benchmark_metrics.md`,
+`../documents/engineering/cli_command_surface.md`,
+`DEVELOPMENT_PLAN/system-components.md`
+
+### Objective
+
+Add benchmark primitives whose counted units match the metric taxonomy:
+terminal playout throughput (`playouts/s`) and search-iteration throughput
+(`search-iters/s`).
+
+### Deliverables
+
+- A terminal-playout benchmark that runs direct random playouts from explicit board
+  positions without allocating or updating an MCTS tree.
+- A search-iteration benchmark that times UCT iterations directly at fixed board
+  positions and reports observed `search-iters/s`.
+- Renderer output that avoids derived or ambiguous `sims/s` values.
+- Foreign-backend entry points or harnesses that measure the same units as the
+  Haskell path, including backend (i) where Q6 compares against `MCTS_legacy`.
+
+### Validation
+
+- The final terminal-playout CLI leaf runs through the root Compose entrypoint for
+  `--backend haskell`, `--rng native`, and `--seed 42`.
+- The final search-iteration CLI leaf runs through the root Compose entrypoint for
+  `--backend haskell`, `--rng native`, and `--seed 42`.
+- Focused unit coverage proving the reported units are not derived from complete-game
+  counts.
+
+### Remaining Work
+
+- Choose final CLI spelling with Phase `1` command-surface ownership.
+- Implement the terminal-playout and search-iteration timing paths for each backend.
+- Wire the new primitives into Phase `7` report-card rows.
 
 ## Sprint 3.6: Backend (v) Engine Envelope and Foreign-Engine Recompute ✅
 
@@ -557,6 +609,8 @@ documented signed-modulo rule.
   writes the format Phase 2 specified.
 - `documents/engineering/cli_command_surface.md` — fill in the `mcts bench` matrix
   for `--backend haskell`.
+- `documents/engineering/benchmark_metrics.md` — define the terminal-playout and
+  search-iteration primitives Sprint `3.8` adds.
 - `documents/engineering/compiler_runtime_tuning.md` — Phase 3 establishes the
   correctness baseline; Phase 8 adds the optimisation stack. This doc gains a
   Haskell-engine subsection noting the in-scope Phase 8 deliverables.

@@ -15,7 +15,8 @@
 [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md),
 [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md),
 [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md),
-[../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md)
+[../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md),
+[../documents/engineering/benchmark_metrics.md](../documents/engineering/benchmark_metrics.md)
 **Generated sections**: none
 
 > **Purpose**: Authoritative target component inventory for the MCTS Haskell CLI, the
@@ -31,8 +32,10 @@ across `(i)..(v)`. The 2026-05-21 evidence-surface audit reopened focused
 alignment sprints in Phases `1`, `2`, `5`, `6`, `7`, and `8`; the 2026-05-24
 harmony sweep reopened and reclosed focused alignment sprints in Phases `1`,
 `2`, `3`, `4`, and `7`. All reopened reclosure sprints have closed without
-changing the five-backend hypothesis, including Sprint `8.10`'s bounded-profile
-PGO/BOLT follow-up.
+changing the five-backend hypothesis. The 2026-05-24 metric-semantics audit
+reopened the benchmark/report-card metric suite: historical Q1/Q2/Q5 rows remain
+played-game evidence, while terminal playout and search-iteration throughput rows
+still need implementation before the final parity proof is definitive.
 [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md) tracks stale surfaces
 and cleanup ownership separately.
 
@@ -47,7 +50,8 @@ and cleanup ownership separately.
 | Foreign backend homes | `cpp-legacy/` contains the mechanically imported legacy core plus C ABI wrappers and the optional local `legacy-to-wire` evidence generator reached through `mcts build legacy-fixtures`; `cpp-imperative/` contains the imperative steelman; `cpp-functional/` contains the functional-style C++ steelman; `rust/src/` ships a real arena MCTS, a dormant xoshiro256++ helper module, the splitmix-compatible live search schedule, the full Corridors gameplay port (8x8 bitfield walls, iterative BFS escapability, post-move 180-degree flip via `u64::reverse_bits`), and the search/recompute/read-visits/envelope C ABI. Haskell dispatch loads all four foreign backend families through `src/MCTS/FFI/Cpp*`, `src/MCTS/FFI/Rust.hs`, and `src/MCTS/Driver/Dispatch.hs` when canonical shared libraries are present. Sprint `5.5` closed backend (ii)'s compact ABI contract; Sprint `6.6` closed backend (iii)/(iv) ABI docs and Rust build-artifact wording. | ✅ Done |
 | Test stanzas | `test/unit`, `test/integration`, `test/cross-backend`, `test/legacy-parity`, `test/haskell-style`; each stanza has its own `tasty` runner; host validation gate is `docker compose run --rm mcts mcts test all`. Unit renderer/codec checks use semantic assertions and in-memory bytes; `test/golden/` generated inputs and `tasty-golden` are absent. | ✅ Done |
 | Generated docs gate | `src/MCTS/CLI/Docs.hs`, `src/MCTS/Generated/Paths.hs`, `src/MCTS/Generated/Sections.hs`, `documents/engineering/cli_command_surface.md`, `documents/cli/commands.md`, `share/man/man1/mcts.1`, `share/completion/{bash,zsh,fish}/`; `mcts docs check` and `mcts lint files` check tracked generated-file drift; `mcts lint docs --write` regenerates fully generated files and marker-delimited sections before rechecking, while `mcts lint files --write` rewrites fully generated command/man/completion files from the generated-file registry; `command-matrix` is a marker-delimited governed-doc section rendered from `CommandSpec`; governed-doc `**Generated sections**:` metadata must match physical markers and the generated-section registry. | ✅ Done |
-| PGO/BOLT training workload | `src/MCTS/CLI/Build.hs` owns the Dockerfile-invoked `cppPgoBoltPlan` and `rustPgoBoltPlan` training runs. PGO uses a bounded Q1/Q2-shaped suite with `bench rollouts` plus `bench selfplay`, ST plus MT8, native RNG, seeds `42` and `424242`, and `--max-plies 1`; per seed it runs rollout ST/MT8 with 2 games each and self-play ST/MT8 with 1 game each at `--sims 500`. BOLT uses the same shape with 1 game per workload/threading pair and shorter self-play `--sims 100`. C++ profile training uses scoped dynamic-library loading plus explicit GCOV dump hooks; Rust keeps the library pinned and relies on process-exit `.profraw` emission. | ✅ Done (Sprint 8.10) |
+| Benchmark metric taxonomy | `documents/engineering/benchmark_metrics.md` defines terminal playout throughput (`playouts/s`), search-iteration throughput (`search-iters/s`), and played-game throughput (`games/s`). Current `bench rollouts` remains a legacy command name for played-game throughput with one search iteration per real move; final report-card implementation still needs explicit terminal-playout and search-iteration rows. | 🔄 Active (Sprints 3.8, 7.8, 8.11) |
+| PGO/BOLT training workload | `src/MCTS/CLI/Build.hs` owns the Dockerfile-invoked `cppPgoBoltPlan` and `rustPgoBoltPlan` training runs. PGO currently uses a bounded played-game proxy suite with legacy `bench rollouts` plus `bench selfplay`, ST plus MT8, native RNG, seeds `42` and `424242`, and `--max-plies 1`; per seed it runs rollout ST/MT8 with 2 games each and self-play ST/MT8 with 1 game each at `--sims 500`. BOLT uses the same shape with 1 game per workload/threading pair and shorter self-play `--sims 100`. C++ profile training uses scoped dynamic-library loading plus explicit GCOV dump hooks; Rust keeps the library pinned and relies on process-exit `.profraw` emission. The final training suite must be revisited after explicit terminal-playout and search-iteration benchmarks land. | 🔄 Active (Sprint 8.11 follow-up) |
 
 ## Backends
 
@@ -63,7 +67,7 @@ and cleanup ownership separately.
 
 | Surface | Command | Purpose | Status | Owning Sprint |
 |---------|---------|---------|--------|---------------|
-| Random-rollouts benchmark | `mcts bench rollouts` | Engine throughput on legal-move generation, move application, terminal detection, and the shared per-move search path. The current implementation reuses the same UCT dispatch as self-play with a one-simulation move budget so transcript and visit-table handling stay identical across workloads. Performance runs use each backend's native RNG contract. | ✅ Done | Sprint 3.5; foreign dispatch in Sprints 5.4, 6.2, 6.4; Phase 8 restoration |
+| Legacy played-game rollout benchmark | `mcts bench rollouts` | Legacy command name. Measures complete played games with one search iteration per real move, exercising legal-move generation, move application, terminal detection, and the shared per-move search path. It does not measure terminal `playouts/s`; final metric-suite work must add or rename explicit benchmark leaves per `benchmark_metrics.md`. Performance runs use each backend's native RNG contract. | 🔄 Active for metric refactor | Sprint 3.5 baseline; Sprint 3.8 refactor |
 | Self-play benchmark | `mcts bench selfplay` | Full UCT search with random-rollout leaf evaluation, adversarial self-play. Performance runs use each backend's native RNG contract. | ✅ Done | Sprint 3.5; foreign dispatch in Sprints 5.4, 6.2, 6.4; Phase 8 restoration |
 | Rollouts verify | `mcts verify rollouts` | Live FFI-backed round-robin visit-count equality across `(ii)..(v)` under `--rng cpp`, using C++-generated verification seeds from the shared C++ RNG bridge; layered envelope checks with `--allow-stale`; digest-first canonical payload comparison with length-aware mismatch reporting | ✅ Done | Sprint 7.2, Sprint 7.5, Phase 8 restoration |
 | Self-play verify | `mcts verify selfplay` | Live FFI-backed round-robin self-play visit-count equality across `(ii)..(v)` under the same C++-generated verification-seed contract and digest-first verifier comparator | ✅ Done | Sprint 7.2, Sprint 7.5, Phase 8 restoration |
@@ -82,7 +86,7 @@ and cleanup ownership separately.
 | Command introspection | `mcts commands [--tree\|--json]` | Flat list, tree rendering, or JSON command schema from the `CommandSpec` registry | ✅ Done | Sprint 1.2 |
 | Focused help | `mcts help <subcommand>` | Focused pointer for a target command; the runner prints the target and directs operators to `docker compose run --rm mcts mcts commands --tree` for the command tree | ✅ Done | Sprint 1.2 |
 | Code quality gate | `mcts check-code` | Doctrine-alignment enforcement, formatter, hlint, generated-doc checks, warning-clean build, forbidden-path scan | ✅ Done | Sprint 1.4, Sprint 1.10 |
-| Per-backend build harness | `mcts build cpp-legacy`, `mcts build cpp-imperative`, `mcts build cpp-functional`, `mcts build rust`, plus `mcts build legacy-fixtures` | Dockerfile-invoked Plan/Apply build recipes; C++ and Rust steelman leaves run their PGO+BOLT+`mimalloc` paths during image construction, fail closed on missing profile/BOLT data, patch BOLT-produced shared objects with LLVM objcopy, smoke the installed bolted canonical libraries before runtime validation, and train on the bounded Q1/Q2-shaped profile suite. The optional local legacy evidence generator remains external/ignored | ✅ Done | Sprint 4.1, Sprint 4.4, Sprint 5.3, Sprint 6.2, Sprint 6.4, Sprint 8.8, Phase 8 restoration, Sprint 8.10 |
+| Per-backend build harness | `mcts build cpp-legacy`, `mcts build cpp-imperative`, `mcts build cpp-functional`, `mcts build rust`, plus `mcts build legacy-fixtures` | Dockerfile-invoked Plan/Apply build recipes; C++ and Rust steelman leaves run their PGO+BOLT+`mimalloc` paths during image construction, fail closed on missing profile/BOLT data, patch BOLT-produced shared objects with LLVM objcopy, smoke the installed bolted canonical libraries before runtime validation, and currently train on the bounded played-game profile suite. Sprint `8.11` reviews the profile suite after explicit terminal-playout and search-iteration metrics land. The optional local legacy evidence generator remains external/ignored | 🔄 Active for profile-suite review | Sprint 4.1, Sprint 4.4, Sprint 5.3, Sprint 6.2, Sprint 6.4, Sprint 8.8, Phase 8 restoration, Sprint 8.10, Sprint 8.11 |
 
 ## Transcript Codec and Determinism
 
@@ -174,7 +178,7 @@ operator auditability; see
 
 | Knob | Value | Purpose |
 |------|-------|---------|
-| `G_R` | `1_000` | Random-rollouts game count (Q1) |
+| `G_R` | `1_000` | Legacy played-game rollout count (current Q1 row) |
 | `G_S` | `4` | Self-play game count (Q2 / Q5) |
 | `G_V` | `4` | Cross-backend verify game count (Q3) |
 | `G_LP` | `2` | Legacy parity game count (Q7) |
@@ -182,6 +186,11 @@ operator auditability; see
 | `S_VERIFY` | `500` | Per-move sim budget for verify self-play |
 | `S_LP_SIMS` | `10_000` | Per-move sim budget for legacy-parity self-play |
 | `S_LP` | `42` | Legacy-parity fixture seed (chosen so (i) did not throw) |
+
+These knobs describe the currently implemented played-game report-card rows. The
+refactored suite must add separate knobs for terminal playout samples and
+search-iteration samples before Q1/Q5 are final per
+[benchmark_metrics.md](../documents/engineering/benchmark_metrics.md).
 
 ## Toolchain
 
@@ -207,7 +216,7 @@ operator auditability; see
 | Optional legacy evidence | `mcts build legacy-fixtures` from the `cpp-legacy/legacy-core/` port of `~/MCTS_legacy/` | Explicit operator-provided output directory, preferably outside the repo or under an ignored local artifact root | Optional Q6 reproduction evidence; not required by normal validation and not checked into the repo |
 | Optional audit evidence | `mcts` CLI or explicit operator generation commands | Plan/docs plus optional external/ignored artifact storage | Transcripts and throughput captures may exist for audit, but generated evidence files are not repository validation inputs |
 | Build outputs | `docker/Dockerfile`; runtime entry through `docker compose run --rm mcts mcts <command>` | Image-local `dist-newstyle/` plus per-backend `build/` / `target/` directories | Canonical backend artefacts live inside the Compose-built image; runtime commands consume them without rebuilding, and host-level `.build/` is unsupported. Steelman foreign artefacts are valid only after Dockerfile-time PGO+BOLT succeeds and the installed bolted library smoke passes. |
-| PGO/BOLT profile directories | Dockerfile-invoked two-stage PGO/BOLT build harness | `cpp-imperative/pgo-profile/`, `cpp-imperative/bolt-profile/`, `cpp-functional/pgo-profile/`, `cpp-functional/bolt-profile/`, `rust/pgo-profile/`, `rust/bolt-profile/` | Rust and C++ profile roots are generated build artefact locations, ignored by git and by the Docker build context. Each Dockerfile-invoked `mcts build <backend>` recipe recreates the needed roots, generates fresh PGO/BOLT profile data from the bounded Q1/Q2-shaped profile suite, and fails the image build when required profile data is missing instead of relying on checked-in snapshots. |
+| PGO/BOLT profile directories | Dockerfile-invoked two-stage PGO/BOLT build harness | `cpp-imperative/pgo-profile/`, `cpp-imperative/bolt-profile/`, `cpp-functional/pgo-profile/`, `cpp-functional/bolt-profile/`, `rust/pgo-profile/`, `rust/bolt-profile/` | Rust and C++ profile roots are generated build artefact locations, ignored by git and by the Docker build context. Each Dockerfile-invoked `mcts build <backend>` recipe recreates the needed roots, generates fresh PGO/BOLT profile data from the bounded played-game profile suite, and fails the image build when required profile data is missing instead of relying on checked-in snapshots. |
 | Profile-training transcript cache | Dockerfile-invoked PGO/BOLT training runs | `/tmp/mcts-profile-training/<backend>/<workload>-<threading>-<seed>-<sims>/` inside the build container | `MCTS.CLI.Build.trainingCacheDir` gives each bounded training run an isolated transcript cache root so profile runs do not write into the operator `.mcts-cache/` tree. These are generated build-time scratch roots, not repository validation inputs. |
 | CommandSpec-derived artefacts | `mcts docs generate` | `documents/cli/commands.md`, `share/man/man1/mcts*.1`, `share/completion/{bash,zsh,fish}/` | Fully-generated; tracked by `trackingGeneratedPaths`; hand edits fail `mcts lint files` |
 | Plan suite | Repository worktree | `DEVELOPMENT_PLAN/` | This document set |
@@ -229,7 +238,7 @@ operator auditability; see
 | Backend (iv) sources | `rust/` | Rust `cdylib` with the pinned `[profile.release]` |
 | Haskell tests | `test/` | Five live Cabal stanza modules. Generated transcripts, sidecars, report-card values, and renderer baselines are produced in memory or temporary directories during tests, not stored under `test/golden/` |
 | Bench targets | `bench/` | Cabal benchmark target (`mcts-criterion`) using Criterion for in-process timing |
-| Docker development environment | `docker/Dockerfile`, root `compose.yaml`, `.dockerignore` | `ubuntu:24.04` base with pinned GCC, LLVM, GHC, Cabal, Rust, a separate formatter-tools GHC for Fourmolu/HLint, copied project sources, an installed `mcts`, and all four foreign backend shared libraries produced during image construction; all supported runtime host work uses `docker compose run --rm mcts mcts <command>`. The image build owns successful PGO/BOLT for backends (ii), (iii), and (iv), uses LLVM objcopy for post-BOLT envelope patching, smokes installed bolted artefacts, trains on the bounded Q1/Q2-shaped profile suite, and must fail instead of publishing PGO-only or unoptimized fallback artefacts. `.dockerignore` keeps generated profile roots and backend build outputs out of the Docker context so each image build regenerates fresh profile data. Repository `.sh` wrappers and `bootstrap/` helpers are forbidden workflow surfaces. The 2026-05-18 Compose-only doctrine update passed `mcts-unit`, `lint files`, `lint all`, and `check-code` through the root Compose service |
+| Docker development environment | `docker/Dockerfile`, root `compose.yaml`, `.dockerignore` | `ubuntu:24.04` base with pinned GCC, LLVM, GHC, Cabal, Rust, a separate formatter-tools GHC for Fourmolu/HLint, copied project sources, an installed `mcts`, and all four foreign backend shared libraries produced during image construction; all supported runtime host work uses `docker compose run --rm mcts mcts <command>`. The image build owns successful PGO/BOLT for backends (ii), (iii), and (iv), uses LLVM objcopy for post-BOLT envelope patching, smokes installed bolted artefacts, trains on the bounded played-game profile suite, and must fail instead of publishing PGO-only or unoptimized fallback artefacts. `.dockerignore` keeps generated profile roots and backend build outputs out of the Docker context so each image build regenerates fresh profile data. Repository `.sh` wrappers and `bootstrap/` helpers are forbidden workflow surfaces. The 2026-05-18 Compose-only doctrine update passed `mcts-unit`, `lint files`, `lint all`, and `check-code` through the root Compose service |
 | Development plan | `DEVELOPMENT_PLAN/` | This plan suite |
 | Doctrine | `HASKELL_CLI_TOOL.md` | Authoritative CLI doctrine at repo root |
 | Project README | `README.md` | Project intent, command surface, doctrine scope, build instructions |

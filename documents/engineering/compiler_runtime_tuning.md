@@ -2,7 +2,7 @@
 
 **Status**: Authoritative source
 **Supersedes**: N/A
-**Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md, ../../DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, ../../DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md, ../../DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md, ../../DEVELOPMENT_PLAN/phase-6-cpp-functional-and-rust.md, ../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, ../documentation_standards.md, ./README.md, ./backend_ffi_contract.md, ./unit_testing_policy.md
+**Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md, ../../DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, ../../DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md, ../../DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md, ../../DEVELOPMENT_PLAN/phase-6-cpp-functional-and-rust.md, ../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, ../documentation_standards.md, ./README.md, ./backend_ffi_contract.md, ./benchmark_metrics.md, ./unit_testing_policy.md
 **Generated sections**: none
 
 > **Purpose**: Authoritative spec of the per-backend compiler, RTS, and code-level
@@ -43,10 +43,15 @@ artefacts. The supported runtime contract is one canonical bolted shared library
 foreign steelman backend, generated from the Dockerfile-owned profile pipeline.
 
 The profile workload is not fully automatic. The build harness must run the binary
-through workload examples that resemble the project questions being optimized. For
-this repository that means a bounded Q1/Q2-shaped profile suite:
+through workload examples that resemble the project questions being optimized. Per
+[benchmark_metrics.md](./benchmark_metrics.md), the final suite must distinguish
+terminal playout throughput, search-iteration throughput, and played-game
+throughput. The current implementation baseline still uses the legacy CLI workload
+names, so the Dockerfile training suite is best read as a bounded
+played-game/profile proxy:
 
-- random rollouts and MCTS self-play;
+- the legacy-named `bench rollouts` workload, which is a played-game batch with one
+  search iteration per real move, plus MCTS self-play;
 - single-threaded and `--threading multi --workers 8` batches;
 - `--rng native`, because Q1/Q2 headline throughput uses backend-native RNG;
 - fixed deterministic seeds rather than only seed `42`;
@@ -59,7 +64,8 @@ profile data, failed profile merge, missing BOLT `.fdata`, failed BOLT optimizat
 or a crashing installed library is an image-build failure.
 
 Current implementation baseline: `src/MCTS/CLI/Build.hs` trains PGO/BOLT with the
-bounded suite above. PGO uses rollouts plus self-play, ST plus MT8, native RNG,
+bounded suite above. PGO uses the legacy played-game rollout workload plus self-play,
+ST plus MT8, native RNG,
 seeds `42` and `424242`, `--max-plies 1`, two rollout games for each threading mode
 per seed with rollout `--sims 1`, one self-play game for each threading mode per seed
 with self-play `--sims 500`; BOLT uses the same workload/threading/seed shape with
@@ -81,7 +87,8 @@ Build flags from the legacy: `-std=c++17 -O3 -fPIC -Wall`. It uses
 
 Backend (i) is the regression-sanity port, **not** the performance ceiling. The
 project hypothesis is proven when backend (v) Haskell matches backend (ii) — not
-(i) — on Q1 and Q2.
+(i) — on the refactored Q1/Q2 metrics defined in
+[benchmark_metrics.md](./benchmark_metrics.md).
 
 ## Backend (ii) and (iii) — C++ Imperative and Functional-Style
 
@@ -118,13 +125,13 @@ checked-in generated data.
 1. **Two-stage PGO.** Instrumented build via
    `-fprofile-generate=$(abspath $(PGO_DIR))`; the generated `_bench` and
    `_instrumented` artefacts are build/training intermediates for the bounded
-   Q1/Q2-shaped training suite so `.gcda` profile data exists before the
+   played-game training suite so `.gcda` profile data exists before the
    optimized build runs with
    `-fprofile-use=$(abspath $(PGO_DIR)) -fprofile-correction`. They are not
    supported runtime FFI load names.
 2. **BOLT post-link.** `llvm-bolt -instrument` produces `_bench.inst.so` /
    `_instrumented.inst.so` build intermediates for a shorter bounded
-   Q1/Q2-shaped training suite. `llvm-bolt -reorder-blocks=ext-tsp` consumes
+   played-game training suite. `llvm-bolt -reorder-blocks=ext-tsp` consumes
    the resulting `.fdata`. The `.fdata` files are mandatory Dockerfile build
    outputs; a missing file, failed BOLT invocation, or attempt to copy a
    PGO-only/unoptimized artefact to a `.bolted.so` or canonical load name must
@@ -149,7 +156,7 @@ runs BOLT instrument/training/optimize steps, and installs the canonical shared
 library. The 2026-05-23 reclosure makes that sequence fail closed when
 `llvm-bolt` cannot produce usable `.fdata`, uses LLVM objcopy for post-BOLT
 envelope patching, and smokes the installed bolted libraries. Sprint `8.10`
-adds the bounded Q1/Q2-shaped profile suite described in
+adds the bounded played-game profile suite described in
 [PGO/BOLT Training Workload Doctrine](#pgobolt-training-workload-doctrine) to that
 mandatory sequence.
 
@@ -249,13 +256,13 @@ Plan/Apply leaf:
 - **Two-stage PGO** via
   `RUSTFLAGS="-C target-cpu=native -C link-arg=-fuse-ld=lld -C
   link-arg=-Wl,--emit-relocs -C
-  profile-generate=/workspace/MCTS/rust/pgo-profile"` → bounded Q1/Q2-shaped training
+  profile-generate=/workspace/MCTS/rust/pgo-profile"` → bounded played-game training
   suite → hard-failing `llvm-profdata merge` into
   `rust/pgo-profile/merged.profdata` → `RUSTFLAGS="-C target-cpu=native -C
   link-arg=-fuse-ld=lld -C link-arg=-Wl,--emit-relocs -C
   profile-use=/workspace/MCTS/rust/pgo-profile/merged.profdata"`.
 - **BOLT** post-link: temporarily install the BOLT-instrumented copy of the PGO
-  cdylib at the canonical FFI load name for a shorter bounded Q1/Q2-shaped training run,
+  cdylib at the canonical FFI load name for a shorter bounded played-game training run,
   restore the PGO cdylib, then optimize with `-reorder-blocks=ext-tsp` when
   `.fdata` exists. Missing `.fdata` or a failed BOLT invocation must fail the
   Dockerfile build; copying the PGO cdylib as a fallback is forbidden. This is
@@ -272,7 +279,7 @@ the `lld` linker flag in both PGO Cargo builds, profile merge guard, canonical
 install path `rust/target/release/libmcts_rust.so`, local `SystemMiMalloc` global
 allocator, LLVM objcopy post-link `engine_build_id` patching, and final installed
 cdylib smoke inside the pinned amd64 container. Like C++, Rust trains on the
-Sprint `8.10` bounded Q1/Q2-shaped profile suite.
+Sprint `8.10` bounded played-game profile suite.
 
 ### Code-Level Requirements
 
@@ -424,8 +431,9 @@ GCC/Clang `-fprofile-use` or `rustc -Cprofile-use`. The Haskell backend
 therefore competes against container-built C++ and Rust artefacts that completed
 their mandatory PGO+BOLT workflows without an equivalent Haskell feedback loop.
 This asymmetry does not permit PGO-only, non-BOLT, or unoptimized foreign
-artefacts; missing BOLT data or non-representative training residue is not
-accepted final parity evidence.
+artefacts. Missing BOLT data is always a build failure; the current played-game
+training suite remains historical evidence until the metric-suite rerun in Sprint
+`8.11`.
 
 This is the asymmetry that most concretely tests the project hypothesis: if
 Haskell matches under these conditions, the result is meaningful; if it falls
@@ -436,15 +444,17 @@ rather than paper over it.
 The Phase 8 Sprint 8.3 parity verdict records the result honestly for the
 then-current fail-closed artefacts: either `Within tolerance` or `Shortfall <ratio>`
 per the [Parity Tolerance](#parity-tolerance) section below, with the gap attributed
-to this asymmetry where appropriate. Sprint `8.10` closes the stricter final gate:
-the same report-card verdict after the C++ and Rust PGO/BOLT profiles are trained
-on the bounded Q1/Q2-shaped profile suite.
+to this asymmetry where appropriate. Sprint `8.10` closed the stricter
+fail-closed played-game gate: the same report-card verdict after the C++ and Rust
+PGO/BOLT profiles are trained on the bounded played-game profile suite.
 
-### Sprint 8.3 — Measured Q1 Snapshot
+### Sprint 8.3 — Historical Played-Game Q1 Snapshot
 
 After Sprint 8.2 round 3 (wavefront-bitmap BFS, 2026-05-16):
 `mcts bench rollouts --threading single --rng native --games 100 --seed 42`
-inside the pinned container, wall-clock median of three runs:
+inside the pinned container, wall-clock median of three runs. The command name is
+legacy: this measured complete games with one search iteration per move, not
+terminal `playouts/s`.
 
 | Backend | Q1 ST wall (s) — round-1 baseline | Q1 ST wall (s) — round-3 wavefront | Q1 ratio vs cpp-imperative (round-3) |
 |---------|----------------------------------:|-----------------------------------:|-------------------------------------:|
@@ -476,10 +486,11 @@ At `sims = 500` Haskell sits within 3% of cpp-imperative — within
 to 13%, in the 5–15% PGO-attributable band per
 [PGO Asymmetry](#pgo-asymmetry).
 
-### Sprint 8.3 — Measured Q1 MT8 Snapshot
+### Sprint 8.3 — Historical Played-Game Q1 MT8 Snapshot
 
 `mcts bench rollouts --threading multi --workers 8 --rng native --games N --seed 42`
-inside the pinned container, wall-clock median:
+inside the pinned container, wall-clock median. This is the same legacy played-game
+workload, not terminal playout throughput:
 
 | Games | cpp-imperative (s) | haskell (s) | Ratio (haskell / cpp-imperative) |
 |------:|------------------:|------------:|-------------------------------:|
@@ -515,7 +526,7 @@ not a reason to publish a PGO-only cdylib or C++ shared library at the canonical
 location.
 
 That status proves the PGO/BOLT pipeline is mandatory, fail-closed, and trained on
-the bounded Q1/Q2-shaped profile suite.
+the bounded played-game profile suite.
 
 The optimized-C++ Sprint 8.10 verdict was refreshed on 2026-05-23 by
 `docker compose run --rm --build mcts mcts test all` against the canonical workload
@@ -528,19 +539,22 @@ remains historical fallback evidence only, and the Sprint `8.3` fail-closed run
 is historical pipeline evidence superseded by Sprint `8.10`.
 Q1/Q2/Q5 use the production monotonic clock through the no-write batch runner
 rather than the former zero-valued test stub or transcript-retaining benchmark
-subprocesses.
+subprocesses. The rows below are historical played-game evidence under the legacy
+report-card labels; they remain useful integration data but do not yet provide
+terminal `playouts/s` or `search-iters/s` evidence.
 
 | Row | Ratio | Evidence |
 |-----|------:|----------|
-| Q1 rollouts ST | 0.05x | Haskell 646.7 games/s vs cpp-imperative 35.1 games/s |
-| Q1 rollouts MT8 | 0.48x | Haskell 556.0 games/s vs cpp-imperative 269.4 games/s |
+| Q1 legacy played-game ST | 0.05x | Haskell 646.7 games/s vs cpp-imperative 35.1 games/s |
+| Q1 legacy played-game MT8 | 0.48x | Haskell 556.0 games/s vs cpp-imperative 269.4 games/s |
 | Q2 self-play ST | 0.06x | Haskell 0.5 games/s vs cpp-imperative 0.0 games/s |
 | Q2 self-play MT8 | 0.21x | Haskell 0.5 games/s vs cpp-imperative 0.1 games/s |
 | Q5 Haskell MT scaling | 0.99x | 0.5 -> 0.5 games/s |
 | Q5 cpp-imperative MT scaling | 3.65x | 0.0 -> 0.1 games/s |
 
 The refreshed Sprint 8.10 verdict is **`Within tolerance`** for the bounded-profile
-fail-closed pipeline in the worktree.
+fail-closed played-game pipeline in the worktree. Sprint `8.11` must rerun parity
+after terminal playout and search-iteration rows exist.
 
 ## Parity Tolerance
 
@@ -548,11 +562,14 @@ The Phase 8 Sprint 8.3 verdict pins on a single constant:
 
 **`HASKELL_PARITY_TOLERANCE = 0.05`** (5% shortfall ceiling).
 
-Sprint 8.3 renders `Within tolerance` iff
+The current Sprint 8.3/8.10 implementation renders `Within tolerance` iff
 
     haskell_time / cpp_imperative_time <= 1 + HASKELL_PARITY_TOLERANCE
 
-holds on **both** Q1 and Q2, in both threading modes the report card runs.
+holds on **both** legacy Q1 and Q2 played-game rows, in both threading modes the
+report card runs. The refactored metric suite must apply the same tolerance to Q1a
+terminal playout throughput, Q1b search-iteration throughput, and Q2 played-game
+self-play throughput before the parity proof is final.
 Otherwise the verdict is `Shortfall <ratio>`, where
 `ratio = max(Q1_ratio, Q2_ratio) - 1` (the worst-case shortfall over the
 two workloads, expressed as a fraction).

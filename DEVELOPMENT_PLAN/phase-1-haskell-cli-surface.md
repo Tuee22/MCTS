@@ -6,7 +6,8 @@
 [development_plan_standards.md](development_plan_standards.md),
 [system-components.md](system-components.md),
 [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md),
-[../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md)
+[../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md),
+[../documents/engineering/benchmark_metrics.md](../documents/engineering/benchmark_metrics.md)
 **Generated sections**: none
 
 > **Purpose**: Stand up the Haskell CLI binary, the `CommandSpec` registry that
@@ -355,6 +356,9 @@ keeping leaf option parsing explicit in `Parser.hs`.
   `documents/cli/commands.md` rendering, and the `mcts commands --json` schema
   all carry them. Sprint 7.1's `mcts-unit` semantic renderer assertions over
   `mcts commands --json` pin the invocations into the externally-stable schema.
+  The benchmark metric refactor records the current `bench rollouts` spelling as a
+  legacy command name for a played-game workload; see
+  [../documents/engineering/benchmark_metrics.md](../documents/engineering/benchmark_metrics.md).
   The invocations are:
   `bench rollouts --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell`
   (live cohort, ST, native RNG);

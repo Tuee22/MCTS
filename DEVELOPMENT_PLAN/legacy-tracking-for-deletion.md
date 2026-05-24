@@ -11,6 +11,7 @@
 [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md),
 [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md),
 [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md),
+[../documents/engineering/benchmark_metrics.md](../documents/engineering/benchmark_metrics.md),
 [../documents/engineering/compiler_runtime_tuning.md](../documents/engineering/compiler_runtime_tuning.md),
 [../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md)
 **Generated sections**: none
@@ -38,7 +39,9 @@ paths, switched post-BOLT envelope patching to LLVM objcopy, and added final
 installed-library smokes so corrupted BOLT outputs fail the image build. Sprint
 `8.3` refreshed the report-card evidence against these successful PGO+BOLT
 artefacts on 2026-05-23. Sprint `8.10` then replaced the remaining
-profile-workload residue with the bounded Q1/Q2-shaped profile suite.
+profile-workload residue with the bounded played-game profile suite. The metric
+audit reopened profile representativeness for Sprint `8.11` after terminal-playout
+and search-iteration primitives land.
 
 The validation-data doctrine sweep remains closed: normal tests do not require
 checked-in transcripts, throughput anchors, renderer snapshots, schema fixtures, or
@@ -58,6 +61,11 @@ README-topology, lint-write, envelope-gating, rollout-byte-consumption,
 FFI-domain-conversion, and divergence-metric rows to Completed. All five backend
 slots remain first-class.
 
+The 2026-05-24 benchmark-metric audit added stale benchmark labels and report-card
+rows to this ledger. Any surface that calls a played-game workload "rollouts" or
+implies that historical `games/s` rows answer terminal `playouts/s` or
+`search-iters/s` remains pending until the metric-suite refactor lands.
+
 Two classes of entries populate this ledger over time:
 
 1. **Doctrine-deviation residue.** Any worktree behavior that the implemented code
@@ -73,7 +81,11 @@ repository.
 
 ## Pending Removal
 
-None.
+| Item | Location | Owner | Reason |
+|------|----------|-------|--------|
+| Legacy `bench rollouts` metric name | `src/MCTS/CLI/Spec.hs`, generated `documents/cli/commands.md`, report-card labels | Sprint 3.8 / Sprint 7.8 | The current command measures played-game throughput with one search iteration per move, not terminal playout throughput. It must be renamed, supplemented, or documented in generated text with explicit units. |
+| Report-card Q1/Q5 metric conflation | `src/MCTS/CLI/Test.hs`, `src/MCTS/ReportCard.hs`, `documents/engineering/unit_testing_policy.md`, `documents/engineering/compiler_runtime_tuning.md` | Sprint 7.8 / Sprint 8.11 | Historical Q1/Q5 rows report `games/s`; final Q1/Q5 must include terminal `playouts/s`, `search-iters/s`, and separate scaling rows. |
+| PGO/BOLT profile-suite metric proxy | `src/MCTS/CLI/Build.hs`, `documents/engineering/compiler_runtime_tuning.md` | Sprint 8.11 | The current bounded profile suite trains on legacy played-game proxy workloads. After the metric primitives land, the profile suite must be reviewed so accepted parity evidence is trained against representative terminal-playout, search-iteration, and played-game work. |
 
 ## Pending Removal Notes
 
@@ -94,7 +106,7 @@ data instead of publishing a fallback shared library.
 | Unsigned Haskell rollout modulo | Sprint 3.7, 2026-05-24 | `MCTS.Search.UCT.rollout` now maps consumed `Word64` draws through signed `Int64` remainder semantics before selecting the legal move, matching the determinism contract's signed-`Int` modulo rule. |
 | FFI/domain-conversion documentation overclaim | Sprint 4.5, 2026-05-24 | `documents/engineering/backend_ffi_contract.md` now describes the implemented dynamic loader, opaque-handle C ABI, and `Action`/`actionId`/`actionFromId` boundary instead of claiming `.hsc`/`.chs` generation or generic `fromDomain`/`toDomain` wrappers. |
 | Per-action divergence metric overclaim | Sprint 7.7, 2026-05-24 | Divergence documentation now states that `EqStream` carries chosen-action equity and `equity_l2_drift` is RMS over the per-move chosen-action series, not a per-action vector comparison. |
-| Narrow PGO/BOLT training workload | Sprint 8.10, 2026-05-23 | `src/MCTS/CLI/Build.hs` now trains C++ and Rust PGO/BOLT profiles with a bounded Q1/Q2-shaped suite: rollouts plus self-play, ST plus MT8, native RNG, seeds `42` and `424242`, `--max-plies 1`, PGO rollout games 2 ST/2 MT8 with `--sims 1`, PGO self-play games 1 ST/1 MT8 with `--sims 500`, and BOLT games 1 ST/1 MT8 for each workload with rollout `--sims 1` and self-play `--sims 100`. C++ training uses scoped dynamic-library loading plus explicit GCOV dump hooks; Rust training keeps the cdylib pinned and relies on process-exit `.profraw` emission. The Sprint `8.10` report-card rerun recorded Q1 ST 0.05x, Q1 MT8 0.48x, Q2 ST 0.06x, Q2 MT8 0.21x, Q5 Haskell 0.99x, Q5 C++ (ii) 3.65x, zero live-cohort divergence, Q7 PASS, and verdict `Within tolerance`. |
+| Narrow PGO/BOLT training workload | Sprint 8.10, 2026-05-23 | `src/MCTS/CLI/Build.hs` now trains C++ and Rust PGO/BOLT profiles with a bounded played-game suite: legacy `bench rollouts` plus self-play, ST plus MT8, native RNG, seeds `42` and `424242`, `--max-plies 1`, PGO rollout games 2 ST/2 MT8 with `--sims 1`, PGO self-play games 1 ST/1 MT8 with `--sims 500`, and BOLT games 1 ST/1 MT8 for each workload with rollout `--sims 1` and self-play `--sims 100`. C++ training uses scoped dynamic-library loading plus explicit GCOV dump hooks; Rust training keeps the cdylib pinned and relies on process-exit `.profraw` emission. The Sprint `8.10` report-card rerun recorded historical played-game Q1/Q2/Q5 evidence; Sprint `8.11` now owns the metric-suite rerun. |
 | Tracked PGO/BOLT profile snapshots | Sprint 8.8 follow-up, 2026-05-23 | Removed checked-in `cpp-imperative/pgo-profile/`, `cpp-functional/pgo-profile/`, and `rust/pgo-profile/` generated profile files, and added the C++/Rust PGO+BOLT profile roots to `.gitignore` and `.dockerignore`. The Dockerfile-owned build recipes regenerate fresh profile data and fail closed on missing profile outputs. |
 | Fallback-backed parity report-card evidence | Sprint 8.3, 2026-05-23 | The 2026-05-21 amd64 report card remains historical audit evidence only. `docker compose run --rm --build mcts mcts test all` refreshed the report card against fail-closed Dockerfile PGO/BOLT artefacts and recorded Q1 ST 0.05x, Q1 MT8 0.45x, Q2 ST 0.06x, Q2 MT8 0.22x, Q5 Haskell 0.98x, Q5 C++ (ii) 3.70x, zero live-cohort divergence, Q7 PASS, and verdict `Within tolerance`. Sprint `8.10` later superseded this with bounded-profile final evidence. |
 | C++ PGO/BOLT fail-open artefact copying | Sprint 5.3, 2026-05-23 | `cpp-imperative/Makefile`, `cpp-functional/Makefile`, and `src/MCTS/CLI/Build.hs` now require non-empty BOLT `.fdata`, surface `llvm-bolt` diagnostics, use LLVM objcopy for BOLT-produced shared objects, and smoke the installed bolted C++ canonical libraries during the Dockerfile build. |

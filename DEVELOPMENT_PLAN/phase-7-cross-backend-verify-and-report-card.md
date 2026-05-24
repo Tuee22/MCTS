@@ -6,7 +6,8 @@
 [development_plan_standards.md](development_plan_standards.md),
 [system-components.md](system-components.md),
 [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md),
-[../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md)
+[../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md),
+[../documents/engineering/benchmark_metrics.md](../documents/engineering/benchmark_metrics.md)
 **Generated sections**: none
 
 > **Purpose**: Land the cross-backend verification gates, Cabal test stanzas,
@@ -15,9 +16,10 @@
 
 ## Phase Status
 
-✅ **Done.** The Phase 7 surface is live again: Q3 verifies `(ii)..(v)`, Q7 verifies
-the `(i)..(v)` legacy envelope, the report-card machinery measures Q1/Q2 against
-live backend (ii), and no checked-in generated validation data is required. The
+🔄 **Active** for the metric-suite report-card refactor. The Phase 7 correctness
+surface remains live: Q3 verifies `(ii)..(v)`, Q7 verifies
+the `(i)..(v)` legacy envelope, the current report-card machinery measures played-game
+Q1/Q2 rows against live backend (ii), and no checked-in generated validation data is required. The
 optimized-C++ parity evidence was refreshed by Sprint `8.3` after Sprint `5.3`
 closed. Sprint `7.6` reclosed the inspect/replay/divergence evidence surface on
 2026-05-21 so originator, foreign-view, unavailable, and live-recompute labels
@@ -34,9 +36,10 @@ The 2026-05-23 report-card refresh against the fail-closed Dockerfile PGO+BOLT
 build path recorded Q1 ST 0.05x, Q1 MT8 0.45x, Q2 ST 0.06x, Q2 MT8 0.22x,
 Q5 Haskell 0.98x, Q5 C++ (ii) 3.70x, Q7 liveness PASS, zero live-cohort
 divergence, and verdict `Within tolerance`. Phase `7` remains closed for the report-card
-machinery itself; Phase `8` Sprint `8.10` has since revalidated that machinery
-against Dockerfile-built steelman artefacts trained on the bounded Q1/Q2-shaped
-PGO/BOLT profile suite for final parity closure.
+machinery that existed at the time; Sprint `7.8` now reopens the report-card row
+semantics so Q1/Q5 distinguish terminal playout throughput, search-iteration
+throughput, and played-game throughput per
+[../documents/engineering/benchmark_metrics.md](../documents/engineering/benchmark_metrics.md).
 
 ## Sprint 7.1: Cabal Test Organization ✅
 
@@ -114,8 +117,8 @@ Emit one concise report-card block answering Q1-Q7.
 
 ### Deliverables
 
-- Q1/Q2: Haskell vs live backend (ii) on rollouts and self-play, single-threaded and
-  8-worker.
+- Q1/Q2: Haskell vs live backend (ii) on the implemented played-game rollout and
+  self-play rows, single-threaded and 8-worker.
 - Q3: `(ii)..(v)` zero-divergence visit-vector checks.
 - Q4: same-backend determinism over multiple seeds.
 - Q5: scaling rows for Haskell and backend (ii).
@@ -280,12 +283,55 @@ None.
 Closed on 2026-05-24 after verifier behavior, CLI stale-envelope wording, and
 divergence metric docs were aligned.
 
+## Sprint 7.8: Report-Card Metric Semantics Refactor 🔄
+
+**Status**: Active
+**Implementation**: `src/MCTS/CLI/Test.hs`, `src/MCTS/ReportCard.hs`,
+`src/MCTS/CLI/Bench.hs`
+**Docs to update**: `../documents/engineering/benchmark_metrics.md`,
+`../documents/engineering/unit_testing_policy.md`,
+`../documents/engineering/cli_command_surface.md`,
+`DEVELOPMENT_PLAN/system-components.md`,
+`DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md`
+
+### Objective
+
+Make the report card answer Q1-Q7 using unambiguous metric units instead of the
+legacy overloaded "rollouts" and derived "sims/s" labels.
+
+### Deliverables
+
+- Q1a terminal playout throughput rows (`playouts/s`) for Haskell vs backend (ii).
+- Q1b search-iteration throughput rows (`search-iters/s`) for Haskell vs backend (ii).
+- Q2 played-game self-play throughput rows (`games/s`) for Haskell vs backend (ii).
+- Q5 scaling rows that keep search-iteration scaling and played-game scaling separate.
+- Q6 legacy evidence hooks that compare backend (i) with external `MCTS_legacy` on
+  terminal playout and legacy `simulate(N)` throughput without making those artifacts
+  normal validation inputs.
+- Renderer and JSON field names that include the unit, so old `rollouts` and
+  ambiguous `sims/s` labels cannot be mistaken for lower-level metrics.
+
+### Validation
+
+- `docker compose run --rm mcts mcts test mcts-unit`
+- `docker compose run --rm mcts mcts test mcts-integration`
+- `docker compose run --rm mcts mcts docs check`
+- `docker compose run --rm mcts mcts check-code`
+
+### Remaining Work
+
+- Wait for Sprint `3.8` benchmark primitives.
+- Update report-card rendering and semantic tests for Q1a/Q1b/Q2/Q5.
+- Regenerate generated command docs if the public command surface changes.
+
 ## Documentation Requirements
 
 **Engineering docs to create/update:**
 
 - `documents/engineering/cli_command_surface.md` — verify/test/play command surfaces plus
   Sprint `7.6` replay/divergence evidence labels.
+- `documents/engineering/benchmark_metrics.md` — benchmark unit taxonomy and Q1-Q7 metric
+  mapping for Sprint `7.8`.
 - `documents/engineering/determinism_contract.md` — Q3/Q7 semantics, RNG split, and
   Sprint `7.6` originator/foreign-view replay semantics.
 - `documents/engineering/unit_testing_policy.md` — test stanza ownership and no generated

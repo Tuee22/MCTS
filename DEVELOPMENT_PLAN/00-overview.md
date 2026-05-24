@@ -15,7 +15,8 @@
 [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md),
 [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md),
 [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md),
-[../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md)
+[../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md),
+[../documents/engineering/benchmark_metrics.md](../documents/engineering/benchmark_metrics.md)
 **Generated sections**: none
 
 > **Purpose**: Capture the target architecture, current baseline, doctrine scope,
@@ -26,8 +27,11 @@
 The MCTS runtime is the successor to `MCTS_legacy` and must satisfy three properties
 simultaneously:
 
-- **As fast as maximally-optimised imperative C++** on the two POC workloads (random
-  rollouts and self-play). The bar is not the legacy as it exists today — it is the
+- **As fast as maximally-optimised imperative C++** on the refactored POC metric
+  suite: terminal playout throughput, search-iteration throughput, and played-game
+  self-play throughput per
+  [../documents/engineering/benchmark_metrics.md](../documents/engineering/benchmark_metrics.md).
+  The bar is not the legacy as it exists today — it is the
   strongest imperative-C++ implementation the project can build using every reasonable
   modern technique (LTO, two-stage PGO, BOLT post-link, `mimalloc`, arena-allocated tree
   nodes, scratch-board rollouts, branch hints). Backend (ii) is that ceiling; backend (v)
@@ -56,8 +60,9 @@ final handoff is a parity-proven five-backend CLI that a successor effort can
 inherit without reconstructing C++ or Rust comparison evidence; the current
 optimized-C++ parity evidence is refreshed against the Dockerfile build that
 fails closed on mandatory PGO+BOLT profile data instead of accepting fallback
-artifacts, and final Phase `8` closure uses profile data from the bounded
-Q1/Q2-shaped profile suite in `MCTS.CLI.Build` rather than a narrow smoke run.
+artifacts. The historical Sprint `8.10` closure used profile data from the bounded
+played-game profile suite in `MCTS.CLI.Build`; final metric-suite closure waits on
+Sprint `8.11`.
 
 ## Current Handoff Status
 
@@ -85,12 +90,19 @@ PGO/BOLT fail-closed build. Sprint `7.6` has reclosed replay/divergence evidence
 labels. Sprint `8.9` has reclosed compiler-tuning wording, Sprint `8.3` has
 reclosed the report-card refresh against the reclosed build artefacts, and Sprint
 `8.10` has reclosed the final profile-representativeness gate. The build harness
-now trains Dockerfile-time PGO/BOLT with bounded Q1/Q2-shaped rollouts and
+now trains Dockerfile-time PGO/BOLT with bounded legacy played-game rollout and
 self-play runs, both single-threaded and MT8, under native RNG with seeds `42`
 and `424242`; `MCTS.CLI.Build` pins the exact training game counts, `max_plies = 1`,
 and the PGO/BOLT self-play simulation budgets.
 Phases `3` and `4` remain `Done` on their owned surfaces; later phases remain
 valid on historical implementation work within their scoped surfaces.
+
+The 2026-05-24 benchmark-metric audit reopened the metric suite because the
+current Q1/Q2/Q5 report-card rows are played-game measurements under legacy
+`rollouts`/`selfplay` labels, not terminal playout or search-iteration
+measurements. Phase `3` now owns the missing benchmark primitives, Phase `7` owns
+the report-card row split, and Phase `8` owns the final parity rerun. Historical
+played-game numbers remain audit evidence, not final answers to Q1a/Q1b/Q5.
 
 ## Target Outcome
 
@@ -102,25 +114,29 @@ the maximally-tuned imperative C++23 performance ceiling. Backend (iii)
 `cpp-functional/` uses the same PGO+BOLT+`mimalloc` optimisation stack so the
 comparison with (ii) isolates C++ style. Backend (iv) `rust/` is the
 cross-language systems baseline. Backends (ii), (iii), and (iv) publish one
-canonical bolted shared library each; the Dockerfile trains PGO/BOLT once on the
-bounded Q1/Q2-shaped profile suite implemented in `MCTS.CLI.Build`, and runtime
+canonical bolted shared library each; the Dockerfile currently trains PGO/BOLT once
+on the bounded played-game profile suite implemented in `MCTS.CLI.Build`, and runtime
 commands do not retrain or switch between workload-specific libraries. Backend (v) is
 the pure Haskell engine running natively in the same process, with `ST`-monad mutable
 arena internally and pure search API externally.
 
-Two POC benchmark workloads exercise the cohort: (a) random rollouts and (b) adversarial
-MCTS self-play with rollout evaluations. Performance benchmarks run single-threaded and
-on 8 workers under `--rng native`, where each backend uses its own fast/native
-deterministic RNG contract and no cross-backend transcript identity is expected.
+Three POC metric units exercise the cohort: terminal playout throughput
+(`playouts/s`), search-iteration throughput (`search-iters/s`), and played-game
+self-play throughput (`games/s`). Performance benchmarks run single-threaded and on
+8 workers where batching applies under `--rng native`, where each backend uses its
+own fast/native deterministic RNG contract and no cross-backend transcript identity
+is expected.
 Logical-equivalence verification uses the same workloads under `--rng cpp`, where
 equivalence tests consume C++-generated verification seeds through the shared C++ RNG
 bridge so MCTS transcripts can be compared exactly. `mcts verify` round-robin-compares
 visit counts under `--rng cpp` across `(ii)..(v)`. `mcts verify legacy-parity` supplies
 the Q7 legacy-envelope liveness/overflow check across all five backend slots.
-`mcts test all`
-emits the tidy POC report-card summary block answering Q1–Q7 in one screenful, with all
-live workload constants implemented in `MCTS.CLI.Test` and mirrored in
-`cabal.project` comments. Legacy-envelope knobs remain live report-card metadata.
+`mcts test all` emits the tidy POC report-card summary block answering Q1-Q7 in one
+screenful. The current implementation emits historical played-game rows; the
+refactored report card must add terminal-playout and search-iteration rows before
+Q1/Q5 are final. Live workload constants are implemented in `MCTS.CLI.Test` and
+mirrored in `cabal.project` comments. Legacy-envelope knobs remain live
+report-card metadata.
 Normal validation never depends on checked-in generated transcripts, throughput
 JSON, or snapshot files; tests synthesize or explicitly generate evidence in
 temporary or operator-provided roots.
@@ -178,7 +194,8 @@ temporary or operator-provided roots.
   are mandatory image-build outputs; installing a PGO-only or unoptimized fallback
   under the canonical load name is forbidden and must fail the Dockerfile build.
   Sprint `8.10` replaced the earlier narrow self-play training runner with the
-  bounded Q1/Q2-shaped profile suite used for final parity closure.
+  bounded played-game profile suite; Sprint `8.11` reviews profile representativeness
+  after the metric refactor.
   Owned by
   [phase-5-cpp-imperative-steelman.md](phase-5-cpp-imperative-steelman.md) and Phase
   `8` parity closure.
@@ -191,8 +208,8 @@ temporary or operator-provided roots.
   `panic = "abort"`, `strip = "debuginfo"`), `RUSTFLAGS=-C target-cpu=native -C
   link-arg=-fuse-ld=lld -C link-arg=-Wl,--emit-relocs`, `mimalloc` through the
   container system library as `#[global_allocator]`, two-stage rustc PGO, and BOLT
-  post-link. Their final accepted profiles use the same Dockerfile-time bounded
-  Q1/Q2-shaped training doctrine as backend (ii). Owned by
+  post-link. Their current accepted profiles use the same Dockerfile-time bounded
+  played-game training doctrine as backend (ii). Owned by
   [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md).
 - **Cross-backend verify, test stanzas, POC report card.** Five live Cabal test-suite
   stanzas (`mcts-unit`, `mcts-integration`, `mcts-cross-backend`,
@@ -431,7 +448,7 @@ referenceability.
     accepted fallback. The installed bolted libraries are smoke-tested before the
     image is published. `g++` only — Clang is not supported on the C++ side. Sprint
     `5.3` owns the fail-closed C++ PGO/BOLT CLI wiring; Sprint `8.10` replaced
-    the earlier narrow training run with the bounded Q1/Q2-shaped profile suite.
+    the earlier narrow training run with the bounded played-game profile suite.
 19. Backend (iv) Rust uses `[profile.release]` with `opt-level = 3`, `lto = "fat"`,
     `codegen-units = 1`, `panic = "abort"`, `strip = "debuginfo"`. `RUSTFLAGS=-C
     target-cpu=native -C link-arg=-fuse-ld=lld -C link-arg=-Wl,--emit-relocs`.
@@ -440,7 +457,7 @@ referenceability.
     The Dockerfile build must fail if profile merge, BOLT instrumentation, BOLT
     training, BOLT optimization, or the final installed-library smoke cannot produce
     the required optimized cdylib. Sprint `8.10` aligned that PGO/BOLT path with
-    the same bounded Q1/Q2-shaped profile suite as the C++ steelman backends.
+    the same bounded played-game profile suite as the C++ steelman backends.
 20. Backend (v) Haskell uses `-O2 -fllvm`, `-funbox-strict-fields`, `-fspecialise-aggressively`,
     `-fexpose-all-unfoldings`, `-flate-dmd-anal`, `-fmax-simplifier-iterations=20`,
     `-fworker-wrapper`, `-fstatic-argument-transformation`. RTS `-A64m -n4m -qg1 -qb
@@ -588,7 +605,7 @@ referenceability.
 | 5 | Phase 3 | Backend (ii) likewise builds on the FFI bridge pattern; it is independent of (i) once the pattern is established, so Phases 4 and 5 may proceed in parallel after Phase 3 closes |
 | 6 | Phase 5 | Backend (iii) shares (ii)'s optimisation stack and must be developed against the validated steelman; backend (iv) Rust is independent of (iii) but conventionally bundled in the same phase for scheduling |
 | 7 | Phases 4, 5, 6 | Cross-backend `verify`, legacy parity, and the POC report card require all five backend slots to produce evidence |
-| 8 | Phase 7 plus fail-closed Sprints `5.3` and `6.4` | Performance parity closure requires report-card numbers against optimized backend (ii) after Dockerfile-time PGO/BOLT succeeds and trains on the bounded Q1/Q2-shaped profile suite; Phase `8` owns the restored five-backend live surface, Sprint `8.3` refreshed the report card against reclosed fail-closed build artefacts, and Sprint `8.10` closed the profile-representativeness gap |
+| 8 | Phase 7 plus fail-closed Sprints `5.3` and `6.4` | Performance parity closure requires report-card numbers against optimized backend (ii) after Dockerfile-time PGO/BOLT succeeds and the report card separates terminal playout, search-iteration, and played-game metrics; Phase `8` owns the restored five-backend live surface, Sprint `8.3` refreshed the report card against reclosed fail-closed build artefacts, Sprint `8.10` closed the historical played-game profile-representativeness gap, and Sprint `8.11` owns the refactored metric rerun |
 
 ## Current Baseline
 
@@ -602,18 +619,19 @@ and C++ PGO/BOLT fail-closed behavior. Phase `6` has reclosed backend
 PGO/BOLT fail-closed behavior. Phase `7` has reclosed replay and divergence labels.
 Phase `8` has reclosed tuning-doc wording, the Sprint `8.3` report-card refresh
 against mandatory Dockerfile-time PGO/BOLT artefacts, and the Sprint `8.10`
-bounded-profile training gate. Phases
-`3` and `4` remain closed on their owned surfaces.
+bounded played-game profile-training gate. The 2026-05-24 metric audit reopened
+Sprint `3.8`, Sprint `7.8`, and Sprint `8.11`; Phase `4` remains closed on its
+owned surface.
 
 | Surface | Current Repo State | Intended End State |
 |---------|--------------------|--------------------|
 | Repository layout | `app/`, `src/MCTS/`, `src/MCTS/Generated/`, `cpp-legacy/`, `cpp-imperative/`, `cpp-functional/`, `rust/`, `bench/`, `test/`, `docker/`, root `compose.yaml`, `cabal.project`, `fourmolu.yaml`, `.hlint.yaml`, `.gitignore`, `.dockerignore`, `mcts.cabal`, generated-artefact targets `documents/cli/commands.md`, `share/man/man1/mcts.1`, and `share/completion/{bash,zsh,fish}/` | Same layout, with no generated validation data required under `test/` and no checked-in PGO/BOLT profile snapshots |
-| Build artefacts | `mcts.cabal` declares the `mcts` binary, live Haskell test stanzas, and the doctrine-standard dependency envelope; host validation enters through `docker compose run --rm mcts mcts check-code` under the pinned toolchain. The foreign backend tree is live for `cpp-legacy/`, `cpp-imperative/`, `cpp-functional/`, and `rust/`; Dockerfile invokes the C++ and Rust PGO/BOLT Plan/Apply build recipes during image construction, and those recipes fail closed on missing profile data, missing `.fdata`, failed BOLT output, or a crashing installed bolted library. PGO/BOLT training uses the bounded Q1/Q2-shaped profile suite owned by Sprint `8.10`. | Container-image `mcts` binary produced by `docker/Dockerfile`, plus image-local shared libraries for `cpp-legacy`, optimized `cpp-imperative`, optimized `cpp-functional`, and `rust`; runtime validation consumes those artefacts without rebuilding them, and steelman shared libraries exist only after successful Dockerfile-time PGO/BOLT trained on that bounded profile suite |
+| Build artefacts | `mcts.cabal` declares the `mcts` binary, live Haskell test stanzas, and the doctrine-standard dependency envelope; host validation enters through `docker compose run --rm mcts mcts check-code` under the pinned toolchain. The foreign backend tree is live for `cpp-legacy/`, `cpp-imperative`, `cpp-functional`, and `rust`; Dockerfile invokes the C++ and Rust PGO/BOLT Plan/Apply build recipes during image construction, and those recipes fail closed on missing profile data, missing `.fdata`, failed BOLT output, or a crashing installed bolted library. PGO/BOLT training currently uses the bounded played-game profile suite owned by Sprint `8.10`; Sprint `8.11` reviews it after the metric primitives land. | Container-image `mcts` binary produced by `docker/Dockerfile`, plus image-local shared libraries for `cpp-legacy`, optimized `cpp-imperative`, optimized `cpp-functional`, and `rust`; runtime validation consumes those artefacts without rebuilding them, and steelman shared libraries exist only after successful Dockerfile-time PGO/BOLT trained on an accepted profile suite |
 | CLI surface | The complete command family is wired: `bench`, `verify`, `verify legacy-parity`, `inspect`, `test`, `lint`, `docs`, `commands`, `help`, `check-code`, `build`, and `play`. Generated command docs are checked against the renderer, tracked generated-file drift fails `mcts lint files`, generated path/section registries live under `src/MCTS/Generated/`, parser topology is rendered from `CommandSpec` with explicit leaf option parsers, and `mcts test all` routes recursive CLI calls through `cabal exec mcts -- ...`. | Same surface backed by real C++/Rust/Haskell engines: bench/play/inspect dispatch through selected foreign backends when their shared libraries are present and the relevant ABI path can represent the run, Q3 covers `(ii)..(v)`, Q7 covers all five, Dockerfile-invoked build recipes exist for `cpp-legacy`, `cpp-imperative`, `cpp-functional`, and `rust`, and `legacy-fixtures` remains explicit external evidence generation |
 | Test stanzas | Five live Cabal stanzas currently exist: `mcts-unit`, `mcts-integration`, `mcts-cross-backend`, `mcts-legacy-parity`, `mcts-haskell-style`; each stanza has its own `tasty` runner, `mcts-cross-backend` invokes real `mcts verify` subprocesses serially around the process-pinned dynamic-library and shared C++ RNG bridge path, and `docker compose run --rm mcts mcts test all` is the host validation gate under the pinned container toolchain. `mcts-unit` uses semantic/property/temp-dir checks instead of `tasty-golden`. | Keep all validation data generated in memory or temporary directories during the run, so clean-clone validation has no `test/golden/` prerequisite |
 | Toolchain | `mcts.cabal` pins `tested-with: ghc ==9.14.1`; `cabal.project` pins `with-compiler: ghc-9.14.1` and mirrors the report-card constants as comments. The style-tool policy pins GHC `9.12.4` only for Fourmolu/HLint installation inside the container. | GHC `9.14.1`, Cabal `3.16.1.0`, style GHC `9.12.4` for `fourmolu-0.19.0.1` / `hlint-3.10`, GCC latest stable on `ubuntu:24.04`, Rust latest stable with pinned minor, LLVM pinned in the Dockerfile |
 | Determinism contract | Live C++ and Rust foreign backends dispatch through real FFI engines under `bench`, `play`, `inspect divergence`, Q3 `verify` when shared libraries are present and the fixed search-horizon ABI can represent the run, and Q7 `verify legacy-parity`; the integration stanza's direct live-FFI smoke cases are Rust-specific, with C++ live coverage carried by Q3/Q7/report-card surfaces. Transcript codec, full v1 envelope, process-pinned envelope and C++ RNG dynamic handles, SHA-256 content addressing, cache root resolution, prefix lookup, binary `MEQ1` equity sidecars, layered envelope checks, `divergenceVsEqStream`, compact foreign recompute/read-visits evidence surfaces, canonical search-side 12-wall child caps across the current live cohort, decoded real-binary transcript determinism, and hard-fail `VerifyMismatch` rollout/self-play cohorts in `mcts-cross-backend` are implemented. Sprints `2.8` and `7.6` tighten version handling and sidecar/recompute labeling. | Enforced by live-FFI-capable cross-backend `mcts verify {rollouts,selfplay}` over `(ii)..(v)`, decoded same-backend transcript checks, Rust live FFI-envelope cases under `mcts-integration`, and Q7 legacy-envelope checks across all five |
-| Performance parity | The 2026-05-23 Sprint `8.10` `docker compose run --rm --build mcts mcts test all` run rebuilt the bounded-profile Dockerfile artefacts and recorded Q1 ST 0.05×, Q1 MT8 0.48×, Q2 ST 0.06×, Q2 MT8 0.21×, Q5 Haskell 0.99×, Q5 C++ (ii) 3.65×, Q7 liveness PASS, zero live-cohort divergence, and `Verdict: Within tolerance`. The 2026-05-21 fallback-backed optimized-C++ run remains historical audit evidence only. | Haskell (v) within tolerance of optimized live C++ (ii) on Q1 and Q2, single-threaded and on 8 workers, without checked-in generated throughput anchors, after Dockerfile-time PGO/BOLT succeeds for the steelman foreign backends and trains on the bounded Q1/Q2-shaped profile workload |
+| Performance parity | The 2026-05-23 Sprint `8.10` `docker compose run --rm --build mcts mcts test all` run rebuilt the bounded-profile Dockerfile artefacts and recorded historical played-game rows: Q1 ST 0.05×, Q1 MT8 0.48×, Q2 ST 0.06×, Q2 MT8 0.21×, Q5 Haskell 0.99×, Q5 C++ (ii) 3.65×, Q7 liveness PASS, zero live-cohort divergence, and `Verdict: Within tolerance`. The 2026-05-21 fallback-backed optimized-C++ run remains historical audit evidence only. | Haskell (v) within tolerance of optimized live C++ (ii) on Q1a terminal playout throughput, Q1b search-iteration throughput, and Q2 played-game self-play throughput, single-threaded and on 8 workers where applicable, without checked-in generated throughput anchors |
 
 ## Related Documents
 

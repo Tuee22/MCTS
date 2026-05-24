@@ -2,12 +2,12 @@
 
 **Status**: Reference only
 **Supersedes**: N/A
-**Referenced by**: AGENTS.md, CLAUDE.md, HASKELL_CLI_TOOL.md, DEVELOPMENT_PLAN/README.md, DEVELOPMENT_PLAN/00-overview.md, DEVELOPMENT_PLAN/system-components.md, DEVELOPMENT_PLAN/phase-0-planning-documentation.md, DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, DEVELOPMENT_PLAN/phase-2-transcript-codec-and-determinism.md, DEVELOPMENT_PLAN/phase-3-haskell-engine.md, DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md, DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md, DEVELOPMENT_PLAN/phase-6-cpp-functional-and-rust.md, DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md, DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, documents/documentation_standards.md, documents/engineering/README.md, documents/engineering/backend_ffi_contract.md, documents/engineering/cli_command_surface.md, documents/engineering/code_quality.md, documents/engineering/compiler_runtime_tuning.md, documents/engineering/determinism_contract.md, documents/engineering/haskell_code_guide.md, documents/engineering/transcript_format.md, documents/engineering/unit_testing_policy.md
+**Referenced by**: AGENTS.md, CLAUDE.md, HASKELL_CLI_TOOL.md, DEVELOPMENT_PLAN/README.md, DEVELOPMENT_PLAN/00-overview.md, DEVELOPMENT_PLAN/system-components.md, DEVELOPMENT_PLAN/phase-0-planning-documentation.md, DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, DEVELOPMENT_PLAN/phase-2-transcript-codec-and-determinism.md, DEVELOPMENT_PLAN/phase-3-haskell-engine.md, DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md, DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md, DEVELOPMENT_PLAN/phase-6-cpp-functional-and-rust.md, DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md, DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, documents/documentation_standards.md, documents/engineering/README.md, documents/engineering/backend_ffi_contract.md, documents/engineering/benchmark_metrics.md, documents/engineering/cli_command_surface.md, documents/engineering/code_quality.md, documents/engineering/compiler_runtime_tuning.md, documents/engineering/determinism_contract.md, documents/engineering/haskell_code_guide.md, documents/engineering/transcript_format.md, documents/engineering/unit_testing_policy.md
 **Generated sections**: none
 
 > **Purpose**: Operator-facing project intent, supported entrypoint, backend cohort summary, and links to the authoritative plan and engineering contracts.
 
-MCTS is a high-performance Monte Carlo Tree Search runtime for the Corridors board game. The current proof of concept is rollout-based MCTS: one Haskell CLI drives five backend implementations so the native Haskell engine can be measured against a maximally optimised C++ baseline while the cohort stays deterministic inside a documented envelope.
+MCTS is a high-performance Monte Carlo Tree Search runtime for the Corridors board game. The current proof of concept is rollout-evaluated MCTS: one Haskell CLI drives five backend implementations so the native Haskell engine can be measured against a maximally optimised C++ baseline while the cohort stays deterministic inside a documented envelope.
 
 The long-term research direction is AlphaZero-style ANN evaluation, but this repository's current plan ends at a parity-proven rollout MCTS runtime. The execution-ordered plan is [DEVELOPMENT_PLAN/README.md](DEVELOPMENT_PLAN/README.md).
 
@@ -32,6 +32,22 @@ Do not use host `cabal`, `cargo`, `cmake`, `make`, `fourmolu`, `hlint`, reposito
 | (v) | Haskell | `haskell` | Native in-process target backend; pure API surface with `ST`-arena internals. |
 
 Backends (i)..(iv) are loaded through stable C ABIs from canonical shared libraries produced during the Dockerfile build. Backend (v) runs in-process. The authoritative backend and FFI details live in [backend_ffi_contract.md](documents/engineering/backend_ffi_contract.md) and [compiler_runtime_tuning.md](documents/engineering/compiler_runtime_tuning.md).
+
+## Benchmark Metrics
+
+The project uses three distinct performance units:
+
+| Metric | Unit | Meaning |
+|--------|------|---------|
+| Terminal playout throughput | `playouts/s` | Random trajectory from a board to terminal/cap; no MCTS tree. |
+| Search-iteration throughput | `search-iters/s` | One UCT iteration: select, expand/evaluate, rollout if needed, backprop. |
+| Played-game throughput | `games/s` | Complete self-played game with a configured search budget at each real move. |
+
+Current `mcts bench rollouts` is a legacy command name: it measures played-game
+throughput with one search iteration per move, not terminal `playouts/s`. The
+report-card metric refactor is tracked in the development plan; the metric taxonomy
+and Q1-Q7 mapping live in
+[benchmark_metrics.md](documents/engineering/benchmark_metrics.md).
 
 ## Command Surface
 
@@ -92,4 +108,5 @@ Normal tests do not depend on checked-in generated transcripts, throughput ancho
 - [DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md](DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md) — compatibility and stale-surface cleanup ledger.
 - [HASKELL_CLI_TOOL.md](HASKELL_CLI_TOOL.md) — CLI doctrine.
 - [documents/documentation_standards.md](documents/documentation_standards.md) — documentation topology rules.
+- [documents/engineering/benchmark_metrics.md](documents/engineering/benchmark_metrics.md) — terminal playout, search-iteration, and played-game metric semantics.
 - [documents/engineering/README.md](documents/engineering/README.md) — engineering-document index.

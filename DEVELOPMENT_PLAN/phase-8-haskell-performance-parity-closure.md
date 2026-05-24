@@ -12,7 +12,8 @@
 [phase-5-cpp-imperative-steelman.md](phase-5-cpp-imperative-steelman.md),
 [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md),
 [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md),
-[../documents/engineering/compiler_runtime_tuning.md](../documents/engineering/compiler_runtime_tuning.md)
+[../documents/engineering/compiler_runtime_tuning.md](../documents/engineering/compiler_runtime_tuning.md),
+[../documents/engineering/benchmark_metrics.md](../documents/engineering/benchmark_metrics.md)
 **Generated sections**: none
 
 > **Purpose**: Close the proof that backend (v) Haskell can match backend (ii)
@@ -21,7 +22,7 @@
 
 ## Phase Status
 
-✅ **Done.** The Haskell tuning work, no-generated-validation-data cleanup,
+🔄 **Active** for the metric-suite parity rerun. The Haskell tuning work, no-generated-validation-data cleanup,
 five-backend restoration, and optimized-C++ report-card refresh previously closed.
 Sprint `5.3` routes the Dockerfile-invoked `mcts build cpp-imperative` and
 `mcts build cpp-functional` recipes through the shared C++ PGO/BOLT target sequence,
@@ -33,20 +34,27 @@ card against successful Dockerfile-time PGO/BOLT artefacts and reclosed.
 Sprint `8.9` reclosed Phase `8` on 2026-05-21 after compiler-tuning wording and
 final handoff revalidation passed through the root Compose entrypoint. Sprint
 `8.10` reclosed Phase `8` on 2026-05-23 by replacing the narrow PGO/BOLT smoke
-training run with Dockerfile-time bounded Q1/Q2-shaped profile training: random
-rollouts and MCTS self-play, single-threaded and 8-worker batches, native RNG, seeds
+training run with Dockerfile-time bounded played-game profile training: legacy
+rollout games and MCTS self-play, single-threaded and 8-worker batches, native RNG, seeds
 `42` and `424242`, `--max-plies 1`, and PGO self-play budgets representative of
 `S_BENCH = 500`. The
 stale two-backend drift remains corrected: `cpp-legacy`, `cpp-imperative`, and
 `cpp-functional` are live parser/build/verify/FFI participants alongside `rust`
 and `haskell`.
 
+The 2026-05-24 metric-semantics audit reclassified the existing Q1/Q2/Q5 evidence
+as historical played-game throughput evidence. Final parity closure now depends on
+Sprint `3.8` adding terminal-playout and search-iteration benchmarks and Sprint
+`7.8` rendering the separated Q1a/Q1b/Q2/Q5 rows. Sprint `8.11` owns the rerun and
+conceptual review after those rows exist.
+
 The restored end state is:
 
 - Q1/Q2 performance rows measure backend (v) Haskell against live backend (ii)
   `cpp-imperative` where its shared library is available; accepted closure evidence
   must use Dockerfile-built artefacts that completed PGO and BOLT without fallback
-  and trained on the bounded Q1/Q2-shaped profile suite in `MCTS.CLI.Build`.
+  and must report the explicit units defined in
+  [../documents/engineering/benchmark_metrics.md](../documents/engineering/benchmark_metrics.md).
 - Performance benchmarks use each backend's own/native deterministic RNG contract.
 - Q3 logical-equivalence verification covers `(ii)..(v)` under `--rng cpp`.
 - Q7 legacy-envelope verification covers all five backend slots.
@@ -175,9 +183,8 @@ The report-card path measures live backend (ii) where the C++ shared library is
 present. The 2026-05-23 aggregate run rebuilt the Dockerfile-owned C++ and Rust
 PGO/BOLT artefacts first, required non-empty BOLT profiles and passing
 installed-library smokes, then passed all Cabal stanzas, Q3 `(ii)..(v)`, Q7
-all-five legacy-envelope checks, and the report-card verdict. Sprint `8.10` keeps
-the final parity gate active until the same path runs against artefacts trained on
-the bounded Q1/Q2-shaped profile suite.
+all-five legacy-envelope checks, and the report-card verdict. Sprint `8.10` remains
+historical played-game evidence; Sprint `8.11` owns the final metric-suite rerun.
 
 ### Remaining Work
 
@@ -466,8 +473,9 @@ against successful PGO+BOLT artefacts.
 ### Objective
 
 Make the Dockerfile-time PGO/BOLT profiles represent the two benchmark families the
-project optimizes: Q1 random rollouts and Q2 MCTS self-play, both single-threaded
-and multi-worker, under the native-RNG performance path.
+project implemented at that point: the legacy Q1 played-game rollout workload and
+Q2 MCTS self-play, both single-threaded and multi-worker, under the native-RNG
+performance path.
 
 ### Deliverables
 
@@ -475,7 +483,7 @@ and multi-worker, under the native-RNG performance path.
   keep their Dockerfile-owned Plan/Apply boundaries. Runtime commands consume the
   canonical shared libraries and never retrain PGO, rerun BOLT, or choose between
   workload-specific optimized libraries.
-- PGO training uses the bounded suite in `MCTS.CLI.Build`: `bench rollouts` and
+- PGO training uses the bounded suite in `MCTS.CLI.Build`: legacy `bench rollouts` and
   `bench selfplay`, `--threading single` and `--threading multi --workers 8`,
   `--rng native`, seeds `42` and `424242`, `--max-plies 1`, two rollout games for
   each threading mode per seed, one self-play game for each threading mode per seed,
@@ -494,7 +502,7 @@ and multi-worker, under the native-RNG performance path.
 - The Dockerfile build installs only bolted canonical libraries after PGO+BOLT data
   exists, LLVM objcopy patches the final envelope build-id, and each installed
   library passes the bounded smoke run before runtime validation starts.
-- The 2026-05-23 Sprint `8.10` report-card rerun is the accepted final parity
+- The 2026-05-23 Sprint `8.10` report-card rerun is accepted historical played-game
   evidence against bounded-profile Dockerfile artefacts: Q1 ST 0.05x, Q1 MT8
   0.48x, Q2 ST 0.06x, Q2 MT8 0.21x, Q5 Haskell 0.99x, Q5 C++ (ii) 3.65x,
   Q7 PASS, zero live-cohort divergence, and verdict `Within tolerance`.
@@ -525,11 +533,53 @@ Sprint `8.10` reclosed on 2026-05-23. The final aggregate validation passed with
 - `docker compose run --rm mcts mcts check-code`
 - `git diff --check`
 
-The accepted report-card run recorded Q1 ST 0.05x (`646.7` vs `35.1` games/s),
+The accepted report-card run recorded historical played-game rows: Q1 ST 0.05x (`646.7` vs `35.1` games/s),
 Q1 MT8 0.48x (`556.0` vs `269.4` games/s), Q2 ST 0.06x (`0.5` vs `0.0`
 games/s), Q2 MT8 0.21x (`0.5` vs `0.1` games/s), Q5 Haskell 0.99x, Q5 C++ (ii)
 3.65x, Q7 liveness PASS, zero live-cohort divergence, all Cabal stanzas PASS, and
 verdict `Within tolerance`.
+
+## Sprint 8.11: Refactored Metric Parity Rerun ⏸️
+
+**Status**: Blocked
+**Implementation**: `src/MCTS/CLI/Test.hs`, `src/MCTS/ReportCard.hs`,
+`src/MCTS/CLI/Bench.hs`, backend benchmark harnesses
+**Blocked by**: Sprint `3.8`, Sprint `7.8`
+**Docs to update**: `../documents/engineering/benchmark_metrics.md`,
+`../documents/engineering/compiler_runtime_tuning.md`,
+`../documents/engineering/unit_testing_policy.md`,
+`DEVELOPMENT_PLAN/README.md`, `DEVELOPMENT_PLAN/00-overview.md`,
+`DEVELOPMENT_PLAN/system-components.md`, `DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md`
+
+### Objective
+
+Rerun the parity proof after the report card separates terminal playout throughput,
+search-iteration throughput, and played-game self-play throughput.
+
+### Deliverables
+
+- Fresh Q1a terminal playout throughput evidence for Haskell vs backend (ii).
+- Fresh Q1b search-iteration throughput evidence for Haskell vs backend (ii).
+- Fresh Q2 played-game self-play evidence for Haskell vs backend (ii).
+- Q5 scaling evidence with search-iteration scaling and played-game scaling reported
+  separately.
+- A conceptual review of backend ordering: backend (ii) should remain the steelman
+  C++ performance ceiling, backend (iii) differences should be explainable by style
+  and representation choices, Rust should fit the systems-language baseline, and
+  Haskell performance should be interpreted against the documented GHC/PGO asymmetry.
+
+### Validation
+
+- `docker compose run --rm --build mcts mcts test all`
+- `docker compose run --rm mcts mcts docs check`
+- `docker compose run --rm mcts mcts check-code`
+- `git diff --check`
+
+### Remaining Work
+
+- Wait for the refactored metric rows from Sprint `7.8`.
+- Rerun the aggregate gate and update the historical evidence paragraphs with
+  explicit units.
 
 ## Documentation Requirements
 
@@ -541,13 +591,16 @@ verdict `Within tolerance`.
   and engine-envelope language.
 - `documents/engineering/backend_ffi_contract.md` — live C ABI contract for all four
   foreign backends.
+- `documents/engineering/benchmark_metrics.md` — metric units and Q1-Q7 mapping used by
+  Sprint `8.11` rerun criteria.
 - `documents/engineering/unit_testing_policy.md` — live `mcts-cross-backend` and
   `mcts-legacy-parity` roles without checked-in generated validation data, plus the
   Sprint `8.10` bounded-profile prerequisite for final report-card closure.
 - `documents/engineering/compiler_runtime_tuning.md` — performance parity against live
   backend (ii), mandatory Dockerfile-time PGO+BOLT success for accepted evidence,
   native-RNG benchmark semantics, Sprint `8.9` Cabal-stanza flag wording, and the
-  Sprint `8.10` bounded Q1/Q2-shaped PGO/BOLT training workload doctrine.
+  Sprint `8.10` bounded played-game PGO/BOLT training workload doctrine and the
+  Sprint `8.11` refactored metric rerun criteria.
 - `documents/engineering/haskell_code_guide.md` — command/build surface examples.
 
 **Product docs to create/update:**

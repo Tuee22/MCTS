@@ -2,7 +2,7 @@
 
 **Status**: Authoritative source
 **Supersedes**: N/A
-**Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/00-overview.md, ../../DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, ../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md, ../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, ../documentation_standards.md, ./README.md, ./code_quality.md
+**Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/00-overview.md, ../../DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, ../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md, ../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, ../documentation_standards.md, ./README.md, ./benchmark_metrics.md, ./code_quality.md
 **Generated sections**: none
 
 > **Purpose**: Describe the five live Cabal test stanzas (`mcts-unit`,
@@ -175,21 +175,27 @@ and `divergence_matrix` rows.
 
 ## POC Headline Questions
 
-The report card answers seven project questions owned by this policy:
-Q1/Q2 currently measure against the live backend (ii) artefact that `mcts test all`
-consumes from the Dockerfile-built C++ PGO/BOLT path. That path is mandatory and
-fail-closed: missing PGO data, missing BOLT `.fdata`, or PGO-only/unoptimized
-fallback artefacts cannot satisfy the report-card gate. Phase 8 Sprint `8.10`
-closed the stricter final evidence requirement: the Dockerfile-built steelman C++
-and Rust artefacts consumed by the report card are trained on the bounded Q1/Q2-shaped
-profile suite described in
-[compiler_runtime_tuning.md → PGO/BOLT Training Workload Doctrine](./compiler_runtime_tuning.md#pgobolt-training-workload-doctrine),
-not only on the earlier narrow self-play smoke run.
+The report card is required to answer seven project questions owned by this policy,
+using the metric units defined in
+[benchmark_metrics.md](./benchmark_metrics.md). Q1/Q2 compare against the live backend
+(ii) artefact that `mcts test all` consumes from the Dockerfile-built C++ PGO/BOLT
+path. That path is mandatory and fail-closed: missing PGO data, missing BOLT
+`.fdata`, or PGO-only/unoptimized fallback artefacts cannot satisfy the report-card
+gate.
 
-1. **Q1.** Does pure Haskell match maximally-optimised C++ (backend (ii)) on
-   benchmark (a) random rollouts, single-threaded and on 8 workers?
-2. **Q2.** Does pure Haskell match backend (ii) on benchmark (b) self-play,
-   single-threaded and on 8 workers?
+Phase 8 Sprint `8.10` closed the fail-closed profile-training requirement, but the
+2026-05-24 metric-semantics audit found that the current Q1/Q2/Q5 report-card rows
+are legacy played-game evidence rather than the complete refactored metric suite.
+The final report card must therefore separate terminal playout throughput,
+search-iteration throughput, and played-game throughput before Q1/Q5 can be treated
+as definitively answered.
+
+1. **Q1.** Does pure Haskell match maximally-optimised C++ (backend (ii)) on core
+   throughput? This requires Q1a terminal playout throughput (`playouts/s`) and
+   Q1b search-iteration throughput (`search-iters/s`), single-threaded and on
+   8-worker batches where batching applies.
+2. **Q2.** Does pure Haskell match backend (ii) on complete self-play throughput
+   (`games/s`) at the report-card search budget, single-threaded and on 8 workers?
 3. **Q3.** Do live backends (ii)..(v) produce bit-for-bit identical
    determinism payloads under `--rng cpp` (round-robin verify on both rollouts and
    self-play)?
@@ -197,20 +203,21 @@ not only on the earlier narrow self-play smoke run.
    seed, same logical game inputs ⇒ identical determinism payloads) for every
    backend?
 5. **Q5.** How do the Haskell and live C++ (ii) anchors scale from
-   `--threading single` to `--threading multi --workers 8`? The text and JSON
-   summaries expose those two anchor rows.
-6. **Q6.** Does the verbatim port (i) faithfully reproduce `MCTS_legacy` on
-   benchmark (b)?
+   `--threading single` to `--threading multi --workers 8`? Search-iteration
+   scaling and played-game scaling must be reported separately; terminal playout
+   scaling is diagnostic for Q1a.
+6. **Q6.** Does the verbatim port (i) faithfully reproduce `MCTS_legacy` on the
+   legacy lower-level measurements: terminal playout throughput and legacy
+   `simulate(N)` search-iteration throughput?
 7. **Q7.** Do all five backend slots pass the legacy-envelope liveness/overflow gate?
 
 **Backend (i) basis caveat.** Backend (i) `cpp-legacy` is a verbatim port and
 inherits the legacy's lack of a game-level ply cap (see
 [determinism_contract.md → Ply-Cap Draw Rule](./determinism_contract.md#ply-cap-draw-rule)).
-Its Q1 / Q2 / Q5
-throughput numbers are therefore **not on the same basis** as backends
+Its played-game throughput numbers are therefore **not on the same basis** as backends
 (ii)–(v) under any `max_plies` other than `MAX_ROLLOUT_ITERS = 10000`: (i)'s
 games run to a positional win and are on average longer than the ply-capped
-games of (ii)–(v), so directly comparing games/sec misreads the engine
+games of (ii)–(v), so directly comparing `games/s` misreads the engine
 budget. `mcts test all` does not use backend (i) for Q1/Q2 throughput rows; Q6/Q7 are
 legacy-compatibility evidence and the load-bearing Q1 / Q2 comparison is Haskell (v)
 versus C++ (ii), where both backends terminate identically; backend (i) is
@@ -223,7 +230,7 @@ throughput.
 
 ## Report Card
 
-The Q1–Q7 results from the pinned report-card workload. Live executable
+The current Q1-Q7 results come from the pinned report-card workload. Live executable
 constants are implemented in `MCTS.CLI.Test` and mirrored in `cabal.project`
 comments per
 [../../DEVELOPMENT_PLAN/system-components.md → POC Report-Card
@@ -233,12 +240,15 @@ Knobs](../../DEVELOPMENT_PLAN/system-components.md): `G_R = 1_000`, `G_S =
 
 `mcts test all` requires the Dockerfile-built live foreign artefacts before running
 the Cabal stanzas and final report card. The current gate proves those artefacts are
-present, fail-closed, and produced from the bounded Q1/Q2-shaped Dockerfile-time
+present, fail-closed, and produced from the bounded played-game Dockerfile-time
 PGO/BOLT training suite. The measured report-card builder uses the production monotonic clock
-for live Haskell Q1/Q2/Q5 throughput through `runBatchNoWriteDispatch`, compares those
+for live Haskell played-game throughput through `runBatchNoWriteDispatch`, compares those
 rates against live backend (ii) where available, and renders `Evidence pending` only in
-deterministic semantic unit values, not in a live full run. Q7 is the all-five
-legacy-envelope gate, while Q3 carries the visit-count equality assertion for `(ii)..(v)`.
+deterministic semantic unit values, not in a live full run. The refactored report card
+must add terminal `playouts/s` and `search-iters/s` rows per
+[benchmark_metrics.md → Q1-Q7 Mapping](./benchmark_metrics.md#q1-q7-mapping). Q7 is the
+all-five legacy-envelope gate, while Q3 carries the visit-count equality assertion for
+`(ii)..(v)`.
 
 Summary block format is pinned here. Renderer is pure; wall-clock numbers render to fixed
 precision (two decimals for text ratios, one decimal for text throughputs);
@@ -258,8 +268,10 @@ checked-in generated fixture.
 
 - [HASKELL_CLI_TOOL.md](../../HASKELL_CLI_TOOL.md) — canonical CLI doctrine
 - [code_quality.md](./code_quality.md) — `mcts-haskell-style` and lint discipline
-- [determinism_contract.md](./determinism_contract.md) — Q1–Q7 framing,
-  same-backend and cross-backend determinism contracts
+- [benchmark_metrics.md](./benchmark_metrics.md) — benchmark unit taxonomy and Q1-Q7
+  metric mapping
+- [determinism_contract.md](./determinism_contract.md) — same-backend and
+  cross-backend determinism contracts
 - [cli_command_surface.md](./cli_command_surface.md) — `mcts test` subcommand
   surface
 - [Development Plan](../../DEVELOPMENT_PLAN/README.md)

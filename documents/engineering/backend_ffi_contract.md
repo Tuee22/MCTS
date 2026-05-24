@@ -59,7 +59,7 @@ load name before runtime validation starts. Missing PGO profile data, missing
 BOLT `.fdata`, or any attempt to install a PGO-only/unoptimized fallback under
 that load name is a Dockerfile build failure. The accepted steelman artefact is
 one canonical shared library per backend, trained during the Dockerfile build
-on the bounded Q1/Q2-shaped profile suite defined in
+on the bounded played-game profile suite defined in
 [compiler_runtime_tuning.md → PGO/BOLT Training Workload Doctrine](./compiler_runtime_tuning.md#pgobolt-training-workload-doctrine);
 runtime FFI loading does not switch between workload-specific libraries or trigger
 PGO/BOLT retraining. Post-BOLT envelope patching uses LLVM `objcopy`, and the final

@@ -2,7 +2,7 @@
 
 **Status**: Authoritative source
 **Supersedes**: N/A
-**Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, ../../DEVELOPMENT_PLAN/phase-2-transcript-codec-and-determinism.md, ../../DEVELOPMENT_PLAN/phase-3-haskell-engine.md, ../../DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md, ../../DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md, ../../DEVELOPMENT_PLAN/phase-6-cpp-functional-and-rust.md, ../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md, ../documentation_standards.md, ./README.md
+**Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, ../../DEVELOPMENT_PLAN/phase-2-transcript-codec-and-determinism.md, ../../DEVELOPMENT_PLAN/phase-3-haskell-engine.md, ../../DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md, ../../DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md, ../../DEVELOPMENT_PLAN/phase-6-cpp-functional-and-rust.md, ../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md, ../documentation_standards.md, ./README.md, ./benchmark_metrics.md
 **Generated sections**: command-matrix
 
 > **Purpose**: Operator-facing `mcts` command matrix. Defers to
@@ -77,6 +77,17 @@ From the host, run any listed logical command as
 | `mcts build legacy-fixtures --output-dir <dir> [--seed <u64>] [--games <n>] [--sims <n>] [--dry-run] [--plan-file <path>]` | Plan/Apply: generate external legacy Q6 evidence |
 <!-- mcts:command-matrix:end -->
 
+### Benchmark Naming Caveat
+
+The generated command matrix reflects the current public CLI names. Metric
+semantics are governed by
+[benchmark_metrics.md](./benchmark_metrics.md): `mcts bench rollouts` is a
+legacy command name and currently measures played-game throughput with one search
+iteration per real move. It does not measure terminal `playouts/s`. The metric
+refactor tracked by the development plan must either rename this surface or add
+explicit `terminal-playouts`, `search-iters`, and `played-games` benchmark leaves
+whose command names match the units they report.
+
 Current implementation baseline: `src/MCTS/CLI/Parser.hs` exposes
 `commandParserInfo`, an `optparse-applicative` parser whose command topology is
 rendered from the `CommandSpec` tree while leaf option parsers remain explicit;
@@ -143,7 +154,7 @@ set of common invocations.
 | `--games N` | `bench`, `verify`, `build legacy-fixtures` | required for bench/verify; `10` for legacy fixtures | Game count for the run. |
 | `--seed N` | `bench`, `verify`, `play`, `build legacy-fixtures` | required (bench/verify); `Nothing` ⇒ fresh random (play); `42` for legacy fixtures | Master seed; per-game seeds derive via `splitmix64(master_seed, game_index)`. |
 | `--max-plies N` | `bench`, `verify`, `play` | `200` | Part of the determinism contract for the live verifier cohort. |
-| `--sims N` or `--sims N0:N1` | `bench`, `verify`, `play`, `build legacy-fixtures` | `10_000` for `bench`/`verify`; `1_000` for `play`; `10_000` for legacy fixtures | `N` parses as `FixedSims N`; `N0:N1` parses as `RampedSims N0 N1` for run commands. `build legacy-fixtures` accepts fixed `N` only. Ignored by `bench rollouts` / `verify rollouts`. |
+| `--sims N` or `--sims N0:N1` | `bench`, `verify`, `play`, `build legacy-fixtures` | `10_000` for `bench`/`verify`; `1_000` for `play`; `10_000` for legacy fixtures | `N` parses as `FixedSims N`; `N0:N1` parses as `RampedSims N0 N1` for run commands. `build legacy-fixtures` accepts fixed `N` only. Ignored by the current legacy-named `bench rollouts` / `verify rollouts` workload, which forces one search iteration per real move. |
 | `--output-dir <path>` | `build legacy-fixtures` | required explicit path | Legacy evidence output root; choose an external or ignored artifact directory. Files land below the host-architecture subdirectory and are not repository validation inputs. |
 | `--top N` | `inspect show`, `inspect replay` | `10`; `0` ⇒ all legal moves | Live-adjustable via `+`/`-` in `inspect replay`. |
 | `--with-equity` | `inspect show` | `False` | Reads the originator's cached `.eq` if envelope-matched (instant); on originator cache miss, writes a replacement only through the same backend/build recompute path. Stale, unavailable, fallback, or foreign recompute evidence is labelled and is not written as originator evidence. |
