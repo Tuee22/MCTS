@@ -24,6 +24,9 @@ shared objects without corrupting them, and the Dockerfile build smokes the
 installed bolted libraries before publishing the image. Sprint `5.5` reclosed
 Phase `5` on 2026-05-21 by aligning the backend (ii) C ABI contract with the
 compact live evidence ABI that exists, not speculative tree/rng lifecycle handles.
+Sprint `5.6` reclosed Phase `5` on 2026-05-25 by replacing the leftover
+legacy-board hot path with a compact backend (ii) board, direct capped move
+generation, and bitset wavefront escapability checks.
 
 ## Phase Summary
 
@@ -39,11 +42,14 @@ instead of installing a PGO-only or unoptimized artefact under a bolted or canon
 load name.
 
 Phase `5` remains closed for the backend (ii) source, ABI, fail-closed PGO/BOLT
-mechanics, and canonical artefact installation surfaces. Phase `8` Sprint `8.10`
-has since broadened the Dockerfile-time PGO/BOLT training workload from the earlier
-narrow self-play smoke into a bounded profile suite. Phase `8` Sprint `8.11`
-extends and validates that suite with primitive terminal-playout and
-search-iteration profile runs after the metric refactor.
+mechanics, compact-board hot path, and canonical artefact installation surfaces.
+The 2026-05-25 backend (ii) correction strengthens the C++ ceiling and reopens
+Phase `8` parity evidence until backend (v) is rebenchmarked and retuned against
+this corrected target. Phase `8` Sprint `8.10` has since broadened the
+Dockerfile-time PGO/BOLT training workload from the earlier narrow self-play smoke
+into a bounded profile suite. Phase `8` Sprint `8.11` extends and validates that
+suite with primitive terminal-playout and search-iteration profile runs after the
+metric refactor.
 
 ## Sprint 5.1: Source Tree and Engine Shape ✅
 
@@ -236,6 +242,68 @@ None.
   `docker compose run --rm mcts mcts docs check`, and `git diff --check` passed.
 - Sprint `6.6` retains the shared compact-ABI wording validation for backend (iii)
   and backend (iv).
+
+## Sprint 5.6: Compact Board Hot Path ✅
+
+**Status**: Done
+**Implementation**: `cpp-imperative/engine/fast_board.hpp`,
+`cpp-imperative/engine/state.hpp`, `cpp-imperative/engine/search.cpp`,
+`cpp-imperative/c-abi/mcts_cpp_imperative.cc`
+**Docs to update**: `README.md`, `00-overview.md`, `system-components.md`,
+`phase-8-haskell-performance-parity-closure.md`,
+`documents/engineering/compiler_runtime_tuning.md`,
+`documents/engineering/backend_ffi_contract.md`
+
+### Objective
+
+Make backend (ii) a real optimization of backend (i), not a C++ arena wrapped
+around the legacy board's expensive full-move enumeration and action-text parsing.
+
+### Deliverables
+
+- `FastBoard` stores pawn positions, wall counts, and horizontal/vertical wall
+  placements in compact scalar fields and 8x8 bitfields.
+- Legal move generation emits pawn moves plus the first 12 canonical legal walls
+  directly, preserving the report-card/Q3 action-order contract without generating
+  the full legacy wall set first.
+- Action IDs stay numeric in the hot path; backend (ii) no longer parses legacy
+  action strings to decode visits or apply selected moves.
+- Wall-escape legality uses wavefront bitset expansion over the 9x9 board rather
+  than queue allocation or legacy contact-flag traversal.
+- The C ABI keeps the existing compact board-handle contract and replays selected
+  actions through the same capped legal-move surface used by search.
+
+### Validation
+
+- `docker compose run --rm --build mcts mcts bench selfplay --backend cpp-legacy,cpp-imperative,haskell --rng native --threading single --games 4 --seed 42 --max-plies 200 --sims 500`
+- `docker compose run --rm mcts mcts bench terminal-playouts --backend cpp-legacy,cpp-imperative,haskell --rng native --threading single --count 1000 --seed 42 --max-plies 60`
+- `docker compose run --rm mcts mcts bench search-iters --backend cpp-legacy,cpp-imperative,haskell --rng native --threading single --count 1000 --seed 42 --max-plies 60`
+- `docker compose run --rm mcts mcts bench terminal-playouts --backend cpp-legacy,cpp-imperative,haskell --rng native --threading multi --workers 8 --count 1000 --seed 42 --max-plies 60`
+- `docker compose run --rm mcts mcts bench search-iters --backend cpp-legacy,cpp-imperative,haskell --rng native --threading multi --workers 8 --count 1000 --seed 42 --max-plies 60`
+- `docker compose run --rm mcts mcts test mcts-cross-backend`
+- `docker compose run --rm mcts mcts test mcts-legacy-parity`
+- `docker compose run --rm mcts mcts test mcts-unit`
+
+### Closure Notes
+
+Closed on 2026-05-25. Rebuilt-image evidence shows backend (ii) now materially
+outperforms backend (i):
+
+- Self-play ST, 4 games, 500 sims: `(ii)` `1.1` games/s vs `(i)` `0.5` games/s.
+- Terminal playout ST: `(ii)` `20951.5` playouts/s vs `(i)` `3125.2` playouts/s.
+- Search-iteration ST: `(ii)` `23113.2` search-iters/s vs `(i)` `3341.0`
+  search-iters/s.
+- Terminal playout MT8: `(ii)` `152472.3` playouts/s vs `(i)` `20302.5`
+  playouts/s.
+- Search-iteration MT8: `(ii)` `142145.0` search-iters/s vs `(i)` `20427.0`
+  search-iters/s.
+
+The rebuilt-image correctness gates passed: `mcts-cross-backend`,
+`mcts-legacy-parity`, and `mcts-unit`.
+
+### Remaining Work
+
+None.
 
 ## Documentation Requirements
 

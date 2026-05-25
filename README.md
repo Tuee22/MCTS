@@ -26,7 +26,7 @@ Do not use host `cabal`, `cargo`, `cmake`, `make`, `fourmolu`, `hlint`, reposito
 | # | Backend | Identifier | Role |
 |---|---------|------------|------|
 | (i) | C++ legacy port | `cpp-legacy` | Verbatim compatibility port of `MCTS_legacy`; Q6 legacy-envelope evidence only, not the performance ceiling. |
-| (ii) | C++ imperative steelman | `cpp-imperative` | Maximally optimised C++ performance ceiling: PGO+BOLT, `mimalloc`, arena search, scratch-board rollouts. |
+| (ii) | C++ imperative steelman | `cpp-imperative` | Maximally optimised C++ performance ceiling: PGO+BOLT, `mimalloc`, arena search, compact bitfield board, direct capped move generation. |
 | (iii) | C++ functional-style | `cpp-functional` | Same algorithm and optimisation stance as (ii), used to isolate C++ style effects. |
 | (iv) | Rust | `rust` | Cross-language systems baseline with the same FFI/search/recompute contract. |
 | (v) | Haskell | `haskell` | Native in-process target backend; pure API surface with `ST`-arena internals. |
@@ -44,9 +44,9 @@ The project uses three distinct performance units:
 | Played-game throughput | `games/s` | Complete self-played game with a configured search budget at each real move. |
 
 Current `mcts bench rollouts` is a legacy command name: it measures played-game
-throughput with one search iteration per move, not terminal `playouts/s`. The
-report-card metric refactor is tracked in the development plan; the metric taxonomy
-and Q1-Q6 mapping live in
+throughput with one search iteration per move, not terminal `playouts/s`.
+Played-game benchmark output uses `games/s` only. The report-card metric refactor
+is tracked in the development plan; the metric taxonomy and Q1-Q6 mapping live in
 [benchmark_metrics.md](documents/engineering/benchmark_metrics.md).
 
 ## Command Surface

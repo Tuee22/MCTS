@@ -9,7 +9,7 @@
 
 #include "mcts_cpp_imperative.h"
 
-#include "../engine/board.h"
+#include "../engine/fast_board.hpp"
 #include "../engine/search.hpp"
 #include "../engine/state.hpp"
 
@@ -33,9 +33,9 @@
 #endif
 
 // The C-ABI board handle is a small wrapper: it owns the current root
-// `State` (a `corridors::board` + `Word16` ply counter) plus the
-// per-search `read_visits` cache so `mcts_imperative_read_visits`
-// remains O(1) lookup on the last-search action set.
+// `State` (a compact board + `Word16` ply counter) plus the per-search
+// `read_visits` cache so `mcts_imperative_read_visits` remains O(1)
+// lookup on the last-search action set.
 struct mcts_imperative_board {
     mcts_imperative::State state{};
     std::vector<std::pair<uint8_t, uint32_t>> last_visits{};
@@ -48,29 +48,10 @@ constexpr uint16_t kGameMaxPlies = 10000;
 constexpr uint16_t kSearchMaxPlies = 60;
 
 [[gnu::hot]] static int apply_action_id(mcts_imperative::State &state, uint8_t action_id) {
-    std::vector<corridors::board> moves;
-    state.b.get_legal_moves(moves);
+    std::vector<mcts_imperative::FastBoard> moves;
+    state.b.get_capped_legal_moves(moves, state.ply_count);
     for (auto &m : moves) {
-        // Decode the move's action id via the same canonical
-        // enumeration the search exports.
-        std::string action = m.get_action_text(false);
-        if (action.size() < 5) continue;
-        const bool pawn = action[0] == '*';
-        const bool horizontal = action[0] == 'H';
-        const bool vertical = action[0] == 'V';
-        const size_t open = action.find('(');
-        const size_t comma = action.find(',');
-        const size_t close = action.find(')');
-        if (open == std::string::npos || comma == std::string::npos || close == std::string::npos) {
-            continue;
-        }
-        const int x = std::stoi(action.substr(open + 1, comma - open - 1));
-        const int y = std::stoi(action.substr(comma + 1, close - comma - 1));
-        uint8_t aid = 0;
-        if (pawn) aid = static_cast<uint8_t>(y * 9 + x);
-        else if (horizontal) aid = static_cast<uint8_t>(81 + y * 8 + x);
-        else if (vertical) aid = static_cast<uint8_t>(145 + y * 8 + x);
-        if (aid == action_id) {
+        if (m.get_action_id(false) == action_id) {
             state.b = std::move(m);
             state.ply_count = static_cast<uint16_t>(state.ply_count + 1);
             return 0;

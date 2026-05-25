@@ -21,8 +21,9 @@ lives in [unit_testing_policy.md](./unit_testing_policy.md).
 | Search-iteration throughput | `search-iters/s` | One UCT/MCTS iteration: select through the tree, expand or evaluate the leaf, run a terminal playout when the policy calls for rollout evaluation, and backpropagate. | Whether the actual search core is fast, independent of complete-game length and transcript overhead. |
 | Played-game throughput | `games/s` | One full game from the starting position to terminal or `max_plies`; each real move runs the configured search budget, chooses an action, applies it, and records transcript visits. | Whether the integrated backend path performs well, including search, move application, FFI dispatch, transcript forcing, and batch/thread scheduling. |
 
-The names are intentionally explicit. Avoid unqualified `rollout`, `simulation`,
-or `sims/s` in new documentation because each has been used for more than one unit.
+The names are intentionally explicit. Avoid unqualified `rollout` or
+`simulation` in new documentation because each has been used for more than one
+unit, and do not add derived simulation-rate columns to played-game output.
 
 ## Current CLI Surface
 
@@ -35,15 +36,14 @@ legacy played-game names:
   and reports `search-iters/s`.
 - `mcts bench rollouts` remains a legacy command name. It measures
   **played-game throughput** with one
-  search iteration per real move. Its primary meaningful unit is `games/s`, not
-  terminal `playouts/s`.
+  search iteration per real move and reports `games/s`, not terminal
+  `playouts/s`.
 - `mcts bench selfplay` also measures **played-game throughput**, but each real
-  move uses the configured self-play search budget.
-- The legacy played-game bench renderer's `sims/s` value is derived from `games/s *
-  simPerMove(inputSims)`. It is not an observed count of terminal playouts or
-  search iterations across all moves. For `bench rollouts`, the driver forces a
-  one-iteration move budget, so any configured `--sims` value is not a terminal
-  playout rate.
+  move uses the configured self-play search budget and reports `games/s`.
+- Played-game benchmark renderers expose only `games/s`
+  (`games_per_second` in JSON). The removed derived simulation-rate column was
+  not an observed count of terminal playouts or search iterations across all
+  moves.
 
 Documentation may refer to `bench rollouts` only as a legacy played-game CLI
 name. The report card uses the explicit primitive leaves for Q1a/Q1b and keeps

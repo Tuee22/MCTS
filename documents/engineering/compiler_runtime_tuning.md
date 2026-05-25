@@ -160,7 +160,9 @@ library. The 2026-05-23 reclosure makes that sequence fail closed when
 envelope patching, and smokes the installed bolted libraries. Sprint `8.10`
 added the bounded profile suite described in
 [PGO/BOLT Training Workload Doctrine](#pgobolt-training-workload-doctrine) to that
-mandatory sequence.
+mandatory sequence. Sprint `5.6` replaces backend (ii)'s legacy-board hot path
+with `FastBoard`, a compact scalar/bitfield board that emits capped legal moves
+directly and checks wall escapability with bitset wavefront expansion.
 
 ### Code-Level Requirements
 
@@ -174,45 +176,50 @@ neutral or harmful.
    `std::vector<uct_node>` per game, expanded in place, freed in bulk at game
    end. Eliminates refcount traffic, double indirection, per-node destruction,
    and most cache misses during tree descent.
-2. **Per-rollout scratch board with undo or one snapshot per game.** Eliminates
+2. **Compact board state and direct capped move generation.** Backend (ii) must not
+   generate the full legacy wall set and parse action strings before applying the
+   report-card wall cap. It stores the hot state in scalar pawn/wall fields plus
+   8x8 wall bitfields, emits numeric action IDs directly, and checks wall
+   escapability with bitset wavefront expansion.
+3. **Per-rollout scratch board with undo or one snapshot per game.** Eliminates
    the per-rollout `board_copy` allocation.
-3. **PGO + BOLT pipeline** as named above.
+4. **PGO + BOLT pipeline** as named above.
 
 **Correctness requirement** (also top tier):
 
 - **`Word16` ply counter in board state.** `is_terminal` ↔
   `hero_wins || villain_wins || ply_count >= max_plies`; `terminal_eval` returns
-  `0.0` on ply-cap termination. Part of the per-rollout snapshot/undo path. See
+  `0.0` on ply-cap termination. Part of the compact snapshot/undo path. See
   [determinism_contract.md → Ply-Cap Draw Rule](./determinism_contract.md#ply-cap-draw-rule).
 
 **Second tier** (each 10–30%, cumulative):
 
-4. **Flat children layout** — children stored contiguously in the arena; each
+5. **Flat children layout** — children stored contiguously in the arena; each
    parent records `first_child_idx: u32` and `n_children: u16`. No
    `std::vector<u32>` per node.
-5. **Move-list buffer reuse.** Move generators write into a `thread_local` or
+6. **Move-list buffer reuse.** Move generators write into a `thread_local` or
    stack-SBO buffer; no per-call `std::vector`. Inline buffer sized for typical
    Corridors move counts (~40); heap spill allowed but rare.
-6. **`u32` parent index** rather than `shared_ptr<uct_node>`.
-7. **Visit-count compression to `u16`** when `per_move_sims < 65536`. Shrinks
+7. **`u32` parent index** rather than `shared_ptr<uct_node>`.
+8. **Visit-count compression to `u16`** when `per_move_sims < 65536`. Shrinks
    node footprint, more nodes per cache line. The header's `per_move_sims`
    field gates the choice; the wire format already records visits as `u32`, so
    the in-memory choice is transparent to the determinism contract.
 
 **Third tier** (sub-10% each, cumulative):
 
-8. `[[likely]]` / `[[unlikely]]` on UCT child-selection and terminal-state
+9. `[[likely]]` / `[[unlikely]]` on UCT child-selection and terminal-state
    branches.
-9. `__attribute__((hot))` / `__attribute__((always_inline))` on
+10. `__attribute__((hot))` / `__attribute__((always_inline))` on
    `select_best_child`, `apply_move`, `is_terminal`, `rollout_step`.
-10. `__attribute__((const))` / `((pure))` on referentially-transparent helpers
+11. `__attribute__((const))` / `((pure))` on referentially-transparent helpers
     — lets GCC hoist and CSE.
-11. `__builtin_prefetch` on the child array during UCT descent.
-12. `__builtin_popcountll` / `__builtin_ctzll` on raw `u64` bitboards rather
+12. `__builtin_prefetch` on the child array during UCT descent.
+13. `__builtin_popcountll` / `__builtin_ctzll` on raw `u64` bitboards rather
     than `std::bitset<64>::_Find_first()` (not reliably lowered to `tzcnt`).
-13. `alignas(64)` on the tree-node arena base; struct-of-arrays where
+14. `alignas(64)` on the tree-node arena base; struct-of-arrays where
     measurement supports it.
-14. `thread_local` scratch buffers for the multi-threaded driver (per-worker,
+15. `thread_local` scratch buffers for the multi-threaded driver (per-worker,
     not per-game).
 
 `-fno-exceptions` is promoted to the mandatory flag block at the top of this
@@ -222,7 +229,7 @@ dead weight.
 **Native-RNG benchmark only** (not under `--rng cpp`, which is pinned to the
 C++-generated verification-seed contract by the determinism contract):
 
-15. Future profiling candidate: replace the current splitmix-compatible live
+16. Future profiling candidate: replace the current splitmix-compatible live
     schedule with `xoshiro256++` or `wyrand` where it measurably helps — smaller
     state, faster `next_u64`, equivalent statistical quality for rollouts.
 
@@ -576,9 +583,27 @@ bolted shared libraries.
 | Q5 Haskell self-play scaling | 0.97x | 0.6 -> 0.6 games/s |
 | Q5 cpp-imperative self-play scaling | 3.72x | 0.0 -> 0.1 games/s |
 
-The refreshed Sprint 8.11 verdict is **`Within tolerance`** for the bounded
-metric-suite fail-closed pipeline in the worktree. Q3 and Q6 passed, and the live
-divergence matrix was all zeroes.
+The refreshed Sprint 8.11 verdict was **`Within tolerance`** for the bounded
+metric-suite fail-closed pipeline before backend (ii)'s compact-board correction.
+Q3 and Q6 passed, and the live divergence matrix was all zeroes.
+
+Sprint `5.6` corrected backend (ii) on 2026-05-25. Focused rebuilt-image
+benchmarks now show the intended steelman ordering against backend (i), but they
+also reopen Phase `8` parity against backend (v):
+
+| Row | Evidence |
+|-----|----------|
+| Backend (ii) vs (i), self-play ST | `1.1` vs `0.5` games/s |
+| Backend (ii) vs (i), terminal playout ST | `20951.5` vs `3125.2` playouts/s |
+| Backend (ii) vs (i), search-iteration ST | `23113.2` vs `3341.0` search-iters/s |
+| Haskell vs backend (ii), terminal playout ST | `8558.8` vs `20951.5` playouts/s |
+| Haskell vs backend (ii), search-iteration ST | `9256.2` vs `23113.2` search-iters/s |
+| Haskell vs backend (ii), self-play ST | `0.6` vs `1.1` games/s |
+
+The focused Sprint `5.6` gates passed `mcts-cross-backend`, `mcts-legacy-parity`,
+and `mcts-unit`. The aggregate `mcts test all` parity verdict is intentionally
+pending until Sprint `8.12` retunes or revalidates Haskell against this corrected
+backend (ii) ceiling.
 
 ## Parity Tolerance
 
@@ -586,7 +611,7 @@ The Phase 8 Sprint 8.3 verdict pins on a single constant:
 
 **`HASKELL_PARITY_TOLERANCE = 0.05`** (5% shortfall ceiling).
 
-The current Sprint 8.11 implementation renders `Within tolerance` iff
+The current implementation renders `Within tolerance` iff
 
     haskell_time / cpp_imperative_time <= 1 + HASKELL_PARITY_TOLERANCE
 

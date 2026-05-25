@@ -22,9 +22,13 @@
 
 ## Phase Status
 
-✅ **Done** after the metric-suite parity rerun. The Haskell tuning work, no-generated-validation-data cleanup,
-five-backend restoration, optimized-C++ report-card refresh, and refactored
-Q1a/Q1b/Q2/Q5 evidence are closed.
+🔄 **Active** after the backend (ii) steelman correction. The Haskell tuning work,
+no-generated-validation-data cleanup, five-backend restoration, optimized-C++
+report-card refresh, and refactored Q1a/Q1b/Q2/Q5 evidence all closed against
+the earlier backend (ii) artefact; Sprint `5.6` has since strengthened backend
+(ii) with a compact-board hot path, so the parity evidence must be refreshed and
+backend (v) may need another tuning pass. Remaining work is tracked in Sprint
+`8.12`.
 Sprint `5.3` routes the Dockerfile-invoked `mcts build cpp-imperative` and
 `mcts build cpp-functional` recipes through the shared C++ PGO/BOLT target sequence,
 and Sprint `8.3` refreshed the report-card evidence on 2026-05-21 against the
@@ -50,6 +54,12 @@ the separated Q1a/Q1b/Q2/Q5 report-card rows. Sprint `8.11` reclosed Phase `8`
 with a Dockerfile rebuild whose PGO/BOLT profile suite covers terminal playout,
 search-iteration, legacy played-game rollout, and self-play workloads before the
 refactored report-card verdict runs.
+
+The 2026-05-25 backend (ii) correction reopens this phase only on the Haskell
+parity surface. Q3/Q6 equivalence and liveness remain covered by Phase `7`; Phase
+`5` owns the corrected C++ steelman. Focused rebuilt-image measurements show the
+new backend (ii) exceeds backend (i) but now also exceeds backend (v), so a future
+Sprint `8.12` closure must rerun the report card and retune Haskell as needed.
 
 The restored end state is:
 
@@ -605,6 +615,53 @@ Fresh report-card evidence:
 ### Remaining Work
 
 None.
+
+## Sprint 8.12: Parity Refresh Against Corrected Backend (ii) 🔄
+
+**Status**: Active
+**Implementation**: `src/MCTS/Engine.hs`, `src/MCTS/Search/UCT.hs`,
+`src/MCTS/CLI/Test.hs`, `cpp-imperative/engine/fast_board.hpp`
+**Docs to update**: `README.md`, `00-overview.md`, `system-components.md`,
+`../documents/engineering/compiler_runtime_tuning.md`
+
+### Objective
+
+Re-establish the Haskell-vs-backend-(ii) parity proof after Sprint `5.6` made
+backend (ii) a substantially faster C++ steelman.
+
+### Deliverables
+
+- Fresh `mcts test all` report-card evidence against the corrected backend (ii).
+- If the report card is outside `HASKELL_PARITY_TOLERANCE`, a focused Haskell hot-path
+  tuning pass that targets the new compact-board backend (ii) ceiling.
+- Updated Q1a/Q1b/Q2/Q5 evidence in
+  [../documents/engineering/compiler_runtime_tuning.md](../documents/engineering/compiler_runtime_tuning.md).
+- Confirmation that Q3 `(ii)..(v)` and Q6 `(i)..(v)` remain green after any Haskell
+  changes.
+
+### Validation
+
+- `docker compose run --rm --build mcts mcts test all`
+- `docker compose run --rm mcts mcts docs check`
+- `docker compose run --rm mcts mcts check-code`
+- `git diff --check`
+
+### Current Validation State
+
+Sprint `5.6` focused evidence on 2026-05-25 shows the corrected backend (ii)
+outperforms backend (i) and remains equivalent on the existing cross-backend gates:
+`mcts-cross-backend`, `mcts-legacy-parity`, and `mcts-unit` pass. The same
+measurements show backend (v) no longer matches backend (ii): terminal playout ST
+is `8558.8` vs `20951.5` playouts/s, search-iteration ST is `9256.2` vs
+`23113.2` search-iters/s, and self-play ST is `0.6` vs `1.1` games/s
+(Haskell vs backend (ii), seed `42`, rebuilt image). The aggregate report-card
+closure remains pending.
+
+### Remaining Work
+
+- Run the aggregate report-card on the corrected backend (ii).
+- Profile and retune backend (v) if the report-card verdict is outside tolerance.
+- Reclose Phase `8` only after the aggregate validation above passes.
 
 ## Documentation Requirements
 

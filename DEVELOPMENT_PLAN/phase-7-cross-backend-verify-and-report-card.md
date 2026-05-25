@@ -301,7 +301,7 @@ divergence metric docs were aligned.
 ### Objective
 
 Make the report card answer Q1-Q6 using unambiguous metric units instead of the
-legacy overloaded "rollouts" and derived "sims/s" labels.
+legacy overloaded "rollouts" and derived simulation-rate labels.
 
 ### Deliverables
 
@@ -312,7 +312,9 @@ legacy overloaded "rollouts" and derived "sims/s" labels.
 - Q6 legacy-envelope liveness/overflow evidence across all five backend slots without
   checked-in generated validation inputs.
 - Renderer and JSON field names that include the unit, so old `rollouts` and
-  ambiguous `sims/s` labels cannot be mistaken for lower-level metrics.
+  ambiguous simulation-rate labels cannot be mistaken for lower-level metrics.
+- Played-game benchmark output exposes only `games/s` in text and
+  `games_per_second` in JSON.
 
 ### Validation
 
@@ -330,7 +332,9 @@ None.
 
 Sprint `7.8` reclosed on 2026-05-24 after the report-card renderer and JSON schema
 switched to unit-aware Q1a terminal playout, Q1b search-iteration, Q2 played-game,
-and split Q5 scaling rows.
+and split Q5 scaling rows. A 2026-05-25 follow-up removed the derived
+simulation-rate column from played-game benchmark output, leaving `games/s` as the
+only played-game throughput unit.
 
 ## Sprint 7.9: Six-Question Report-Card Renumbering ✅
 

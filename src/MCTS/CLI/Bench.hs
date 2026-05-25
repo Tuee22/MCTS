@@ -38,7 +38,6 @@ data BenchRow = BenchRow
     { rowInputs :: !RunInputs
     , rowBatch :: !BatchResult
     , rowGamesPerSecond :: !Double
-    , rowSimsPerSecond :: !Double
     }
 
 data PrimitiveBenchRow = PrimitiveBenchRow
@@ -317,13 +316,11 @@ runBenchRow clock inputs backend = do
             Right batch ->
                 let elapsed = max 1 (fromIntegral end - fromIntegral start :: Integer)
                     gamesPerSecond = fromIntegral (inputGames backendInputs) * 1000000000.0 / fromIntegral elapsed :: Double
-                    simsPerSecond = gamesPerSecond * fromIntegral (simPerMove (inputSims backendInputs) :: Int)
                  in Right
                         BenchRow
                             { rowInputs = backendInputs
                             , rowBatch = batch
                             , rowGamesPerSecond = gamesPerSecond
-                            , rowSimsPerSecond = simsPerSecond
                             }
 
 renderBench :: OutputOptions -> [BenchRow] -> String
@@ -344,8 +341,6 @@ renderBench output rows =
                         <> batchHash batch
                         <> "\",\"games_per_second\":"
                         <> show (rowGamesPerSecond row)
-                        <> ",\"sims_per_second\":"
-                        <> show (rowSimsPerSecond row)
                         <> "}"
                     | row <- rows
                     , let inputs = rowInputs row
@@ -354,7 +349,7 @@ renderBench output rows =
                 <> "]"
         _ ->
             unlines $
-                "backend  workload  games  threading  rng     hash      games/s  sims/s"
+                "backend  workload  games  threading  rng     hash      games/s"
                     : concatMap renderPlainRow rows
   where
     renderPlainRow row =
@@ -373,8 +368,6 @@ renderBench output rows =
                 <> shortHash (batchHash batch)
                 <> "  "
                 <> showFF (rowGamesPerSecond row)
-                <> "  "
-                <> showFF (rowSimsPerSecond row)
             , wroteLine batch
             ]
     wroteLine batch =

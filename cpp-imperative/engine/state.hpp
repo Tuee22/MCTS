@@ -6,14 +6,14 @@
 
 #pragma once
 
-#include "board.h"
+#include "fast_board.hpp"
 
 #include <cstdint>
 
 namespace mcts_imperative {
 
 struct State {
-    corridors::board b;
+    FastBoard b;
     uint16_t ply_count = 0;
 
     [[gnu::hot, gnu::always_inline]] inline bool is_terminal(uint16_t max_plies) const noexcept {

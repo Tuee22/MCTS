@@ -354,7 +354,7 @@ Wire the original game-level bench command into the CLI for `--backend haskell`
 end-to-end: parse, plan,
 prerequisite-check, dispatch through a worker pool (single or multi), measure
 wall-clock time from a single `GHC.Clock.getMonotonicTimeNSec`, emit
-`games/s` and the legacy derived `sims/s`.
+`games/s` as the only played-game throughput unit.
 
 ### Deliverables
 
@@ -415,7 +415,8 @@ wall-clock time from a single `GHC.Clock.getMonotonicTimeNSec`, emit
 
 - Baseline landed: `mcts bench rollouts` and `mcts bench selfplay` run through the
   logical Haskell backend, write transcripts, and render table/JSON game-level
-  throughput output. The `bench rollouts` name is legacy and does not mean terminal
+  throughput output using `games/s` only. The `bench rollouts` name is legacy and
+  does not mean terminal
   `playouts/s`.
   The bench runner now reads the pinned monotonic clock
   (`GHC.Clock.getMonotonicTimeNSec`) via the `monotonicNanos` helper. The
@@ -586,7 +587,7 @@ terminal playout throughput (`playouts/s`) and search-iteration throughput
   positions without allocating or updating an MCTS tree.
 - `mcts bench search-iters` times UCT iterations directly at fixed board
   positions and reports observed `search-iters/s`.
-- Renderer output that avoids derived or ambiguous `sims/s` values.
+- Renderer output that avoids derived or ambiguous simulation-rate values.
 - Foreign-backend dynamic ABI entry points measure the same units as the Haskell
   path, including backend (i) where the legacy-envelope gate exercises all five slots.
 

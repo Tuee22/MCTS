@@ -87,7 +87,8 @@ reports direct terminal playout throughput in `playouts/s`, and `mcts bench
 search-iters` reports direct UCT/MCTS iteration throughput in `search-iters/s`.
 `mcts bench rollouts` remains a legacy command name and measures played-game
 throughput with one search iteration per real move. It does not measure terminal
-`playouts/s`.
+`playouts/s`. The played-game benchmark leaves report only `games/s`
+(`games_per_second` in JSON).
 
 Current implementation baseline: `src/MCTS/CLI/Parser.hs` exposes
 `commandParserInfo`, an `optparse-applicative` parser whose command topology is

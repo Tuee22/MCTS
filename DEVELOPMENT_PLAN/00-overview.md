@@ -113,6 +113,14 @@ than a numbered report-card row.
 Historical played-game numbers remain audit evidence, not final answers to the
 refactored Q1a/Q1b/Q2/Q5 suite.
 
+Sprint `5.6` reclosed Phase `5` on 2026-05-25 after backend (ii) moved from the
+legacy board hot path to a compact bitfield board with direct capped move
+generation and wavefront escapability checks. Focused rebuilt-image benchmarks
+now show backend (ii) outperforming backend (i), as the steelman design requires.
+That same correction reopens Phase `8` on the Haskell parity surface: the earlier
+`Within tolerance` report-card verdict is historical evidence against the slower
+backend (ii), not closure against the corrected C++ ceiling.
+
 ## Target Outcome
 
 One `mcts` Haskell CLI binary, built by Cabal under GHC `9.14.1` and Cabal
@@ -195,8 +203,9 @@ temporary or operator-provided roots.
   -march=native -mtune=native -flto -fno-plt -fno-semantic-interposition
   -fvisibility=hidden -fvisibility-inlines-hidden -fno-exceptions`, no `-ffast-math`;
   Makefile-level two-stage PGO via `-fprofile-generate` / `-fprofile-use`, BOLT
-  post-link targets, `mimalloc` link; arena tree, per-rollout scratch board with undo,
-  flat children layout, move-list buffer reuse, branch hints, `__builtin_prefetch`,
+  post-link targets, `mimalloc` link; arena tree, compact bitfield board,
+  direct capped legal-move generation, wavefront bitset escapability, flat children
+  layout, move-list buffer reuse, branch hints, `__builtin_prefetch`,
   `__builtin_popcountll` / `__builtin_ctzll`, `alignas(64)`, `thread_local` scratch.
   The Dockerfile routes the PGO/BOLT sequence through the
   `mcts build cpp-imperative` build recipe. PGO profile data and BOLT `.fdata`

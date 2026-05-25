@@ -67,8 +67,10 @@ slots remain first-class.
 The 2026-05-24 benchmark-metric audit added stale benchmark labels and report-card
 rows to this ledger. Sprint `3.8` added explicit `terminal-playouts` and
 `search-iters` benchmark leaves, and Sprint `7.8` split the report card into
-unit-aware Q1a/Q1b/Q2/Q5 rows. Sprint `8.11` closed the profile-suite review and
-fresh parity rerun, so no metric-suite cleanup row remains pending.
+unit-aware Q1a/Q1b/Q2/Q5 rows. The 2026-05-25 played-game renderer cleanup
+removed the derived simulation-rate output so `games/s` is the only played-game
+throughput unit. Sprint `8.11` closed the profile-suite review and fresh parity
+rerun, so no metric-suite cleanup row remains pending.
 
 Two classes of entries populate this ledger over time:
 
@@ -100,6 +102,7 @@ data instead of publishing a fallback shared library.
 
 | Item | Removed In | Notes |
 |------|------------|-------|
+| Derived played-game simulation-rate column | Sprint 7.8 follow-up, 2026-05-25 | `src/MCTS/CLI/Bench.hs` now renders played-game benchmarks with only `games/s` in text output and `games_per_second` in JSON. Governed metric docs identify terminal playout, search-iteration, and played-game throughput as the only supported benchmark units. |
 | External legacy-reproduction headline question | Sprint 7.9, 2026-05-25 | Removed the old report-card question that compared backend (i) against external `MCTS_legacy`; the legacy-envelope liveness/overflow gate is now Q6 and the report card has six questions. `mcts build legacy-fixtures` remains an optional external audit helper with no numbered report-card role. The Q6 report-card self-play liveness budget is `S_LP_SIMS=4`; the old `10_000` budget belonged to the removed external-reproduction evidence shape. |
 | PGO/BOLT profile-suite metric proxy | Sprint 8.11, 2026-05-24 | `src/MCTS/CLI/Build.hs` now trains C++ and Rust PGO/BOLT profiles with terminal playout primitives, search-iteration primitives, legacy played-game rollout batches, and self-play batches. `docker compose run --rm --build mcts mcts test all` validated the aggregate Dockerfile rebuild and refactored report-card rerun end to end, recording final Q1a/Q1b/Q2/Q5 unit-aware evidence and `Verdict: Within tolerance`. |
 | Legacy `bench rollouts` metric-name ambiguity | Sprint 7.8, 2026-05-24 | `bench rollouts` remains as a documented legacy played-game workload, while lower-level throughput uses explicit `bench terminal-playouts` and `bench search-iters`. Report-card rows no longer use the legacy `rollouts` label for Q1/Q5 evidence. |

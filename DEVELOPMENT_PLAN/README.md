@@ -81,6 +81,16 @@ reproduction helper remains audit-only, and Q6 is the all-five legacy-envelope
 liveness/overflow gate. The aggregate revalidation kept the report-card verdict
 `Within tolerance`.
 
+Phase `5` Sprint `5.6` closed on 2026-05-25 after backend (ii)'s hot path was
+redesigned around a compact bitfield board, direct capped legal-move generation,
+numeric action IDs, and wavefront escapability checks. Focused rebuilt-image
+benchmarks now show backend (ii) outperforming backend (i): self-play ST
+`1.1` vs `0.5` games/s, terminal playout ST `20951.5` vs `3125.2`
+playouts/s, and search-iteration ST `23113.2` vs `3341.0` search-iters/s.
+The correction reopens Phase `8` Sprint `8.12` for Haskell parity against the
+strengthened backend (ii); prior Phase `8` report-card verdicts remain
+historical evidence against the older backend (ii) artefact.
+
 This audit does not change the project hypothesis: one Haskell CLI keeps
 all five backend slots live, Q3 proves visit-count equivalence for `(ii)..(v)`
 under `--rng cpp`, Q6 covers all five slots under the legacy envelope, and the
@@ -159,6 +169,13 @@ Q1b MT8 0.36x, Q2 ST 0.05x, Q2 MT8 0.17x, Haskell search-iteration scaling
 0.97x, C++ (ii) search-iteration scaling 7.47x, Haskell self-play scaling
 1.03x, C++ (ii) self-play scaling 3.69x, Q6 PASS, zero live-cohort divergence,
 and `Verdict: Within tolerance`.
+
+Sprint `5.6` was validated on 2026-05-25 with
+`docker compose run --rm --build mcts mcts bench selfplay --backend cpp-legacy,cpp-imperative,haskell --rng native --threading single --games 4 --seed 42 --max-plies 200 --sims 500`,
+rebuilt-image terminal-playout and search-iteration benchmarks in single-threaded
+and MT8 modes, `docker compose run --rm mcts mcts test mcts-cross-backend`,
+`docker compose run --rm mcts mcts test mcts-legacy-parity`, and
+`docker compose run --rm mcts mcts test mcts-unit`.
 
 The 2026-05-19 report-card evidence remains useful smoke-baseline audit context.
 The previous five-backend restoration baseline still provides the starting point:

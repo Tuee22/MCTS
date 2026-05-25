@@ -1,71 +1,26 @@
 #include "search.hpp"
 
 #include "arena.hpp"
-#include "board.h"
+#include "fast_board.hpp"
 #include "state.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <limits>
-#include <string>
 #include <utility>
 #include <vector>
 
 namespace mcts_imperative {
 namespace {
 
-thread_local std::vector<corridors::board> tls_move_buffer;
+thread_local std::vector<FastBoard> tls_move_buffer;
 
-[[gnu::hot]] static bool parse_u8(const std::string &text, size_t first, size_t last, int &out) noexcept {
-    if (first >= last) return false;
-    int value = 0;
-    for (size_t i = first; i < last; ++i) {
-        const char c = text[i];
-        if (c < '0' || c > '9') return false;
-        value = value * 10 + (c - '0');
-    }
-    out = value;
-    return true;
-}
-
-// Decode the legacy board's post-flip action text into the raw action id
-// returned through the C ABI. Haskell flips this raw id back to the absolute
-// action-id perspective when the absolute Hero is to move.
-[[gnu::hot]] static uint8_t decode_action_id(const corridors::board &b) noexcept {
-    const std::string action = b.get_action_text(false);
-    if (action.size() < 5) return 0;
-    const char kind = action[0];
-    const size_t open = action.find('(');
-    const size_t comma = action.find(',');
-    const size_t close = action.find(')');
-    if (open == std::string::npos || comma == std::string::npos || close == std::string::npos) {
-        return 0;
-    }
-    int x = 0;
-    int y = 0;
-    if (!parse_u8(action, open + 1, comma, x) || !parse_u8(action, comma + 1, close, y)) {
-        return 0;
-    }
-    if (kind == '*') return static_cast<uint8_t>(y * 9 + x);
-    if (kind == 'H') return static_cast<uint8_t>(81 + y * 8 + x);
-    if (kind == 'V') return static_cast<uint8_t>(145 + y * 8 + x);
-    return 0;
-}
-
-[[gnu::hot, gnu::always_inline]] static inline uint8_t flip_action_id(uint8_t aid) noexcept {
-    if (aid <= 80) return static_cast<uint8_t>(80 - aid);
-    if (aid <= 144) return static_cast<uint8_t>(225 - aid);
-    if (aid <= 208) return static_cast<uint8_t>(353 - static_cast<int>(aid));
-    return aid;
-}
-
-[[gnu::hot, gnu::always_inline]] static inline uint8_t canonical_action_id(
-    const State &parent,
-    const corridors::board &child) noexcept
-{
-    const uint8_t raw = decode_action_id(child);
-    return (parent.ply_count % 2 == 0) ? flip_action_id(raw) : raw;
+// Decode the post-flip action id returned through the C ABI. Haskell flips
+// this raw id back to the absolute action-id perspective when the absolute
+// Hero is to move.
+[[gnu::hot]] static uint8_t decode_action_id(const FastBoard &b) noexcept {
+    return b.get_action_id(false);
 }
 
 [[gnu::hot, gnu::always_inline]] static inline uint64_t splitmix64(uint64_t input) noexcept {
@@ -79,33 +34,9 @@ thread_local std::vector<corridors::board> tls_move_buffer;
     return splitmix64(seed + 0x9e3779b97f4a7c15ULL * (index + 1));
 }
 
-[[gnu::hot]] static void canonicalize_moves(const State &state, std::vector<corridors::board> &moves) {
-    std::sort(
-        moves.begin(),
-        moves.end(),
-        [&state](const corridors::board &a, const corridors::board &b) {
-            return canonical_action_id(state, a) < canonical_action_id(state, b);
-        });
-
-    size_t wall_count = 0;
-    std::vector<corridors::board> filtered;
-    filtered.reserve(moves.size());
-    for (auto &move : moves) {
-        const uint8_t aid = canonical_action_id(state, move);
-        if (aid <= 80) {
-            filtered.emplace_back(std::move(move));
-        } else if (wall_count < 12) {
-            filtered.emplace_back(std::move(move));
-            ++wall_count;
-        }
-    }
-    moves = std::move(filtered);
-}
-
-[[gnu::hot]] static void legal_moves_for_state(const State &state, std::vector<corridors::board> &moves) {
+[[gnu::hot]] static void legal_moves_for_state(const State &state, std::vector<FastBoard> &moves) {
     moves.clear();
-    state.b.get_legal_moves(moves);
-    canonicalize_moves(state, moves);
+    state.b.get_capped_legal_moves(moves, state.ply_count);
 }
 
 [[gnu::hot]] static bool terminal_outcome(const State &state, uint16_t max_plies, double &outcome) noexcept {

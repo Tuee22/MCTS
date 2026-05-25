@@ -99,6 +99,10 @@ not expose C-owned tree or RNG lifecycle objects: the backend search allocates i
 own per-call arena internally, and the Haskell driver supplies deterministic
 per-move seeds derived from either the backend-native schedule or the shared C++ RNG
 bridge.
+Backend (ii)'s handle currently stores a compact `FastBoard` state rather than the
+legacy `corridors::board`; this is an internal representation detail. The ABI still
+accepts and returns the same canonical one-byte action IDs, applies moves through
+the backend's legal-move surface, and exposes no board internals to Haskell.
 
 ### Engine Operations
 
