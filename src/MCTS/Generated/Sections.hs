@@ -111,7 +111,7 @@ renderPurpose path spec =
         "mcts build cpp-functional" ->
             "Plan/Apply: Dockerfile C++ functional-style backend mandatory PGO/BOLT build recipe"
         "mcts build rust" -> "Plan/Apply: Dockerfile Rust backend mandatory PGO/BOLT build recipe"
-        "mcts build legacy-fixtures" -> "Plan/Apply: generate external legacy Q6 evidence"
+        "mcts build legacy-fixtures" -> "Plan/Apply: generate external legacy audit fixtures"
         _ -> summary spec
 
 spliceMarkerRegion :: String -> String -> String -> String -> Maybe String

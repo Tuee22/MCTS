@@ -273,7 +273,7 @@ rule L.
     `cross-backend equity tolerance`.
   - **Byte-consumption and backprop traversal contracts**: `byte-consumption order`,
     `backprop traversal order`.
-  - **Q1–Q7 mapping**: each of `Q1`, `Q2`, `Q3`, `Q4`, `Q5`, `Q6`, `Q7` appears in
+  - **Q1–Q6 mapping**: each of `Q1`, `Q2`, `Q3`, `Q4`, `Q5`, and `Q6` appears in
     the `ReportCard` deliverable list (Sprint 7.3).
   - **Report-card pinned values**: each of `G_R`, `G_S`, `G_V`, `G_LP`, `S_BENCH`,
     `S_VERIFY`, `S_LP_SIMS`, `S_LP` appears in `cabal.project` comments (Sprint
@@ -361,7 +361,7 @@ Sprint `4.2` and
 **Report-card knobs** (`G_R`, `G_S`, `G_V`, `G_LP`, `S_BENCH`, `S_VERIFY`,
 `S_LP_SIMS`, `S_LP`) are mirrored in `cabal.project` comments, implemented for
 the live path in `MCTS.CLI.Test`, and listed by name in
-[system-components.md](system-components.md). `Q1`–`Q7` are each named in
+[system-components.md](system-components.md). `Q1`–`Q6` are each named in
 [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md)
 Sprint `7.3`.
 
@@ -382,8 +382,7 @@ plan-text contradiction. The audit produced no `Pending Removal` row.
 
 ### Remaining Work
 
-None. The doctrine-driven scheduling audit is closed; subsequent doctrine
-adoption work happens at the sprint level in Phases `1`–`8` per standards rule L.
+None.
 
 ## Doctrine Sections Cited
 

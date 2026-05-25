@@ -38,7 +38,7 @@ only project-specific elaborations. The project-specific docs
 | [code_quality.md](./code_quality.md) | The `mcts check-code` gate and the lint stack; defers to the doctrine on Lint, Format, Code-Quality Stack, Generated Artifacts, and Forbidden Surfaces |
 | [unit_testing_policy.md](./unit_testing_policy.md) | The five live Cabal test stanzas (`mcts-unit`, `mcts-integration`, `mcts-cross-backend`, `mcts-legacy-parity`, `mcts-haskell-style`), the `mcts test all` Plan/Apply command, the report-card workload, the Dockerfile-built steelman artefact prerequisite, and the no-generated-validation-data rule; defers to the doctrine on Test Organization |
 | [haskell_code_guide.md](./haskell_code_guide.md) | How the project uses `Subprocess`, `Plan / Apply`, `prerequisiteRegistry`, `Env`, `AppError`, and GADT state machines; defers to the doctrine on each pattern |
-| [benchmark_metrics.md](./benchmark_metrics.md) | Terminal playout, search-iteration, and played-game throughput semantics, including the Q1-Q7 evidence mapping and the current `bench rollouts` legacy-name caveat |
+| [benchmark_metrics.md](./benchmark_metrics.md) | Terminal playout, search-iteration, and played-game throughput semantics, including the Q1-Q6 evidence mapping and the current `bench rollouts` legacy-name caveat |
 | [determinism_contract.md](./determinism_contract.md) | RNG split, per-game `splitmix64(master_seed, game_index)` seed derivation, ply-cap draw rule, visit-count vs equity asymmetry, legacy parity envelope |
 | [transcript_format.md](./transcript_format.md) | Little-endian binary wire format, single-byte action enumeration, content addressing, git-style hash-prefix lookup |
 | [backend_ffi_contract.md](./backend_ffi_contract.md) | C ABI shape across the live C-ABI backends, `unsafe`/`safe` import policy, `--rng cpp` plumbing, canonical FFI load names, and the one-bolted-library-per-backend runtime contract |
@@ -86,7 +86,7 @@ only project-specific elaborations. The project-specific docs
 
 - [Five Live Cabal Stanzas](./unit_testing_policy.md#test-stanzas)
 - [Benchmark Metric Taxonomy](./benchmark_metrics.md#metric-taxonomy)
-- [Q1-Q7 Metric Mapping](./benchmark_metrics.md#q1-q7-mapping)
+- [Q1-Q6 Metric Mapping](./benchmark_metrics.md#q1-q6-mapping)
 - [Test Organization](../../HASKELL_CLI_TOOL.md) — doctrine
 - [Repository Data Doctrine](./unit_testing_policy.md#repository-data-doctrine)
 - [Property Invariants](./unit_testing_policy.md#property-invariants)

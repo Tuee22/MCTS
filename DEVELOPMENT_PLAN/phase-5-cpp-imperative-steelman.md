@@ -227,7 +227,7 @@ determinism proof, without adding object-model APIs that do not improve the proo
 
 ### Remaining Work
 
-- None.
+None.
 
 ### Closure Notes
 

@@ -39,4 +39,4 @@
 - `mcts build cpp-imperative` - C++ imperative backend build recipe
 - `mcts build cpp-functional` - C++ functional backend build recipe
 - `mcts build rust` - Rust backend build recipe
-- `mcts build legacy-fixtures` - Generate external legacy Q6 evidence
+- `mcts build legacy-fixtures` - Generate external legacy audit fixtures

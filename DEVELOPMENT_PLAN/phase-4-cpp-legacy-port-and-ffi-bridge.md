@@ -10,16 +10,15 @@
 **Generated sections**: none
 
 > **Purpose**: Land backend (i), the strictly verbatim re-port of `MCTS_legacy`,
-> exposed through a stable C ABI so the Haskell CLI can generate Q6/Q7 legacy evidence
+> exposed through a stable C ABI so the Haskell CLI can generate Q6 legacy-envelope evidence
 > and compare the project against the original engine.
 
 ## Phase Status
 
 ✅ **Done.** `cpp-legacy/` source, the `legacy-to-wire` evidence generator, and live
 Haskell dynamic dispatch/envelope loading are present. Backend (i) remains
-first-class:
-it is the legacy-compatibility backend for Q6 byte-for-byte evidence and the Q7
-legacy-envelope liveness/overflow gate.
+first-class: it is the legacy-compatibility backend for the Q6 legacy-envelope
+liveness/overflow gate.
 
 ## Phase Summary
 
@@ -28,7 +27,7 @@ Backend (i) is not a performance ceiling. It is the faithful bridge to
 single-threaded search shape, and the legacy terminal rule are preserved. Only C ABI
 shims and build plumbing are allowed around the imported source.
 
-Q3 visit-vector identity belongs to the steelman cohort `(ii)..(v)`. Q7 is the place
+Q3 visit-vector identity belongs to the steelman cohort `(ii)..(v)`. Q6 is the place
 where backend (i) participates with all five backend slots under the legacy envelope.
 
 ## Sprint 4.1: Verbatim Source Import ✅
@@ -95,7 +94,7 @@ None.
 
 ### Objective
 
-Expose the C++ `std::mt19937_64` bridge used by Q3/Q7 logical-equivalence checks.
+Expose the C++ `std::mt19937_64` bridge used by Q3/Q6 logical-equivalence checks.
 
 ### Deliverables
 
@@ -126,12 +125,12 @@ None.
 
 ### Objective
 
-Generate optional Q6 audit evidence without checking generated transcripts into git.
+Generate optional legacy audit fixtures without checking generated transcripts into git.
 
 ### Deliverables
 
-- `mcts build legacy-fixtures --output-dir <dir>` builds and runs the legacy evidence
-  generator.
+- `mcts build legacy-fixtures --output-dir <dir>` builds and runs the legacy audit
+  fixture generator.
 - Output paths are explicit operator-provided directories, preferably outside the repo
   or under ignored local artifact roots.
 - Normal validation synthesizes fixture shapes in temporary directories.
@@ -191,7 +190,7 @@ and action-conversion boundary.
 - `documents/engineering/backend_ffi_contract.md` — legacy C ABI and dynamic loading.
 - `documents/engineering/determinism_contract.md` — C++ RNG verification-seed equivalence
   contract.
-- `documents/engineering/unit_testing_policy.md` — Q6/Q7 evidence without checked-in
+- `documents/engineering/unit_testing_policy.md` — Q6 evidence without checked-in
   generated data.
 
 **Product docs to create/update:**

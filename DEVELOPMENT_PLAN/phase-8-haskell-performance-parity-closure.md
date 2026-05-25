@@ -60,7 +60,7 @@ The restored end state is:
   [../documents/engineering/benchmark_metrics.md](../documents/engineering/benchmark_metrics.md).
 - Performance benchmarks use each backend's own/native deterministic RNG contract.
 - Q3 logical-equivalence verification covers `(ii)..(v)` under `--rng cpp`.
-- Q7 legacy-envelope verification covers all five backend slots.
+- Q6 legacy-envelope verification covers all five backend slots.
 - `--rng cpp` means equivalence tests consume C++-generated verification seeds through
   the shared C++ RNG bridge so game transcripts can be compared exactly.
 - Generated validation data remains out of git; tests synthesize or explicitly generate
@@ -134,7 +134,7 @@ None.
 
 ### Objective
 
-Record the Q1/Q2/Q5/Q7 evidence that demonstrates Haskell can meet the C++ steelman
+Record the Q1/Q2/Q5/Q6 evidence that demonstrates Haskell can meet the C++ steelman
 target within `HASKELL_PARITY_TOLERANCE = 0.05`.
 
 ### Deliverables
@@ -143,7 +143,7 @@ target within `HASKELL_PARITY_TOLERANCE = 0.05`.
   (`640.3` vs `34.4` games/s), Q1 MT8 0.45x (`592.9` vs `269.5` games/s),
   Q2 ST 0.06x (`0.5` vs `0.0` games/s), Q2 MT8 0.22x
   (`0.5` vs `0.1` games/s), Q5 Haskell 0.98x, Q5 C++ (ii) 3.70x,
-  Q7 liveness PASS, zero live-cohort divergence, and verdict
+  Q6 liveness PASS, zero live-cohort divergence, and verdict
   `Within tolerance` against backend (ii)'s Dockerfile-built artefact after C++
   and Rust PGO/BOLT completed without fallback. Sprint `8.10` retains this as
   fail-closed pipeline evidence and supersedes it with the bounded-profile final
@@ -152,7 +152,7 @@ target within `HASKELL_PARITY_TOLERANCE = 0.05`.
   (`740.0` vs `39.2` games/s), Q1 MT8 0.43x (`690.7` vs `294.7` games/s),
   Q2 ST 0.06x (`0.6` vs `0.0` games/s), Q2 MT8 0.19x
   (`0.6` vs `0.1` games/s), Q5 Haskell 1.04x, Q5 `cpp-imperative` 3.64x,
-  Q7 liveness PASS, and verdict `Within tolerance` against the then-canonical
+  Q6 liveness PASS, and verdict `Within tolerance` against the then-canonical
   backend (ii) artefact built by `docker/Dockerfile` through the
   `mcts build cpp-imperative` recipe. This is historical evidence because C++ BOLT
   did not produce `.fdata` in that run.
@@ -160,7 +160,7 @@ target within `HASKELL_PARITY_TOLERANCE = 0.05`.
   inputs.
 - The 2026-05-19 report-card run remains historical smoke-baseline audit context:
   Q1 ST 0.05x, Q1 MT8 0.41x, Q2 ST 0.05x, Q2 MT8 0.20x, Q5 Haskell 0.99x,
-  Q5 `cpp-imperative` 3.64x, Q7 liveness PASS, and verdict `Within tolerance`.
+  Q5 `cpp-imperative` 3.64x, Q6 liveness PASS, and verdict `Within tolerance`.
 - `mcts test parity-anchor <baseline> <candidate>` is the focused Plan/Apply
   parity measurement surface for explicit backend pairs. It shares the Q1/Q2
   workloads, build prerequisites, and `HASKELL_PARITY_TOLERANCE = 0.05`
@@ -185,7 +185,7 @@ docker compose run --rm mcts mcts test parity-anchor cpp-imperative haskell --dr
 The report-card path measures live backend (ii) where the C++ shared library is
 present. The 2026-05-23 aggregate run rebuilt the Dockerfile-owned C++ and Rust
 PGO/BOLT artefacts first, required non-empty BOLT profiles and passing
-installed-library smokes, then passed all Cabal stanzas, Q3 `(ii)..(v)`, Q7
+installed-library smokes, then passed all Cabal stanzas, Q3 `(ii)..(v)`, Q6
 all-five legacy-envelope checks, and the report-card verdict. Sprint `8.10` remains
 historical played-game evidence; Sprint `8.11` supplies the final refactored
 metric-suite closure evidence.
@@ -242,10 +242,10 @@ Restore the first-class backend surface for `cpp-legacy`, `cpp-imperative`,
 - `parseBackend` accepts all five backend identifiers wherever the command surface owns
   a backend selection.
 - `VerifyBackend` covers Q3 `(ii)..(v)`.
-- `mcts verify legacy-parity` validates the Q7 `(i)..(v)` cohort.
+- `mcts verify legacy-parity` validates the Q6 `(i)..(v)` cohort.
 - `mcts build cpp-legacy`, `mcts build cpp-imperative`, `mcts build cpp-functional`,
   and `mcts build rust` are Dockerfile-invoked Plan/Apply build recipes; the
-  `legacy-fixtures` build leaf remains an explicit external evidence generator.
+  `legacy-fixtures` build leaf remains an explicit external audit-fixture generator.
 - The generated command docs describe parity/equivalence surfaces without two-backend
   language.
 
@@ -309,7 +309,7 @@ Restore the MCTS logical-equivalence proof without conflating it with performanc
 ### Deliverables
 
 - Q3 covers `(ii)..(v)` under `--rng cpp`.
-- Q7 covers `(i)..(v)` under the legacy envelope.
+- Q6 covers `(i)..(v)` under the legacy envelope.
 - `--rng cpp` feeds equivalence verification from C++-generated seeds through the C++ RNG
   bridge only.
 - `--rng native` remains the performance benchmark path, with backend-native RNGs.
@@ -369,7 +369,7 @@ C++-stream-compatible.
 
 2026-05-20 closure evidence:
 
-- Rebuilt `mcts test all` passed all five Cabal stanzas plus Q3 `(ii)..(v)` and Q7
+- Rebuilt `mcts test all` passed all five Cabal stanzas plus Q3 `(ii)..(v)` and Q6
   all-five legacy-envelope gates; smoke-baseline report-card verdict:
   `Within tolerance`.
 - `docker compose run --rm mcts mcts docs check`,
@@ -382,7 +382,7 @@ C++-stream-compatible.
   Dockerfile-owned C++ build path passed through the supported C++ PGO/BOLT
   Plan/Apply sequence.
 - `docker compose run --rm mcts mcts test all` passed all five Cabal stanzas, Q3
-  `(ii)..(v)`, Q7 all-five legacy-envelope checks, and the optimized-C++ report-card
+  `(ii)..(v)`, Q6 all-five legacy-envelope checks, and the optimized-C++ report-card
   refresh with verdict `Within tolerance`.
 - Documentation SSoT alignment updated README, `DEVELOPMENT_PLAN/`, and `documents/`
   to defer exact test sequencing, replay overlay behavior, sidecar labels, and
@@ -396,7 +396,7 @@ C++-stream-compatible.
   canonical C++/Rust libraries, and passed docs, file, style, unit, integration,
   cross-backend, legacy-parity, and report-card validation.
 - The report-card refresh recorded Q1 ST 0.05x, Q1 MT8 0.45x, Q2 ST 0.06x,
-  Q2 MT8 0.22x, Q5 Haskell 0.98x, Q5 C++ (ii) 3.70x, Q7 liveness PASS, zero
+  Q2 MT8 0.22x, Q5 Haskell 0.98x, Q5 C++ (ii) 3.70x, Q6 liveness PASS, zero
   live-cohort divergence, and verdict `Within tolerance`.
 
 ### Remaining Work
@@ -454,7 +454,7 @@ Sprint `8.9` reclosed on 2026-05-21. Validation passed with:
 - `git diff --check`
 
 The 2026-05-21 `mcts test all` report-card verdict was `Within tolerance`; Q3
-passed for `(ii)..(v)`, Q7 passed across all five backend slots, and all five Cabal
+passed for `(ii)..(v)`, Q6 passed across all five backend slots, and all five Cabal
 stanzas passed. Under the 2026-05-22 fail-closed doctrine this remains historical
 fallback evidence. Sprint `8.3` refreshed the parity evidence on 2026-05-23
 against successful PGO+BOLT artefacts.
@@ -509,7 +509,7 @@ performance path.
 - The 2026-05-23 Sprint `8.10` report-card rerun is accepted historical played-game
   evidence against bounded-profile Dockerfile artefacts: Q1 ST 0.05x, Q1 MT8
   0.48x, Q2 ST 0.06x, Q2 MT8 0.21x, Q5 Haskell 0.99x, Q5 C++ (ii) 3.65x,
-  Q7 PASS, zero live-cohort divergence, and verdict `Within tolerance`.
+  Q6 PASS, zero live-cohort divergence, and verdict `Within tolerance`.
 
 ### Validation
 
@@ -540,7 +540,7 @@ Sprint `8.10` reclosed on 2026-05-23. The final aggregate validation passed with
 The accepted report-card run recorded historical played-game rows: Q1 ST 0.05x (`646.7` vs `35.1` games/s),
 Q1 MT8 0.48x (`556.0` vs `269.4` games/s), Q2 ST 0.06x (`0.5` vs `0.0`
 games/s), Q2 MT8 0.21x (`0.5` vs `0.1` games/s), Q5 Haskell 0.99x, Q5 C++ (ii)
-3.65x, Q7 liveness PASS, zero live-cohort divergence, all Cabal stanzas PASS, and
+3.65x, Q6 liveness PASS, zero live-cohort divergence, all Cabal stanzas PASS, and
 verdict `Within tolerance`.
 
 ## Sprint 8.11: Refactored Metric Parity Rerun ✅
@@ -585,7 +585,7 @@ search-iteration throughput, and played-game self-play throughput.
 
 Closed on 2026-05-24. `docker compose run --rm --build mcts mcts test all`
 rebuilt the Dockerfile-owned C++ and Rust PGO/BOLT artefacts, trained profiles
-with the bounded metric suite, passed all Cabal stanzas plus Q3 and Q7, and
+with the bounded metric suite, passed all Cabal stanzas plus Q3 and Q6, and
 reported `Verdict: Within tolerance`.
 
 Fresh report-card evidence:
@@ -598,7 +598,7 @@ Fresh report-card evidence:
   (`0.6` vs `0.1` games/s).
 - Q5 scaling: Haskell search-iters `1.02x`, C++ (ii) search-iters `7.36x`,
   Haskell self-play `0.97x`, C++ (ii) self-play `3.72x`.
-- Q3/Q7 passed, the live divergence matrix was all zeroes, and the profile-suite
+- Q3/Q6 passed, the live divergence matrix was all zeroes, and the profile-suite
   review confirmed Dockerfile-time primitive and played-game workloads before the
   final report-card run.
 
@@ -612,11 +612,11 @@ None.
 
 - `documents/engineering/cli_command_surface.md` — command matrix and backend selection
   semantics.
-- `documents/engineering/determinism_contract.md` — RNG split, Q3/Q7 equivalence scope,
+- `documents/engineering/determinism_contract.md` — RNG split, Q3/Q6 equivalence scope,
   and engine-envelope language.
 - `documents/engineering/backend_ffi_contract.md` — live C ABI contract for all four
   foreign backends.
-- `documents/engineering/benchmark_metrics.md` — metric units and Q1-Q7 mapping used by
+- `documents/engineering/benchmark_metrics.md` — metric units and Q1-Q6 mapping used by
   Sprint `8.11` rerun evidence.
 - `documents/engineering/unit_testing_policy.md` — live `mcts-cross-backend` and
   `mcts-legacy-parity` roles without checked-in generated validation data, plus the
@@ -639,7 +639,8 @@ None.
   ownership is referenced.
 - Keep [README.md](README.md), [00-overview.md](00-overview.md), and
   [system-components.md](system-components.md) aligned with the closed Sprint `8.10`
-  bounded training-workload reclosure, the closed Sprints `5.3`/`6.4` build-harness
+  bounded played-game training-workload reclosure, the closed Sprint `8.11`
+  bounded metric-suite profile rerun, the closed Sprints `5.3`/`6.4` build-harness
   reclosures, and the cleanup residue recorded in
   [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md).
 

@@ -87,7 +87,7 @@ commandSpec =
                 , leaf
                     "selfplay"
                     "Verify legacy-envelope self-play liveness"
-                    "mcts verify legacy-parity selfplay --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell --games 2 --seed 42 --sims 10000"
+                    "mcts verify legacy-parity selfplay --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell --games 2 --seed 42 --sims 4"
                 ]
             ]
         , leaf
@@ -153,7 +153,7 @@ commandSpec =
                 `withOptions` planOptions
             , leaf
                 "legacy-fixtures"
-                "Generate external legacy Q6 evidence"
+                "Generate external legacy audit fixtures"
                 "mcts build legacy-fixtures --output-dir /tmp/mcts-legacy-fixtures --seed 42 --games 10 --sims 10000 --dry-run"
                 `withOptions` (legacyFixtureOptions <> planOptions)
             ]

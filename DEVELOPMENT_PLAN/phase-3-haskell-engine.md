@@ -435,57 +435,6 @@ wall-clock time from a single `GHC.Clock.getMonotonicTimeNSec`, emit
 
 None.
 
-## Sprint 3.8: Terminal Playout and Search-Iteration Benchmarks ✅
-
-**Status**: Done
-**Implementation**: `src/MCTS/CLI/Bench.hs`, `src/MCTS/Search/UCT.hs`,
-`src/MCTS/FFI/Common.hs`, `src/MCTS/App.hs`, `src/MCTS/CLI/Command.hs`,
-`src/MCTS/CLI/Parser.hs`, `src/MCTS/CLI/Spec.hs`,
-`cpp-legacy/c-abi/mcts_cpp_legacy.{h,cc}`,
-`cpp-imperative/engine/search.{hpp,cpp}`,
-`cpp-imperative/c-abi/mcts_cpp_imperative.{h,cc}`,
-`cpp-functional/engine/search.{hpp,cpp}`,
-`cpp-functional/c-abi/mcts_cpp_functional.{h,cc}`, `rust/src/search.rs`,
-`rust/src/c_abi.rs`
-**Docs to update**: `../documents/engineering/benchmark_metrics.md`,
-`../documents/engineering/cli_command_surface.md`,
-`DEVELOPMENT_PLAN/system-components.md`
-
-### Objective
-
-Provide benchmark primitives whose counted units match the metric taxonomy:
-terminal playout throughput (`playouts/s`) and search-iteration throughput
-(`search-iters/s`).
-
-### Deliverables
-
-- `mcts bench terminal-playouts` runs direct random playouts from explicit board
-  positions without allocating or updating an MCTS tree.
-- `mcts bench search-iters` times UCT iterations directly at fixed board
-  positions and reports observed `search-iters/s`.
-- Renderer output that avoids derived or ambiguous `sims/s` values.
-- Foreign-backend dynamic ABI entry points measure the same units as the Haskell
-  path, including backend (i) where Q6 compares against `MCTS_legacy`.
-
-### Validation
-
-- `docker compose run --rm --build mcts mcts test mcts-unit`
-- `docker compose run --rm mcts mcts bench terminal-playouts --backend haskell --rng native --seed 42`
-- `docker compose run --rm mcts mcts bench search-iters --backend haskell --rng native --seed 42`
-- `docker compose run --rm mcts mcts bench terminal-playouts --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell --rng native --count 16 --seed 42`
-- `docker compose run --rm mcts mcts bench search-iters --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell --rng native --count 16 --seed 42`
-
-### Remaining Work
-
-None.
-
-### Closure Notes
-
-Closed on 2026-05-24 after the primitive CLI leaves, Haskell runner, dynamic
-foreign benchmark ABI, C++ and Rust backend hooks, parser/registry entries, and
-unit coverage landed. Sprint `7.8` later wired these primitive rows into the
-report card.
-
 ## Sprint 3.6: Backend (v) Engine Envelope and Foreign-Engine Recompute ✅
 
 **Status**: Done
@@ -608,6 +557,57 @@ None.
 
 Closed on 2026-05-24 after the rollout move picker and determinism docs matched the
 documented signed-modulo rule.
+
+## Sprint 3.8: Terminal Playout and Search-Iteration Benchmarks ✅
+
+**Status**: Done
+**Implementation**: `src/MCTS/CLI/Bench.hs`, `src/MCTS/Search/UCT.hs`,
+`src/MCTS/FFI/Common.hs`, `src/MCTS/App.hs`, `src/MCTS/CLI/Command.hs`,
+`src/MCTS/CLI/Parser.hs`, `src/MCTS/CLI/Spec.hs`,
+`cpp-legacy/c-abi/mcts_cpp_legacy.{h,cc}`,
+`cpp-imperative/engine/search.{hpp,cpp}`,
+`cpp-imperative/c-abi/mcts_cpp_imperative.{h,cc}`,
+`cpp-functional/engine/search.{hpp,cpp}`,
+`cpp-functional/c-abi/mcts_cpp_functional.{h,cc}`, `rust/src/search.rs`,
+`rust/src/c_abi.rs`
+**Docs to update**: `../documents/engineering/benchmark_metrics.md`,
+`../documents/engineering/cli_command_surface.md`,
+`DEVELOPMENT_PLAN/system-components.md`
+
+### Objective
+
+Provide benchmark primitives whose counted units match the metric taxonomy:
+terminal playout throughput (`playouts/s`) and search-iteration throughput
+(`search-iters/s`).
+
+### Deliverables
+
+- `mcts bench terminal-playouts` runs direct random playouts from explicit board
+  positions without allocating or updating an MCTS tree.
+- `mcts bench search-iters` times UCT iterations directly at fixed board
+  positions and reports observed `search-iters/s`.
+- Renderer output that avoids derived or ambiguous `sims/s` values.
+- Foreign-backend dynamic ABI entry points measure the same units as the Haskell
+  path, including backend (i) where the legacy-envelope gate exercises all five slots.
+
+### Validation
+
+- `docker compose run --rm --build mcts mcts test mcts-unit`
+- `docker compose run --rm mcts mcts bench terminal-playouts --backend haskell --rng native --seed 42`
+- `docker compose run --rm mcts mcts bench search-iters --backend haskell --rng native --seed 42`
+- `docker compose run --rm mcts mcts bench terminal-playouts --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell --rng native --count 16 --seed 42`
+- `docker compose run --rm mcts mcts bench search-iters --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell --rng native --count 16 --seed 42`
+
+### Remaining Work
+
+None.
+
+### Closure Notes
+
+Closed on 2026-05-24 after the primitive CLI leaves, Haskell runner, dynamic
+foreign benchmark ABI, C++ and Rust backend hooks, parser/registry entries, and
+unit coverage landed. Sprint `7.8` later wired these primitive rows into the
+report card.
 
 ## Documentation Requirements
 

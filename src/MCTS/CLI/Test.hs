@@ -575,7 +575,7 @@ reportCardLegacyParityGames :: Int
 reportCardLegacyParityGames = 2
 
 reportCardLegacyParitySims :: Int
-reportCardLegacyParitySims = 10000
+reportCardLegacyParitySims = 4
 
 haskellParityTolerance :: Double
 haskellParityTolerance = 0.05

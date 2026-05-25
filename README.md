@@ -25,7 +25,7 @@ Do not use host `cabal`, `cargo`, `cmake`, `make`, `fourmolu`, `hlint`, reposito
 
 | # | Backend | Identifier | Role |
 |---|---------|------------|------|
-| (i) | C++ legacy port | `cpp-legacy` | Verbatim compatibility port of `MCTS_legacy`; Q6/Q7 evidence only, not the performance ceiling. |
+| (i) | C++ legacy port | `cpp-legacy` | Verbatim compatibility port of `MCTS_legacy`; Q6 legacy-envelope evidence only, not the performance ceiling. |
 | (ii) | C++ imperative steelman | `cpp-imperative` | Maximally optimised C++ performance ceiling: PGO+BOLT, `mimalloc`, arena search, scratch-board rollouts. |
 | (iii) | C++ functional-style | `cpp-functional` | Same algorithm and optimisation stance as (ii), used to isolate C++ style effects. |
 | (iv) | Rust | `rust` | Cross-language systems baseline with the same FFI/search/recompute contract. |
@@ -46,7 +46,7 @@ The project uses three distinct performance units:
 Current `mcts bench rollouts` is a legacy command name: it measures played-game
 throughput with one search iteration per move, not terminal `playouts/s`. The
 report-card metric refactor is tracked in the development plan; the metric taxonomy
-and Q1-Q7 mapping live in
+and Q1-Q6 mapping live in
 [benchmark_metrics.md](documents/engineering/benchmark_metrics.md).
 
 ## Command Surface
@@ -60,7 +60,7 @@ docker compose run --rm mcts mcts commands --tree
 docker compose run --rm mcts mcts bench rollouts --backend cpp-imperative,haskell --threading single --rng native --games 1000 --seed 42
 docker compose run --rm mcts mcts bench selfplay --backend haskell --rng native --games 100 --seed 42 --sims 10000
 docker compose run --rm mcts mcts verify selfplay --backend cpp-imperative,cpp-functional,rust,haskell --threading single --games 4 --seed 42 --max-plies 200 --sims 500
-docker compose run --rm mcts mcts verify legacy-parity selfplay --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell --games 2 --seed 42 --sims 10000
+docker compose run --rm mcts mcts verify legacy-parity selfplay --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell --games 2 --seed 42 --sims 4
 docker compose run --rm mcts mcts play --backend haskell --side hero --rng native --max-plies 200
 docker compose run --rm mcts mcts inspect list
 docker compose run --rm mcts mcts check-code

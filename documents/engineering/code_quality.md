@@ -108,7 +108,7 @@ conventions in
 `trackingGeneratedPaths` tracks generated documentation and other explicitly
 rendered source-of-truth outputs; it must not make checked-in transcripts,
 report-card snapshots, generated JSON schemas, throughput anchors, or
-legacy evidence directories into normal validation inputs. Those artifacts are
+legacy audit directories into normal validation inputs. Those artifacts are
 created in temporary roots during tests or in external/ignored roots for
 explicit audits per
 [unit_testing_policy.md → Repository Data Doctrine](./unit_testing_policy.md#repository-data-doctrine).

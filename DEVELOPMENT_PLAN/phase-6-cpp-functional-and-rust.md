@@ -131,7 +131,7 @@ style used by the C++ backends.
 
 ### Remaining Work
 
-None for the Rust source/ABI baseline.
+None.
 
 ## Sprint 6.4: Rust PGO/BOLT Build Harness ✅
 

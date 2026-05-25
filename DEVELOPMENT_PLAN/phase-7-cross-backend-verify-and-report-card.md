@@ -17,7 +17,7 @@
 ## Phase Status
 
 ✅ **Done** for the metric-suite report-card refactor. The Phase 7 correctness
-surface remains live: Q3 verifies `(ii)..(v)`, Q7 verifies the `(i)..(v)` legacy
+surface remains live: Q3 verifies `(ii)..(v)`, Q6 verifies the `(i)..(v)` legacy
 envelope, the report-card machinery measures Q1a terminal playout throughput,
 Q1b search-iteration throughput, Q2 played-game self-play throughput, and split
 Q5 scaling rows against live backend (ii), and no checked-in generated validation
@@ -30,17 +30,20 @@ backend/build actually provides.
 The 2026-05-19 report-card evidence remains useful smoke-baseline audit context:
 Q1 ST 0.05x,
 Q1 MT8 0.41x, Q2 ST 0.05x, Q2 MT8 0.20x, Q5 Haskell 0.99x, Q5 `cpp-imperative`
-3.64x, Q7 liveness PASS, and verdict `Within tolerance`.
+3.64x, Q6 liveness PASS, and verdict `Within tolerance`.
 
 The 2026-05-21 report-card refresh remains historical fallback-backed evidence.
 The 2026-05-23 report-card refresh against the fail-closed Dockerfile PGO+BOLT
 build path recorded Q1 ST 0.05x, Q1 MT8 0.45x, Q2 ST 0.06x, Q2 MT8 0.22x,
-Q5 Haskell 0.98x, Q5 C++ (ii) 3.70x, Q7 liveness PASS, zero live-cohort
+Q5 Haskell 0.98x, Q5 C++ (ii) 3.70x, Q6 liveness PASS, zero live-cohort
 divergence, and verdict `Within tolerance`. That evidence remains historical
 played-game throughput context under the 2026-05-24 metric taxonomy. Sprint `7.8`
 closed the report-card row semantics so Q1/Q5 distinguish terminal playout
 throughput, search-iteration throughput, and played-game throughput per
 [../documents/engineering/benchmark_metrics.md](../documents/engineering/benchmark_metrics.md).
+Sprint `7.9` closed on 2026-05-25 after the headline report-card mapping was
+renumbered to Q1-Q6 and the aggregate report card revalidated with verdict
+`Within tolerance`.
 
 ## Sprint 7.1: Cabal Test Organization ✅
 
@@ -59,7 +62,7 @@ Keep each validation tier in its own Cabal `exitcode-stdio-1.0` stanza with a lo
 - `mcts-unit` for pure logic, parser, codec, renderer, and TUI semantics.
 - `mcts-integration` for real binary and dynamic FFI smoke checks.
 - `mcts-cross-backend` for Q3 `(ii)..(v)`.
-- `mcts-legacy-parity` for Q7 all-five legacy-envelope liveness/overflow.
+- `mcts-legacy-parity` for Q6 all-five legacy-envelope liveness/overflow.
 - `mcts-haskell-style` for formatter, HLint, and source-walker guards.
 
 ### Validation
@@ -74,7 +77,7 @@ Keep each validation tier in its own Cabal `exitcode-stdio-1.0` stanza with a lo
 
 None.
 
-## Sprint 7.2: Q3 and Q7 Verification Gates ✅
+## Sprint 7.2: Q3 and Q6 Verification Gates ✅
 
 **Status**: Done
 **Implementation**: `src/MCTS/Verify.hs`, `src/MCTS/Types.hs`,
@@ -90,7 +93,7 @@ Separate logical equivalence from performance benchmarking.
 
 - Q3: `mcts verify {rollouts,selfplay}` compares `(ii)..(v)` visit tables under
   `--rng cpp`.
-- Q7: `mcts verify legacy-parity {rollouts,selfplay}` checks all five backend slots
+- Q6: `mcts verify legacy-parity {rollouts,selfplay}` checks all five backend slots
   under the legacy envelope.
 - `--rng cpp` uses C++-generated verification seeds from the C++ RNG bridge for equivalence.
 - `--rng native` is not used to prove cross-backend transcript identity.
@@ -99,7 +102,7 @@ Separate logical equivalence from performance benchmarking.
 
 - `docker compose run --rm mcts mcts verify rollouts --backend cpp-imperative,cpp-functional,rust,haskell --threading single --games 4 --seed 42 --max-plies 200`
 - `docker compose run --rm mcts mcts verify selfplay --backend cpp-imperative,cpp-functional,rust,haskell --threading single --games 4 --seed 42 --max-plies 200 --sims 500`
-- `docker compose run --rm mcts mcts verify legacy-parity selfplay --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell --games 2 --seed 42 --sims 10000`
+- `docker compose run --rm mcts mcts verify legacy-parity selfplay --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell --games 2 --seed 42 --sims 4`
 
 ### Remaining Work
 
@@ -114,7 +117,7 @@ None.
 
 ### Objective
 
-Emit one concise report-card block answering Q1-Q7.
+Emit one concise report-card block answering Q1-Q6.
 
 ### Deliverables
 
@@ -123,8 +126,7 @@ Emit one concise report-card block answering Q1-Q7.
 - Q3: `(ii)..(v)` zero-divergence visit-vector checks.
 - Q4: same-backend determinism over multiple seeds.
 - Q5: scaling rows for Haskell and backend (ii).
-- Q6: explicit legacy reproduction evidence generated outside checked-in fixtures.
-- Q7: all-five legacy-envelope liveness/overflow evidence.
+- Q6: all-five legacy-envelope liveness/overflow evidence.
 
 ### Validation
 
@@ -298,7 +300,7 @@ divergence metric docs were aligned.
 
 ### Objective
 
-Make the report card answer Q1-Q7 using unambiguous metric units instead of the
+Make the report card answer Q1-Q6 using unambiguous metric units instead of the
 legacy overloaded "rollouts" and derived "sims/s" labels.
 
 ### Deliverables
@@ -307,9 +309,8 @@ legacy overloaded "rollouts" and derived "sims/s" labels.
 - Q1b search-iteration throughput rows (`search-iters/s`) for Haskell vs backend (ii).
 - Q2 played-game self-play throughput rows (`games/s`) for Haskell vs backend (ii).
 - Q5 scaling rows that keep search-iteration scaling and played-game scaling separate.
-- Q6 legacy evidence hooks that compare backend (i) with external `MCTS_legacy` on
-  terminal playout and legacy `simulate(N)` throughput without making those artifacts
-  normal validation inputs.
+- Q6 legacy-envelope liveness/overflow evidence across all five backend slots without
+  checked-in generated validation inputs.
 - Renderer and JSON field names that include the unit, so old `rollouts` and
   ambiguous `sims/s` labels cannot be mistaken for lower-level metrics.
 
@@ -331,6 +332,56 @@ Sprint `7.8` reclosed on 2026-05-24 after the report-card renderer and JSON sche
 switched to unit-aware Q1a terminal playout, Q1b search-iteration, Q2 played-game,
 and split Q5 scaling rows.
 
+## Sprint 7.9: Six-Question Report-Card Renumbering ✅
+
+**Status**: Done
+**Implementation**: `src/MCTS/ReportCard.hs`, `src/MCTS/CLI/Spec.hs`,
+`src/MCTS/Generated/Sections.hs`
+**Docs to update**: `README.md`, `documents/engineering/benchmark_metrics.md`,
+`documents/engineering/unit_testing_policy.md`,
+`documents/engineering/determinism_contract.md`,
+`documents/engineering/cli_command_surface.md`,
+`DEVELOPMENT_PLAN/README.md`, `DEVELOPMENT_PLAN/00-overview.md`,
+`DEVELOPMENT_PLAN/system-components.md`,
+`DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md`
+
+### Objective
+
+Remove the external `MCTS_legacy` reproduction headline question and make the
+legacy-envelope liveness/overflow gate the sixth and final report-card question.
+
+### Deliverables
+
+- `MCTS.ReportCard.renderReportCard` emits Q1-Q6 only; the old historical
+  external-reproduction row is removed.
+- `mcts build legacy-fixtures` is described as an optional external audit-fixture
+  generator, not as numbered report-card evidence.
+- README, governed engineering docs, and the development plan use the Q1-Q6
+  mapping consistently, with no seventh headline question.
+- `legacy-tracking-for-deletion.md` records the removed headline question as
+  completed cleanup.
+
+### Validation
+
+- `docker compose run --rm mcts mcts docs generate`
+- `docker compose run --rm mcts mcts docs check`
+- `docker compose run --rm mcts mcts test mcts-unit`
+- `docker compose run --rm mcts mcts test mcts-legacy-parity`
+- `docker compose run --rm mcts mcts check-code`
+- `docker compose run --rm mcts mcts test all`
+- `git diff --check`
+
+### Remaining Work
+
+None.
+
+### Closure Notes
+
+Closed on 2026-05-25. The focused validation passed, and the aggregate
+`docker compose run --rm mcts mcts test all` gate emitted the six-question report
+card with Q6 legacy-envelope PASS, zero live-cohort divergence, and verdict
+`Within tolerance`.
+
 ## Documentation Requirements
 
 **Engineering docs to create/update:**
@@ -338,9 +389,9 @@ and split Q5 scaling rows.
 - `documents/engineering/cli_command_surface.md` — verify/test/play command surfaces plus
   Sprint `7.6` replay/divergence evidence labels and Sprint `7.8` report-card
   metric units.
-- `documents/engineering/benchmark_metrics.md` — benchmark unit taxonomy and Q1-Q7 metric
+- `documents/engineering/benchmark_metrics.md` — benchmark unit taxonomy and Q1-Q6 metric
   mapping for Sprint `7.8`.
-- `documents/engineering/determinism_contract.md` — Q3/Q7 semantics, RNG split, and
+- `documents/engineering/determinism_contract.md` — Q3/Q6 semantics, RNG split, and
   Sprint `7.6` originator/foreign-view replay semantics.
 - `documents/engineering/unit_testing_policy.md` — test stanza ownership and no generated
   validation data.

@@ -456,7 +456,7 @@ legacyFixtureParser =
         <$> OA.strOption
             ( OA.long "output-dir"
                 <> OA.metavar "DIR"
-                <> OA.help "Required legacy evidence output root; use an external or ignored artifact directory"
+                <> OA.help "Required legacy audit output root; use an external or ignored artifact directory"
             )
         <*> OA.option
             OA.auto

@@ -134,8 +134,7 @@ renderReportCard card =
             <> renderScaling (reportQ5HaskellSelfplayGamesScaling card)
         , "Q5  MT scaling  C++ (ii) self-play 1->8        "
             <> renderScaling (reportQ5CppImperativeSelfplayGamesScaling card)
-        , "Q6  Legacy port (i) vs MCTS_legacy             HIST    (external terminal playout + simulate(N) evidence)"
-        , "Q7  Legacy envelope across all backends         PASS    (all five backend slots live)"
+        , "Q6  Legacy envelope across all backends         PASS    (all five backend slots live)"
         , ""
         , "Divergence matrix (visit/move, cpp RNG; thresholds native 0.050/0.005, cross-build 0.010/0.001)"
         ]

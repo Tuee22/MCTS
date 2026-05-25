@@ -76,7 +76,7 @@ From the host, run any listed logical command as
 | `mcts build cpp-imperative [--dry-run] [--plan-file <path>]` | Plan/Apply: Dockerfile C++ imperative backend mandatory PGO/BOLT build recipe |
 | `mcts build cpp-functional [--dry-run] [--plan-file <path>]` | Plan/Apply: Dockerfile C++ functional-style backend mandatory PGO/BOLT build recipe |
 | `mcts build rust [--dry-run] [--plan-file <path>]` | Plan/Apply: Dockerfile Rust backend mandatory PGO/BOLT build recipe |
-| `mcts build legacy-fixtures --output-dir <dir> [--seed <u64>] [--games <n>] [--sims <n>] [--dry-run] [--plan-file <path>]` | Plan/Apply: generate external legacy Q6 evidence |
+| `mcts build legacy-fixtures --output-dir <dir> [--seed <u64>] [--games <n>] [--sims <n>] [--dry-run] [--plan-file <path>]` | Plan/Apply: generate external legacy audit fixtures |
 <!-- mcts:command-matrix:end -->
 
 ### Benchmark Naming Caveat
@@ -116,8 +116,8 @@ the steelman visit vectors. The report-card renderer emits explicit Q1a terminal
 separate Q5 scaling fields in table and JSON form. The live `mcts test all` path
 requires the live C++ and Rust artefacts and populates divergence rows from the
 measured live `G_V` verify cohort over backends (ii)..(v).
-`mcts build legacy-fixtures` remains the supported Q6 evidence-generation path
-for explicit audit runs; it builds `cpp-legacy/build/legacy-to-wire` and passes
+`mcts build legacy-fixtures` remains an explicit external audit-fixture path; it
+builds `cpp-legacy/build/legacy-to-wire` and passes
 output root, seed, game count, and simulation count as explicit flags. Its output
 must be directed to an external or ignored artifact root and is not a normal
 `mcts test all` input. All five backend identifiers remain first-class CLI values.
@@ -155,7 +155,7 @@ set of common invocations.
 | `--seed N` | `bench`, `verify`, `play`, `build legacy-fixtures` | required for `bench`/`verify`; `Nothing` ⇒ fresh random (play); `42` for legacy fixtures | Master seed; played-game per-game seeds derive via `splitmix64(master_seed, game_index)`, while primitive benchmark workers derive deterministic per-unit/chunk seeds from the same master seed and backend RNG salt. |
 | `--max-plies N` | `bench`, `verify`, `play` | `200` for played-game bench/verify/play; `60` for primitive benchmark leaves | Part of the determinism contract for the live verifier cohort; on primitive leaves it caps playout/search depth. |
 | `--sims N` or `--sims N0:N1` | played-game `bench`, `verify`, `play`, `build legacy-fixtures` | `10_000` for played-game `bench`/`verify`; `1_000` for `play`; `10_000` for legacy fixtures | `N` parses as `FixedSims N`; `N0:N1` parses as `RampedSims N0 N1` for run commands. `build legacy-fixtures` accepts fixed `N` only. Ignored by the current legacy-named `bench rollouts` / `verify rollouts` workload, which forces one search iteration per real move. Primitive benchmark leaves use `--count` and do not accept `--sims`. |
-| `--output-dir <path>` | `build legacy-fixtures` | required explicit path | Legacy evidence output root; choose an external or ignored artifact directory. Files land below the host-architecture subdirectory and are not repository validation inputs. |
+| `--output-dir <path>` | `build legacy-fixtures` | required explicit path | Legacy audit output root; choose an external or ignored artifact directory. Files land below the host-architecture subdirectory and are not repository validation inputs. |
 | `--top N` | `inspect show`, `inspect replay` | `10`; `0` ⇒ all legal moves | Live-adjustable via `+`/`-` in `inspect replay`. |
 | `--with-equity` | `inspect show` | `False` | Reads the originator's cached `.eq` if envelope-matched (instant); on originator cache miss, writes a replacement only through the same backend/build recompute path. Stale, unavailable, fallback, or foreign recompute evidence is labelled and is not written as originator evidence. |
 | `--envelope` | `inspect show` | `False` | Dump the transcript's engine-envelope block as plain text (one field per line) before the per-move output. Useful for scripting (`diff`-friendly) and forensics. |
@@ -174,7 +174,7 @@ CLI flag values and the human-readable Roman numerals used in prose:
 
 | Identifier (CLI flag) | Roman | Path | Role |
 |------------------------|-------|------|------|
-| `cpp-legacy` | (i) | `cpp-legacy/` | Verbatim `MCTS_legacy` reproduction and Q7 legacy-envelope evidence |
+| `cpp-legacy` | (i) | `cpp-legacy/` | Verbatim `MCTS_legacy` compatibility and Q6 legacy-envelope evidence |
 | `cpp-imperative` | (ii) | `cpp-imperative/` | Imperative C++23 performance ceiling target; supported PGO/BOLT CLI build path |
 | `cpp-functional` | (iii) | `cpp-functional/` | Functional-style C++23 steelman target; supported shared C++ PGO/BOLT CLI build path |
 | `rust` | (iv) | `rust/` | Rust `cdylib`; cross-language second opinion |

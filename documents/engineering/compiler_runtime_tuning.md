@@ -577,7 +577,7 @@ bolted shared libraries.
 | Q5 cpp-imperative self-play scaling | 3.72x | 0.0 -> 0.1 games/s |
 
 The refreshed Sprint 8.11 verdict is **`Within tolerance`** for the bounded
-metric-suite fail-closed pipeline in the worktree. Q3 and Q7 passed, and the live
+metric-suite fail-closed pipeline in the worktree. Q3 and Q6 passed, and the live
 divergence matrix was all zeroes.
 
 ## Parity Tolerance

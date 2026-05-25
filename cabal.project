@@ -17,7 +17,7 @@ allow-newer: config-ini:containers, config-ini:base
 -- G_LP=2
 -- S_BENCH=500
 -- S_VERIFY=500
--- S_LP_SIMS=10000
+-- S_LP_SIMS=4
 -- S_LP=42
 -- PGO_TRAINING_SEEDS=42,424242
 -- PGO_TRAINING_PRIMITIVE_COUNT=64

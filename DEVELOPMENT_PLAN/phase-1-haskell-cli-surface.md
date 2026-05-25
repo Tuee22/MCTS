@@ -237,7 +237,7 @@ keeping leaf option parsing explicit in `Parser.hs`.
   data BuildCommand
     = BuildRust PlanOptions          -- cdylib; rustc PGO + BOLT + mimalloc; Phase 6 Sprint 6.4
     | BuildLegacyFixtures LegacyFixtureOptions
-                                      -- external Q6 evidence generator
+                                      -- external legacy audit fixture generator
     deriving stock (Show, Eq)
 
   data CommandsOptions = CommandsOptions
@@ -255,7 +255,7 @@ keeping leaf option parsing explicit in `Parser.hs`.
   data Backend    = CppLegacy | CppImperative | CppFunctional | Rust | Haskell
                     deriving stock (Show, Eq)
   -- All five constructors remain first-class. Q3 VerifyBackend covers
-  -- cpp-imperative, cpp-functional, rust, and haskell; Q7 verifies all five
+  -- cpp-imperative, cpp-functional, rust, and haskell; Q6 verifies all five
   -- through `mcts verify legacy-parity`.
 
   data VerifyBackend where
@@ -376,7 +376,7 @@ keeping leaf option parsing explicit in `Parser.hs`.
   `build rust --dry-run` (Plan/Apply prints the typed Subprocess
   sequence and exits 0);
   `build legacy-fixtures --output-dir /tmp/mcts-legacy-fixtures --dry-run`
-  (Plan/Apply prints the optional external Q6 evidence generator).
+  (Plan/Apply prints the optional external legacy audit fixture generator).
 
 ### Validation
 
@@ -415,7 +415,7 @@ keeping leaf option parsing explicit in `Parser.hs`.
   structure with semantic assertions.
 - Current implementation note: the concrete `VerifyCommand` constructors carry
   typed `[VerifyBackend]` lists for Q3, and `mcts verify legacy-parity` validates
-  the complete all-five backend list for Q7. The current parser rejects
+  the complete all-five backend list for Q6. The current parser rejects
   `cpp-legacy` only at the default Q3 `verify` boundary; it remains valid for
   bench, build, play, inspect, and legacy-parity surfaces. The Phase 1
   registry/parser surface remains closed.
@@ -1062,7 +1062,7 @@ enforce the metadata checks the governed documentation topology requires.
 
 ### Remaining Work
 
-- None.
+None.
 
 ### Closure Notes
 

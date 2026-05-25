@@ -39,12 +39,12 @@ recompute, read-visits, and envelope symbols through `src/MCTS/FFI/Cpp*.hs`,
 The bounded chosen-action smoke helpers are permanent clean-clone test
 scaffolding for Cabal builds without local shared libraries, not deprecated
 operator surface. The operator-facing bench/play/divergence paths and
-Q3/Q7/report-card surfaces use the real visit-vector and recompute ABIs for
+Q3/Q6/report-card surfaces use the real visit-vector and recompute ABIs for
 available foreign backends. The direct live-FFI integration smoke cases currently
 exercise the Rust search/recompute/envelope path; C++ live coverage is carried by
-Q3 `verify`, Q7 legacy parity, and report-card measurement against the
+Q3 `verify`, Q6 legacy parity, and report-card measurement against the
 Dockerfile-built C++ artefacts. Q3 `verify` uses live visit-vector ABI for visit-count
-equality across `(ii)..(v)`, and Q7 uses live backend slots `(i)..(v)` under the
+equality across `(ii)..(v)`, and Q6 uses live backend slots `(i)..(v)` under the
 legacy envelope. Q3 uses the live cdylib when the matching
 library is present and the requested batch can use the fixed 60-ply foreign
 search horizon; otherwise it falls back to the in-process runner so Cabal
@@ -146,7 +146,7 @@ caps until a future ABI revision adds an explicit per-run search-cap parameter.
 
 ### Optional Visit Read Surface
 
-For `inspect replay`, `inspect divergence`, integration smoke, and optional Q6
+For `inspect replay`, `inspect divergence`, integration smoke, and optional legacy
 audit comparisons, live foreign backends may provide a read-only visit cache
 accessor on the board handle:
 
@@ -216,7 +216,7 @@ process-static struct into `EngineEnvelope`, and the per-backend modules expose
 and `loadRustEnvelope`. The integration stanza validates the live Rust envelope
 path when the Rust shared artefact is present, including transcript stamping and
 backend-slot stale hard-fail/`--allow-stale` warning behavior; C++ live envelope
-loading is exercised through the Q3/Q7/report-card operator surfaces. The C++
+loading is exercised through the Q3/Q6/report-card operator surfaces. The C++
 backends patch
 `engine_build_id` after link through their Makefile `envelope-build-id` targets;
 Rust stamps `compiler_version` from

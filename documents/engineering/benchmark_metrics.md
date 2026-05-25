@@ -5,7 +5,7 @@
 **Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/00-overview.md, ../../DEVELOPMENT_PLAN/system-components.md, ../../DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, ../../DEVELOPMENT_PLAN/phase-3-haskell-engine.md, ../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md, ../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, ../../DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md, ../documentation_standards.md, ./README.md, ./cli_command_surface.md, ./compiler_runtime_tuning.md, ./determinism_contract.md, ./unit_testing_policy.md
 **Generated sections**: none
 
-> **Purpose**: Define the benchmark units used by Q1-Q7 so terminal random
+> **Purpose**: Define the benchmark units used by Q1-Q6 so terminal random
 > playouts, MCTS search iterations, and complete played games are not conflated.
 
 This document is the single source of truth for benchmark metric semantics. It does
@@ -63,7 +63,7 @@ families:
 The semantic requirement is that report-card rows name the counted unit and never
 compare different units as if they were interchangeable.
 
-## Q1-Q7 Mapping
+## Q1-Q6 Mapping
 
 | Question | Metric evidence required |
 |----------|--------------------------|
@@ -72,8 +72,7 @@ compare different units as if they were interchangeable.
 | Q3 | Cross-backend determinism for `(ii)..(v)` under `--rng cpp`; compares canonical visit payloads and chosen moves, not performance rates. |
 | Q4 | Same-backend determinism for each backend across repeated runs with the same logical inputs. |
 | Q5 | Scaling evidence. Report search-iteration scaling and played-game scaling separately; terminal-playout scaling may be included as Q1a diagnostic evidence. Do not infer search-core scaling from `games/s` alone. |
-| Q6 | Backend (i) legacy reproduction. Compare `cpp-legacy` against external `MCTS_legacy` on terminal playout throughput and legacy MCTS `simulate(N)` throughput, then retain the existing legacy semantic/evidence checks. |
-| Q7 | Legacy-envelope liveness/overflow across all five backend slots. This is not a throughput claim and not a visit-vector equality claim for backend (i). |
+| Q6 | Legacy-envelope liveness/overflow across all five backend slots. This is not a throughput claim and not a visit-vector equality claim for backend (i). |
 
 The historical Q1/Q2/Q5 rows emitted before this taxonomy are legacy
 **played-game** evidence. They are useful for audit and integration diagnostics,
@@ -91,12 +90,14 @@ level units before any Python/API benchmarks existed:
   as seconds per simulation and simulations per second.
 
 That harness did not report complete games per second for the pure-rollout
-measurement. Therefore Q6 legacy-performance evidence must preserve the lower-level
-units rather than substituting current played-game throughput.
+measurement. These terms explain why the current benchmark taxonomy preserves
+lower-level `playouts/s` and `search-iters/s` units. External `MCTS_legacy`
+reproduction is no longer a headline report-card question; the remaining
+legacy-envelope question is Q6.
 
 ## Cross-References
 
-- [unit_testing_policy.md](./unit_testing_policy.md) — report-card gate and Q1-Q7 ownership.
+- [unit_testing_policy.md](./unit_testing_policy.md) — report-card gate and Q1-Q6 ownership.
 - [compiler_runtime_tuning.md](./compiler_runtime_tuning.md) — backend tuning and parity tolerance.
-- [determinism_contract.md](./determinism_contract.md) — Q3/Q4/Q7 correctness envelopes.
+- [determinism_contract.md](./determinism_contract.md) — Q3/Q4/Q6 correctness envelopes.
 - [../../DEVELOPMENT_PLAN/README.md](../../DEVELOPMENT_PLAN/README.md) — phase status and reopened metric-suite work.

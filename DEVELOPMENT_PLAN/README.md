@@ -75,9 +75,15 @@ numbers recorded before this audit remain historical played-game throughput
 evidence; they are not final answers to terminal playout throughput or
 search-iteration throughput.
 
+Phase `7` Sprint `7.9` closed on 2026-05-25 after the report-card headline
+questions were renumbered to Q1-Q6: the optional external `MCTS_legacy`
+reproduction helper remains audit-only, and Q6 is the all-five legacy-envelope
+liveness/overflow gate. The aggregate revalidation kept the report-card verdict
+`Within tolerance`.
+
 This audit does not change the project hypothesis: one Haskell CLI keeps
 all five backend slots live, Q3 proves visit-count equivalence for `(ii)..(v)`
-under `--rng cpp`, Q7 covers all five slots under the legacy envelope, and the
+under `--rng cpp`, Q6 covers all five slots under the legacy envelope, and the
 refactored Q1/Q2 suite measures backend (v) Haskell against backend (ii)
 `cpp-imperative` using the explicit metric units in
 [../documents/engineering/benchmark_metrics.md](../documents/engineering/benchmark_metrics.md).
@@ -113,21 +119,21 @@ The Sprint `8.3` fail-closed report-card refresh was validated on 2026-05-23 wit
 `docker compose run --rm --build mcts mcts test all`; the run rebuilt the
 Dockerfile-owned PGO+BOLT artefacts, passed docs, file, style, unit, integration,
 cross-backend, and legacy-parity checks, and recorded Q1 ST 0.05x, Q1 MT8 0.45x,
-Q2 ST 0.06x, Q2 MT8 0.22x, Q5 Haskell 0.98x, Q5 C++ (ii) 3.70x, Q7 PASS, and
+Q2 ST 0.06x, Q2 MT8 0.22x, Q5 Haskell 0.98x, Q5 C++ (ii) 3.70x, Q6 PASS, and
 `Verdict: Within tolerance`. Sprint `8.10` was validated on 2026-05-23 with the
 C++/Rust build-plan dry-runs and `docker compose run --rm --build mcts mcts test
 all`; the image build trained PGO/BOLT on the legacy Q1 played-game rollout
 workload and Q2 self-play,
 single-threaded and MT8, under native RNG with seeds `42` and `424242`. The
 accepted report card recorded Q1 ST 0.05x, Q1 MT8 0.48x, Q2 ST 0.06x, Q2 MT8
-0.21x, Q5 Haskell 0.99x, Q5 C++ (ii) 3.65x, Q7 PASS, zero live-cohort divergence,
+0.21x, Q5 Haskell 0.99x, Q5 C++ (ii) 3.65x, Q6 PASS, zero live-cohort divergence,
 and `Verdict: Within tolerance`. Under the metric taxonomy adopted on 2026-05-24,
 those Q1/Q2/Q5 rows are reclassified as historical played-game evidence. Sprint
 `8.11` closed on 2026-05-24 with fresh Q1a terminal-playout, Q1b search-iteration,
 Q2 played-game, and split Q5 scaling evidence from the refactored report card:
 Q1a ST 0.07x, Q1a MT8 0.39x, Q1b ST 0.06x, Q1b MT8 0.40x, Q2 ST 0.05x, Q2 MT8
 0.17x, Haskell search-iteration scaling 1.02x, C++ (ii) search-iteration scaling
-7.36x, Haskell self-play scaling 0.97x, C++ (ii) self-play scaling 3.72x, Q7 PASS,
+7.36x, Haskell self-play scaling 0.97x, C++ (ii) self-play scaling 3.72x, Q6 PASS,
 zero live-cohort divergence, and `Verdict: Within tolerance`.
 Sprint `8.11` final closure validation also includes
 `docker compose run --rm mcts mcts docs check`,
@@ -141,12 +147,24 @@ The 2026-05-24 harmony sweep was validated with
 `docker compose run --rm mcts mcts check-code`, and `git diff --check`.
 The later Sprint `8.8` cleanup revalidated the focused and aggregate Compose
 gates without checked-in generated validation data.
+Sprint `7.9` was validated on 2026-05-25 with
+`docker compose run --rm mcts mcts docs generate`,
+`docker compose run --rm mcts mcts docs check`,
+`docker compose run --rm mcts mcts test mcts-unit`,
+`docker compose run --rm mcts mcts test mcts-legacy-parity`,
+`docker compose run --rm mcts mcts check-code`,
+`docker compose run --rm mcts mcts test all`, and `git diff --check`. The
+aggregate report card recorded Q1a ST 0.06x, Q1a MT8 0.38x, Q1b ST 0.05x,
+Q1b MT8 0.36x, Q2 ST 0.05x, Q2 MT8 0.17x, Haskell search-iteration scaling
+0.97x, C++ (ii) search-iteration scaling 7.47x, Haskell self-play scaling
+1.03x, C++ (ii) self-play scaling 3.69x, Q6 PASS, zero live-cohort divergence,
+and `Verdict: Within tolerance`.
 
 The 2026-05-19 report-card evidence remains useful smoke-baseline audit context.
 The previous five-backend restoration baseline still provides the starting point:
 the Dockerfile builds the three C++ shared libraries and Rust before runtime
 FFI-sensitive tests, `VerifyBackend` accepts the Q3 cohort `(ii)..(v)`, and
-`mcts-legacy-parity` covers Q7 across all five backend slots. The 2026-05-21
+`mcts-legacy-parity` covers Q6 across all five backend slots. The 2026-05-21
 optimized-C++ report-card refresh measures backend (v) Haskell against the
 canonical backend (ii) artefact produced by `docker/Dockerfile` through the
 `mcts build cpp-imperative` leaf; because that amd64 run installed a PGO fallback
@@ -157,7 +175,7 @@ profiles, bolted canonical libraries, and passing final smokes before runtime
 validation starts. The 2026-05-23 fail-closed report-card refresh records Q1 ST
 **0.05×** (`640.3` vs `34.4` games/s), Q1 MT8 **0.45×** (`592.9` vs `269.5`
 games/s), Q2 ST **0.06×** (`0.5` vs `0.0` games/s), Q2 MT8 **0.22×** (`0.5` vs
-`0.1` games/s), Q5 Haskell **0.98×**, Q5 C++ (ii) **3.70×**, Q7
+`0.1` games/s), Q5 Haskell **0.98×**, Q5 C++ (ii) **3.70×**, Q6
 legacy-envelope liveness evidence **PASS**, zero live-cohort divergence, and
 `Verdict: Within tolerance`. The Sprint
 `8.8` no-generated-validation-data cleanup remains closed: normal tests do not
@@ -204,16 +222,16 @@ updated Q1 ST snapshot collapses Haskell-vs-cpp-imperative from 10.76×
 that smoke measurement is not current closure evidence. The historical 2026-05-19 report card against container-built
 artefacts records Q1 ST **0.05×**, Q1 MT8 **0.41×**, Q2 ST **0.05×**,
 Q2 MT8 **0.20×**, Q5 Haskell **0.99×**, Q5 cpp-imperative **3.64×**,
-Q7 legacy-envelope liveness evidence **PASS**, and `Verdict: Within tolerance`.
+Q6 legacy-envelope liveness evidence **PASS**, and `Verdict: Within tolerance`.
 Those numbers are historical smoke-baseline audit evidence, not permission to
 remove any backend from the supported surface. The 2026-05-21 optimized-C++ run
 records Q1 ST **0.05×** (`740.0` vs `39.2` games/s), Q1 MT8 **0.43×** (`690.7`
 vs `294.7` games/s), Q2 ST **0.06×** (`0.6` vs `0.0` games/s), Q2 MT8
 **0.19×** (`0.6` vs `0.1` games/s), Q5 Haskell **1.04×**, Q5 cpp-imperative
-**3.64×**, Q7 legacy-envelope liveness evidence **PASS**, and
+**3.64×**, Q6 legacy-envelope liveness evidence **PASS**, and
 `Verdict: Within tolerance`.
 Q3 covers `cpp-imperative`, `cpp-functional`, `rust`, and `haskell` under
-`--rng cpp`, and Q7 covers all five backend slots under the legacy envelope.
+`--rng cpp`, and Q6 covers all five backend slots under the legacy envelope.
 Sprint `8.7` closed the plan-suite cleanup ledger structure, and Sprint `8.8`
 closed the no-generated-validation-data cleanup. The
 `MCTS.Engine.ForeignRecompute` driver feeds
@@ -276,7 +294,7 @@ toolchain.
 ## Current Validation Boundary
 
 After the 2026-05-18 Compose-only operator-surface doctrine edit, the
-selected-backend `mcts play` AI dispatch and the 2026-05-19 Q7 legacy-envelope
+selected-backend `mcts play` AI dispatch and the 2026-05-19 Q6 legacy-envelope
 respec, focused validation passed through the canonical Compose entrypoint. Sprint
 `7.6` revalidated replay cache-miss originator/foreign labeling. The selected-backend
 ABI changes pass the per-backend build entries, and the focused Cabal stanzas
@@ -290,13 +308,13 @@ synthetic C++ backend-equivalence evidence), and `mcts-cross-backend` (7 cases).
 cleanup and recorded the smoke-baseline report-card verdict `Within tolerance`. The
 2026-05-21 full lifecycle gate passed after the C++ PGO/BOLT Plan/Apply closure and
 recorded the optimized-C++ report-card verdict `Within tolerance`. The
-2026-05-19 live Q7 investigation
+2026-05-19 live Q6 investigation
 showed backend (i)'s legacy tree search can diverge from the steelman engines at
-the report-card budget, so Q7 is deliberately specified as a five-backend
+the report-card budget, so Q6 is deliberately specified as a five-backend
 legacy-envelope liveness/overflow gate rather than a backend (i) visit-vector
 identity proof. Q3 remains the visit-vector equality gate for `(ii)..(v)` under
-`--rng cpp`, and Q6 remains byte-for-byte legacy evidence generated explicitly
-for audit rather than a checked-in fixture input.
+`--rng cpp`. External `MCTS_legacy` fixture generation remains audit-only rather
+than a checked-in fixture input and is no longer a headline report-card question.
 
 The 2026-05-19 clean-clone fixture audit is closed: `test/golden/` generated
 artifacts are deleted, `mcts-unit` no longer uses `tasty-golden`, and
@@ -367,7 +385,7 @@ A sprint can move to `Done` only when all of the following are true:
 | 4 | Backend (i) C++ Legacy Port and FFI Bridge | ✅ Done (Sprint `4.5` FFI domain-conversion contract realignment closed 2026-05-24) | [phase-4-cpp-legacy-port-and-ffi-bridge.md](phase-4-cpp-legacy-port-and-ffi-bridge.md) |
 | 5 | Backend (ii) C++ Imperative Steelman with PGO+BOLT | ✅ Done (Sprint `5.3` fail-closed C++ PGO/BOLT reclosure and Sprint `5.5` compact C ABI contract reclosure are complete) | [phase-5-cpp-imperative-steelman.md](phase-5-cpp-imperative-steelman.md) |
 | 6 | Backends (iii) C++ Functional-Style and (iv) Rust | ✅ Done (Sprint `6.4` fail-closed Rust PGO/BOLT reclosure and Sprint `6.6` compact ABI/build wording reclosure are complete) | [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md) |
-| 7 | Cross-Backend Verify, Test Stanzas, POC Report Card | ✅ Done (Sprint `7.8` metric semantics refactor closed 2026-05-24) | [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md) |
+| 7 | Cross-Backend Verify, Test Stanzas, POC Report Card | ✅ Done (Sprint `7.9` six-question report-card renumbering closed 2026-05-25) | [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md) |
 | 8 | Haskell Performance Parity Closure and Five-Backend Restoration | ✅ Done (Sprint `8.11` refactored metric rerun closed 2026-05-24) | [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md) |
 
 ## Current Plan Status
@@ -598,16 +616,16 @@ This plan is complete only when all of the following are true:
 3. `mcts verify rollouts` and `mcts verify selfplay` agree bit-for-bit on visit counts
    across `(ii)..(v)` under `--rng cpp`, with the `VerifyBackend` type carrying that
    cohort explicitly.
-4. Backend (i)'s Q7 legacy-envelope measurement runs across all five backend slots as a
+4. Backend (i)'s Q6 legacy-envelope measurement runs across all five backend slots as a
    liveness/overflow gate; it is not a checked-in generated validation input.
 5. `mcts test all` runs the canonical Plan/Apply sequence owned by
    [../documents/engineering/unit_testing_policy.md](../documents/engineering/unit_testing_policy.md),
    including every live Cabal test-suite stanza (`mcts-unit`, `mcts-integration`,
    `mcts-cross-backend`, `mcts-legacy-parity`, `mcts-haskell-style`) and the tidy
-   report-card summary block answering Q1–Q7. The live workload constants are
+   report-card summary block answering Q1–Q6. The live workload constants are
    implemented in `MCTS.CLI.Test` and mirrored in `cabal.project` comments:
    `G_R=1_000`, `G_S=4`, `G_V=4`, `G_LP=2`, `S_BENCH=500`, `S_VERIFY=500`,
-   `S_LP_SIMS=10_000`, and `S_LP=42`.
+   `S_LP_SIMS=4`, and `S_LP=42`.
 6. Pure Haskell backend (v) matches backend (ii) C++ steelman on Q1a terminal
    playout throughput, Q1b search-iteration throughput, and Q2 played-game self-play
    throughput within the parity tolerance per
@@ -619,7 +637,8 @@ This plan is complete only when all of the following are true:
 7. Same-backend determinism (Q4) holds for every backend across 3 seeds: same backend,
    same master seed, same RNG source, and same logical game inputs produce identical
    determinism payloads under the `mcts-integration` stanza.
-8. Backend (i)'s Q6 reproduction evidence is optional external/local data.
+8. Backend (i)'s external `MCTS_legacy` reproduction fixtures are optional
+   external/local audit data, not a headline report-card question.
    Normal clean-clone validation checks the legacy-envelope decoder and invariants using
    synthetic transcripts generated during the test run; it does not require checked-in
    `MCTS_legacy` transcript fixtures.

@@ -2312,6 +2312,12 @@ exerciseReportCardRenderer = do
     assert
         "report card text renders visit/move thresholds in matrix order"
         ("thresholds native 0.050/0.005, cross-build 0.010/0.001" `contains` renderedText)
+    assert
+        "report card text renders the six-question legacy-envelope row"
+        ("Q6  Legacy envelope across all backends" `contains` renderedText)
+    assert
+        "report card text no longer renders an external legacy reproduction question"
+        (not ("Q7  Legacy" `contains` renderedText))
     assert "report card text renders verdict" ("Verdict:" `contains` renderedText)
     assert
         "report card JSON has required top-level keys"

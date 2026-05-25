@@ -704,7 +704,7 @@ strict, current, and impossible to mislabel.
 
 ### Remaining Work
 
-- None.
+None.
 
 ### Closure Notes
 

@@ -203,7 +203,7 @@ than two states ⇒ GADT-indexed" rule:
 - `VerifyBackend` — type-level Q3 cohort `(ii)..(v)`. Constructors:
   `VCppImperative | VCppFunctional | VRust | VHaskell`. See
   [determinism_contract.md → Cross-Backend Determinism (Q3)](./determinism_contract.md).
-- `mcts verify legacy-parity` — Q7 validates the complete backend list `(i)..(v)`
+- `mcts verify legacy-parity` — Q6 validates the complete backend list `(i)..(v)`
   under the legacy envelope. The runtime parser rejects incomplete cohorts and pins
   `max_plies = 10000`, `--rng cpp`, and single-threaded execution. See
   [determinism_contract.md → Legacy Parity Envelope](./determinism_contract.md).
