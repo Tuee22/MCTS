@@ -162,6 +162,33 @@ extern "C" int32_t mcts_functional_recompute_move(
     return count;
 }
 
+extern "C" uint64_t mcts_functional_benchmark_terminal_playouts(
+    const mcts_functional_board *board,
+    uint64_t seed,
+    uint32_t count,
+    uint16_t max_plies) {
+    if (!board) return 0;
+    return mcts_functional::benchmark_terminal_playouts(
+        board->state,
+        count,
+        max_plies,
+        seed);
+}
+
+extern "C" uint64_t mcts_functional_benchmark_search_iters(
+    const mcts_functional_board *board,
+    uint64_t seed,
+    uint32_t count,
+    uint16_t max_plies) {
+    if (!board) return 0;
+    return mcts_functional::benchmark_search_iters(
+        board->state,
+        count,
+        max_plies,
+        mcts_functional::RngBackend::Mt19937,
+        seed);
+}
+
 static mcts_functional_envelope g_envelope;
 static int g_envelope_ready = 0;
 

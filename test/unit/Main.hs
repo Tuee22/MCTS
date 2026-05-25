@@ -14,7 +14,12 @@ import Data.List (sort)
 import qualified Data.List as List
 import qualified Data.Text as T
 import Data.Word (Word16, Word8)
-import MCTS.CLI.Bench (monotonicNanos, runBenchWithClock)
+import MCTS.CLI.Bench
+    ( PrimitiveBenchRow (..)
+    , monotonicNanos
+    , runBenchWithClock
+    , runPrimitiveBenchRows
+    )
 import MCTS.CLI.Build
     ( boltTrainingRuns
     , buildBackendPlan
@@ -25,6 +30,8 @@ import MCTS.CLI.Build
     )
 import MCTS.CLI.Command
     ( BenchCommand (..)
+    , BenchPrimitive (..)
+    , BenchPrimitiveOptions (..)
     , BuildCommand (..)
     , Command (..)
     , InspectCommand (..)
@@ -160,7 +167,7 @@ import System.Directory
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
 import Test.Tasty (TestTree, defaultMain, testGroup)
-import Test.Tasty.HUnit (testCase)
+import Test.Tasty.HUnit (assertFailure, testCase)
 import qualified Test.Tasty.QuickCheck as QC
 
 main :: IO ()
@@ -173,6 +180,7 @@ unitTests =
         "cli and parser"
         [ testCase "command registry and parser invariants" exerciseCommandParserSurface
         , testCase "command and generated-section renderers" exerciseCommandGeneratedRenderers
+        , testCase "primitive benchmark units" exercisePrimitiveBenchUnits
         ]
     , testGroup
         "transcripts and cache"
@@ -275,6 +283,42 @@ exerciseCommandParserSurface = do
         ( parsesBenchCohort
             ( parseCommand
                 ["bench", "selfplay", "--backend", "rust,haskell", "--games", "1", "--seed", "42"]
+            )
+        )
+    assert
+        "terminal playout bench parser"
+        ( parsesPrimitiveBench
+            TerminalPlayouts
+            ( parseCommand
+                [ "bench"
+                , "terminal-playouts"
+                , "--backend"
+                , "haskell"
+                , "--rng"
+                , "native"
+                , "--count"
+                , "3"
+                , "--seed"
+                , "42"
+                ]
+            )
+        )
+    assert
+        "search iteration bench parser"
+        ( parsesPrimitiveBench
+            SearchIters
+            ( parseCommand
+                [ "bench"
+                , "search-iters"
+                , "--backend"
+                , "haskell"
+                , "--rng"
+                , "native"
+                , "--count"
+                , "3"
+                , "--seed"
+                , "42"
+                ]
             )
         )
     assert
@@ -430,6 +474,48 @@ exerciseCommandGeneratedRenderers :: IO ()
 exerciseCommandGeneratedRenderers = do
     exerciseCommandRenderers
     exerciseMarkerSplice
+
+exercisePrimitiveBenchUnits :: IO ()
+exercisePrimitiveBenchUnits = do
+    clockRef <- newIORef [0, 1000000000]
+    rows <-
+        runPrimitiveBenchRows
+            (nextClock clockRef)
+            TerminalPlayouts
+            [Haskell]
+            primitiveOptions
+    case sequence rows of
+        Right [row] -> do
+            assert "primitive row keeps terminal-playout kind" (primitiveRowKind row == TerminalPlayouts)
+            assert "primitive row counts primitive units" (benchPrimitiveCount (primitiveRowOptions row) == 3)
+            assert "primitive rate uses count, not games" (primitiveRowRate row == 3.0)
+        other -> assertFailure ("terminal primitive benchmark failed: " <> show other)
+    clockRef2 <- newIORef [0, 1000000000]
+    searchRows <-
+        runPrimitiveBenchRows
+            (nextClock clockRef2)
+            SearchIters
+            [Haskell]
+            primitiveOptions
+    case sequence searchRows of
+        Right [row] -> do
+            assert "primitive row keeps search-iteration kind" (primitiveRowKind row == SearchIters)
+            assert "search-iteration rate uses count, not games" (primitiveRowRate row == 3.0)
+        other -> assertFailure ("search primitive benchmark failed: " <> show other)
+  where
+    primitiveOptions =
+        BenchPrimitiveOptions
+            { benchPrimitiveRng = NativeRng
+            , benchPrimitiveThreading = SingleThreaded
+            , benchPrimitiveCount = 3
+            , benchPrimitiveSeed = 42
+            , benchPrimitiveMaxPlies = 8
+            }
+    nextClock ref = do
+        values <- readIORef ref
+        case values of
+            value : rest -> modifyIORef' ref (const rest) >> pure value
+            [] -> pure 1000000000
 
 exerciseTranscriptCodecSurface :: IO ()
 exerciseTranscriptCodecSurface = do
@@ -636,6 +722,19 @@ parsesBenchCohort :: Either AppError Command -> Bool
 parsesBenchCohort parsed =
     case parsed of
         Right (Bench (BenchSelfplay [Rust, Haskell] inputs)) -> inputBackend inputs == Rust
+        _ -> False
+
+parsesPrimitiveBench :: BenchPrimitive -> Either AppError Command -> Bool
+parsesPrimitiveBench primitive parsed =
+    case (primitive, parsed) of
+        (TerminalPlayouts, Right (Bench (BenchTerminalPlayouts [Haskell] benchOptions))) ->
+            benchPrimitiveCount benchOptions == 3
+                && benchPrimitiveRng benchOptions == NativeRng
+                && benchPrimitiveSeed benchOptions == 42
+        (SearchIters, Right (Bench (BenchSearchIters [Haskell] benchOptions))) ->
+            benchPrimitiveCount benchOptions == 3
+                && benchPrimitiveRng benchOptions == NativeRng
+                && benchPrimitiveSeed benchOptions == 42
         _ -> False
 
 parsesPlaySurface :: Either AppError Command -> Bool
@@ -1497,7 +1596,9 @@ exerciseRustBuildPlan = do
                 Nothing -> ""
         generateFlags = rustFlagsAt 1
         useFlags = rustFlagsAt useIndex
-    assert "Rust PGO+BOLT plan has expanded bounded training steps" (length steps == 28)
+    assert
+        "Rust PGO+BOLT plan has expanded bounded training steps"
+        (length steps == 12 + pgoCount + boltCount)
     assert "Rust PGO+BOLT plan is the same as buildBackendPlan output" (planSteps plan == steps)
     assert
         "Rust PGO+BOLT plan starts by resetting profile directories"
@@ -1519,14 +1620,14 @@ exerciseRustBuildPlan = do
             ]
         )
     assert
-        "Rust PGO training emits bounded rollouts/selfplay ST/MT8 native runs"
+        "Rust PGO training emits refactored metric-suite ST/MT8 native runs"
         ( all (== "cabal") pgoTrainingCommands
             && allCabalTraining pgoTrainingArgs
             && trainingCoversBoundedShape pgoTrainingArgs
             && any ("500" `elem`) pgoTrainingArgs
         )
     assert
-        "Rust BOLT training emits shorter bounded native runs"
+        "Rust BOLT training emits shorter refactored metric-suite native runs"
         ( all (== "cabal") boltTrainingCommands
             && allCabalTraining boltTrainingArgs
             && trainingCoversBoundedShape boltTrainingArgs
@@ -1650,21 +1751,26 @@ allCabalTraining =
                 && "bench" `elem` args
                 && "native" `elem` args
                 && "--max-plies" `elem` args
-                && "1" `elem` args
-                && "--cache-dir" `elem` args
+                && (("1" `elem` args) || ("60" `elem` args))
+                && ( ("--count" `elem` args && not ("--cache-dir" `elem` args))
+                        || ("--games" `elem` args && "--cache-dir" `elem` args)
+                   )
         )
 
 trainingCoversBoundedShape :: [[String]] -> Bool
 trainingCoversBoundedShape args =
     all
         (`any` args)
-        [ elem "rollouts"
+        [ elem "terminal-playouts"
+        , elem "search-iters"
+        , elem "rollouts"
         , elem "selfplay"
         , elem "single"
         , elem "multi"
         , elem "8"
         , elem "42"
         , elem "424242"
+        , elem "60"
         ]
 
 scopedProfileTrainingEnv :: Subprocess -> Bool
@@ -1704,6 +1810,9 @@ exerciseCppBuildPlan = do
         requireGcdaIndex = instrPgoStart + pgoCount
         benchBoltStart = requireGcdaIndex + 5
         instrBoltStart = benchBoltStart + boltCount + 2
+        instrPgoInstallIndex = instrPgoStart - 1
+        benchBoltInstallIndex = benchBoltStart - 1
+        instrBoltInstallIndex = instrBoltStart - 1
         smokeIndex = length steps - 1
         trainingIndexes =
             [benchPgoStart .. benchPgoStart + pgoCount - 1]
@@ -1712,7 +1821,9 @@ exerciseCppBuildPlan = do
                 <> [instrBoltStart .. instrBoltStart + boltCount - 1]
         pgoTrainingArgs = take pgoCount (drop benchPgoStart argsOf)
         boltTrainingArgs = take boltCount (drop benchBoltStart argsOf)
-    assert "C++ PGO+BOLT plan has expanded bounded training steps" (length steps == 48)
+    assert
+        "C++ PGO+BOLT plan has expanded bounded training steps"
+        (length steps == 16 + (2 * pgoCount) + (2 * boltCount))
     assert "C++ PGO+BOLT plan is the same as buildBackendPlan output" (planSteps plan == steps)
     assert "C++ PGO+BOLT plan name is build cpp-imperative" (planName plan == "build cpp-imperative")
     assert
@@ -1736,14 +1847,14 @@ exerciseCppBuildPlan = do
                ]
         )
     assert
-        "C++ PGO training emits bounded rollouts/selfplay ST/MT8 native runs"
+        "C++ PGO training emits refactored metric-suite ST/MT8 native runs"
         ( allCabalTraining pgoTrainingArgs
             && trainingCoversBoundedShape pgoTrainingArgs
             && all ("cpp-imperative" `elem`) pgoTrainingArgs
             && any ("500" `elem`) pgoTrainingArgs
         )
     assert
-        "C++ BOLT training emits shorter bounded native runs"
+        "C++ BOLT training emits shorter refactored metric-suite native runs"
         ( allCabalTraining boltTrainingArgs
             && trainingCoversBoundedShape boltTrainingArgs
             && all ("cpp-imperative" `elem`) boltTrainingArgs
@@ -1775,19 +1886,19 @@ exerciseCppBuildPlan = do
             == [ "cpp-imperative/build/libmcts_cpp_imperative_bench.so"
                , "cpp-imperative/build/libmcts_cpp_imperative.so"
                ]
-            && argsOf !! 12
+            && argsOf !! instrPgoInstallIndex
                 == [ "cpp-imperative/build/libmcts_cpp_imperative_instrumented.so"
                    , "cpp-imperative/build/libmcts_cpp_imperative.so"
                    ]
         )
     assert
         "C++ BOLT training install requires instrumented artefacts without fallback"
-        ( any ("libmcts_cpp_imperative_bench.inst.so" `contains`) (argsOf !! 25)
-            && any ("[bolt] missing instrumented C++ artefact" `contains`) (argsOf !! 25)
-            && not (any ("libmcts_cpp_imperative_bench.so" `contains`) (argsOf !! 25))
-            && any ("libmcts_cpp_imperative_instrumented.inst.so" `contains`) (argsOf !! 35)
-            && any ("[bolt] missing instrumented C++ artefact" `contains`) (argsOf !! 35)
-            && not (any ("libmcts_cpp_imperative_instrumented.so" `contains`) (argsOf !! 35))
+        ( any ("libmcts_cpp_imperative_bench.inst.so" `contains`) (argsOf !! benchBoltInstallIndex)
+            && any ("[bolt] missing instrumented C++ artefact" `contains`) (argsOf !! benchBoltInstallIndex)
+            && not (any ("libmcts_cpp_imperative_bench.so" `contains`) (argsOf !! benchBoltInstallIndex))
+            && any ("libmcts_cpp_imperative_instrumented.inst.so" `contains`) (argsOf !! instrBoltInstallIndex)
+            && any ("[bolt] missing instrumented C++ artefact" `contains`) (argsOf !! instrBoltInstallIndex)
+            && not (any ("libmcts_cpp_imperative_instrumented.so" `contains`) (argsOf !! instrBoltInstallIndex))
         )
     assert
         "C++ functional plan uses functional library names"
@@ -2206,7 +2317,14 @@ exerciseReportCardRenderer = do
         "report card JSON has required top-level keys"
         ( jsonObjectHasKeys
             jsonValue
-            ["q1_rollouts_st", "q2_selfplay_st", "q5_cpp_imperative_scaling", "divergence_matrix", "verdict"]
+            [ "q1a_terminal_playouts_st"
+            , "q1b_search_iters_st"
+            , "q2_selfplay_games_st"
+            , "q5_cpp_imperative_search_iters_scaling"
+            , "q5_cpp_imperative_selfplay_games_scaling"
+            , "divergence_matrix"
+            , "verdict"
+            ]
         )
     let rows = divergenceRowsFromTranscripts [asBackend Rust, asBackend Haskell]
     assert

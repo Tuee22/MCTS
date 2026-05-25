@@ -1,6 +1,8 @@
 use crate::board::{MctsRustBoard, flip_action_id};
 use crate::envelope::{MctsRustEnvelope, envelope_ptr};
-use crate::search::{run_search, select_uct_move};
+use crate::search::{
+    benchmark_search_iters, benchmark_terminal_playouts, run_search, select_uct_move,
+};
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
@@ -179,6 +181,32 @@ pub unsafe extern "C" fn mcts_rust_recompute_move(
         *out_equity = result.chosen_equity;
     }
     count as i32
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mcts_rust_benchmark_terminal_playouts(
+    board: *const MctsRustBoard,
+    seed: u64,
+    count: u32,
+    max_plies: u16,
+) -> u64 {
+    if board.is_null() {
+        return 0;
+    }
+    benchmark_terminal_playouts(unsafe { &*board }, count, max_plies, seed)
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mcts_rust_benchmark_search_iters(
+    board: *const MctsRustBoard,
+    seed: u64,
+    count: u32,
+    max_plies: u16,
+) -> u64 {
+    if board.is_null() {
+        return 0;
+    }
+    benchmark_search_iters(unsafe { &*board }, count, max_plies, seed)
 }
 
 /// Optional visit cache accessor on the single optimized Rust FFI

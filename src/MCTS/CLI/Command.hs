@@ -1,6 +1,8 @@
 module MCTS.CLI.Command
     ( Command (..)
     , BenchCommand (..)
+    , BenchPrimitive (..)
+    , BenchPrimitiveOptions (..)
     , VerifyCommand (..)
     , VerifyBackend (..)
     , verifyBackendToBackend
@@ -29,6 +31,7 @@ import MCTS.Types
     , RngSource
     , Side
     , SimBudget
+    , Threading
     , Transcript
     , VerifyBackend (..)
     , Workload
@@ -52,6 +55,22 @@ data Command
 data BenchCommand
     = BenchRollouts [Backend] RunInputs
     | BenchSelfplay [Backend] RunInputs
+    | BenchTerminalPlayouts [Backend] BenchPrimitiveOptions
+    | BenchSearchIters [Backend] BenchPrimitiveOptions
+    deriving (Eq, Show)
+
+data BenchPrimitive
+    = TerminalPlayouts
+    | SearchIters
+    deriving (Eq, Ord, Show, Read)
+
+data BenchPrimitiveOptions = BenchPrimitiveOptions
+    { benchPrimitiveRng :: !RngSource
+    , benchPrimitiveThreading :: !Threading
+    , benchPrimitiveCount :: !Int
+    , benchPrimitiveSeed :: !Word64
+    , benchPrimitiveMaxPlies :: !Word16
+    }
     deriving (Eq, Show)
 
 data VerifyCommand

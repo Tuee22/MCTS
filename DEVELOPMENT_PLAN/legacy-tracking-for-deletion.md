@@ -40,8 +40,11 @@ installed-library smokes so corrupted BOLT outputs fail the image build. Sprint
 `8.3` refreshed the report-card evidence against these successful PGO+BOLT
 artefacts on 2026-05-23. Sprint `8.10` then replaced the remaining
 profile-workload residue with the bounded played-game profile suite. The metric
-audit reopened profile representativeness for Sprint `8.11` after terminal-playout
-and search-iteration primitives land.
+audit reopened profile representativeness for Sprint `8.11` after terminal-playout,
+search-iteration, and played-game report-card rows became explicit; Sprint `8.11`
+closed that review with a Dockerfile rebuild that trained terminal-playout,
+search-iteration, legacy played-game rollout, and self-play workloads before the
+refactored report-card rerun.
 
 The validation-data doctrine sweep remains closed: normal tests do not require
 checked-in transcripts, throughput anchors, renderer snapshots, schema fixtures, or
@@ -62,9 +65,10 @@ FFI-domain-conversion, and divergence-metric rows to Completed. All five backend
 slots remain first-class.
 
 The 2026-05-24 benchmark-metric audit added stale benchmark labels and report-card
-rows to this ledger. Any surface that calls a played-game workload "rollouts" or
-implies that historical `games/s` rows answer terminal `playouts/s` or
-`search-iters/s` remains pending until the metric-suite refactor lands.
+rows to this ledger. Sprint `3.8` added explicit `terminal-playouts` and
+`search-iters` benchmark leaves, and Sprint `7.8` split the report card into
+unit-aware Q1a/Q1b/Q2/Q5 rows. Sprint `8.11` closed the profile-suite review and
+fresh parity rerun, so no metric-suite cleanup row remains pending.
 
 Two classes of entries populate this ledger over time:
 
@@ -81,11 +85,7 @@ repository.
 
 ## Pending Removal
 
-| Item | Location | Owner | Reason |
-|------|----------|-------|--------|
-| Legacy `bench rollouts` metric name | `src/MCTS/CLI/Spec.hs`, generated `documents/cli/commands.md`, report-card labels | Sprint 3.8 / Sprint 7.8 | The current command measures played-game throughput with one search iteration per move, not terminal playout throughput. It must be renamed, supplemented, or documented in generated text with explicit units. |
-| Report-card Q1/Q5 metric conflation | `src/MCTS/CLI/Test.hs`, `src/MCTS/ReportCard.hs`, `documents/engineering/unit_testing_policy.md`, `documents/engineering/compiler_runtime_tuning.md` | Sprint 7.8 / Sprint 8.11 | Historical Q1/Q5 rows report `games/s`; final Q1/Q5 must include terminal `playouts/s`, `search-iters/s`, and separate scaling rows. |
-| PGO/BOLT profile-suite metric proxy | `src/MCTS/CLI/Build.hs`, `documents/engineering/compiler_runtime_tuning.md` | Sprint 8.11 | The current bounded profile suite trains on legacy played-game proxy workloads. After the metric primitives land, the profile suite must be reviewed so accepted parity evidence is trained against representative terminal-playout, search-iteration, and played-game work. |
+None.
 
 ## Pending Removal Notes
 
@@ -100,13 +100,16 @@ data instead of publishing a fallback shared library.
 
 | Item | Removed In | Notes |
 |------|------------|-------|
+| PGO/BOLT profile-suite metric proxy | Sprint 8.11, 2026-05-24 | `src/MCTS/CLI/Build.hs` now trains C++ and Rust PGO/BOLT profiles with terminal playout primitives, search-iteration primitives, legacy played-game rollout batches, and self-play batches. `docker compose run --rm --build mcts mcts test all` validated the aggregate Dockerfile rebuild and refactored report-card rerun end to end, recording final Q1a/Q1b/Q2/Q5 unit-aware evidence and `Verdict: Within tolerance`. |
+| Legacy `bench rollouts` metric-name ambiguity | Sprint 7.8, 2026-05-24 | `bench rollouts` remains as a documented legacy played-game workload, while lower-level throughput uses explicit `bench terminal-playouts` and `bench search-iters`. Report-card rows no longer use the legacy `rollouts` label for Q1/Q5 evidence. |
+| Report-card Q1/Q5 metric conflation | Sprint 7.8, 2026-05-24 | `src/MCTS/CLI/Test.hs` and `src/MCTS/ReportCard.hs` now render unit-aware Q1a terminal playout (`playouts/s`), Q1b search-iteration (`search-iters/s`), Q2 played-game (`games/s`), and split Q5 scaling rows. Unit tests and integration tests assert the new JSON field names. |
 | README-as-contract duplication | Sprint 1.11, 2026-05-24 | `README.md` now stays operator-facing and reference-only: project intent, Compose entrypoint, backend cohort, short command examples, validation gates, and links. Transcript, determinism, FFI, tuning, code-quality, and testing details live in governed docs; stale README section citations were redirected to those owning documents. |
 | No-op lint `--write` flags | Sprint 1.11, 2026-05-24 | `mcts lint files --write` trims fixable whitespace/final-newline drift and rewrites fully generated command/man/completion files; `mcts lint docs --write` runs the generated-doc writer before checking; `mcts lint haskell --write` runs pinned Fourmolu and `cabal format` before the style stanza. |
 | Envelope provenance fields treated as verifier gates | Sprint 2.9 / Sprint 7.7, 2026-05-24 | `src/MCTS/Verify/Envelope.hs` gates stale backend slots on `backend`, `engine_build_id`, `compiler_id`, `compiler_version`, `fp_flags`, `libm_id`, `cpu_features`, and `fp_env`. `engine_git_commit` and display/cache `build_id` remain provenance-only, with unit coverage proving provenance-only changes do not fail stale checks. |
 | Unsigned Haskell rollout modulo | Sprint 3.7, 2026-05-24 | `MCTS.Search.UCT.rollout` now maps consumed `Word64` draws through signed `Int64` remainder semantics before selecting the legal move, matching the determinism contract's signed-`Int` modulo rule. |
 | FFI/domain-conversion documentation overclaim | Sprint 4.5, 2026-05-24 | `documents/engineering/backend_ffi_contract.md` now describes the implemented dynamic loader, opaque-handle C ABI, and `Action`/`actionId`/`actionFromId` boundary instead of claiming `.hsc`/`.chs` generation or generic `fromDomain`/`toDomain` wrappers. |
 | Per-action divergence metric overclaim | Sprint 7.7, 2026-05-24 | Divergence documentation now states that `EqStream` carries chosen-action equity and `equity_l2_drift` is RMS over the per-move chosen-action series, not a per-action vector comparison. |
-| Narrow PGO/BOLT training workload | Sprint 8.10, 2026-05-23 | `src/MCTS/CLI/Build.hs` now trains C++ and Rust PGO/BOLT profiles with a bounded played-game suite: legacy `bench rollouts` plus self-play, ST plus MT8, native RNG, seeds `42` and `424242`, `--max-plies 1`, PGO rollout games 2 ST/2 MT8 with `--sims 1`, PGO self-play games 1 ST/1 MT8 with `--sims 500`, and BOLT games 1 ST/1 MT8 for each workload with rollout `--sims 1` and self-play `--sims 100`. C++ training uses scoped dynamic-library loading plus explicit GCOV dump hooks; Rust training keeps the cdylib pinned and relies on process-exit `.profraw` emission. The Sprint `8.10` report-card rerun recorded historical played-game Q1/Q2/Q5 evidence; Sprint `8.11` now owns the metric-suite rerun. |
+| Narrow PGO/BOLT training workload | Sprint 8.10, 2026-05-23 | `src/MCTS/CLI/Build.hs` trains C++ and Rust PGO/BOLT profiles with a bounded played-game suite: legacy `bench rollouts` plus self-play, ST plus MT8, native RNG, seeds `42` and `424242`, `--max-plies 1`, PGO rollout games 2 ST/2 MT8 with `--sims 1`, PGO self-play games 1 ST/1 MT8 with `--sims 500`, and BOLT games 1 ST/1 MT8 for each workload with rollout `--sims 1` and self-play `--sims 100`. C++ training uses scoped dynamic-library loading plus explicit GCOV dump hooks; Rust training keeps the cdylib pinned and relies on process-exit `.profraw` emission. Sprint `8.11` later extended this into the bounded metric-suite profile suite. |
 | Tracked PGO/BOLT profile snapshots | Sprint 8.8 follow-up, 2026-05-23 | Removed checked-in `cpp-imperative/pgo-profile/`, `cpp-functional/pgo-profile/`, and `rust/pgo-profile/` generated profile files, and added the C++/Rust PGO+BOLT profile roots to `.gitignore` and `.dockerignore`. The Dockerfile-owned build recipes regenerate fresh profile data and fail closed on missing profile outputs. |
 | Fallback-backed parity report-card evidence | Sprint 8.3, 2026-05-23 | The 2026-05-21 amd64 report card remains historical audit evidence only. `docker compose run --rm --build mcts mcts test all` refreshed the report card against fail-closed Dockerfile PGO/BOLT artefacts and recorded Q1 ST 0.05x, Q1 MT8 0.45x, Q2 ST 0.06x, Q2 MT8 0.22x, Q5 Haskell 0.98x, Q5 C++ (ii) 3.70x, zero live-cohort divergence, Q7 PASS, and verdict `Within tolerance`. Sprint `8.10` later superseded this with bounded-profile final evidence. |
 | C++ PGO/BOLT fail-open artefact copying | Sprint 5.3, 2026-05-23 | `cpp-imperative/Makefile`, `cpp-functional/Makefile`, and `src/MCTS/CLI/Build.hs` now require non-empty BOLT `.fdata`, surface `llvm-bolt` diagnostics, use LLVM objcopy for BOLT-produced shared objects, and smoke the installed bolted C++ canonical libraries during the Dockerfile build. |
@@ -131,7 +134,7 @@ data instead of publishing a fallback shared library.
 | C++ Makefile PGO+BOLT target surface | Sprint 5.3 Makefile baseline, updated Sprint 6.4, 2026-05-18; CLI wiring closed 2026-05-21 | `cpp-imperative/Makefile` and `cpp-functional/Makefile` contain PGO generate/use, BOLT instrument/optimize, and canonical install targets. The supported `mcts build` Plan/Apply wiring for those targets is closed by `cppPgoBoltPlan`. |
 | Backend (iv) Rust Corridors gameplay port | Sprint 6.3, 2026-05-16; updated Sprint 7.2, 2026-05-18 | `rust/src/board.rs`, `rust/src/rollout.rs`, and `rust/src/search.rs` carry the real Corridors game state, rollout loop, and arena MCTS, and `MCTS.Driver.Dispatch.runBatchDispatch` routes `--backend rust` through the real FFI engine when the cdylib is present. |
 | Foreign-engine recompute streaming to `.eq` sidecars | Sprint 7.5, 2026-05-16 | `MCTS.Engine.ForeignRecompute.foreignRecomputeEqStream` drives backend recompute ABIs through transcripts, `MCTS.Verify.Divergence.divergenceVsEqStream` scores the resulting `EqStream`, and `mcts inspect divergence` renders cached and available foreign recompute rows. |
-| Measured Q1-Q7 report-card evidence | Sprint 7.3 / Sprint 8.10 evidence closure, updated 2026-05-23 | `docker compose run --rm --build mcts mcts test all` passed against the canonical workload and bounded-profile Dockerfile PGO/BOLT artefacts, recording Q1 ST 0.05x, Q1 MT8 0.48x, Q2 ST 0.06x, Q2 MT8 0.21x, Q5 Haskell 0.99x, Q5 C++ (ii) 3.65x, zero live-cohort divergence, Q7 liveness evidence PASS, and verdict `Within tolerance`. The older 2026-05-23 fail-closed-only report card remains historical pipeline evidence. |
+| Measured Q1-Q7 report-card evidence | Sprint 7.3 / Sprint 8.11 evidence closure, updated 2026-05-24 | `docker compose run --rm --build mcts mcts test all` passed against the canonical workload and bounded metric-suite Dockerfile PGO/BOLT artefacts, recording Q1a terminal-playout ST 0.07x and MT8 0.39x, Q1b search-iteration ST 0.06x and MT8 0.40x, Q2 played-game ST 0.05x and MT8 0.17x, Q5 Haskell search-iteration scaling 1.02x, Q5 C++ (ii) search-iteration scaling 7.36x, Q5 Haskell self-play scaling 0.97x, Q5 C++ (ii) self-play scaling 3.72x, zero live-cohort divergence, Q7 liveness evidence PASS, and verdict `Within tolerance`. The older 2026-05-23 fail-closed and Sprint 8.10 played-game rows remain historical pipeline evidence. |
 | Pure Haskell parity proof vs backend (ii) | Sprint 8.2 / Sprint 8.3 closure, 2026-05-19 | Sprint 8.1 closed the LLVM/RTS tuning baseline. Sprint 8.2 ran three profile-driven rounds on 2026-05-16: round 1 IntSet (~6.2x speedup), round 2 strict-pair Word64 (regression, reverted), round 3 wavefront-bitmap BFS over `Bits128` (~52x legal-moves / ~33x uct-search vs round 1; combined ~320x / ~200x vs original baseline). |
 | Deterministic placeholder transcript hash | Sprint 2.2 baseline closure | Replaced `pseudoSha256Hex` in `src/MCTS/Transcript.hs` with the pure SHA-256 implementation in `src/MCTS/Crypto/SHA256.hs`; `runConfigHash` and `playTranscriptHash` now emit SHA-256 hex digests. |
 | No-op sidecar cache and divergence inspect placeholders | Sprint 2.7 / Sprint 7.5 baseline closure | Replaced fixed `inspect cache list`, `inspect cache prune`, and `inspect divergence` output with `MCTS.Transcript.EquitySidecar` cache discovery/pruning and `MCTS.Verify.Divergence` metric rendering. |

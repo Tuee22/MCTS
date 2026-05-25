@@ -176,6 +176,33 @@ extern "C" int32_t mcts_imperative_recompute_move(
     return count;
 }
 
+extern "C" uint64_t mcts_imperative_benchmark_terminal_playouts(
+    const mcts_imperative_board *board,
+    uint64_t seed,
+    uint32_t count,
+    uint16_t max_plies) {
+    if (!board) return 0;
+    return mcts_imperative::benchmark_terminal_playouts(
+        board->state,
+        count,
+        max_plies,
+        seed);
+}
+
+extern "C" uint64_t mcts_imperative_benchmark_search_iters(
+    const mcts_imperative_board *board,
+    uint64_t seed,
+    uint32_t count,
+    uint16_t max_plies) {
+    if (!board) return 0;
+    return mcts_imperative::benchmark_search_iters(
+        board->state,
+        count,
+        max_plies,
+        mcts_imperative::RngBackend::Mt19937,
+        seed);
+}
+
 extern "C" uint32_t mcts_imperative_read_visits(
     const mcts_imperative_board *board, uint8_t action_id) {
 #if MCTS_IMPERATIVE_INSTRUMENTED

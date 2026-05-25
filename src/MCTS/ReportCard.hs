@@ -2,6 +2,7 @@ module MCTS.ReportCard
     ( ReportCard (..)
     , ReportDivergenceCell (..)
     , ReportDivergenceRow (..)
+    , ReportRateUnit (..)
     , ReportRateComparison (..)
     , ReportScaling (..)
     , Verdict (..)
@@ -21,19 +22,27 @@ data Verdict
     | Shortfall Double
     deriving (Eq, Show)
 
+data ReportRateUnit
+    = ReportPlayoutsPerSecond
+    | ReportSearchItersPerSecond
+    | ReportGamesPerSecond
+    deriving (Eq, Show)
+
 data ReportRateComparison = ReportRateComparison
     { reportComparisonMeasured :: !Bool
+    , reportComparisonUnit :: !ReportRateUnit
     , reportTimeRatio :: !Double
-    , reportHaskellGamesPerSecond :: !Double
-    , reportCppGamesPerSecond :: !Double
+    , reportHaskellRate :: !Double
+    , reportCppRate :: !Double
     }
     deriving (Eq, Show)
 
 data ReportScaling = ReportScaling
     { reportScalingMeasured :: !Bool
+    , reportScalingUnit :: !ReportRateUnit
     , reportScalingRatio :: !Double
-    , reportSingleGamesPerSecond :: !Double
-    , reportMultiGamesPerSecond :: !Double
+    , reportSingleRate :: !Double
+    , reportMultiRate :: !Double
     }
     deriving (Eq, Show)
 
@@ -56,12 +65,16 @@ data ReportCard = ReportCard
     , reportHost :: !String
     , reportGhc :: !String
     , reportVerdict :: !Verdict
-    , reportQ1RolloutsST :: !ReportRateComparison
-    , reportQ1RolloutsMT8 :: !ReportRateComparison
-    , reportQ2SelfplayST :: !ReportRateComparison
-    , reportQ2SelfplayMT8 :: !ReportRateComparison
-    , reportQ5HaskellScaling :: !ReportScaling
-    , reportQ5CppImperativeScaling :: !ReportScaling
+    , reportQ1aTerminalPlayoutsST :: !ReportRateComparison
+    , reportQ1aTerminalPlayoutsMT8 :: !ReportRateComparison
+    , reportQ1bSearchItersST :: !ReportRateComparison
+    , reportQ1bSearchItersMT8 :: !ReportRateComparison
+    , reportQ2SelfplayGamesST :: !ReportRateComparison
+    , reportQ2SelfplayGamesMT8 :: !ReportRateComparison
+    , reportQ5HaskellSearchItersScaling :: !ReportScaling
+    , reportQ5CppImperativeSearchItersScaling :: !ReportScaling
+    , reportQ5HaskellSelfplayGamesScaling :: !ReportScaling
+    , reportQ5CppImperativeSelfplayGamesScaling :: !ReportScaling
     , reportDivergenceRows :: ![ReportDivergenceRow]
     }
     deriving (Eq, Show)
@@ -74,12 +87,16 @@ defaultReportCard =
         , reportHost = "<host>"
         , reportGhc = "9.14.1"
         , reportVerdict = EvidencePending
-        , reportQ1RolloutsST = defaultRateComparison
-        , reportQ1RolloutsMT8 = defaultRateComparison
-        , reportQ2SelfplayST = defaultRateComparison
-        , reportQ2SelfplayMT8 = defaultRateComparison
-        , reportQ5HaskellScaling = defaultScaling
-        , reportQ5CppImperativeScaling = defaultScaling
+        , reportQ1aTerminalPlayoutsST = defaultRateComparison ReportPlayoutsPerSecond
+        , reportQ1aTerminalPlayoutsMT8 = defaultRateComparison ReportPlayoutsPerSecond
+        , reportQ1bSearchItersST = defaultRateComparison ReportSearchItersPerSecond
+        , reportQ1bSearchItersMT8 = defaultRateComparison ReportSearchItersPerSecond
+        , reportQ2SelfplayGamesST = defaultRateComparison ReportGamesPerSecond
+        , reportQ2SelfplayGamesMT8 = defaultRateComparison ReportGamesPerSecond
+        , reportQ5HaskellSearchItersScaling = defaultScaling ReportSearchItersPerSecond
+        , reportQ5CppImperativeSearchItersScaling = defaultScaling ReportSearchItersPerSecond
+        , reportQ5HaskellSelfplayGamesScaling = defaultScaling ReportGamesPerSecond
+        , reportQ5CppImperativeSelfplayGamesScaling = defaultScaling ReportGamesPerSecond
         , reportDivergenceRows = defaultDivergenceRows
         }
 
@@ -95,16 +112,29 @@ renderReportCard card =
             <> ", ghc="
             <> reportGhc card
         , "------------------------------------------------------------------------"
-        , "Q1  Haskell vs live C++ (ii) rollouts  ST      " <> renderRateComparison (reportQ1RolloutsST card)
-        , "Q1  Haskell vs live C++ (ii) rollouts  MT8     " <> renderRateComparison (reportQ1RolloutsMT8 card)
-        , "Q2  Haskell vs live C++ (ii) self-play ST      " <> renderRateComparison (reportQ2SelfplayST card)
-        , "Q2  Haskell vs live C++ (ii) self-play MT8     " <> renderRateComparison (reportQ2SelfplayMT8 card)
+        , "Q1a Haskell vs live C++ (ii) terminal playouts ST   "
+            <> renderRateComparison (reportQ1aTerminalPlayoutsST card)
+        , "Q1a Haskell vs live C++ (ii) terminal playouts MT8  "
+            <> renderRateComparison (reportQ1aTerminalPlayoutsMT8 card)
+        , "Q1b Haskell vs live C++ (ii) search iters      ST   "
+            <> renderRateComparison (reportQ1bSearchItersST card)
+        , "Q1b Haskell vs live C++ (ii) search iters      MT8  "
+            <> renderRateComparison (reportQ1bSearchItersMT8 card)
+        , "Q2  Haskell vs live C++ (ii) self-play games   ST   "
+            <> renderRateComparison (reportQ2SelfplayGamesST card)
+        , "Q2  Haskell vs live C++ (ii) self-play games   MT8  "
+            <> renderRateComparison (reportQ2SelfplayGamesMT8 card)
         , "Q3  Cross-backend determinism  (cpp RNG)       PASS    ((ii)..(v), 4 backends agree)"
         , "Q4  Same-backend determinism   (per backend)   PASS    (5/5 backends x 3 seeds)"
-        , "Q5  MT scaling  Haskell   1->8 workers         " <> renderScaling (reportQ5HaskellScaling card)
-        , "Q5  MT scaling  C++ (ii)  1->8 workers         "
-            <> renderScaling (reportQ5CppImperativeScaling card)
-        , "Q6  Legacy port (i) vs MCTS_legacy             HIST    (external audit evidence)"
+        , "Q5  MT scaling  Haskell search-iters 1->8      "
+            <> renderScaling (reportQ5HaskellSearchItersScaling card)
+        , "Q5  MT scaling  C++ (ii) search-iters 1->8     "
+            <> renderScaling (reportQ5CppImperativeSearchItersScaling card)
+        , "Q5  MT scaling  Haskell self-play 1->8         "
+            <> renderScaling (reportQ5HaskellSelfplayGamesScaling card)
+        , "Q5  MT scaling  C++ (ii) self-play 1->8        "
+            <> renderScaling (reportQ5CppImperativeSelfplayGamesScaling card)
+        , "Q6  Legacy port (i) vs MCTS_legacy             HIST    (external terminal playout + simulate(N) evidence)"
         , "Q7  Legacy envelope across all backends         PASS    (all five backend slots live)"
         , ""
         , "Divergence matrix (visit/move, cpp RNG; thresholds native 0.050/0.005, cross-build 0.010/0.001)"
@@ -124,18 +154,26 @@ renderReportCardJson card =
         <> show (reportMaxPlies card)
         <> ",\"verdict\":\""
         <> renderVerdict (reportVerdict card)
-        <> "\",\"q1_rollouts_st\":"
-        <> renderRateComparisonJson (reportQ1RolloutsST card)
-        <> ",\"q1_rollouts_mt8\":"
-        <> renderRateComparisonJson (reportQ1RolloutsMT8 card)
-        <> ",\"q2_selfplay_st\":"
-        <> renderRateComparisonJson (reportQ2SelfplayST card)
-        <> ",\"q2_selfplay_mt8\":"
-        <> renderRateComparisonJson (reportQ2SelfplayMT8 card)
-        <> ",\"q5_haskell_scaling\":"
-        <> renderScalingJson (reportQ5HaskellScaling card)
-        <> ",\"q5_cpp_imperative_scaling\":"
-        <> renderScalingJson (reportQ5CppImperativeScaling card)
+        <> "\",\"q1a_terminal_playouts_st\":"
+        <> renderRateComparisonJson (reportQ1aTerminalPlayoutsST card)
+        <> ",\"q1a_terminal_playouts_mt8\":"
+        <> renderRateComparisonJson (reportQ1aTerminalPlayoutsMT8 card)
+        <> ",\"q1b_search_iters_st\":"
+        <> renderRateComparisonJson (reportQ1bSearchItersST card)
+        <> ",\"q1b_search_iters_mt8\":"
+        <> renderRateComparisonJson (reportQ1bSearchItersMT8 card)
+        <> ",\"q2_selfplay_games_st\":"
+        <> renderRateComparisonJson (reportQ2SelfplayGamesST card)
+        <> ",\"q2_selfplay_games_mt8\":"
+        <> renderRateComparisonJson (reportQ2SelfplayGamesMT8 card)
+        <> ",\"q5_haskell_search_iters_scaling\":"
+        <> renderScalingJson (reportQ5HaskellSearchItersScaling card)
+        <> ",\"q5_cpp_imperative_search_iters_scaling\":"
+        <> renderScalingJson (reportQ5CppImperativeSearchItersScaling card)
+        <> ",\"q5_haskell_selfplay_games_scaling\":"
+        <> renderScalingJson (reportQ5HaskellSelfplayGamesScaling card)
+        <> ",\"q5_cpp_imperative_selfplay_games_scaling\":"
+        <> renderScalingJson (reportQ5CppImperativeSelfplayGamesScaling card)
         <> ",\"divergence_matrix\":["
         <> joinWith "," (map renderDivergenceRowJson (reportDivergenceRows card))
         <> "]}"
@@ -147,22 +185,24 @@ renderVerdict verdict =
         WithinTolerance -> "Within tolerance"
         Shortfall ratio -> "Shortfall " <> show ratio
 
-defaultRateComparison :: ReportRateComparison
-defaultRateComparison =
+defaultRateComparison :: ReportRateUnit -> ReportRateComparison
+defaultRateComparison unit =
     ReportRateComparison
         { reportComparisonMeasured = False
+        , reportComparisonUnit = unit
         , reportTimeRatio = 1.0
-        , reportHaskellGamesPerSecond = 0.0
-        , reportCppGamesPerSecond = 0.0
+        , reportHaskellRate = 0.0
+        , reportCppRate = 0.0
         }
 
-defaultScaling :: ReportScaling
-defaultScaling =
+defaultScaling :: ReportRateUnit -> ReportScaling
+defaultScaling unit =
     ReportScaling
         { reportScalingMeasured = False
+        , reportScalingUnit = unit
         , reportScalingRatio = 1.0
-        , reportSingleGamesPerSecond = 0.0
-        , reportMultiGamesPerSecond = 0.0
+        , reportSingleRate = 0.0
+        , reportMultiRate = 0.0
         }
 
 renderRateComparison :: ReportRateComparison -> String
@@ -172,10 +212,12 @@ renderRateComparison comparison
     | otherwise =
         fixed2 (reportTimeRatio comparison)
             <> "x   ("
-            <> fixed1 (reportHaskellGamesPerSecond comparison)
+            <> fixed1 (reportHaskellRate comparison)
             <> " vs "
-            <> fixed1 (reportCppGamesPerSecond comparison)
-            <> " games/s)"
+            <> fixed1 (reportCppRate comparison)
+            <> " "
+            <> rateUnitText (reportComparisonUnit comparison)
+            <> ")"
 
 renderScaling :: ReportScaling -> String
 renderScaling scaling
@@ -184,10 +226,12 @@ renderScaling scaling
     | otherwise =
         fixed2 (reportScalingRatio scaling)
             <> "x   ("
-            <> fixed1 (reportSingleGamesPerSecond scaling)
+            <> fixed1 (reportSingleRate scaling)
             <> " -> "
-            <> fixed1 (reportMultiGamesPerSecond scaling)
-            <> " games/s)"
+            <> fixed1 (reportMultiRate scaling)
+            <> " "
+            <> rateUnitText (reportScalingUnit scaling)
+            <> ")"
 
 renderRateComparisonJson :: ReportRateComparison -> String
 renderRateComparisonJson comparison =
@@ -195,10 +239,16 @@ renderRateComparisonJson comparison =
         <> renderBool (reportComparisonMeasured comparison)
         <> ",\"time_ratio\":"
         <> fixed4 (reportTimeRatio comparison)
-        <> ",\"haskell_games_per_second\":"
-        <> fixed4 (reportHaskellGamesPerSecond comparison)
-        <> ",\"cpp_imperative_games_per_second\":"
-        <> fixed4 (reportCppGamesPerSecond comparison)
+        <> ",\"unit\":\""
+        <> rateUnitText (reportComparisonUnit comparison)
+        <> "\",\"haskell_"
+        <> rateUnitJsonStem (reportComparisonUnit comparison)
+        <> "\":"
+        <> fixed4 (reportHaskellRate comparison)
+        <> ",\"cpp_imperative_"
+        <> rateUnitJsonStem (reportComparisonUnit comparison)
+        <> "\":"
+        <> fixed4 (reportCppRate comparison)
         <> "}"
 
 renderScalingJson :: ReportScaling -> String
@@ -207,11 +257,31 @@ renderScalingJson scaling =
         <> renderBool (reportScalingMeasured scaling)
         <> ",\"scaling_ratio\":"
         <> fixed4 (reportScalingRatio scaling)
-        <> ",\"single_games_per_second\":"
-        <> fixed4 (reportSingleGamesPerSecond scaling)
-        <> ",\"multi_games_per_second\":"
-        <> fixed4 (reportMultiGamesPerSecond scaling)
+        <> ",\"unit\":\""
+        <> rateUnitText (reportScalingUnit scaling)
+        <> "\",\"single_"
+        <> rateUnitJsonStem (reportScalingUnit scaling)
+        <> "\":"
+        <> fixed4 (reportSingleRate scaling)
+        <> ",\"multi_"
+        <> rateUnitJsonStem (reportScalingUnit scaling)
+        <> "\":"
+        <> fixed4 (reportMultiRate scaling)
         <> "}"
+
+rateUnitText :: ReportRateUnit -> String
+rateUnitText unit =
+    case unit of
+        ReportPlayoutsPerSecond -> "playouts/s"
+        ReportSearchItersPerSecond -> "search-iters/s"
+        ReportGamesPerSecond -> "games/s"
+
+rateUnitJsonStem :: ReportRateUnit -> String
+rateUnitJsonStem unit =
+    case unit of
+        ReportPlayoutsPerSecond -> "playouts_per_second"
+        ReportSearchItersPerSecond -> "search_iters_per_second"
+        ReportGamesPerSecond -> "games_per_second"
 
 renderBool :: Bool -> String
 renderBool True = "true"

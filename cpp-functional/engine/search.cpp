@@ -318,4 +318,39 @@ SearchOutput run_search(
     return out;
 }
 
+uint64_t benchmark_terminal_playouts(
+    const State &root_state,
+    uint32_t count,
+    uint16_t max_plies,
+    uint64_t seed)
+{
+    uint64_t checksum = 0;
+    uint64_t current_seed = seed;
+    for (uint32_t i = 0; i < count; ++i) {
+        current_seed = mix(current_seed, static_cast<uint64_t>(i));
+        const double outcome = rollout(root_state, current_seed, max_plies);
+        const uint64_t outcome_key =
+            outcome > 0.0 ? 0x9e3779b97f4a7c15ULL
+            : outcome < 0.0 ? 0xbf58476d1ce4e5b9ULL
+                            : 0x94d049bb133111ebULL;
+        checksum ^= mix(current_seed, outcome_key ^ static_cast<uint64_t>(i));
+    }
+    return checksum;
+}
+
+uint64_t benchmark_search_iters(
+    const State &root_state,
+    uint32_t count,
+    uint16_t max_plies,
+    RngBackend::Kind rng_kind,
+    uint64_t seed)
+{
+    SearchOutput out = run_search(root_state, count, max_plies, rng_kind, seed);
+    uint64_t checksum = seed ^ static_cast<uint64_t>(out.chosen_action_id);
+    for (const auto &row : out.visits) {
+        checksum ^= (static_cast<uint64_t>(row.first) << 32) ^ static_cast<uint64_t>(row.second);
+    }
+    return checksum;
+}
+
 }  // namespace mcts_functional

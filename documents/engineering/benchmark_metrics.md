@@ -24,39 +24,44 @@ lives in [unit_testing_policy.md](./unit_testing_policy.md).
 The names are intentionally explicit. Avoid unqualified `rollout`, `simulation`,
 or `sims/s` in new documentation because each has been used for more than one unit.
 
-## Current CLI Caveat
+## Current CLI Surface
 
-The current public CLI still exposes `mcts bench rollouts` and `mcts verify
-rollouts`. Those names are legacy surface names.
+The public CLI exposes explicit primitive benchmark leaves and still carries
+legacy played-game names:
 
-- `mcts bench rollouts` currently measures **played-game throughput** with one
+- `mcts bench terminal-playouts` measures direct terminal playout throughput and
+  reports `playouts/s`.
+- `mcts bench search-iters` measures direct UCT/MCTS search-iteration throughput
+  and reports `search-iters/s`.
+- `mcts bench rollouts` remains a legacy command name. It measures
+  **played-game throughput** with one
   search iteration per real move. Its primary meaningful unit is `games/s`, not
   terminal `playouts/s`.
 - `mcts bench selfplay` also measures **played-game throughput**, but each real
   move uses the configured self-play search budget.
-- The current bench renderer's `sims/s` value is derived from `games/s *
+- The legacy played-game bench renderer's `sims/s` value is derived from `games/s *
   simPerMove(inputSims)`. It is not an observed count of terminal playouts or
   search iterations across all moves. For `bench rollouts`, the driver forces a
   one-iteration move budget, so any configured `--sims` value is not a terminal
   playout rate.
 
-The final metric suite must either rename the command surface or add explicit
-benchmark leaves whose names match the units below. Until then, documentation may
-refer to the existing command names only as legacy CLI names.
+Documentation may refer to `bench rollouts` only as a legacy played-game CLI
+name. The report card uses the explicit primitive leaves for Q1a/Q1b and keeps
+played-game self-play rows under `games/s`.
 
-## Target Benchmark Leaves
+## Benchmark Leaves
 
-The refactored suite should provide these operator-facing benchmark families:
+The refactored suite provides or retains these operator-facing benchmark
+families:
 
 | Target benchmark | Required unit | Legacy/current relationship |
 |------------------|---------------|-----------------------------|
-| `terminal-playouts` | `playouts/s` | New metric; reproduces the original `MCTS_legacy` "Pure rollouts" measurement. |
-| `search-iters` | `search-iters/s` | New metric; reproduces the original legacy `simulate(N)` timing basis and measures the live UCT core directly. |
-| `played-games` | `games/s` | Existing game-level work split into clear modes, including one-iteration-per-move games and configured self-play games. |
+| `terminal-playouts` | `playouts/s` | Implemented primitive metric; reproduces the original `MCTS_legacy` "Pure rollouts" measurement. |
+| `search-iters` | `search-iters/s` | Implemented primitive metric; reproduces the original legacy `simulate(N)` timing basis and measures the live UCT core directly. |
+| `rollouts` / `selfplay` | `games/s` | Existing game-level work under legacy names, including one-iteration-per-move games and configured self-play games. |
 
-The exact CLI spelling is owned by the command-surface plan. The semantic
-requirement is that report-card rows name the counted unit and never compare
-different units as if they were interchangeable.
+The semantic requirement is that report-card rows name the counted unit and never
+compare different units as if they were interchangeable.
 
 ## Q1-Q7 Mapping
 
@@ -72,8 +77,8 @@ different units as if they were interchangeable.
 
 The historical Q1/Q2/Q5 rows emitted before this taxonomy are legacy
 **played-game** evidence. They are useful for audit and integration diagnostics,
-but they are not sufficient to answer Q1/Q5 after the metric split because they do
-not measure terminal playout throughput or search-iteration throughput directly.
+but current Q1/Q5 closure uses the explicit `playouts/s`, `search-iters/s`, and
+`games/s` report-card rows instead of treating those historical rows as final.
 
 ## Legacy C++ Basis
 

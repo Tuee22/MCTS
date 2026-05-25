@@ -41,8 +41,9 @@ load name.
 Phase `5` remains closed for the backend (ii) source, ABI, fail-closed PGO/BOLT
 mechanics, and canonical artefact installation surfaces. Phase `8` Sprint `8.10`
 has since broadened the Dockerfile-time PGO/BOLT training workload from the earlier
-narrow self-play smoke into the bounded played-game profile suite. Phase `8`
-Sprint `8.11` reviews profile representativeness after the metric refactor.
+narrow self-play smoke into a bounded profile suite. Phase `8` Sprint `8.11`
+extends and validates that suite with primitive terminal-playout and
+search-iteration profile runs after the metric refactor.
 
 ## Sprint 5.1: Source Tree and Engine Shape ✅
 

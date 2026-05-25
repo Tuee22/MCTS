@@ -170,8 +170,9 @@ is a typed `[Subprocess]` sequence run via `Plan / Apply`:
 
 `--dry-run` renders the typed plan and exits 0. `--plan-file <path>` writes the
 rendered plan for out-of-band review. `--format json` emits the JSON form of the
-`ReportCard` value for CI consumption, including the Q1/Q2/Q5 evidence fields
-and `divergence_matrix` rows.
+`ReportCard` value for CI consumption, including explicit
+`q1a_terminal_playouts_*`, `q1b_search_iters_*`, `q2_selfplay_games_*`,
+unit-specific Q5 scaling fields, and `divergence_matrix` rows.
 
 ## POC Headline Questions
 
@@ -183,12 +184,10 @@ path. That path is mandatory and fail-closed: missing PGO data, missing BOLT
 `.fdata`, or PGO-only/unoptimized fallback artefacts cannot satisfy the report-card
 gate.
 
-Phase 8 Sprint `8.10` closed the fail-closed profile-training requirement, but the
-2026-05-24 metric-semantics audit found that the current Q1/Q2/Q5 report-card rows
-are legacy played-game evidence rather than the complete refactored metric suite.
-The final report card must therefore separate terminal playout throughput,
-search-iteration throughput, and played-game throughput before Q1/Q5 can be treated
-as definitively answered.
+Phase 8 Sprint `8.10` closed the fail-closed profile-training requirement, and
+Sprint `7.8` split the report-card rows into terminal playout throughput,
+search-iteration throughput, and played-game throughput. Sprint `8.11` closed the
+final parity rerun and profile-suite review against that refactored metric surface.
 
 1. **Q1.** Does pure Haskell match maximally-optimised C++ (backend (ii)) on core
    throughput? This requires Q1a terminal playout throughput (`playouts/s`) and
@@ -240,15 +239,21 @@ Knobs](../../DEVELOPMENT_PLAN/system-components.md): `G_R = 1_000`, `G_S =
 
 `mcts test all` requires the Dockerfile-built live foreign artefacts before running
 the Cabal stanzas and final report card. The current gate proves those artefacts are
-present, fail-closed, and produced from the bounded played-game Dockerfile-time
-PGO/BOLT training suite. The measured report-card builder uses the production monotonic clock
-for live Haskell played-game throughput through `runBatchNoWriteDispatch`, compares those
-rates against live backend (ii) where available, and renders `Evidence pending` only in
-deterministic semantic unit values, not in a live full run. The refactored report card
-must add terminal `playouts/s` and `search-iters/s` rows per
-[benchmark_metrics.md → Q1-Q7 Mapping](./benchmark_metrics.md#q1-q7-mapping). Q7 is the
-all-five legacy-envelope gate, while Q3 carries the visit-count equality assertion for
-`(ii)..(v)`.
+present, fail-closed, and produced from the bounded metric-suite Dockerfile-time
+PGO/BOLT training suite. The measured report-card builder uses the production
+monotonic clock for live Haskell primitive throughput through the direct benchmark
+runners and for live played-game throughput through `runBatchNoWriteDispatch`. It
+compares those rates against live backend (ii) where available and renders
+`Evidence pending` only in deterministic semantic unit values, not in a live full
+run. Q7 is the all-five legacy-envelope gate, while Q3 carries the visit-count
+equality assertion for `(ii)..(v)`.
+
+The 2026-05-24 Sprint `8.11` aggregate run closed the refactored metric surface
+with `Verdict: Within tolerance`: Q1a terminal playout ST `0.07x`, Q1a MT8
+`0.39x`, Q1b search-iteration ST `0.06x`, Q1b MT8 `0.40x`, Q2 played-game ST
+`0.05x`, Q2 MT8 `0.17x`, Haskell search-iteration scaling `1.02x`, C++ (ii)
+search-iteration scaling `7.36x`, Haskell self-play scaling `0.97x`, C++ (ii)
+self-play scaling `3.72x`, Q7 PASS, and zero live-cohort divergence.
 
 Summary block format is pinned here. Renderer is pure; wall-clock numbers render to fixed
 precision (two decimals for text ratios, one decimal for text throughputs);

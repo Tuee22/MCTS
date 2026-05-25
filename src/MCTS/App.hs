@@ -7,7 +7,7 @@ import Control.Monad.IO.Class (liftIO)
 import Data.Bits (shiftL, (.|.))
 import qualified Data.ByteString as ByteString
 import Data.Word (Word64, Word8)
-import MCTS.CLI.Bench (runBench)
+import MCTS.CLI.Bench (runBench, runPrimitiveBench)
 import MCTS.CLI.Build (runBuild)
 import MCTS.CLI.Command
 import MCTS.CLI.Docs (runDocs)
@@ -52,6 +52,8 @@ runCommand command =
     case command of
         Bench (BenchRollouts backends inputs) -> runBench backends inputs
         Bench (BenchSelfplay backends inputs) -> runBench backends inputs
+        Bench (BenchTerminalPlayouts backends options) -> runPrimitiveBench TerminalPlayouts backends options
+        Bench (BenchSearchIters backends options) -> runPrimitiveBench SearchIters backends options
         Verify verifyCommand -> runVerifyCommand verifyCommand
         Inspect inspectCommand -> runInspect inspectCommand
         Test testCommand -> runTestCommand testCommand

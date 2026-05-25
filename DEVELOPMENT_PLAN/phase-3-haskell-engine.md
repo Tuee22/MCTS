@@ -17,21 +17,21 @@
 
 ## Phase Status
 
-🔄 **Active** for the metric-suite follow-up. The Haskell backend correctness surface
-remains closed: it has a deterministic logical Corridors driver,
+✅ **Done**. The Haskell backend correctness surface remains closed: it has a
+deterministic logical Corridors driver,
 strict `Word64` board slots/bitsets with path-preserving wall checks, recursive UCT
 search in `ST s` over a structure-of-arrays `STUArray` arena, transcript writing,
 monotonic bench timing, logical envelope stamping through `MCTS.Engine.Envelope`,
 `non_terminal_rank` implemented and pinned to the imported legacy source for
 inspection/tests, current verifier-cohort UCT tie-breaking by action ID/highest
-visit count per Sprint `7.2`, and in-process equity recompute. Across-move tree
-persistence and per-rollout scratch boards remain profile-driven future work outside
-the current closed baseline; post-link build-id stamping and performance parity are
-closed in Phase `8`; foreign
-backend dispatch and foreign recompute coverage remain owned by Phases `4` through `7`.
-Sprint `3.8` is reopened to add explicit terminal-playout and search-iteration
-benchmark primitives so Phase `7` can refactor Q1/Q5 without overloading the legacy
-`bench rollouts` played-game workload.
+visit count per Sprint `7.2`, in-process equity recompute, and explicit
+terminal-playout/search-iteration benchmark primitives. Across-move tree persistence
+and per-rollout scratch boards remain profile-driven future work outside the current
+closed baseline; post-link build-id stamping and performance parity are closed in
+Phase `8`; foreign backend dispatch and foreign recompute coverage remain owned by
+Phases `4` through `7`. Sprint `3.8` supplies the primitive benchmark leaves that
+Phase `7` uses to refactor Q1/Q5 without overloading the legacy `bench rollouts`
+played-game workload.
 
 ## Phase Summary
 
@@ -44,10 +44,10 @@ boundary. The current driver allocates a fresh arena for each per-move search; t
 `treeReroot` arena primitive is tested but is not an across-move persistence path in the
 closed baseline. The optimization stack and performance proof land in Phase `8` once
 the cross-backend `verify`
-baseline pins what `correct` means. `mcts bench rollouts --backend haskell` and
-`mcts bench selfplay --backend haskell` run end-to-end after the original Phase `3`
-closure; the metric follow-up must add explicit terminal playout and search-iteration
-benchmarks per
+baseline pins what `correct` means. `mcts bench rollouts --backend haskell`,
+`mcts bench selfplay --backend haskell`, `mcts bench terminal-playouts --backend
+haskell`, and `mcts bench search-iters --backend haskell` run end-to-end; the
+primitive metric leaves follow
 [../documents/engineering/benchmark_metrics.md](../documents/engineering/benchmark_metrics.md).
 
 ## Sprint 3.1: Corridors Game Engine and Board Representation ✅
@@ -307,7 +307,7 @@ in the Phase 2 wire format.
 - For the legacy `mcts bench rollouts` command, the current logical baseline reuses
   the UCT dispatch with a one-simulation budget so the transcript and visit-table
   path stays identical to self-play. This is a played-game workload, not terminal
-  playout throughput. Sprint `3.8` owns the explicit lower-level benchmark
+  playout throughput. Sprint `3.8` adds the explicit lower-level benchmark
   primitives required by the metric taxonomy.
 - The native Haskell backend (v) uses the single container-built `mcts` binary in
   the current correctness baseline. Visit tables are available directly from
@@ -435,45 +435,56 @@ wall-clock time from a single `GHC.Clock.getMonotonicTimeNSec`, emit
 
 None.
 
-## Sprint 3.8: Terminal Playout and Search-Iteration Benchmarks 🔄
+## Sprint 3.8: Terminal Playout and Search-Iteration Benchmarks ✅
 
-**Status**: Active
+**Status**: Done
 **Implementation**: `src/MCTS/CLI/Bench.hs`, `src/MCTS/Search/UCT.hs`,
-foreign backend search kernels
+`src/MCTS/FFI/Common.hs`, `src/MCTS/App.hs`, `src/MCTS/CLI/Command.hs`,
+`src/MCTS/CLI/Parser.hs`, `src/MCTS/CLI/Spec.hs`,
+`cpp-legacy/c-abi/mcts_cpp_legacy.{h,cc}`,
+`cpp-imperative/engine/search.{hpp,cpp}`,
+`cpp-imperative/c-abi/mcts_cpp_imperative.{h,cc}`,
+`cpp-functional/engine/search.{hpp,cpp}`,
+`cpp-functional/c-abi/mcts_cpp_functional.{h,cc}`, `rust/src/search.rs`,
+`rust/src/c_abi.rs`
 **Docs to update**: `../documents/engineering/benchmark_metrics.md`,
 `../documents/engineering/cli_command_surface.md`,
 `DEVELOPMENT_PLAN/system-components.md`
 
 ### Objective
 
-Add benchmark primitives whose counted units match the metric taxonomy:
+Provide benchmark primitives whose counted units match the metric taxonomy:
 terminal playout throughput (`playouts/s`) and search-iteration throughput
 (`search-iters/s`).
 
 ### Deliverables
 
-- A terminal-playout benchmark that runs direct random playouts from explicit board
+- `mcts bench terminal-playouts` runs direct random playouts from explicit board
   positions without allocating or updating an MCTS tree.
-- A search-iteration benchmark that times UCT iterations directly at fixed board
+- `mcts bench search-iters` times UCT iterations directly at fixed board
   positions and reports observed `search-iters/s`.
 - Renderer output that avoids derived or ambiguous `sims/s` values.
-- Foreign-backend entry points or harnesses that measure the same units as the
-  Haskell path, including backend (i) where Q6 compares against `MCTS_legacy`.
+- Foreign-backend dynamic ABI entry points measure the same units as the Haskell
+  path, including backend (i) where Q6 compares against `MCTS_legacy`.
 
 ### Validation
 
-- The final terminal-playout CLI leaf runs through the root Compose entrypoint for
-  `--backend haskell`, `--rng native`, and `--seed 42`.
-- The final search-iteration CLI leaf runs through the root Compose entrypoint for
-  `--backend haskell`, `--rng native`, and `--seed 42`.
-- Focused unit coverage proving the reported units are not derived from complete-game
-  counts.
+- `docker compose run --rm --build mcts mcts test mcts-unit`
+- `docker compose run --rm mcts mcts bench terminal-playouts --backend haskell --rng native --seed 42`
+- `docker compose run --rm mcts mcts bench search-iters --backend haskell --rng native --seed 42`
+- `docker compose run --rm mcts mcts bench terminal-playouts --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell --rng native --count 16 --seed 42`
+- `docker compose run --rm mcts mcts bench search-iters --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell --rng native --count 16 --seed 42`
 
 ### Remaining Work
 
-- Choose final CLI spelling with Phase `1` command-surface ownership.
-- Implement the terminal-playout and search-iteration timing paths for each backend.
-- Wire the new primitives into Phase `7` report-card rows.
+None.
+
+### Closure Notes
+
+Closed on 2026-05-24 after the primitive CLI leaves, Haskell runner, dynamic
+foreign benchmark ABI, C++ and Rust backend hooks, parser/registry entries, and
+unit coverage landed. Sprint `7.8` later wired these primitive rows into the
+report card.
 
 ## Sprint 3.6: Backend (v) Engine Envelope and Foreign-Engine Recompute ✅
 

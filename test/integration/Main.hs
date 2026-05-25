@@ -284,10 +284,13 @@ reportCardDivergenceIntegration =
                     ("\"divergence_matrix\"" `isInfixOf` renderReportCardJson card)
                 assertBool
                     "measured report-card JSON exposes Q1 evidence fields"
-                    ("\"q1_rollouts_st\"" `isInfixOf` renderReportCardJson card)
+                    ("\"q1a_terminal_playouts_st\"" `isInfixOf` renderReportCardJson card)
+                assertBool
+                    "measured report-card JSON exposes Q1b evidence fields"
+                    ("\"q1b_search_iters_st\"" `isInfixOf` renderReportCardJson card)
                 assertBool
                     "measured report-card JSON exposes Q5 evidence fields"
-                    ("\"q5_cpp_imperative_scaling\"" `isInfixOf` renderReportCardJson card)
+                    ("\"q5_cpp_imperative_search_iters_scaling\"" `isInfixOf` renderReportCardJson card)
 
         withSystemTempDirectory "mcts-divergence-sidecar" $ \cacheRoot -> do
             let inputs =

@@ -47,6 +47,8 @@ renderCommandCell path =
     case path of
         "mcts bench rollouts" -> path <> " [opts]"
         "mcts bench selfplay" -> path <> " [opts]"
+        "mcts bench terminal-playouts" -> path <> " [opts]"
+        "mcts bench search-iters" -> path <> " [opts]"
         "mcts verify rollouts" -> path <> " [opts]"
         "mcts verify selfplay" -> path <> " [opts]"
         "mcts verify legacy-parity rollouts" -> path <> " [opts]"
@@ -78,6 +80,8 @@ renderPurpose path spec =
     case path of
         "mcts bench rollouts" -> "Random-rollouts benchmark across the requested backend cohort"
         "mcts bench selfplay" -> "Self-play benchmark across the requested backend cohort"
+        "mcts bench terminal-playouts" -> "Direct terminal playout throughput in `playouts/s`"
+        "mcts bench search-iters" -> "Direct UCT search-iteration throughput in `search-iters/s`"
         "mcts verify rollouts" -> "Round-robin visit-count equality across `(ii)..(v)` under `--rng cpp`"
         "mcts verify selfplay" -> "Round-robin self-play visit-count equality across `(ii)..(v)`"
         "mcts verify legacy-parity rollouts" -> "Legacy-envelope rollout liveness across all five backend slots"

@@ -46,17 +46,18 @@ The profile workload is not fully automatic. The build harness must run the bina
 through workload examples that resemble the project questions being optimized. Per
 [benchmark_metrics.md](./benchmark_metrics.md), the final suite must distinguish
 terminal playout throughput, search-iteration throughput, and played-game
-throughput. The current implementation baseline still uses the legacy CLI workload
-names, so the Dockerfile training suite is best read as a bounded
-played-game/profile proxy:
+throughput. The Dockerfile training suite therefore includes all three metric
+families:
 
-- the legacy-named `bench rollouts` workload, which is a played-game batch with one
-  search iteration per real move, plus MCTS self-play;
+- direct `bench terminal-playouts` batches and direct `bench search-iters` batches;
+- the legacy-named `bench rollouts` workload, which remains a played-game batch with
+  one search iteration per real move, plus MCTS self-play;
 - single-threaded and `--threading multi --workers 8` batches;
 - `--rng native`, because Q1/Q2 headline throughput uses backend-native RNG;
 - fixed deterministic seeds rather than only seed `42`;
-- a bounded ply cap during profile generation, with self-play simulation budgets
-  representative of `S_BENCH = 500` for PGO.
+- report-card primitive playout caps (`--max-plies 60`) for primitive training;
+- a bounded played-game ply cap during profile generation (`--max-plies 1`), with
+  self-play simulation budgets representative of `S_BENCH = 500` for PGO.
 
 BOLT may use a shorter version of the same workload shape to keep image builds
 practical, but its `.fdata` must still come from the Dockerfile build. Missing PGO
@@ -64,16 +65,17 @@ profile data, failed profile merge, missing BOLT `.fdata`, failed BOLT optimizat
 or a crashing installed library is an image-build failure.
 
 Current implementation baseline: `src/MCTS/CLI/Build.hs` trains PGO/BOLT with the
-bounded suite above. PGO uses the legacy played-game rollout workload plus self-play,
-ST plus MT8, native RNG,
-seeds `42` and `424242`, `--max-plies 1`, two rollout games for each threading mode
-per seed with rollout `--sims 1`, one self-play game for each threading mode per seed
-with self-play `--sims 500`; BOLT uses the same workload/threading/seed shape with
-one rollout game and one self-play game for each threading mode per seed, rollout
-`--sims 1`, and self-play `--sims 100`. C++ training uses scoped dynamic-library
-loading plus exported GCOV dump hooks so `.gcda` is flushed before `-fprofile-use`;
-Rust training keeps the cdylib pinned and relies on process-exit `.profraw`
-emission before `llvm-profdata merge`.
+bounded suite above. PGO uses terminal playout and search-iteration primitive runs
+with `--count 64` and `--max-plies 60`; BOLT uses the same primitive shape with
+`--count 16`. Both PGO and BOLT also train the legacy played-game rollout workload
+and self-play, ST plus MT8, native RNG, seeds `42` and `424242`, and
+`--max-plies 1`. PGO uses two rollout games for each threading mode per seed with
+rollout `--sims 1` and one self-play game for each threading mode per seed with
+self-play `--sims 500`; BOLT uses one rollout game and one self-play game for each
+threading mode per seed, rollout `--sims 1`, and self-play `--sims 100`. C++
+training uses scoped dynamic-library loading plus exported GCOV dump hooks so
+`.gcda` is flushed before `-fprofile-use`; Rust training keeps the cdylib pinned and
+relies on process-exit `.profraw` emission before `llvm-profdata merge`.
 
 ## Backend (i) — `cpp-legacy` (Exempt)
 
@@ -156,7 +158,7 @@ runs BOLT instrument/training/optimize steps, and installs the canonical shared
 library. The 2026-05-23 reclosure makes that sequence fail closed when
 `llvm-bolt` cannot produce usable `.fdata`, uses LLVM objcopy for post-BOLT
 envelope patching, and smokes the installed bolted libraries. Sprint `8.10`
-adds the bounded played-game profile suite described in
+added the bounded profile suite described in
 [PGO/BOLT Training Workload Doctrine](#pgobolt-training-workload-doctrine) to that
 mandatory sequence.
 
@@ -256,13 +258,13 @@ Plan/Apply leaf:
 - **Two-stage PGO** via
   `RUSTFLAGS="-C target-cpu=native -C link-arg=-fuse-ld=lld -C
   link-arg=-Wl,--emit-relocs -C
-  profile-generate=/workspace/MCTS/rust/pgo-profile"` → bounded played-game training
+  profile-generate=/workspace/MCTS/rust/pgo-profile"` → bounded metric-suite training
   suite → hard-failing `llvm-profdata merge` into
   `rust/pgo-profile/merged.profdata` → `RUSTFLAGS="-C target-cpu=native -C
   link-arg=-fuse-ld=lld -C link-arg=-Wl,--emit-relocs -C
   profile-use=/workspace/MCTS/rust/pgo-profile/merged.profdata"`.
 - **BOLT** post-link: temporarily install the BOLT-instrumented copy of the PGO
-  cdylib at the canonical FFI load name for a shorter bounded played-game training run,
+  cdylib at the canonical FFI load name for a shorter bounded metric-suite training run,
   restore the PGO cdylib, then optimize with `-reorder-blocks=ext-tsp` when
   `.fdata` exists. Missing `.fdata` or a failed BOLT invocation must fail the
   Dockerfile build; copying the PGO cdylib as a fallback is forbidden. This is
@@ -279,7 +281,7 @@ the `lld` linker flag in both PGO Cargo builds, profile merge guard, canonical
 install path `rust/target/release/libmcts_rust.so`, local `SystemMiMalloc` global
 allocator, LLVM objcopy post-link `engine_build_id` patching, and final installed
 cdylib smoke inside the pinned amd64 container. Like C++, Rust trains on the
-Sprint `8.10` bounded played-game profile suite.
+bounded metric-suite profile suite.
 
 ### Code-Level Requirements
 
@@ -431,9 +433,9 @@ GCC/Clang `-fprofile-use` or `rustc -Cprofile-use`. The Haskell backend
 therefore competes against container-built C++ and Rust artefacts that completed
 their mandatory PGO+BOLT workflows without an equivalent Haskell feedback loop.
 This asymmetry does not permit PGO-only, non-BOLT, or unoptimized foreign
-artefacts. Missing BOLT data is always a build failure; the current played-game
-training suite remains historical evidence until the metric-suite rerun in Sprint
-`8.11`.
+artefacts. Missing BOLT data is always a build failure; Sprint `8.11` closed the
+metric-suite rerun after the Dockerfile build trained primitive terminal-playout,
+primitive search-iteration, legacy played-game rollout, and self-play workloads.
 
 This is the asymmetry that most concretely tests the project hypothesis: if
 Haskell matches under these conditions, the result is meaningful; if it falls
@@ -446,7 +448,8 @@ then-current fail-closed artefacts: either `Within tolerance` or `Shortfall <rat
 per the [Parity Tolerance](#parity-tolerance) section below, with the gap attributed
 to this asymmetry where appropriate. Sprint `8.10` closed the stricter
 fail-closed played-game gate: the same report-card verdict after the C++ and Rust
-PGO/BOLT profiles are trained on the bounded played-game profile suite.
+PGO/BOLT profiles are trained on the bounded profile suite. Sprint `8.11` extends
+that suite with direct primitive training and closes the refactored metric verdict.
 
 ### Sprint 8.3 — Historical Played-Game Q1 Snapshot
 
@@ -526,7 +529,7 @@ not a reason to publish a PGO-only cdylib or C++ shared library at the canonical
 location.
 
 That status proves the PGO/BOLT pipeline is mandatory, fail-closed, and trained on
-the bounded played-game profile suite.
+the bounded profile suite.
 
 The optimized-C++ Sprint 8.10 verdict was refreshed on 2026-05-23 by
 `docker compose run --rm --build mcts mcts test all` against the canonical workload
@@ -537,11 +540,12 @@ objcopy-patched envelopes, and passing final installed-library smokes before the
 report card ran. The earlier 2026-05-21 run where C++ BOLT yielded no `.fdata`
 remains historical fallback evidence only, and the Sprint `8.3` fail-closed run
 is historical pipeline evidence superseded by Sprint `8.10`.
-Q1/Q2/Q5 use the production monotonic clock through the no-write batch runner
-rather than the former zero-valued test stub or transcript-retaining benchmark
-subprocesses. The rows below are historical played-game evidence under the legacy
-report-card labels; they remain useful integration data but do not yet provide
-terminal `playouts/s` or `search-iters/s` evidence.
+Q1/Q2/Q5 use the production monotonic clock through the primitive benchmark
+runners and the no-write played-game batch runner rather than the former
+zero-valued test stub or transcript-retaining benchmark subprocesses. The rows
+below are historical played-game evidence from Sprint `8.10`; they remain useful
+integration data. Sprint `8.11` supersedes them with the fresh refactored rerun
+with terminal `playouts/s`, `search-iters/s`, and played-game `games/s` rows.
 
 | Row | Ratio | Evidence |
 |-----|------:|----------|
@@ -552,9 +556,29 @@ terminal `playouts/s` or `search-iters/s` evidence.
 | Q5 Haskell MT scaling | 0.99x | 0.5 -> 0.5 games/s |
 | Q5 cpp-imperative MT scaling | 3.65x | 0.0 -> 0.1 games/s |
 
-The refreshed Sprint 8.10 verdict is **`Within tolerance`** for the bounded-profile
-fail-closed played-game pipeline in the worktree. Sprint `8.11` must rerun parity
-after terminal playout and search-iteration rows exist.
+The optimized-C++ Sprint 8.11 verdict was refreshed on 2026-05-24 by
+`docker compose run --rm --build mcts mcts test all` against the refactored metric
+surface and the bounded metric-suite Dockerfile-built canonical artefacts. The
+Dockerfile build trained terminal-playout primitives, search-iteration primitives,
+legacy played-game rollout batches, and self-play batches before publishing the
+bolted shared libraries.
+
+| Row | Ratio | Evidence |
+|-----|------:|----------|
+| Q1a terminal playout ST | 0.07x | Haskell 7166.6 playouts/s vs cpp-imperative 482.6 playouts/s |
+| Q1a terminal playout MT8 | 0.39x | Haskell 9072.2 playouts/s vs cpp-imperative 3512.4 playouts/s |
+| Q1b search-iteration ST | 0.06x | Haskell 9509.7 search-iters/s vs cpp-imperative 531.0 search-iters/s |
+| Q1b search-iteration MT8 | 0.40x | Haskell 9709.2 search-iters/s vs cpp-imperative 3906.6 search-iters/s |
+| Q2 self-play ST | 0.05x | Haskell 0.6 games/s vs cpp-imperative 0.0 games/s |
+| Q2 self-play MT8 | 0.17x | Haskell 0.6 games/s vs cpp-imperative 0.1 games/s |
+| Q5 Haskell search-iteration scaling | 1.02x | 9509.7 -> 9709.2 search-iters/s |
+| Q5 cpp-imperative search-iteration scaling | 7.36x | 531.0 -> 3906.6 search-iters/s |
+| Q5 Haskell self-play scaling | 0.97x | 0.6 -> 0.6 games/s |
+| Q5 cpp-imperative self-play scaling | 3.72x | 0.0 -> 0.1 games/s |
+
+The refreshed Sprint 8.11 verdict is **`Within tolerance`** for the bounded
+metric-suite fail-closed pipeline in the worktree. Q3 and Q7 passed, and the live
+divergence matrix was all zeroes.
 
 ## Parity Tolerance
 
@@ -562,14 +586,14 @@ The Phase 8 Sprint 8.3 verdict pins on a single constant:
 
 **`HASKELL_PARITY_TOLERANCE = 0.05`** (5% shortfall ceiling).
 
-The current Sprint 8.3/8.10 implementation renders `Within tolerance` iff
+The current Sprint 8.11 implementation renders `Within tolerance` iff
 
     haskell_time / cpp_imperative_time <= 1 + HASKELL_PARITY_TOLERANCE
 
 holds on **both** legacy Q1 and Q2 played-game rows, in both threading modes the
-report card runs. The refactored metric suite must apply the same tolerance to Q1a
+report card runs. The refactored metric suite applies the same tolerance to Q1a
 terminal playout throughput, Q1b search-iteration throughput, and Q2 played-game
-self-play throughput before the parity proof is final.
+self-play throughput.
 Otherwise the verdict is `Shortfall <ratio>`, where
 `ratio = max(Q1_ratio, Q2_ratio) - 1` (the worst-case shortfall over the
 two workloads, expressed as a fraction).

@@ -60,13 +60,13 @@ The MCTS commands that consume the `Plan / Apply` pattern are:
   `mcts build cpp-functional` — Dockerfile-invoked Plan/Apply recipes for the C++
   backend build leaves. The steelman C++ leaves drive the shared PGO/BOLT target
   sequence and install the canonical shared libraries only after PGO and BOLT both
-  produce their required profile data from the bounded played-game training suite.
+  produce their required profile data from the bounded metric-suite training suite.
   Runtime validation does not rebuild them, and PGO-only/unoptimized fallback
   installs are forbidden.
 - `mcts build rust` — Plan/Apply over
   the Dockerfile-invoked foreign backend two-stage PGO + BOLT post-link +
   system `mimalloc` link pipeline, including the final installed-cdylib smoke and
-  the same bounded played-game training workload as the steelman C++ backends.
+  the same bounded metric-suite training workload as the steelman C++ backends.
 - `mcts build legacy-fixtures` — Plan/Apply over the backend (i) optional external
   evidence generator. Its outputs belong in ignored/external artifact roots, not in
   normal test inputs.

@@ -18,8 +18,10 @@ module MCTS.FFI.Common
     , withDynamicBoard
     , withDynamicGame
     , withDynamicSearchGame
+    , withDynamicBenchmarkGame
     , withDynamicRecomputeGame
     , DynamicSearchGame (..)
+    , DynamicBenchmarkGame (..)
     , DynamicRecomputeGame (..)
     , engineEnvelopeToEnvelope
     , loadDynamicEnvelope
@@ -133,6 +135,19 @@ data DynamicSearchGame = DynamicSearchGame
         :: !(Word64 -> Word32 -> IO (Either AppError (Word8, [(Word8, Word32)])))
     }
 
+-- | Lower-level benchmark ABI for Sprint 3.8. These hooks measure
+-- explicit primitive units from the current board without complete-game
+-- transcript generation:
+-- `<prefix>_benchmark_terminal_playouts(board, seed, count, max_plies)`
+-- and `<prefix>_benchmark_search_iters(board, seed, count, max_plies)`.
+-- Both return an opaque checksum so the optimizer cannot discard the
+-- work; the Haskell caller counts the requested units, not the checksum.
+data DynamicBenchmarkGame = DynamicBenchmarkGame
+    { benchmarkGameBoard :: !(Ptr ())
+    , benchmarkGameTerminalPlayouts :: !(Word64 -> Word32 -> Word16 -> IO Word64)
+    , benchmarkGameSearchIters :: !(Word64 -> Word32 -> Word16 -> IO Word64)
+    }
+
 -- | Sprint 6.5: dynamically-loaded backend exposing the
 -- `mcts_<backend>_recompute_move(board, seed, sims, out_action_ids,
 -- out_visits, out_chosen, out_equity)` ABI on top of the search
@@ -210,6 +225,14 @@ foreign import ccall "dynamic"
         -> Ptr Word8
         -> Ptr Double
         -> IO Int32
+foreign import ccall "dynamic"
+    mkDynamicBenchmark
+        :: FunPtr (Ptr () -> Word64 -> Word32 -> Word16 -> IO Word64)
+        -> Ptr ()
+        -> Word64
+        -> Word32
+        -> Word16
+        -> IO Word64
 foreign import ccall "dynamic" mkDynamicEnvelope :: FunPtr (IO (Ptr ())) -> IO (Ptr ())
 foreign import ccall "dynamic" mkDynamicProfileDump :: FunPtr (IO ()) -> IO ()
 
@@ -343,6 +366,30 @@ withDynamicSearchGame backend libraryPath symbolPrefix body =
                             }
   where
     actionCount = 209
+
+withDynamicBenchmarkGame
+    :: Backend
+    -> FilePath
+    -> String
+    -> (DynamicBenchmarkGame -> IO a)
+    -> IO (Either AppError a)
+withDynamicBenchmarkGame backend libraryPath symbolPrefix body =
+    liftFFI backend (symbolPrefix <> "_benchmark_terminal_playouts") $
+        withPinnedDynamicLibrary libraryPath $ \library -> do
+            newFun <- DL.dlsym library (symbolPrefix <> "_new_board")
+            freeFun <- DL.dlsym library (symbolPrefix <> "_free_board")
+            terminalFun <- DL.dlsym library (symbolPrefix <> "_benchmark_terminal_playouts")
+            searchFun <- DL.dlsym library (symbolPrefix <> "_benchmark_search_iters")
+            let terminalBench = mkDynamicBenchmark terminalFun
+                searchBench = mkDynamicBenchmark searchFun
+            withDynamicProfileFlush library symbolPrefix $
+                bracket (mkBoardNew newFun) (mkBoardFree freeFun) $ \board ->
+                    body
+                        DynamicBenchmarkGame
+                            { benchmarkGameBoard = board
+                            , benchmarkGameTerminalPlayouts = terminalBench board
+                            , benchmarkGameSearchIters = searchBench board
+                            }
 
 -- | Sprint 6.5: open a dynamic backend exposing the
 -- `mcts_<backend>_recompute_move` ABI. The body sees a

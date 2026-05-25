@@ -62,6 +62,8 @@ leafParser path =
     case path of
         ["bench", "rollouts"] -> Just (benchParser Rollouts)
         ["bench", "selfplay"] -> Just (benchParser Selfplay)
+        ["bench", "terminal-playouts"] -> Just (benchPrimitiveParser TerminalPlayouts)
+        ["bench", "search-iters"] -> Just (benchPrimitiveParser SearchIters)
         ["verify", "rollouts"] -> Just (verifyParser Rollouts)
         ["verify", "selfplay"] -> Just (verifyParser Selfplay)
         ["verify", "legacy-parity", "rollouts"] -> Just (legacyParityParser Rollouts)
@@ -102,6 +104,51 @@ benchParser workload =
             backends = maybe [inputBackend inputs] id (runBackends opts)
          in Bench
                 (if workload == Rollouts then BenchRollouts backends inputs else BenchSelfplay backends inputs)
+
+benchPrimitiveParser :: BenchPrimitive -> OA.Parser Command
+benchPrimitiveParser primitive =
+    mk
+        <$> backendListOption
+        <*> rngOption NativeRng True
+        <*> threadingOption (MultiThreaded 8)
+        <*> OA.option
+            OA.auto
+            ( OA.long "count"
+                <> OA.metavar "N"
+                <> OA.value (1000 :: Int)
+                <> OA.showDefault
+                <> OA.help "Number of primitive benchmark units"
+            )
+        <*> OA.option
+            OA.auto
+            ( OA.long "seed"
+                <> OA.metavar "U64"
+                <> OA.help "Master seed"
+            )
+        <*> ( fromIntegral
+                <$> OA.option
+                    OA.auto
+                    ( OA.long "max-plies"
+                        <> OA.metavar "N"
+                        <> OA.value (60 :: Int)
+                        <> OA.showDefault
+                        <> OA.help "Maximum plies for each primitive unit"
+                    )
+            )
+  where
+    mk backends rng threading count seed maxPlies =
+        let options =
+                BenchPrimitiveOptions
+                    { benchPrimitiveRng = rng
+                    , benchPrimitiveThreading = threading
+                    , benchPrimitiveCount = count
+                    , benchPrimitiveSeed = seed
+                    , benchPrimitiveMaxPlies = maxPlies
+                    }
+         in Bench $
+                case primitive of
+                    TerminalPlayouts -> BenchTerminalPlayouts backends options
+                    SearchIters -> BenchSearchIters backends options
 
 verifyParser :: Workload -> OA.Parser Command
 verifyParser workload =

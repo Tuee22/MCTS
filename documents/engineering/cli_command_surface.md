@@ -47,6 +47,8 @@ From the host, run any listed logical command as
 |---------|---------|
 | `mcts bench rollouts [opts]` | Random-rollouts benchmark across the requested backend cohort |
 | `mcts bench selfplay [opts]` | Self-play benchmark across the requested backend cohort |
+| `mcts bench terminal-playouts [opts]` | Direct terminal playout throughput in `playouts/s` |
+| `mcts bench search-iters [opts]` | Direct UCT search-iteration throughput in `search-iters/s` |
 | `mcts verify rollouts [opts]` | Round-robin visit-count equality across `(ii)..(v)` under `--rng cpp` |
 | `mcts verify selfplay [opts]` | Round-robin self-play visit-count equality across `(ii)..(v)` |
 | `mcts verify legacy-parity rollouts [opts]` | Legacy-envelope rollout liveness across all five backend slots |
@@ -79,14 +81,13 @@ From the host, run any listed logical command as
 
 ### Benchmark Naming Caveat
 
-The generated command matrix reflects the current public CLI names. Metric
-semantics are governed by
-[benchmark_metrics.md](./benchmark_metrics.md): `mcts bench rollouts` is a
-legacy command name and currently measures played-game throughput with one search
-iteration per real move. It does not measure terminal `playouts/s`. The metric
-refactor tracked by the development plan must either rename this surface or add
-explicit `terminal-playouts`, `search-iters`, and `played-games` benchmark leaves
-whose command names match the units they report.
+Metric semantics are governed by
+[benchmark_metrics.md](./benchmark_metrics.md). `mcts bench terminal-playouts`
+reports direct terminal playout throughput in `playouts/s`, and `mcts bench
+search-iters` reports direct UCT/MCTS iteration throughput in `search-iters/s`.
+`mcts bench rollouts` remains a legacy command name and measures played-game
+throughput with one search iteration per real move. It does not measure terminal
+`playouts/s`.
 
 Current implementation baseline: `src/MCTS/CLI/Parser.hs` exposes
 `commandParserInfo`, an `optparse-applicative` parser whose command topology is
@@ -110,14 +111,11 @@ foreign cdylib is present, FFI-produced transcripts are stamped with
 legacy-parity {rollouts,selfplay}` pins `--rng cpp`, single-threading, and
 `max_plies = 10000`, then checks all five backend slots for legacy-envelope
 liveness/overflow without requiring backend (i)'s historical search tree to match
-the steelman visit vectors. The report-card renderer now emits
-explicit Q1/Q2/Q5 evidence fields and the cross-backend divergence matrix in
-table and JSON form; semantic unit tests use a constructed zero-matrix baseline,
-and the live `mcts test all` path requires the live C++ and Rust artefacts, measures
-Haskell Q1/Q2/Q5 with the production monotonic clock through the no-write batch
-runner, compares those rates against live backend (ii) where its shared library is
-available, and populates divergence rows from the measured live `G_V` verify cohort
-over backends (ii)..(v).
+the steelman visit vectors. The report-card renderer emits explicit Q1a terminal
+`playouts/s`, Q1b search-iteration `search-iters/s`, Q2 played-game `games/s`, and
+separate Q5 scaling fields in table and JSON form. The live `mcts test all` path
+requires the live C++ and Rust artefacts and populates divergence rows from the
+measured live `G_V` verify cohort over backends (ii)..(v).
 `mcts build legacy-fixtures` remains the supported Q6 evidence-generation path
 for explicit audit runs; it builds `cpp-legacy/build/legacy-to-wire` and passes
 output root, seed, game count, and simulation count as explicit flags. Its output
@@ -132,8 +130,9 @@ backend ADTs, and verify-cohort GADTs — `Command`, `BenchCommand`,
 `VerifyCommand`, `BuildCommand`, `InspectCommand`, `TestCommand`, `LintCommand`,
 `DocsCommand`, `CommandsOptions`, `HelpOptions`, `PlayOptions`, `ShowOptions`,
 `ReplayOptions`, `CacheCommand`, `DivergenceOptions`, `ParityAnchorOptions`,
-`LegacyFixtureOptions`, `RunInputs`, `PlanOptions`, `Backend`, `VerifyBackend`,
-`SimBudget`, `Threading`, `RngSource`, `Side`, `TranscriptRef` — live in
+`LegacyFixtureOptions`, `BenchPrimitive`, `BenchPrimitiveOptions`, `RunInputs`,
+`PlanOptions`, `Backend`, `VerifyBackend`, `SimBudget`, `Threading`, `RngSource`,
+`Side`, `TranscriptRef` — live in
 `src/MCTS/CLI/Command.hs` and related type modules.
 This document does not duplicate their full Haskell declarations; it elaborates
 the generated operator-facing matrix and the per-command flag semantics in the
@@ -148,13 +147,14 @@ set of common invocations.
 | `--backend <list>` | `bench`, `verify`, `play` | required | Comma-separated `NonEmpty Backend` for bench/verify; single `Backend` for play. |
 | `--vs <backend>` | `play` | `Nothing` (human plays) | When set, AI-vs-AI spectator mode. |
 | `--side hero\|villain` | `play` | required | Side controlled by `--backend`; with `--vs`, the `--vs` backend controls the opposite side and the human spectates. |
-| `--threading single\|multi` | `bench`, `verify` | `multi` for `bench`, `single` for `verify` | Threading mode for the batch dispatcher. |
+| `--threading single\|multi` | `bench`, `verify` | `multi` for `bench`, `single` for `verify` | Threading mode for the batch dispatcher. Primitive benchmark leaves use the same threading flags and default to 8 workers when multi-threaded. |
 | `--workers N` | `bench` (when `--threading multi`) | `8` | Worker count for the batch pool. |
 | `--rng native\|cpp` | `bench`, `play` | `native` | Pinned to `cpp` on the `verify` subtree at parse time. |
-| `--games N` | `bench`, `verify`, `build legacy-fixtures` | required for bench/verify; `10` for legacy fixtures | Game count for the run. |
-| `--seed N` | `bench`, `verify`, `play`, `build legacy-fixtures` | required (bench/verify); `Nothing` ⇒ fresh random (play); `42` for legacy fixtures | Master seed; per-game seeds derive via `splitmix64(master_seed, game_index)`. |
-| `--max-plies N` | `bench`, `verify`, `play` | `200` | Part of the determinism contract for the live verifier cohort. |
-| `--sims N` or `--sims N0:N1` | `bench`, `verify`, `play`, `build legacy-fixtures` | `10_000` for `bench`/`verify`; `1_000` for `play`; `10_000` for legacy fixtures | `N` parses as `FixedSims N`; `N0:N1` parses as `RampedSims N0 N1` for run commands. `build legacy-fixtures` accepts fixed `N` only. Ignored by the current legacy-named `bench rollouts` / `verify rollouts` workload, which forces one search iteration per real move. |
+| `--count N` | `bench terminal-playouts`, `bench search-iters` | `1000` | Number of primitive units to measure. This is not a game count and is reported with `playouts/s` or `search-iters/s`. |
+| `--games N` | played-game `bench` leaves, `verify`, `build legacy-fixtures` | required for played-game bench/verify; `10` for legacy fixtures | Game count for played-game workloads. Primitive benchmark leaves use `--count` instead. |
+| `--seed N` | `bench`, `verify`, `play`, `build legacy-fixtures` | required for `bench`/`verify`; `Nothing` ⇒ fresh random (play); `42` for legacy fixtures | Master seed; played-game per-game seeds derive via `splitmix64(master_seed, game_index)`, while primitive benchmark workers derive deterministic per-unit/chunk seeds from the same master seed and backend RNG salt. |
+| `--max-plies N` | `bench`, `verify`, `play` | `200` for played-game bench/verify/play; `60` for primitive benchmark leaves | Part of the determinism contract for the live verifier cohort; on primitive leaves it caps playout/search depth. |
+| `--sims N` or `--sims N0:N1` | played-game `bench`, `verify`, `play`, `build legacy-fixtures` | `10_000` for played-game `bench`/`verify`; `1_000` for `play`; `10_000` for legacy fixtures | `N` parses as `FixedSims N`; `N0:N1` parses as `RampedSims N0 N1` for run commands. `build legacy-fixtures` accepts fixed `N` only. Ignored by the current legacy-named `bench rollouts` / `verify rollouts` workload, which forces one search iteration per real move. Primitive benchmark leaves use `--count` and do not accept `--sims`. |
 | `--output-dir <path>` | `build legacy-fixtures` | required explicit path | Legacy evidence output root; choose an external or ignored artifact directory. Files land below the host-architecture subdirectory and are not repository validation inputs. |
 | `--top N` | `inspect show`, `inspect replay` | `10`; `0` ⇒ all legal moves | Live-adjustable via `+`/`-` in `inspect replay`. |
 | `--with-equity` | `inspect show` | `False` | Reads the originator's cached `.eq` if envelope-matched (instant); on originator cache miss, writes a replacement only through the same backend/build recompute path. Stale, unavailable, fallback, or foreign recompute evidence is labelled and is not written as originator evidence. |

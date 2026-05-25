@@ -22,8 +22,9 @@
 
 ## Phase Status
 
-🔄 **Active** for the metric-suite parity rerun. The Haskell tuning work, no-generated-validation-data cleanup,
-five-backend restoration, and optimized-C++ report-card refresh previously closed.
+✅ **Done** after the metric-suite parity rerun. The Haskell tuning work, no-generated-validation-data cleanup,
+five-backend restoration, optimized-C++ report-card refresh, and refactored
+Q1a/Q1b/Q2/Q5 evidence are closed.
 Sprint `5.3` routes the Dockerfile-invoked `mcts build cpp-imperative` and
 `mcts build cpp-functional` recipes through the shared C++ PGO/BOLT target sequence,
 and Sprint `8.3` refreshed the report-card evidence on 2026-05-21 against the
@@ -43,10 +44,12 @@ stale two-backend drift remains corrected: `cpp-legacy`, `cpp-imperative`, and
 and `haskell`.
 
 The 2026-05-24 metric-semantics audit reclassified the existing Q1/Q2/Q5 evidence
-as historical played-game throughput evidence. Final parity closure now depends on
-Sprint `3.8` adding terminal-playout and search-iteration benchmarks and Sprint
-`7.8` rendering the separated Q1a/Q1b/Q2/Q5 rows. Sprint `8.11` owns the rerun and
-conceptual review after those rows exist.
+as historical played-game throughput evidence. Sprint `3.8` has added
+terminal-playout and search-iteration benchmarks, and Sprint `7.8` has rendered
+the separated Q1a/Q1b/Q2/Q5 report-card rows. Sprint `8.11` reclosed Phase `8`
+with a Dockerfile rebuild whose PGO/BOLT profile suite covers terminal playout,
+search-iteration, legacy played-game rollout, and self-play workloads before the
+refactored report-card verdict runs.
 
 The restored end state is:
 
@@ -184,7 +187,8 @@ present. The 2026-05-23 aggregate run rebuilt the Dockerfile-owned C++ and Rust
 PGO/BOLT artefacts first, required non-empty BOLT profiles and passing
 installed-library smokes, then passed all Cabal stanzas, Q3 `(ii)..(v)`, Q7
 all-five legacy-envelope checks, and the report-card verdict. Sprint `8.10` remains
-historical played-game evidence; Sprint `8.11` owns the final metric-suite rerun.
+historical played-game evidence; Sprint `8.11` supplies the final refactored
+metric-suite closure evidence.
 
 ### Remaining Work
 
@@ -539,12 +543,11 @@ games/s), Q2 MT8 0.21x (`0.5` vs `0.1` games/s), Q5 Haskell 0.99x, Q5 C++ (ii)
 3.65x, Q7 liveness PASS, zero live-cohort divergence, all Cabal stanzas PASS, and
 verdict `Within tolerance`.
 
-## Sprint 8.11: Refactored Metric Parity Rerun ⏸️
+## Sprint 8.11: Refactored Metric Parity Rerun ✅
 
-**Status**: Blocked
+**Status**: Done
 **Implementation**: `src/MCTS/CLI/Test.hs`, `src/MCTS/ReportCard.hs`,
-`src/MCTS/CLI/Bench.hs`, backend benchmark harnesses
-**Blocked by**: Sprint `3.8`, Sprint `7.8`
+`src/MCTS/CLI/Bench.hs`, `src/MCTS/CLI/Build.hs`, backend benchmark harnesses
 **Docs to update**: `../documents/engineering/benchmark_metrics.md`,
 `../documents/engineering/compiler_runtime_tuning.md`,
 `../documents/engineering/unit_testing_policy.md`,
@@ -563,6 +566,9 @@ search-iteration throughput, and played-game self-play throughput.
 - Fresh Q2 played-game self-play evidence for Haskell vs backend (ii).
 - Q5 scaling evidence with search-iteration scaling and played-game scaling reported
   separately.
+- Dockerfile-time C++ and Rust PGO/BOLT training includes the representative metric
+  families: terminal playout primitives, search-iteration primitives, legacy
+  played-game rollout batches, and self-play batches.
 - A conceptual review of backend ordering: backend (ii) should remain the steelman
   C++ performance ceiling, backend (iii) differences should be explainable by style
   and representation choices, Rust should fit the systems-language baseline, and
@@ -575,11 +581,30 @@ search-iteration throughput, and played-game self-play throughput.
 - `docker compose run --rm mcts mcts check-code`
 - `git diff --check`
 
+### Closure Notes
+
+Closed on 2026-05-24. `docker compose run --rm --build mcts mcts test all`
+rebuilt the Dockerfile-owned C++ and Rust PGO/BOLT artefacts, trained profiles
+with the bounded metric suite, passed all Cabal stanzas plus Q3 and Q7, and
+reported `Verdict: Within tolerance`.
+
+Fresh report-card evidence:
+
+- Q1a terminal playouts: ST `0.07x` (`7166.6` vs `482.6` playouts/s), MT8
+  `0.39x` (`9072.2` vs `3512.4` playouts/s).
+- Q1b search iterations: ST `0.06x` (`9509.7` vs `531.0` search-iters/s), MT8
+  `0.40x` (`9709.2` vs `3906.6` search-iters/s).
+- Q2 self-play games: ST `0.05x` (`0.6` vs `0.0` games/s), MT8 `0.17x`
+  (`0.6` vs `0.1` games/s).
+- Q5 scaling: Haskell search-iters `1.02x`, C++ (ii) search-iters `7.36x`,
+  Haskell self-play `0.97x`, C++ (ii) self-play `3.72x`.
+- Q3/Q7 passed, the live divergence matrix was all zeroes, and the profile-suite
+  review confirmed Dockerfile-time primitive and played-game workloads before the
+  final report-card run.
+
 ### Remaining Work
 
-- Wait for the refactored metric rows from Sprint `7.8`.
-- Rerun the aggregate gate and update the historical evidence paragraphs with
-  explicit units.
+None.
 
 ## Documentation Requirements
 
@@ -592,7 +617,7 @@ search-iteration throughput, and played-game self-play throughput.
 - `documents/engineering/backend_ffi_contract.md` — live C ABI contract for all four
   foreign backends.
 - `documents/engineering/benchmark_metrics.md` — metric units and Q1-Q7 mapping used by
-  Sprint `8.11` rerun criteria.
+  Sprint `8.11` rerun evidence.
 - `documents/engineering/unit_testing_policy.md` — live `mcts-cross-backend` and
   `mcts-legacy-parity` roles without checked-in generated validation data, plus the
   Sprint `8.10` bounded-profile prerequisite for final report-card closure.
@@ -600,7 +625,7 @@ search-iteration throughput, and played-game self-play throughput.
   backend (ii), mandatory Dockerfile-time PGO+BOLT success for accepted evidence,
   native-RNG benchmark semantics, Sprint `8.9` Cabal-stanza flag wording, and the
   Sprint `8.10` bounded played-game PGO/BOLT training workload doctrine and the
-  Sprint `8.11` refactored metric rerun criteria.
+  Sprint `8.11` refactored metric rerun evidence.
 - `documents/engineering/haskell_code_guide.md` — command/build surface examples.
 
 **Product docs to create/update:**

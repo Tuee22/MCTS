@@ -12,6 +12,7 @@
 module MCTS.Search.UCT
     ( uctSearch
     , uctSearchWithEquity
+    , terminalPlayout
     ) where
 
 import Control.Monad.ST (ST, runST)
@@ -52,6 +53,10 @@ uctSearch :: Board -> Word64 -> Int -> Int -> (Action, [(Action, Word32)])
 uctSearch board seed nSims maxPlies =
     let (act, visits, _) = uctSearchWithEquity board seed nSims maxPlies
      in (act, visits)
+
+{-# INLINEABLE terminalPlayout #-}
+terminalPlayout :: Board -> Word64 -> Int -> Float
+terminalPlayout = rollout
 
 -- | Same as `uctSearch`, but also returns the per-child equity estimate
 -- (`valueSum / visits` from Hero's perspective). The third tuple field

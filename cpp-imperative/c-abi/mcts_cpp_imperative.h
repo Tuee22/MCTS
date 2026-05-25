@@ -43,6 +43,18 @@ MCTS_IMPERATIVE_API int32_t mcts_imperative_recompute_move(
     uint8_t *out_chosen,
     double *out_equity);
 
+MCTS_IMPERATIVE_API uint64_t mcts_imperative_benchmark_terminal_playouts(
+    const mcts_imperative_board *board,
+    uint64_t seed,
+    uint32_t count,
+    uint16_t max_plies);
+
+MCTS_IMPERATIVE_API uint64_t mcts_imperative_benchmark_search_iters(
+    const mcts_imperative_board *board,
+    uint64_t seed,
+    uint32_t count,
+    uint16_t max_plies);
+
 typedef struct {
     uint16_t envelope_version;
     uint8_t  rng_source_envelope;

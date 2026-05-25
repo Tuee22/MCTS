@@ -978,9 +978,9 @@ Implement the single `AppError` ADT, the `renderError` boundary, and the `--form
   `mcts inspect replay`) own their own rendering and ignore both flag families.
 - `.hlint.yaml` rules name `print`, `exitFailure`, `Text.IO.putStrLn`,
   `Text.IO.hPutStrLn`, and direct terminal-formatting calls. The source-walker
-  source-walker currently enforces owner-module exceptions for
-  `exitFailure` / `Data.Text.IO.*PutStrLn`; complete module-scoped external HLint
-  parity remains open.
+  enforces owner-module exceptions for `exitFailure` / `Data.Text.IO.*PutStrLn`;
+  HLint carries the broad syntactic hints and the source-walker carries the
+  module-scoped owner policy.
 
 ### Validation
 

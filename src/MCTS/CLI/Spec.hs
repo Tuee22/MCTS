@@ -57,6 +57,14 @@ commandSpec =
                 "Self-play benchmark"
                 "mcts bench selfplay --backend haskell --rng native --games 1000 --seed 42 --sims 10000"
                 `withExample` "mcts bench selfplay --backend haskell --rng native --workers 32 --games 1000 --seed 42 --sims 10000"
+            , leaf
+                "terminal-playouts"
+                "Terminal playout throughput"
+                "mcts bench terminal-playouts --backend haskell --rng native --count 1000 --seed 42"
+            , leaf
+                "search-iters"
+                "Search-iteration throughput"
+                "mcts bench search-iters --backend haskell --rng native --count 1000 --seed 42"
             ]
         , node
             "verify"

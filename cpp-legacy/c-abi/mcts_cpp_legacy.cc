@@ -372,3 +372,63 @@ extern "C" int32_t mcts_legacy_recompute_move(
     }
     return count;
 }
+
+extern "C" uint64_t mcts_legacy_benchmark_terminal_playouts(
+    const mcts_legacy_board *board,
+    uint64_t seed,
+    uint32_t count,
+    uint16_t max_plies) {
+    (void)max_plies;
+    if (!board || !board->root) return 0;
+    uint64_t checksum = 0;
+    std::mt19937_64 rng(seed);
+    try {
+        for (uint32_t i = 0; i < count; ++i) {
+            corridors::board state = board->root->get_state();
+            const double outcome = mcts::rollout<corridors::board>()(state, rng);
+            const uint64_t outcome_key =
+                outcome > 0.0 ? 0x9e3779b97f4a7c15ULL
+                : outcome < 0.0 ? 0xbf58476d1ce4e5b9ULL
+                                : 0x94d049bb133111ebULL;
+            checksum ^= (rng() ^ outcome_key ^ static_cast<uint64_t>(i));
+        }
+    } catch (...) {
+        return 0;
+    }
+    return checksum;
+}
+
+extern "C" uint64_t mcts_legacy_benchmark_search_iters(
+    const mcts_legacy_board *board,
+    uint64_t seed,
+    uint32_t count,
+    uint16_t max_plies) {
+    (void)max_plies;
+    if (!board || !board->root || board->root->get_state().is_terminal()) return 0;
+    try {
+        std::mt19937_64 rng(seed);
+        corridors::board state = board->root->get_state();
+        auto root = std::make_shared<mcts::uct_node<corridors::board>>(std::move(state));
+        root->simulate(
+            static_cast<size_t>(count),
+            rng,
+            1.4,
+            true,
+            false,
+            false,
+            false
+        );
+        auto moves = root->get_sorted_actions(false);
+        uint64_t checksum = seed;
+        for (const auto &mv : moves) {
+            size_t visits = std::get<0>(mv);
+            const std::string &text = std::get<2>(mv);
+            const uint8_t aid = parse_action_id(text);
+            checksum ^= (static_cast<uint64_t>(aid) << 32)
+                     ^ static_cast<uint64_t>(std::min<size_t>(visits, std::numeric_limits<uint32_t>::max()));
+        }
+        return checksum;
+    } catch (...) {
+        return 0;
+    }
+}

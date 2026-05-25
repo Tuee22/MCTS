@@ -16,15 +16,16 @@
 
 ## Phase Status
 
-🔄 **Active** for the metric-suite report-card refactor. The Phase 7 correctness
-surface remains live: Q3 verifies `(ii)..(v)`, Q7 verifies
-the `(i)..(v)` legacy envelope, the current report-card machinery measures played-game
-Q1/Q2 rows against live backend (ii), and no checked-in generated validation data is required. The
-optimized-C++ parity evidence was refreshed by Sprint `8.3` after Sprint `5.3`
-closed. Sprint `7.6` reclosed the inspect/replay/divergence evidence surface on
-2026-05-21 so originator, foreign-view, unavailable, and live-recompute labels
-cannot be misread as stronger evidence than the matching backend/build actually
-provides.
+✅ **Done** for the metric-suite report-card refactor. The Phase 7 correctness
+surface remains live: Q3 verifies `(ii)..(v)`, Q7 verifies the `(i)..(v)` legacy
+envelope, the report-card machinery measures Q1a terminal playout throughput,
+Q1b search-iteration throughput, Q2 played-game self-play throughput, and split
+Q5 scaling rows against live backend (ii), and no checked-in generated validation
+data is required. The optimized-C++ parity evidence was refreshed by Sprint `8.3`
+after Sprint `5.3` closed. Sprint `7.6` reclosed the inspect/replay/divergence
+evidence surface on 2026-05-21 so originator, foreign-view, unavailable, and
+live-recompute labels cannot be misread as stronger evidence than the matching
+backend/build actually provides.
 
 The 2026-05-19 report-card evidence remains useful smoke-baseline audit context:
 Q1 ST 0.05x,
@@ -35,10 +36,10 @@ The 2026-05-21 report-card refresh remains historical fallback-backed evidence.
 The 2026-05-23 report-card refresh against the fail-closed Dockerfile PGO+BOLT
 build path recorded Q1 ST 0.05x, Q1 MT8 0.45x, Q2 ST 0.06x, Q2 MT8 0.22x,
 Q5 Haskell 0.98x, Q5 C++ (ii) 3.70x, Q7 liveness PASS, zero live-cohort
-divergence, and verdict `Within tolerance`. Phase `7` remains closed for the report-card
-machinery that existed at the time; Sprint `7.8` now reopens the report-card row
-semantics so Q1/Q5 distinguish terminal playout throughput, search-iteration
-throughput, and played-game throughput per
+divergence, and verdict `Within tolerance`. That evidence remains historical
+played-game throughput context under the 2026-05-24 metric taxonomy. Sprint `7.8`
+closed the report-card row semantics so Q1/Q5 distinguish terminal playout
+throughput, search-iteration throughput, and played-game throughput per
 [../documents/engineering/benchmark_metrics.md](../documents/engineering/benchmark_metrics.md).
 
 ## Sprint 7.1: Cabal Test Organization ✅
@@ -283,15 +284,16 @@ None.
 Closed on 2026-05-24 after verifier behavior, CLI stale-envelope wording, and
 divergence metric docs were aligned.
 
-## Sprint 7.8: Report-Card Metric Semantics Refactor 🔄
+## Sprint 7.8: Report-Card Metric Semantics Refactor ✅
 
-**Status**: Active
+**Status**: Done
 **Implementation**: `src/MCTS/CLI/Test.hs`, `src/MCTS/ReportCard.hs`,
-`src/MCTS/CLI/Bench.hs`
+`src/MCTS/CLI/Bench.hs`, `test/unit/Main.hs`, `test/integration/Main.hs`
 **Docs to update**: `../documents/engineering/benchmark_metrics.md`,
 `../documents/engineering/unit_testing_policy.md`,
 `../documents/engineering/cli_command_surface.md`,
 `DEVELOPMENT_PLAN/system-components.md`,
+`DEVELOPMENT_PLAN/README.md`, `DEVELOPMENT_PLAN/00-overview.md`,
 `DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md`
 
 ### Objective
@@ -313,23 +315,29 @@ legacy overloaded "rollouts" and derived "sims/s" labels.
 
 ### Validation
 
-- `docker compose run --rm mcts mcts test mcts-unit`
+- `docker compose run --rm --build mcts mcts test mcts-unit`
 - `docker compose run --rm mcts mcts test mcts-integration`
 - `docker compose run --rm mcts mcts docs check`
 - `docker compose run --rm mcts mcts check-code`
+- `git diff --check`
 
 ### Remaining Work
 
-- Wait for Sprint `3.8` benchmark primitives.
-- Update report-card rendering and semantic tests for Q1a/Q1b/Q2/Q5.
-- Regenerate generated command docs if the public command surface changes.
+None.
+
+### Closure Notes
+
+Sprint `7.8` reclosed on 2026-05-24 after the report-card renderer and JSON schema
+switched to unit-aware Q1a terminal playout, Q1b search-iteration, Q2 played-game,
+and split Q5 scaling rows.
 
 ## Documentation Requirements
 
 **Engineering docs to create/update:**
 
 - `documents/engineering/cli_command_surface.md` — verify/test/play command surfaces plus
-  Sprint `7.6` replay/divergence evidence labels.
+  Sprint `7.6` replay/divergence evidence labels and Sprint `7.8` report-card
+  metric units.
 - `documents/engineering/benchmark_metrics.md` — benchmark unit taxonomy and Q1-Q7 metric
   mapping for Sprint `7.8`.
 - `documents/engineering/determinism_contract.md` — Q3/Q7 semantics, RNG split, and

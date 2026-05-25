@@ -49,6 +49,18 @@ int32_t mcts_legacy_recompute_move(
     uint8_t *out_chosen,
     double *out_equity);
 
+uint64_t mcts_legacy_benchmark_terminal_playouts(
+    const mcts_legacy_board *board,
+    uint64_t seed,
+    uint32_t count,
+    uint16_t max_plies);
+
+uint64_t mcts_legacy_benchmark_search_iters(
+    const mcts_legacy_board *board,
+    uint64_t seed,
+    uint32_t count,
+    uint16_t max_plies);
+
 // Engine envelope per documents/engineering/backend_ffi_contract.md → Engine
 // Envelope. Memory layout mirrors the on-wire envelope block in
 // documents/engineering/transcript_format.md → Envelope Block. The pointer

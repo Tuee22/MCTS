@@ -4,6 +4,7 @@ module MCTS.CLI.Build
     , legacyFixturePlan
     , cppPgoBoltPlan
     , rustPgoBoltPlan
+    , TrainingMetric (..)
     , TrainingRun (..)
     , pgoTrainingRuns
     , boltTrainingRuns
@@ -21,20 +22,36 @@ import MCTS.Types (Threading (..), Workload (..), threadingWorkers, workloadName
 import System.Directory (createDirectoryIfMissing)
 import System.Exit (ExitCode (..))
 
+data TrainingMetric
+    = TrainingTerminalPlayouts
+    | TrainingSearchIters
+    | TrainingPlayedGame !Workload
+    deriving (Eq, Show)
+
 data TrainingRun = TrainingRun
-    { trainingWorkload :: !Workload
+    { trainingMetric :: !TrainingMetric
     , trainingThreading :: !Threading
-    , trainingGames :: !Int
+    , trainingUnits :: !Int
     , trainingSeed :: !Word64
     , trainingSims :: !Int
+    , trainingRunMaxPlies :: !Int
     }
     deriving (Eq, Show)
 
-trainingMaxPlies :: Int
-trainingMaxPlies = 1
+playedGameTrainingMaxPlies :: Int
+playedGameTrainingMaxPlies = 1
+
+primitiveTrainingMaxPlies :: Int
+primitiveTrainingMaxPlies = 60
 
 trainingMultiWorkers :: Int
 trainingMultiWorkers = 8
+
+pgoPrimitiveCount :: Int
+pgoPrimitiveCount = 64
+
+boltPrimitiveCount :: Int
+boltPrimitiveCount = 16
 
 pgoTrainingSeeds :: [Word64]
 pgoTrainingSeeds = [42, 424242]
@@ -42,45 +59,87 @@ pgoTrainingSeeds = [42, 424242]
 boltTrainingSeeds :: [Word64]
 boltTrainingSeeds = [42, 424242]
 
--- | Dockerfile-time PGO training mirrors the Q1/Q2 report-card shape:
--- random rollouts and self-play, ST and MT8, backend-native RNG, and
--- multiple deterministic seeds. The training subprocess environment
--- forces foreign dispatch for this bounded one-move ply cap so profile
--- training cannot silently fall back to the in-process Haskell engine.
--- Self-play uses S_BENCH's 500-sim per-move budget to profile the hot
--- search path while keeping the image build usable.
+-- | Dockerfile-time PGO training mirrors the refactored report-card shape:
+-- terminal playouts, search iterations, legacy played-game rollouts, and
+-- self-play; ST and MT8; backend-native RNG; and multiple deterministic
+-- seeds. The training subprocess environment forces foreign dispatch so
+-- profile training cannot silently fall back to the in-process Haskell engine.
+-- Self-play uses S_BENCH's 500-sim per-move budget to profile the hot search
+-- path while keeping the image build usable.
 pgoTrainingRuns :: [TrainingRun]
 pgoTrainingRuns =
     trainingRuns
         pgoTrainingSeeds
+        pgoPrimitiveCount
         2
         2
         1
         1
         500
 
--- | BOLT training keeps the same workload/threading/seed shape with a
--- shorter self-play budget. BOLT needs block-edge coverage, not the
--- full report-card duration.
+-- | BOLT training keeps the same workload/threading/seed shape with shorter
+-- primitive and self-play budgets. BOLT needs block-edge coverage, not the full
+-- report-card duration.
 boltTrainingRuns :: [TrainingRun]
 boltTrainingRuns =
     trainingRuns
         boltTrainingSeeds
+        boltPrimitiveCount
         1
         1
         1
         1
         100
 
-trainingRuns :: [Word64] -> Int -> Int -> Int -> Int -> Int -> [TrainingRun]
-trainingRuns seeds rolloutSingleGames rolloutMultiGames selfplaySingleGames selfplayMultiGames selfplaySims =
+trainingRuns :: [Word64] -> Int -> Int -> Int -> Int -> Int -> Int -> [TrainingRun]
+trainingRuns seeds primitiveCount rolloutSingleGames rolloutMultiGames selfplaySingleGames selfplayMultiGames selfplaySims =
     concatMap runsForSeed seeds
   where
     runsForSeed seed =
-        [ TrainingRun Rollouts SingleThreaded rolloutSingleGames seed 1
-        , TrainingRun Rollouts (MultiThreaded trainingMultiWorkers) rolloutMultiGames seed 1
-        , TrainingRun Selfplay SingleThreaded selfplaySingleGames seed selfplaySims
-        , TrainingRun Selfplay (MultiThreaded trainingMultiWorkers) selfplayMultiGames seed selfplaySims
+        [ TrainingRun TrainingTerminalPlayouts SingleThreaded primitiveCount seed 0 primitiveTrainingMaxPlies
+        , TrainingRun
+            TrainingTerminalPlayouts
+            (MultiThreaded trainingMultiWorkers)
+            primitiveCount
+            seed
+            0
+            primitiveTrainingMaxPlies
+        , TrainingRun TrainingSearchIters SingleThreaded primitiveCount seed 0 primitiveTrainingMaxPlies
+        , TrainingRun
+            TrainingSearchIters
+            (MultiThreaded trainingMultiWorkers)
+            primitiveCount
+            seed
+            0
+            primitiveTrainingMaxPlies
+        , TrainingRun
+            (TrainingPlayedGame Rollouts)
+            SingleThreaded
+            rolloutSingleGames
+            seed
+            1
+            playedGameTrainingMaxPlies
+        , TrainingRun
+            (TrainingPlayedGame Rollouts)
+            (MultiThreaded trainingMultiWorkers)
+            rolloutMultiGames
+            seed
+            1
+            playedGameTrainingMaxPlies
+        , TrainingRun
+            (TrainingPlayedGame Selfplay)
+            SingleThreaded
+            selfplaySingleGames
+            seed
+            selfplaySims
+            playedGameTrainingMaxPlies
+        , TrainingRun
+            (TrainingPlayedGame Selfplay)
+            (MultiThreaded trainingMultiWorkers)
+            selfplayMultiGames
+            seed
+            selfplaySims
+            playedGameTrainingMaxPlies
         ]
 
 runBuild :: BuildCommand -> Env.App ExitCode
@@ -465,24 +524,19 @@ trainingRunFor backend run =
           , "mcts"
           , "--"
           , "bench"
-          , workloadName (trainingWorkload run)
+          , trainingMetricName (trainingMetric run)
           , "--backend"
           , backend
           ]
             <> threadingArgs (trainingThreading run)
             <> [ "--rng"
                , "native"
-               , "--games"
-               , show (trainingGames run)
                , "--seed"
                , show (trainingSeed run)
                , "--max-plies"
-               , show trainingMaxPlies
-               , "--sims"
-               , show (trainingSims run)
-               , "--cache-dir"
-               , trainingCacheDir backend run
                ]
+            <> [show (trainingRunMaxPlies run)]
+            <> trainingMetricArgs backend run
         )
         (Just (profileTrainingEnv backend))
         Nothing
@@ -491,6 +545,33 @@ trainingRunFor backend run =
         case threading of
             SingleThreaded -> ["--threading", "single"]
             MultiThreaded workers -> ["--threading", "multi", "--workers", show (threadingWorkers (MultiThreaded workers))]
+
+trainingMetricArgs :: String -> TrainingRun -> [String]
+trainingMetricArgs backend run =
+    case trainingMetric run of
+        TrainingPlayedGame _ ->
+            [ "--games"
+            , show (trainingUnits run)
+            , "--sims"
+            , show (trainingSims run)
+            , "--cache-dir"
+            , trainingCacheDir backend run
+            ]
+        TrainingTerminalPlayouts ->
+            [ "--count"
+            , show (trainingUnits run)
+            ]
+        TrainingSearchIters ->
+            [ "--count"
+            , show (trainingUnits run)
+            ]
+
+trainingMetricName :: TrainingMetric -> String
+trainingMetricName metric =
+    case metric of
+        TrainingTerminalPlayouts -> "terminal-playouts"
+        TrainingSearchIters -> "search-iters"
+        TrainingPlayedGame workload -> workloadName workload
 
 profileTrainingEnv :: String -> [(String, String)]
 profileTrainingEnv backend =
@@ -505,7 +586,7 @@ trainingCacheDir backend run =
     "/tmp/mcts-profile-training/"
         <> backend
         <> "/"
-        <> workloadName (trainingWorkload run)
+        <> trainingMetricName (trainingMetric run)
         <> "-"
         <> threadingCacheLabel (trainingThreading run)
         <> "-"
@@ -524,11 +605,12 @@ smokeRunFor backend =
     trainingRunFor
         backend
         TrainingRun
-            { trainingWorkload = Selfplay
+            { trainingMetric = TrainingPlayedGame Selfplay
             , trainingThreading = SingleThreaded
-            , trainingGames = 1
+            , trainingUnits = 1
             , trainingSeed = 42
             , trainingSims = 4
+            , trainingRunMaxPlies = playedGameTrainingMaxPlies
             }
 
 -- | Run a backend build plan through the doctrine `apply :: Env -> Plan

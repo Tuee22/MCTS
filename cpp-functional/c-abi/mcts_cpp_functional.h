@@ -38,6 +38,18 @@ MCTS_FUNCTIONAL_API int32_t mcts_functional_recompute_move(
     uint8_t *out_chosen,
     double *out_equity);
 
+MCTS_FUNCTIONAL_API uint64_t mcts_functional_benchmark_terminal_playouts(
+    const mcts_functional_board *board,
+    uint64_t seed,
+    uint32_t count,
+    uint16_t max_plies);
+
+MCTS_FUNCTIONAL_API uint64_t mcts_functional_benchmark_search_iters(
+    const mcts_functional_board *board,
+    uint64_t seed,
+    uint32_t count,
+    uint16_t max_plies);
+
 typedef struct {
     uint16_t envelope_version;
     uint8_t  rng_source_envelope;

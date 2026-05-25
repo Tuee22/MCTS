@@ -72,4 +72,17 @@ SearchOutput run_search(
     uint64_t seed,
     double exploration_c = 1.41421356);
 
+uint64_t benchmark_terminal_playouts(
+    const State &root_state,
+    uint32_t count,
+    uint16_t max_plies,
+    uint64_t seed);
+
+uint64_t benchmark_search_iters(
+    const State &root_state,
+    uint32_t count,
+    uint16_t max_plies,
+    RngBackend::Kind rng_kind,
+    uint64_t seed);
+
 }  // namespace mcts_functional

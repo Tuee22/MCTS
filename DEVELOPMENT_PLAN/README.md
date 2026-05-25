@@ -64,12 +64,16 @@ current implementation. Phases `5` and `6` remain `Done` for fail-closed PGO/BOL
 mechanics, ABI contracts, and canonical artefact installation.
 
 The 2026-05-24 benchmark-metric audit reopened the metric suite without changing
-the five-backend hypothesis. Phase `3` Sprint `3.8` now owns explicit terminal
-playout and search-iteration benchmark primitives, Phase `7` Sprint `7.8` owns the
-report-card/Q1-Q7 row refactor, and Phase `8` Sprint `8.11` owns the final parity
-evidence rerun after those metrics land. The Q1/Q2/Q5 numbers recorded before this
-audit remain historical played-game throughput evidence; they are not final
-answers to terminal playout throughput or search-iteration throughput.
+the five-backend hypothesis. Phase `3` Sprint `3.8` closed on 2026-05-24 after
+explicit terminal playout and search-iteration benchmark primitives landed for
+all five backend slots. Phase `7` Sprint `7.8` closed on 2026-05-24 after the
+report card adopted explicit Q1a terminal playout, Q1b search-iteration, Q2
+played-game, and split Q5 scaling rows. Phase `8` Sprint `8.11` closed on
+2026-05-24 after the aggregate Dockerfile rebuild validated the bounded metric
+profile suite and produced final refactored report-card evidence. The Q1/Q2/Q5
+numbers recorded before this audit remain historical played-game throughput
+evidence; they are not final answers to terminal playout throughput or
+search-iteration throughput.
 
 This audit does not change the project hypothesis: one Haskell CLI keeps
 all five backend slots live, Q3 proves visit-count equivalence for `(ii)..(v)`
@@ -118,8 +122,16 @@ single-threaded and MT8, under native RNG with seeds `42` and `424242`. The
 accepted report card recorded Q1 ST 0.05x, Q1 MT8 0.48x, Q2 ST 0.06x, Q2 MT8
 0.21x, Q5 Haskell 0.99x, Q5 C++ (ii) 3.65x, Q7 PASS, zero live-cohort divergence,
 and `Verdict: Within tolerance`. Under the metric taxonomy adopted on 2026-05-24,
-those Q1/Q2/Q5 rows are reclassified as historical played-game evidence and must
-be supplemented by terminal-playout and search-iteration rows.
+those Q1/Q2/Q5 rows are reclassified as historical played-game evidence. Sprint
+`8.11` closed on 2026-05-24 with fresh Q1a terminal-playout, Q1b search-iteration,
+Q2 played-game, and split Q5 scaling evidence from the refactored report card:
+Q1a ST 0.07x, Q1a MT8 0.39x, Q1b ST 0.06x, Q1b MT8 0.40x, Q2 ST 0.05x, Q2 MT8
+0.17x, Haskell search-iteration scaling 1.02x, C++ (ii) search-iteration scaling
+7.36x, Haskell self-play scaling 0.97x, C++ (ii) self-play scaling 3.72x, Q7 PASS,
+zero live-cohort divergence, and `Verdict: Within tolerance`.
+Sprint `8.11` final closure validation also includes
+`docker compose run --rm mcts mcts docs check`,
+`docker compose run --rm mcts mcts check-code`, and `git diff --check`.
 The 2026-05-24 harmony sweep was validated with
 `docker compose run --rm mcts mcts lint files --write`,
 `docker compose run --rm mcts mcts lint docs --write`,
@@ -157,7 +169,8 @@ baseline was validated with
 `docker compose run --rm mcts mcts check-code`, `git diff --check`, and the stale-wording
 residue searches named in Sprint `8.8`. Under the metric taxonomy adopted on
 2026-05-24, those Q1/Q2/Q5 rows are reclassified as historical played-game
-evidence and must be supplemented by terminal-playout and search-iteration rows.
+evidence. Sprint `8.11` replaces them with fresh refactored metric evidence from
+the aggregate 2026-05-24 report-card rerun.
 
 The last validated implementation baseline includes:
 a Cabal package with the
@@ -350,12 +363,12 @@ A sprint can move to `Done` only when all of the following are true:
 | 0 | Planning and Documentation Topology | ✅ Done | [phase-0-planning-documentation.md](phase-0-planning-documentation.md) |
 | 1 | Haskell CLI Surface, `CommandSpec`, Lint Stack | ✅ Done (Sprint `1.11` README/lint-write realignment closed 2026-05-24) | [phase-1-haskell-cli-surface.md](phase-1-haskell-cli-surface.md) |
 | 2 | Transcript Codec, RNG, and Determinism Contract | ✅ Done (Sprint `2.9` transcript/envelope doctrine realignment closed 2026-05-24) | [phase-2-transcript-codec-and-determinism.md](phase-2-transcript-codec-and-determinism.md) |
-| 3 | Backend (v) Haskell Engine | 🔄 Active for Sprint `3.8` benchmark metric primitives; correctness baseline remains closed | [phase-3-haskell-engine.md](phase-3-haskell-engine.md) |
+| 3 | Backend (v) Haskell Engine | ✅ Done (Sprint `3.8` benchmark metric primitives closed 2026-05-24) | [phase-3-haskell-engine.md](phase-3-haskell-engine.md) |
 | 4 | Backend (i) C++ Legacy Port and FFI Bridge | ✅ Done (Sprint `4.5` FFI domain-conversion contract realignment closed 2026-05-24) | [phase-4-cpp-legacy-port-and-ffi-bridge.md](phase-4-cpp-legacy-port-and-ffi-bridge.md) |
 | 5 | Backend (ii) C++ Imperative Steelman with PGO+BOLT | ✅ Done (Sprint `5.3` fail-closed C++ PGO/BOLT reclosure and Sprint `5.5` compact C ABI contract reclosure are complete) | [phase-5-cpp-imperative-steelman.md](phase-5-cpp-imperative-steelman.md) |
 | 6 | Backends (iii) C++ Functional-Style and (iv) Rust | ✅ Done (Sprint `6.4` fail-closed Rust PGO/BOLT reclosure and Sprint `6.6` compact ABI/build wording reclosure are complete) | [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md) |
-| 7 | Cross-Backend Verify, Test Stanzas, POC Report Card | 🔄 Active for Sprint `7.8` report-card metric semantics; Q3/Q7 gates remain closed | [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md) |
-| 8 | Haskell Performance Parity Closure and Five-Backend Restoration | 🔄 Active; Sprint `8.11` rerun blocked by Sprint `3.8` and Sprint `7.8` | [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md) |
+| 7 | Cross-Backend Verify, Test Stanzas, POC Report Card | ✅ Done (Sprint `7.8` metric semantics refactor closed 2026-05-24) | [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md) |
+| 8 | Haskell Performance Parity Closure and Five-Backend Restoration | ✅ Done (Sprint `8.11` refactored metric rerun closed 2026-05-24) | [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md) |
 
 ## Current Plan Status
 
@@ -373,9 +386,11 @@ before the report card runs. The 2026-05-24 sweep keeps README as an operator
 reference, pushes detailed rules into governed engineering docs, and closes the
 remaining code/doc contradictions in lint repair, envelope gating, rollout byte
 consumption, FFI domain conversion, and divergence metric wording.
-The metric-semantics audit keeps that evidence as historical played-game data and
-reopens Sprints `3.8`, `7.8`, and `8.11` to add terminal `playouts/s` and
-`search-iters/s` rows.
+The metric-semantics audit keeps that evidence as historical played-game data.
+Sprint `3.8` has closed the terminal `playouts/s` and `search-iters/s` primitive
+benchmark leaves, and Sprint `7.8` has closed the report-card split into
+unit-aware Q1a/Q1b/Q2/Q5 rows. Sprint `8.11` has closed the final parity rerun
+against those rows.
 Implemented in the worktree:
 
 - `mcts.cabal`, `cabal.project`, `app/Main.hs`, `src/MCTS/**`, `test/**`,
@@ -486,9 +501,11 @@ Implemented in the worktree:
   plus `cabal build all` through the dedicated `MCTS.CheckCode` module.
 - `mcts test all` routes recursive CLI invocations through `cabal exec mcts -- ...`,
   `mcts test parity-anchor <baseline> <candidate>` provides a focused legacy Q1/Q2
-  backend-pair parity measurement, and `mcts bench rollouts|selfplay` accepts
-  backend cohorts in the report-card command form. The `bench rollouts` spelling is
-  a legacy played-game workload name pending the metric-suite refactor.
+  backend-pair parity measurement, and
+  `mcts bench terminal-playouts|search-iters|rollouts|selfplay` accepts backend
+  cohorts in the report-card command form. The `bench rollouts` spelling remains a
+  documented legacy played-game workload name; lower-level primitive throughput uses
+  the explicit `terminal-playouts` and `search-iters` leaves.
 - The live Rust backend source home under `rust/` declares the doctrine-shaped
   envelope struct and the current accessor symbol
   (`mcts_rust_get_envelope`) returning process-static memory. `cpp-legacy/`,
@@ -519,8 +536,8 @@ The PGO/BOLT build doctrine is now fail-closed for the steelman foreign backends
 PGO and BOLT complete inside the Dockerfile build, missing profile data crashes the
 image build, and the installed bolted C++/Rust libraries are smoked before runtime
 validation starts. Sprint `8.10` closed the fail-closed played-game profile-workload
-gate. Sprint `8.11` remains open to review the profile suite after terminal-playout
-and search-iteration metrics land.
+gate. Sprint `8.11` extends the profile suite with terminal-playout and
+search-iteration primitive workloads and closes the final aggregate rerun.
 
 ## Sprint Dependencies
 
@@ -562,7 +579,8 @@ Sprint `8.9` revalidated the historical handoff
 after the evidence-surface alignment sprints closed, Sprint `8.3` reclosed the
 report-card evidence against fail-closed build artefacts on 2026-05-23, and Sprint
 `8.10` reclosed the played-game profile-training evidence before the metric-suite
-audit reopened Sprint `8.11`.
+audit reopened Sprint `8.11`; Sprint `8.11` reclosed on 2026-05-24 with the
+refactored metric-suite report-card evidence.
 
 ## Exit Definition
 

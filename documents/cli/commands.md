@@ -9,6 +9,8 @@
 
 - `mcts bench rollouts` - Random-rollout benchmark
 - `mcts bench selfplay` - Self-play benchmark
+- `mcts bench terminal-playouts` - Terminal playout throughput
+- `mcts bench search-iters` - Search-iteration throughput
 - `mcts verify rollouts` - Verify rollout visit counts
 - `mcts verify selfplay` - Verify self-play visit counts
 - `mcts verify legacy-parity rollouts` - Verify legacy-envelope rollout liveness

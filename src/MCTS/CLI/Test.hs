@@ -7,9 +7,14 @@ module MCTS.CLI.Test
     ) where
 
 import Control.Monad.IO.Class (liftIO)
-import Data.Word (Word64)
-import MCTS.CLI.Bench (monotonicNanos)
-import MCTS.CLI.Command (ParityAnchorOptions (..), TestCommand (..))
+import Data.Word (Word16, Word64)
+import MCTS.CLI.Bench (measurePrimitiveBackendRate, monotonicNanos)
+import MCTS.CLI.Command
+    ( BenchPrimitive (..)
+    , BenchPrimitiveOptions (..)
+    , ParityAnchorOptions (..)
+    , TestCommand (..)
+    )
 import MCTS.CLI.Output (OutputFormat (..), OutputOptions (..), outputLine, renderErrorString)
 import MCTS.Driver (BatchResult (..), RunInputs (..), defaultRunInputs)
 import MCTS.Driver.Dispatch (runBatchNoWriteDispatch)
@@ -46,6 +51,16 @@ data ParityAnchorRow = ParityAnchorRow
     , anchorBaselineGamesPerSecond :: !Double
     , anchorCandidateGamesPerSecond :: !Double
     , anchorTimeRatio :: !Double
+    }
+    deriving (Eq, Show)
+
+data ReportPerformance = ReportPerformance
+    { performanceQ1aTerminalPlayoutsST :: !ReportRateComparison
+    , performanceQ1aTerminalPlayoutsMT8 :: !ReportRateComparison
+    , performanceQ1bSearchItersST :: !ReportRateComparison
+    , performanceQ1bSearchItersMT8 :: !ReportRateComparison
+    , performanceQ2SelfplayGamesST :: !ReportRateComparison
+    , performanceQ2SelfplayGamesMT8 :: !ReportRateComparison
     }
     deriving (Eq, Show)
 
@@ -236,23 +251,43 @@ buildMeasuredReportCard = do
             performance <- buildReportPerformance monotonicNanos
             divergence <- buildMeasuredReportCardWith reportCardBackends reportCardVerifyInputs
             pure $ do
-                (q1ST, q1MT8, q2ST, q2MT8) <- performance
+                measured <- performance
                 card <- divergence
-                let ratios = map reportTimeRatio [q1ST, q1MT8, q2ST, q2MT8]
+                let q1aST = performanceQ1aTerminalPlayoutsST measured
+                    q1aMT8 = performanceQ1aTerminalPlayoutsMT8 measured
+                    q1bST = performanceQ1bSearchItersST measured
+                    q1bMT8 = performanceQ1bSearchItersMT8 measured
+                    q2ST = performanceQ2SelfplayGamesST measured
+                    q2MT8 = performanceQ2SelfplayGamesMT8 measured
+                    ratios = map reportTimeRatio [q1aST, q1aMT8, q1bST, q1bMT8, q2ST, q2MT8]
                 Right
                     card
-                        { reportQ1RolloutsST = q1ST
-                        , reportQ1RolloutsMT8 = q1MT8
-                        , reportQ2SelfplayST = q2ST
-                        , reportQ2SelfplayMT8 = q2MT8
-                        , reportQ5HaskellScaling =
+                        { reportQ1aTerminalPlayoutsST = q1aST
+                        , reportQ1aTerminalPlayoutsMT8 = q1aMT8
+                        , reportQ1bSearchItersST = q1bST
+                        , reportQ1bSearchItersMT8 = q1bMT8
+                        , reportQ2SelfplayGamesST = q2ST
+                        , reportQ2SelfplayGamesMT8 = q2MT8
+                        , reportQ5HaskellSearchItersScaling =
                             scalingFrom
-                                (reportHaskellGamesPerSecond q2ST)
-                                (reportHaskellGamesPerSecond q2MT8)
-                        , reportQ5CppImperativeScaling =
+                                ReportSearchItersPerSecond
+                                (reportHaskellRate q1bST)
+                                (reportHaskellRate q1bMT8)
+                        , reportQ5CppImperativeSearchItersScaling =
                             scalingFrom
-                                (reportCppGamesPerSecond q2ST)
-                                (reportCppGamesPerSecond q2MT8)
+                                ReportSearchItersPerSecond
+                                (reportCppRate q1bST)
+                                (reportCppRate q1bMT8)
+                        , reportQ5HaskellSelfplayGamesScaling =
+                            scalingFrom
+                                ReportGamesPerSecond
+                                (reportHaskellRate q2ST)
+                                (reportHaskellRate q2MT8)
+                        , reportQ5CppImperativeSelfplayGamesScaling =
+                            scalingFrom
+                                ReportGamesPerSecond
+                                (reportCppRate q2ST)
+                                (reportCppRate q2MT8)
                         , reportVerdict = verdictFromRatios ratios
                         }
 
@@ -289,32 +324,28 @@ currentGhcVersion = do
 
 buildReportPerformance
     :: IO Word64
-    -> IO
-        ( Either
-            AppError
-            ( ReportRateComparison
-            , ReportRateComparison
-            , ReportRateComparison
-            , ReportRateComparison
-            )
-        )
+    -> IO (Either AppError ReportPerformance)
 buildReportPerformance clock = do
-    q1ST <-
-        measureLiveComparison
+    q1aST <-
+        measurePrimitiveLiveComparison
             clock
-            CppImperative
-            Rollouts
+            TerminalPlayouts
             SingleThreaded
-            reportCardRolloutGames
-            reportCardBenchSims
-    q1MT8 <-
-        measureLiveComparison
+    q1aMT8 <-
+        measurePrimitiveLiveComparison
             clock
-            CppImperative
-            Rollouts
+            TerminalPlayouts
             (MultiThreaded 8)
-            reportCardRolloutGames
-            reportCardBenchSims
+    q1bST <-
+        measurePrimitiveLiveComparison
+            clock
+            SearchIters
+            SingleThreaded
+    q1bMT8 <-
+        measurePrimitiveLiveComparison
+            clock
+            SearchIters
+            (MultiThreaded 8)
     q2ST <-
         measureLiveComparison
             clock
@@ -331,7 +362,14 @@ buildReportPerformance clock = do
             (MultiThreaded 8)
             reportCardSelfplayGames
             reportCardBenchSims
-    pure $ (,,,) <$> q1ST <*> q1MT8 <*> q2ST <*> q2MT8
+    pure $
+        ReportPerformance
+            <$> q1aST
+            <*> q1aMT8
+            <*> q1bST
+            <*> q1bMT8
+            <*> q2ST
+            <*> q2MT8
 
 buildParityAnchor
     :: IO Word64
@@ -396,9 +434,10 @@ measureLiveComparison clock cppBackend workload threading games sims = do
         Right
             ReportRateComparison
                 { reportComparisonMeasured = True
+                , reportComparisonUnit = ReportGamesPerSecond
                 , reportTimeRatio = safeRatio cppRate haskellRate
-                , reportHaskellGamesPerSecond = haskellRate
-                , reportCppGamesPerSecond = cppRate
+                , reportHaskellRate = haskellRate
+                , reportCppRate = cppRate
                 }
   where
     baseInputs =
@@ -428,13 +467,55 @@ measureBackend clock inputs backend = do
                             / fromIntegral elapsedNanos
                         )
 
-scalingFrom :: Double -> Double -> ReportScaling
-scalingFrom singleRate multiRate =
+measurePrimitiveLiveComparison
+    :: IO Word64
+    -> BenchPrimitive
+    -> Threading
+    -> IO (Either AppError ReportRateComparison)
+measurePrimitiveLiveComparison clock primitive threading = do
+    cpp <- measurePrimitive CppImperative
+    haskell <- measurePrimitive Haskell
+    pure $ do
+        cppRate <- cpp
+        haskellRate <- haskell
+        Right
+            ReportRateComparison
+                { reportComparisonMeasured = True
+                , reportComparisonUnit = primitiveReportUnit primitive
+                , reportTimeRatio = safeRatio cppRate haskellRate
+                , reportHaskellRate = haskellRate
+                , reportCppRate = cppRate
+                }
+  where
+    options =
+        BenchPrimitiveOptions
+            { benchPrimitiveRng = NativeRng
+            , benchPrimitiveThreading = threading
+            , benchPrimitiveCount = reportCardPrimitiveCount
+            , benchPrimitiveSeed = 42
+            , benchPrimitiveMaxPlies = reportCardPrimitiveMaxPlies
+            }
+    measurePrimitive backend = do
+        result <- measurePrimitiveBackendRate clock primitive options backend
+        pure $
+            case result of
+                Left message -> Left (IOErrorText message)
+                Right rate -> Right rate
+
+primitiveReportUnit :: BenchPrimitive -> ReportRateUnit
+primitiveReportUnit primitive =
+    case primitive of
+        TerminalPlayouts -> ReportPlayoutsPerSecond
+        SearchIters -> ReportSearchItersPerSecond
+
+scalingFrom :: ReportRateUnit -> Double -> Double -> ReportScaling
+scalingFrom unit singleRate multiRate =
     ReportScaling
         { reportScalingMeasured = True
+        , reportScalingUnit = unit
         , reportScalingRatio = safeRatio multiRate singleRate
-        , reportSingleGamesPerSecond = singleRate
-        , reportMultiGamesPerSecond = multiRate
+        , reportSingleRate = singleRate
+        , reportMultiRate = multiRate
         }
 
 safeRatio :: Double -> Double -> Double
@@ -471,6 +552,12 @@ requireReportCardArtifacts =
 
 reportCardRolloutGames :: Int
 reportCardRolloutGames = 1000
+
+reportCardPrimitiveCount :: Int
+reportCardPrimitiveCount = 1000
+
+reportCardPrimitiveMaxPlies :: Word16
+reportCardPrimitiveMaxPlies = 60
 
 reportCardSelfplayGames :: Int
 reportCardSelfplayGames = 4

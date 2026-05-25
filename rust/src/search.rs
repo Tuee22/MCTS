@@ -115,6 +115,43 @@ pub fn run_search(
     out
 }
 
+pub fn benchmark_terminal_playouts(
+    start: &MctsRustBoard,
+    count: u32,
+    max_plies: u16,
+    seed: u64,
+) -> u64 {
+    let mut checksum = 0u64;
+    let mut current_seed = seed;
+    for i in 0..count {
+        current_seed = mix(current_seed, i as u64);
+        let outcome = rollout_haskell(start, current_seed, max_plies);
+        let outcome_key = if outcome > 0.0 {
+            0x9e3779b97f4a7c15u64
+        } else if outcome < 0.0 {
+            0xbf58476d1ce4e5b9u64
+        } else {
+            0x94d049bb133111ebu64
+        };
+        checksum ^= mix(current_seed, outcome_key ^ i as u64);
+    }
+    checksum
+}
+
+pub fn benchmark_search_iters(
+    start: &MctsRustBoard,
+    count: u32,
+    max_plies: u16,
+    seed: u64,
+) -> u64 {
+    let result = run_search(start, count, max_plies, seed);
+    let mut checksum = seed ^ result.chosen_action_id as u64;
+    for (aid, visits) in result.visits {
+        checksum ^= ((aid as u64) << 32) ^ visits as u64;
+    }
+    checksum
+}
+
 fn expand(tree: &mut Tree<MctsRustBoard>, node_idx: u32, max_plies: u16) {
     let (current_state, already_expanded) = {
         let n = tree.node(node_idx);
