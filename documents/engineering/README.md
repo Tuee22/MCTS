@@ -28,7 +28,8 @@ The canonical CLI doctrine for this project lives at
 `haskell_code_guide.md`) defer to the doctrine for the patterns it owns and retain
 only project-specific elaborations. The project-specific docs
 (`determinism_contract.md`, `transcript_format.md`, `backend_ffi_contract.md`,
-`benchmark_metrics.md`, `compiler_runtime_tuning.md`) own their content outright.
+`backend_style_contract.md`, `benchmark_metrics.md`, `compiler_runtime_tuning.md`)
+own their content outright.
 
 ## Documents
 
@@ -42,6 +43,7 @@ only project-specific elaborations. The project-specific docs
 | [determinism_contract.md](./determinism_contract.md) | RNG split, per-game `splitmix64(master_seed, game_index)` seed derivation, ply-cap draw rule, visit-count vs equity asymmetry, legacy parity envelope |
 | [transcript_format.md](./transcript_format.md) | Little-endian binary wire format, single-byte action enumeration, content addressing, git-style hash-prefix lookup |
 | [backend_ffi_contract.md](./backend_ffi_contract.md) | C ABI shape across the live C-ABI backends, `unsafe`/`safe` import policy, `--rng cpp` plumbing, canonical FFI load names, and the one-bolted-library-per-backend runtime contract |
+| [backend_style_contract.md](./backend_style_contract.md) | Functional-core style contract for backends (iii), (iv), and (v): compact value state, typed action transitions, deterministic legal-action order, and permitted local mutation |
 | [compiler_runtime_tuning.md](./compiler_runtime_tuning.md) | Per-backend tuning stack: legacy (i) exemption, (ii)/(iii) doctrine flag set, mandatory Dockerfile-time bounded PGO/BOLT success for steelman foreign backends, (iv) Rust `[profile.release]`, (v) Haskell GHC/LLVM/RTS tuning, Haskell PGO asymmetry note |
 
 ## Quick Navigation
@@ -74,9 +76,16 @@ only project-specific elaborations. The project-specific docs
 - [`unsafe`/`safe` Import Policy](./backend_ffi_contract.md#unsafe-safe-policy)
 - [`--rng cpp` Plumbing](./backend_ffi_contract.md#rng-cpp-plumbing)
 
+### Backend Style
+
+- [Functional-Core Rule](./backend_style_contract.md#functional-core-rule)
+- [Backend (iii) C++ Target](./backend_style_contract.md#backend-iii-c-target)
+- [Backend (iv) Rust Target](./backend_style_contract.md#backend-iv-rust-target)
+- [Backend (v) Haskell Target](./backend_style_contract.md#backend-v-haskell-target)
+
 ### Tuning
 
-- [Backend (ii)/(iii) Flag Set](./compiler_runtime_tuning.md#cpp-imperative-functional-flags)
+- [Backend (ii)/(iii) Flag Set](./compiler_runtime_tuning.md#backend-ii-and-iii--c-imperative-and-functional-core)
 - [PGO/BOLT Training Workload Doctrine](./compiler_runtime_tuning.md#pgobolt-training-workload-doctrine)
 - [Backend (iv) Rust `[profile.release]`](./compiler_runtime_tuning.md#rust-profile)
 - [Backend (v) Haskell GHC/RTS](./compiler_runtime_tuning.md#haskell-tuning)

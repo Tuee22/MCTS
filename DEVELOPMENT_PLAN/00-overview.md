@@ -16,6 +16,7 @@
 [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md),
 [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md),
 [../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md),
+[../documents/engineering/backend_style_contract.md](../documents/engineering/backend_style_contract.md),
 [../documents/engineering/benchmark_metrics.md](../documents/engineering/benchmark_metrics.md)
 **Generated sections**: none
 
@@ -40,7 +41,11 @@ simultaneously:
   (search policies, evaluators, prior shaping) are local edits rather than rewrites.
   Internally the Haskell engine is free to use `ST`-monad mutable unboxed arrays as the
   only realistic way to match optimised imperative C++; the local-reasoning property is
-  preserved by keeping public types and operations pure.
+  preserved by keeping public types and operations pure. The functional comparison
+  cohort `(iii)`, `(iv)`, and `(v)` uses the shared functional-core value-state style in
+  [../documents/engineering/backend_style_contract.md](../documents/engineering/backend_style_contract.md);
+  local mutation, compact bitfields, and arenas are allowed, while legacy board graphs
+  and text action decoding are not treated as functional-core costs.
 - **Deterministic inside the documented envelope.** Same-backend runs are reproducible for
   the same seed, RNG source, and logical inputs; cross-backend bit equality is asserted for
   backends `(ii)..(v)` under `--rng cpp`; backend `(i)` is covered by the legacy-parity
@@ -62,8 +67,10 @@ optimized-C++ parity evidence is refreshed against the Dockerfile build that
 fails closed on mandatory PGO+BOLT profile data instead of accepting fallback
 artifacts. The historical Sprint `8.10` closure used profile data from the bounded
 played-game profile suite in `MCTS.CLI.Build`; Sprint `8.11` extends that suite
-with primitive terminal-playout and search-iteration profile runs and supplies the
-final refactored metric-suite closure.
+with primitive terminal-playout and search-iteration profile runs. Sprint `5.6`
+later reopened parity evidence against the corrected backend (ii), making Sprint
+`8.11` historical metric-suite evidence; Sprint `8.12` supplies the final
+corrected-target parity closure.
 
 ## Current Handoff Status
 
@@ -105,7 +112,10 @@ The 2026-05-24 benchmark-metric audit reopened the metric suite because the
 then-current Q1/Q2/Q5 report-card rows were played-game measurements under legacy
 `rollouts`/`selfplay` labels, not terminal playout or search-iteration
 measurements. Phase `3` has closed the missing benchmark primitives, Phase `7`
-has closed the report-card row split, and Phase `8` has closed the final parity rerun.
+has closed the report-card row split, and Phase `8` Sprint `8.11` closed the
+refactored parity rerun against the then-current backend (ii). Sprint `8.12`
+has refreshed that evidence against the corrected backend (ii), and the accepted
+report-card verdict is `Within tolerance`.
 Phase `7` Sprint `7.9` revalidated the headline report-card mapping on
 2026-05-25: there are six questions, Q6 is the all-five legacy-envelope gate,
 and external `MCTS_legacy` reproduction fixtures are optional audit data rather
@@ -117,25 +127,35 @@ Sprint `5.6` reclosed Phase `5` on 2026-05-25 after backend (ii) moved from the
 legacy board hot path to a compact bitfield board with direct capped move
 generation and wavefront escapability checks. Focused rebuilt-image benchmarks
 now show backend (ii) outperforming backend (i), as the steelman design requires.
-That same correction reopens Phase `8` on the Haskell parity surface: the earlier
+That same correction reopened Phase `8` on the Haskell parity surface: the earlier
 `Within tolerance` report-card verdict is historical evidence against the slower
-backend (ii), not closure against the corrected C++ ceiling.
+backend (ii), not closure against the corrected C++ ceiling. Sprint `8.12`
+reclosed that parity surface on 2026-05-26.
+
+Phase `6` Sprint `6.7` reclosed on 2026-05-26: backend (iii)'s former
+legacy-board/text-action path is gone from the hot path and no longer explains
+the `(ii)` vs `(iii)` performance gap. Backend (iii) now uses compact
+functional-core C++ value state, direct capped numeric legal generation, and the
+same style backend (iv) Rust already followed. Phase `8` Sprint `8.13` is
+closed after Sprint `8.12`; backend (v) Haskell now keeps its pure API boundary
+while its hot search path follows the same compact numeric action-set transition
+style as `(iii)` and `(iv)`.
 
 ## Target Outcome
 
 One `mcts` Haskell CLI binary, built by Cabal under GHC `9.14.1` and Cabal
 `3.16.1.0`, drives all five backend slots behind a uniform command surface.
 Backend (i) `cpp-legacy/` is a strictly verbatim re-port of `MCTS_legacy` used
-for legacy compatibility and Q6 legacy-envelope evidence. Backend (ii) `cpp-imperative/` is
-the maximally-tuned imperative C++23 performance ceiling. Backend (iii)
-`cpp-functional/` uses the same PGO+BOLT+`mimalloc` optimisation stack so the
-comparison with (ii) isolates C++ style. Backend (iv) `rust/` is the
-cross-language systems baseline. Backends (ii), (iii), and (iv) publish one
+for legacy compatibility and Q6 legacy-envelope evidence. Backend (ii)
+`cpp-imperative/` is the maximally-tuned imperative C++23 performance ceiling.
+Backend (iii) `cpp-functional/` uses the same PGO+BOLT+`mimalloc` optimisation
+stack while adopting the functional-core value-state style shared with backend
+(iv) `rust/` and backend (v) `haskell`. Backends (ii), (iii), and (iv) publish one
 canonical bolted shared library each; the Dockerfile currently trains PGO/BOLT once
 on the bounded metric-suite profile suite implemented in `MCTS.CLI.Build`, and
-runtime commands do not retrain or switch between workload-specific libraries. Backend (v) is
-the pure Haskell engine running natively in the same process, with `ST`-monad mutable
-arena internally and pure search API externally.
+runtime commands do not retrain or switch between workload-specific libraries.
+Backend (v) is the pure Haskell engine running natively in the same process, with
+`ST`-monad mutable arena internally and pure search API externally.
 
 Three POC metric units exercise the cohort: terminal playout throughput
 (`playouts/s`), search-iteration throughput (`search-iters/s`), and played-game
@@ -150,8 +170,9 @@ visit counts under `--rng cpp` across `(ii)..(v)`. `mcts verify legacy-parity` s
 the Q6 legacy-envelope liveness/overflow check across all five backend slots.
 `mcts test all` emits the tidy POC report-card summary block answering Q1-Q6 in one
 screenful. The current implementation emits unit-aware Q1a terminal playout, Q1b
-search-iteration, Q2 played-game, and split Q5 scaling rows; Sprint `8.11` turns
-those rows into final closure evidence. Live
+search-iteration, Q2 played-game, and split Q5 scaling rows; Sprint `8.11`
+provided historical closure evidence for those rows, and Sprint `8.12` refreshed
+the verdict against the corrected backend (ii). Live
 workload constants are implemented in `MCTS.CLI.Test` and mirrored in
 `cabal.project` comments. Legacy-envelope knobs remain live report-card metadata.
 Normal validation never depends on checked-in generated transcripts, throughput
@@ -217,11 +238,13 @@ temporary or operator-provided roots.
   Owned by
   [phase-5-cpp-imperative-steelman.md](phase-5-cpp-imperative-steelman.md) and Phase
   `8` parity closure.
-- **Backends (iii) C++ functional-style and (iv) Rust.** Backend (iii) mirrors backend
-  (ii)'s Makefile-level optimisation target surface so the (ii)-vs-(iii) comparison
-  can isolate *style* under the shared C++ PGO/BOLT CLI path. Backend
-  (iv) Rust runs on the
-  latest stable compiler with the
+- **Backends (iii) C++ functional-core and (iv) Rust.** Backend (iii) mirrors
+  backend (ii)'s Makefile-level optimisation target surface so the `(ii)` vs
+  `(iii)` comparison can isolate style under the shared C++ PGO/BOLT CLI path, and
+  Sprint `6.7` closed its compact value-state C++ hot path without legacy
+  `corridors::board` or action-text parsing. Backend (iv) Rust follows the
+  same functional-core style with Rust ownership idioms and runs on the latest
+  stable compiler with the
   pinned `[profile.release]` (`opt-level = 3`, `lto = "fat"`, `codegen-units = 1`,
   `panic = "abort"`, `strip = "debuginfo"`), `RUSTFLAGS=-C target-cpu=native -C
   link-arg=-fuse-ld=lld -C link-arg=-Wl,--emit-relocs`, `mimalloc` through the
@@ -229,7 +252,8 @@ temporary or operator-provided roots.
   post-link. Their current accepted profiles use the same Dockerfile-time bounded
   metric-suite profile suite as backend (ii): terminal playout, search-iteration,
   legacy played-game rollout, and self-play workloads. Owned by
-  [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md).
+  [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md) and
+  [../documents/engineering/backend_style_contract.md](../documents/engineering/backend_style_contract.md).
 - **Cross-backend verify, test stanzas, POC report card.** Five live Cabal test-suite
   stanzas (`mcts-unit`, `mcts-integration`, `mcts-cross-backend`,
   `mcts-legacy-parity`, `mcts-haskell-style`), each `type: exitcode-stdio-1.0` with
@@ -623,9 +647,9 @@ referenceability.
 | 3 | Phase 2 | The Haskell engine writes transcripts in the wire format pinned by Phase 2 and consumes the `splitmix64(master_seed, game_index)` seed derivation |
 | 4 | Phase 3 | The C ABI FFI bridge from Haskell to backend (i) reuses the `Subprocess` boundary and `Env` record established by Phases 1 and 3, and validates against the same transcript codec |
 | 5 | Phase 3 | Backend (ii) likewise builds on the FFI bridge pattern; it is independent of (i) once the pattern is established, so Phases 4 and 5 may proceed in parallel after Phase 3 closes |
-| 6 | Phase 5 | Backend (iii) shares (ii)'s optimisation stack and must be developed against the validated steelman; backend (iv) Rust is independent of (iii) but conventionally bundled in the same phase for scheduling |
+| 6 | Phase 5 | Backend (iii) shares (ii)'s optimisation stack and must be developed against the validated steelman; Sprint `6.7` removed legacy representation costs so `(iii)`, `(iv)`, and `(v)` can share the functional-core style contract |
 | 7 | Phases 4, 5, 6 | Cross-backend `verify`, legacy parity, and the POC report card require all five backend slots to produce evidence |
-| 8 | Phase 7 plus fail-closed Sprints `5.3` and `6.4` | Performance parity closure requires report-card numbers against optimized backend (ii) after Dockerfile-time PGO/BOLT succeeds and the report card separates terminal playout, search-iteration, and played-game metrics; Phase `8` owns the restored five-backend live surface, Sprint `8.3` refreshed the report card against reclosed fail-closed build artefacts, Sprint `8.10` closed the historical played-game profile-representativeness gap, and Sprint `8.11` closed the refactored metric rerun |
+| 8 | Phase 7 plus fail-closed Sprints `5.3`, `6.4`, and `6.7` | Performance parity closure requires report-card numbers against optimized backend (ii) after Dockerfile-time PGO/BOLT succeeds and the report card separates terminal playout, search-iteration, and played-game metrics; Phase `8` owns the restored five-backend live surface, Sprint `8.3` refreshed the report card against reclosed fail-closed build artefacts, Sprint `8.10` closed the historical played-game profile-representativeness gap, Sprint `8.11` closed the refactored metric rerun, Sprint `8.12` refreshed against the corrected backend (ii), and Sprint `8.13` kept backend (v) aligned with the functional-core style after Sprint `6.7` |
 
 ## Current Baseline
 
@@ -640,7 +664,11 @@ PGO/BOLT fail-closed behavior. Phase `7` has reclosed replay and divergence labe
 Phase `8` has reclosed tuning-doc wording, the Sprint `8.3` report-card refresh
 against mandatory Dockerfile-time PGO/BOLT artefacts, and the Sprint `8.10`
 bounded played-game profile-training gate. The 2026-05-24 metric audit reopened
-Sprint `3.8`, Sprint `7.8`, and Sprint `8.11`; all three have reclosed. Phase `4`
+Sprint `3.8`, Sprint `7.8`, and Sprint `8.11`; all three have reclosed. Sprint
+`5.6` then reopened Sprint `8.12` for parity against the corrected backend (ii).
+Sprint `6.7` has reclosed the `(iii)/(iv)` compact functional-core style
+alignment, and Sprints `8.12` and `8.13` have reclosed Haskell parity and style
+follow-up. Phase `4`
 remains closed on its owned surface.
 
 | Surface | Current Repo State | Intended End State |
@@ -651,7 +679,7 @@ remains closed on its owned surface.
 | Test stanzas | Five live Cabal stanzas currently exist: `mcts-unit`, `mcts-integration`, `mcts-cross-backend`, `mcts-legacy-parity`, `mcts-haskell-style`; each stanza has its own `tasty` runner, `mcts-cross-backend` invokes real `mcts verify` subprocesses serially around the process-pinned dynamic-library and shared C++ RNG bridge path, and `docker compose run --rm mcts mcts test all` is the host validation gate under the pinned container toolchain. `mcts-unit` uses semantic/property/temp-dir checks instead of `tasty-golden`. | Keep all validation data generated in memory or temporary directories during the run, so clean-clone validation has no `test/golden/` prerequisite |
 | Toolchain | `mcts.cabal` pins `tested-with: ghc ==9.14.1`; `cabal.project` pins `with-compiler: ghc-9.14.1` and mirrors the report-card constants as comments. The style-tool policy pins GHC `9.12.4` only for Fourmolu/HLint installation inside the container. | GHC `9.14.1`, Cabal `3.16.1.0`, style GHC `9.12.4` for `fourmolu-0.19.0.1` / `hlint-3.10`, GCC latest stable on `ubuntu:24.04`, Rust latest stable with pinned minor, LLVM pinned in the Dockerfile |
 | Determinism contract | Live C++ and Rust foreign backends dispatch through real FFI engines under `bench`, `play`, `inspect divergence`, Q3 `verify` when shared libraries are present and the fixed search-horizon ABI can represent the run, and Q6 `verify legacy-parity`; the integration stanza's direct live-FFI smoke cases are Rust-specific, with C++ live coverage carried by Q3/Q6/report-card surfaces. Transcript codec, full v1 envelope, process-pinned envelope and C++ RNG dynamic handles, SHA-256 content addressing, cache root resolution, prefix lookup, binary `MEQ1` equity sidecars, layered envelope checks, `divergenceVsEqStream`, compact foreign recompute/read-visits evidence surfaces, canonical search-side 12-wall child caps across the current live cohort, decoded real-binary transcript determinism, and hard-fail `VerifyMismatch` rollout/self-play cohorts in `mcts-cross-backend` are implemented. Sprints `2.8` and `7.6` tighten version handling and sidecar/recompute labeling. | Enforced by live-FFI-capable cross-backend `mcts verify {rollouts,selfplay}` over `(ii)..(v)`, decoded same-backend transcript checks, Rust live FFI-envelope cases under `mcts-integration`, and Q6 legacy-envelope checks across all five |
-| Performance parity | The 2026-05-24 Sprint `8.11` `docker compose run --rm --build mcts mcts test all` run rebuilt the bounded metric-suite Dockerfile artefacts and recorded final refactored rows: Q1a ST 0.07×, Q1a MT8 0.39×, Q1b ST 0.06×, Q1b MT8 0.40×, Q2 ST 0.05×, Q2 MT8 0.17×, Q5 Haskell search-iteration scaling 1.02×, Q5 C++ (ii) search-iteration scaling 7.36×, Q5 Haskell self-play scaling 0.97×, Q5 C++ (ii) self-play scaling 3.72×, Q6 liveness PASS, zero live-cohort divergence, and `Verdict: Within tolerance`. The 2026-05-21 fallback-backed optimized-C++ run and the 2026-05-23 Sprint `8.10` played-game rows remain historical audit evidence only. | Haskell (v) within tolerance of optimized live C++ (ii) on Q1a terminal playout throughput, Q1b search-iteration throughput, and Q2 played-game self-play throughput, single-threaded and on 8 workers where applicable, without checked-in generated throughput anchors |
+| Performance parity | The 2026-05-26 Sprint `8.12` `docker compose run --rm mcts mcts test all` run recorded corrected-backend rows: Q1a ST 0.99×, Q1a MT8 0.91×, Q1b ST 1.02×, Q1b MT8 0.99×, Q2 ST 0.63×, Q2 MT8 0.68×, Q5 Haskell search-iteration scaling 6.91×, Q5 C++ (ii) search-iteration scaling 6.72×, Q5 Haskell self-play scaling 3.65×, Q5 C++ (ii) self-play scaling 3.90×, Q6 liveness PASS, zero live-cohort divergence, and `Verdict: Within tolerance`. The 2026-05-24 Sprint `8.11`, 2026-05-21 fallback-backed optimized-C++ run, and 2026-05-23 Sprint `8.10` played-game rows remain historical audit evidence against older artefact or metric shapes. | Haskell (v) within tolerance of optimized live C++ (ii) on Q1a terminal playout throughput, Q1b search-iteration throughput, and Q2 played-game self-play throughput, single-threaded and on 8 workers where applicable, without checked-in generated throughput anchors |
 
 ## Related Documents
 
@@ -660,4 +688,5 @@ remains closed on its owned surface.
 - [system-components.md](system-components.md)
 - [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md)
 - [../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md)
+- [../documents/engineering/backend_style_contract.md](../documents/engineering/backend_style_contract.md)
 - [../README.md](../README.md)

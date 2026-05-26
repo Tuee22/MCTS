@@ -2,7 +2,7 @@
 
 **Status**: Authoritative source
 **Supersedes**: N/A
-**Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/00-overview.md, ../../DEVELOPMENT_PLAN/phase-2-transcript-codec-and-determinism.md, ../../DEVELOPMENT_PLAN/phase-3-haskell-engine.md, ../../DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md, ../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md, ../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, ../documentation_standards.md, ./README.md, ./backend_ffi_contract.md, ./benchmark_metrics.md, ./transcript_format.md, ./unit_testing_policy.md
+**Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/00-overview.md, ../../DEVELOPMENT_PLAN/phase-2-transcript-codec-and-determinism.md, ../../DEVELOPMENT_PLAN/phase-3-haskell-engine.md, ../../DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md, ../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md, ../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, ../documentation_standards.md, ./README.md, ./backend_ffi_contract.md, ./backend_style_contract.md, ./benchmark_metrics.md, ./transcript_format.md, ./unit_testing_policy.md
 **Generated sections**: none
 
 > **Purpose**: Authoritative spec of the MCTS determinism contract — the RNG source
@@ -40,7 +40,8 @@ identity.
 - Backend (ii) `cpp-imperative` owns the optimized C++ native RNG path selected for
   steelman performance.
 - Backend (iii) `cpp-functional` mirrors backend (ii)'s RNG budget while preserving the
-  functional-style search structure.
+  [functional-core style contract](./backend_style_contract.md) shared with backends
+  (iv) and (v).
 - Backend (iv) Rust owns its Rust-native RNG path.
 - Backend (v) Haskell owns its Haskell-native deterministic path.
 

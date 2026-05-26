@@ -43,7 +43,9 @@ throughput, search-iteration throughput, and played-game throughput per
 [../documents/engineering/benchmark_metrics.md](../documents/engineering/benchmark_metrics.md).
 Sprint `7.9` closed on 2026-05-25 after the headline report-card mapping was
 renumbered to Q1-Q6 and the aggregate report card revalidated with verdict
-`Within tolerance`.
+`Within tolerance` for the then-current backend (ii) artefact. Sprint `5.6` later
+strengthened backend (ii), and Phase `8` Sprint `8.12` refreshed the parity
+evidence while this phase remains closed for report-card structure.
 
 ## Sprint 7.1: Cabal Test Organization ✅
 

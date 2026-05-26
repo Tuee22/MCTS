@@ -2,7 +2,7 @@
 
 **Status**: Authoritative source
 **Supersedes**: N/A
-**Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md, ../../DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md, ../../DEVELOPMENT_PLAN/phase-6-cpp-functional-and-rust.md, ../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, ../documentation_standards.md, ./README.md, ./determinism_contract.md, ./compiler_runtime_tuning.md
+**Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md, ../../DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md, ../../DEVELOPMENT_PLAN/phase-6-cpp-functional-and-rust.md, ../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, ../documentation_standards.md, ./README.md, ./backend_style_contract.md, ./determinism_contract.md, ./compiler_runtime_tuning.md
 **Generated sections**: none
 
 > **Purpose**: Authoritative spec of the compact C ABI shape exposed by the live
@@ -99,10 +99,15 @@ not expose C-owned tree or RNG lifecycle objects: the backend search allocates i
 own per-call arena internally, and the Haskell driver supplies deterministic
 per-move seeds derived from either the backend-native schedule or the shared C++ RNG
 bridge.
-Backend (ii)'s handle currently stores a compact `FastBoard` state rather than the
-legacy `corridors::board`; this is an internal representation detail. The ABI still
-accepts and returns the same canonical one-byte action IDs, applies moves through
-the backend's legal-move surface, and exposes no board internals to Haskell.
+Backend (ii)'s handle stores a compact `FastBoard` state rather than the legacy
+`corridors::board`; this is an internal representation detail. Backend (iii)'s
+handle uses the same ABI shape over compact functional-core value state, not an
+ABI exposure of the board layout. Sprint `6.7` removed the remaining backend
+(iii) legacy-board/text-action implementation residue. The ABI still accepts and
+returns the same canonical one-byte action IDs, applies moves through the
+backend's legal-move surface, and exposes no board internals to Haskell. The
+functional-core style requirements are owned by
+[backend_style_contract.md](./backend_style_contract.md).
 
 ### Engine Operations
 
@@ -537,6 +542,8 @@ one shared boundary instead of being spread through engine or CLI modules.
   and the verification cohort
 - [transcript_format.md](./transcript_format.md) — wire format consumed by
   transcript and recompute evidence
+- [backend_style_contract.md](./backend_style_contract.md) — functional-core
+  style contract that sits behind the opaque backend handles for `(iii)..(v)`
 - [compiler_runtime_tuning.md](./compiler_runtime_tuning.md) — per-backend flag
   sets and the PGO+BOLT build harness
 - [Development Plan](../../DEVELOPMENT_PLAN/README.md)

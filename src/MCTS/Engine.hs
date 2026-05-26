@@ -2,9 +2,16 @@
 
 module MCTS.Engine
     ( Board (..)
+    , ActionIds (..)
     , initialBoard
     , legalMoves
+    , legalActionIds
+    , legalActionSet
+    , actionIdsLength
+    , actionIdsToList
+    , actionIdAtUnsafe
     , applyMove
+    , applyActionId
     , isTerminal
     , terminalOutcome
     , nonTerminalOutcome
@@ -14,12 +21,12 @@ module MCTS.Engine
 
 import Data.Bits (complement, setBit, shiftL, shiftR, testBit, (.&.), (.|.))
 import qualified Data.Bits
-import Data.List (sortOn)
 import Data.Word (Word16, Word64, Word8)
 import MCTS.Types
     ( Action (..)
     , Side (..)
     , Winner (..)
+    , actionFromId
     , actionId
     , otherSide
     )
@@ -36,6 +43,8 @@ data Board = Board
     }
     deriving (Eq, Show, Read)
 
+data ActionIds = ActionIds !Int !Word64 !Word64
+
 initialBoard :: Board
 initialBoard =
     Board
@@ -51,66 +60,137 @@ initialBoard =
 
 {-# INLINEABLE legalMoves #-}
 legalMoves :: Board -> [Action]
-legalMoves board
-    | isTerminal maxBound board = []
-    | otherwise =
-        sortOn
-            actionId
-            (pawnMoves board <> take 12 (wallMoves board))
+legalMoves board =
+    [ action
+    | ident <- legalActionIds board
+    , Just action <- [actionFromId ident]
+    ]
 
-pawnMoves :: Board -> [Action]
-pawnMoves board =
+{-# INLINEABLE legalActionIds #-}
+legalActionIds :: Board -> [Word8]
+legalActionIds board
+    | boardHero board >= 72 || boardVillain board <= 8 = []
+    | otherwise = actionIdsToList (legalActionSet board)
+
+{-# INLINEABLE legalActionSet #-}
+legalActionSet :: Board -> ActionIds
+legalActionSet board
+    | boardHero board >= 72 || boardVillain board <= 8 = emptyActionIds
+    | otherwise = appendWallActionIds board (pawnActionSet board)
+
+{-# INLINE emptyActionIds #-}
+emptyActionIds :: ActionIds
+emptyActionIds = ActionIds 0 0 0
+
+{-# INLINE snocActionId #-}
+snocActionId :: ActionIds -> Word8 -> ActionIds
+snocActionId (ActionIds n lo hi) ident
+    | n < 8 =
+        ActionIds
+            (n + 1)
+            (lo .|. (fromIntegral ident `shiftL` (n * 8)))
+            hi
+    | n < 16 =
+        ActionIds
+            (n + 1)
+            lo
+            (hi .|. (fromIntegral ident `shiftL` ((n - 8) * 8)))
+    | otherwise = error "MCTS.Engine: too many legal action ids"
+
+{-# INLINE actionIdsLength #-}
+actionIdsLength :: ActionIds -> Int
+actionIdsLength (ActionIds n _ _) = n
+
+{-# INLINE actionIdAtUnsafe #-}
+actionIdAtUnsafe :: ActionIds -> Int -> Word8
+actionIdAtUnsafe (ActionIds _ lo hi) idx
+    | idx < 8 = fromIntegral ((lo `shiftR` (idx * 8)) .&. 0xff)
+    | otherwise = fromIntegral ((hi `shiftR` ((idx - 8) * 8)) .&. 0xff)
+
+actionIdsToList :: ActionIds -> [Word8]
+actionIdsToList ids = go (actionIdsLength ids - 1) []
+  where
+    go i acc
+        | i < 0 = acc
+        | otherwise = go (i - 1) (actionIdAtUnsafe ids i : acc)
+
+{-# INLINE pawnActionSet #-}
+pawnActionSet :: Board -> ActionIds
+pawnActionSet board =
     let (x, y) = pawnForSide (boardSideToMove board) board
         occupied = pawnForSide (otherSide (boardSideToMove board)) board
-        candidates = [(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)]
-     in [ Pawn nx ny
-        | (nx, ny) <- candidates
-        , nx >= 0
-        , nx <= 8
-        , ny >= 0
-        , ny <= 8
-        , (nx, ny) /= occupied
-        , not (edgeBlocked board (x, y) (nx, ny))
-        ]
+        !a0 = appendPawnCandidate x y occupied emptyActionIds x (y - 1)
+        !a1 = appendPawnCandidate x y occupied a0 (x - 1) y
+        !a2 = appendPawnCandidate x y occupied a1 (x + 1) y
+     in appendPawnCandidate x y occupied a2 x (y + 1)
+  where
+    appendPawnCandidate x y occupied acc nx ny
+        | nx < 0 || nx > 8 || ny < 0 || ny > 8 = acc
+        | (nx, ny) == occupied = acc
+        | edgeBlocked board (x, y) (nx, ny) = acc
+        | otherwise = snocActionId acc (fromIntegral (ny * 9 + nx))
 
-wallMoves :: Board -> [Action]
-wallMoves board
-    | wallsRemaining board == 0 = []
-    | otherwise =
-        [ wall
-        | wall <- [WallH x y | y <- [0 .. 7], x <- [0 .. 7]] <> [WallV x y | y <- [0 .. 7], x <- [0 .. 7]]
-        , not (wallExists board wall)
-        , pathExists Hero (applyWallOnly wall board)
-        , pathExists Villain (applyWallOnly wall board)
-        ]
+{-# INLINE appendWallActionIds #-}
+appendWallActionIds :: Board -> ActionIds -> ActionIds
+appendWallActionIds board initial
+    | wallsRemaining board == 0 = initial
+    | otherwise = goHorizontal 81 0 initial
+  where
+    baseMasks = blockMasks board
 
+    goHorizontal :: Int -> Int -> ActionIds -> ActionIds
+    goHorizontal ident wallCount acc
+        | wallCount >= 12 = acc
+        | ident > 144 = goVertical 145 wallCount acc
+        | legalWallId (fromIntegral ident) =
+            goHorizontal (ident + 1) (wallCount + 1) (snocActionId acc (fromIntegral ident))
+        | otherwise = goHorizontal (ident + 1) wallCount acc
+
+    goVertical :: Int -> Int -> ActionIds -> ActionIds
+    goVertical ident wallCount acc
+        | wallCount >= 12 = acc
+        | ident > 208 = acc
+        | legalWallId (fromIntegral ident) =
+            goVertical (ident + 1) (wallCount + 1) (snocActionId acc (fromIntegral ident))
+        | otherwise = goVertical (ident + 1) wallCount acc
+    legalWallId ident =
+        not (wallIdExists board ident)
+            && pathExistsWithMasks Hero board trialMasks
+            && pathExistsWithMasks Villain board trialMasks
+      where
+        trialMasks = addWallIdToMasks ident baseMasks
+
+{-# INLINE wallsRemaining #-}
 wallsRemaining :: Board -> Word8
 wallsRemaining board =
     case boardSideToMove board of
         Hero -> boardHeroWalls board
         Villain -> boardVillainWalls board
 
-wallExists :: Board -> Action -> Bool
-wallExists board action =
-    case action of
-        WallH x y ->
-            wallBitSet (boardWallsH board) x y
-                || wallBitSet (boardWallsH board) (x - 1) y
-                || wallBitSet (boardWallsH board) (x + 1) y
-                || wallBitSet (boardWallsV board) x y
-        WallV x y ->
-            wallBitSet (boardWallsV board) x y
-                || wallBitSet (boardWallsV board) x (y - 1)
-                || wallBitSet (boardWallsV board) x (y + 1)
-                || wallBitSet (boardWallsH board) x y
-        Pawn _ _ -> False
-
-applyWallOnly :: Action -> Board -> Board
-applyWallOnly action board =
-    case action of
-        WallH x y -> board{boardWallsH = setWallBit (boardWallsH board) x y}
-        WallV x y -> board{boardWallsV = setWallBit (boardWallsV board) x y}
-        Pawn _ _ -> board
+{-# INLINE wallIdExists #-}
+wallIdExists :: Board -> Word8 -> Bool
+wallIdExists board ident
+    | ident >= 81 && ident <= 144 =
+        let n = fromIntegral ident - 81
+            x = n `rem` 8
+            y = n `quot` 8
+            h = boardWallsH board
+            v = boardWallsV board
+         in wallBitSetUnsafe h x y
+                || (x > 0 && wallBitSetUnsafe h (x - 1) y)
+                || (x < 7 && wallBitSetUnsafe h (x + 1) y)
+                || wallBitSetUnsafe v x y
+    | ident >= 145 && ident <= 208 =
+        let n = fromIntegral ident - 145
+            x = n `rem` 8
+            y = n `quot` 8
+            h = boardWallsH board
+            v = boardWallsV board
+         in wallBitSetUnsafe v x y
+                || (y > 0 && wallBitSetUnsafe v x (y - 1))
+                || (y < 7 && wallBitSetUnsafe v x (y + 1))
+                || wallBitSetUnsafe h x y
+    | otherwise = False
 
 -- | Sprint 8.2 wavefront-bitmap BFS over the 9x9 grid.
 --
@@ -130,6 +210,8 @@ applyWallOnly action board =
 
 -- | Strict-pair `Word64` bitmap for the 9x9 grid.
 data Bits128 = Bits128 !Word64 !Word64
+
+data BlockMasks = BlockMasks !Bits128 !Bits128 !Bits128 !Bits128
 
 {-# INLINE bits128Zero #-}
 bits128Zero :: Bits128
@@ -226,31 +308,10 @@ leftShiftMask =
 -- between (x, y) and (x, y+1)). Derived from `boardWallsH`: a wall
 -- at intersection (xw, yw) for xw, yw in [0..7] blocks both
 -- (xw, yw)→up and (xw+1, yw)→up.
-{-# INLINE upBlockMask #-}
-upBlockMask :: Board -> Bits128
-upBlockMask board = expandHorizontalWalls (boardWallsH board)
-
-{-# INLINE downBlockMask #-}
-downBlockMask :: Board -> Bits128
-downBlockMask board =
-    -- Down-blocked from (x, y) ⇔ horizontal wall at (x-1, y-1) || (x, y-1)
-    -- = up-block at row (y-1) shifted up by 9 cells.
-    bits128ShiftL (upBlockMask board) 9
-
-{-# INLINE rightBlockMask #-}
-rightBlockMask :: Board -> Bits128
-rightBlockMask board = expandVerticalWalls (boardWallsV board)
-
-{-# INLINE leftBlockMask #-}
-leftBlockMask :: Board -> Bits128
-leftBlockMask board =
-    -- Left-blocked from (x, y) ⇔ vertical wall at (x-1, y-1) || (x-1, y)
-    -- = right-block at column (x-1) shifted right by 1 cell.
-    bits128ShiftL (rightBlockMask board) 1
-
 -- | Expand 8x8 horizontal-wall bitmap (`boardWallsH`, bit yw*8 + xw)
 -- to a 9x9 up-block mask (bit y*9 + x set if up-move from (x, y) is
 -- blocked). Each wall at (xw, yw) sets bits at (xw, yw) and (xw+1, yw).
+{-# INLINE expandHorizontalWalls #-}
 expandHorizontalWalls :: Word64 -> Bits128
 expandHorizontalWalls walls = go walls bits128Zero
   where
@@ -270,6 +331,7 @@ expandHorizontalWalls walls = go walls bits128Zero
 -- a 9x9 right-block mask (bit y*9 + x set if right-move from (x, y)
 -- is blocked). Each wall at (xw, yw) sets bits at (xw, yw) and
 -- (xw, yw+1).
+{-# INLINE expandVerticalWalls #-}
 expandVerticalWalls :: Word64 -> Bits128
 expandVerticalWalls walls = go walls bits128Zero
   where
@@ -285,17 +347,57 @@ expandVerticalWalls walls = go walls bits128Zero
                 w' = w .&. (w - 1)
              in go w' acc'
 
+{-# INLINE blockMasks #-}
+blockMasks :: Board -> BlockMasks
+blockMasks board =
+    let upBlock = expandHorizontalWalls (boardWallsH board)
+        downBlock = bits128ShiftL upBlock 9
+        rightBlock = expandVerticalWalls (boardWallsV board)
+        leftBlock = bits128ShiftL rightBlock 1
+     in BlockMasks upBlock downBlock rightBlock leftBlock
+
+{-# INLINE addWallIdToMasks #-}
+addWallIdToMasks :: Word8 -> BlockMasks -> BlockMasks
+addWallIdToMasks ident masks@(BlockMasks upBlock downBlock rightBlock leftBlock)
+    | ident >= 81 && ident <= 144 =
+        let n = fromIntegral ident - 81
+            x = n `rem` 8
+            y = n `quot` 8
+            up = horizontalUpBlock x y
+            down = bits128ShiftL up 9
+         in BlockMasks
+                (upBlock `bits128Or` up)
+                (downBlock `bits128Or` down)
+                rightBlock
+                leftBlock
+    | ident >= 145 && ident <= 208 =
+        let n = fromIntegral ident - 145
+            x = n `rem` 8
+            y = n `quot` 8
+            right = verticalRightBlock x y
+            left = bits128ShiftL right 1
+         in BlockMasks
+                upBlock
+                downBlock
+                (rightBlock `bits128Or` right)
+                (leftBlock `bits128Or` left)
+    | otherwise = masks
+
+{-# INLINE horizontalUpBlock #-}
+horizontalUpBlock :: Int -> Int -> Bits128
+horizontalUpBlock x y =
+    bits128Bit (y * 9 + x) `bits128Or` bits128Bit (y * 9 + x + 1)
+
+{-# INLINE verticalRightBlock #-}
+verticalRightBlock :: Int -> Int -> Bits128
+verticalRightBlock x y =
+    bits128Bit (y * 9 + x) `bits128Or` bits128Bit ((y + 1) * 9 + x)
+
 {-# INLINE bits128Bit #-}
 bits128Bit :: Int -> Bits128
 bits128Bit i
     | i < 64 = Bits128 (1 `shiftL` i) 0
     | otherwise = Bits128 0 (1 `shiftL` (i - 64))
-
-{-# INLINE bits128TestBit #-}
-bits128TestBit :: Bits128 -> Int -> Bool
-bits128TestBit (Bits128 lo hi) i
-    | i < 64 = testBit lo i
-    | otherwise = testBit hi (i - 64)
 
 -- | Count trailing zero bits in a Word64 (using popCount of (w-1) ^ w
 -- isolates the lowest set bit; we then take log2).
@@ -306,6 +408,7 @@ countTrailingZeros64 w =
     -- (Re-exported below if not already imported.)
     ctzWord64 w
 
+{-# INLINE ctzWord64 #-}
 ctzWord64 :: Word64 -> Int
 ctzWord64 = Data.Bits.countTrailingZeros
 
@@ -317,33 +420,23 @@ rowMask y
     | y == 7 = Bits128 (0x1FF `shiftL` 63) (0x1FF `shiftR` 1)
     | otherwise = Bits128 0 (0x1FF `shiftL` 8)
 
--- | Sprint 8.2 round 3: wavefront-bitmap BFS. Replaces the recursive
--- list-based BFS with a constant-depth iteration over a 128-bit
--- frontier representation.
-{-# INLINEABLE pathExists #-}
-pathExists :: Side -> Board -> Bool
-pathExists side board = bits128TestBit reach target0Idx || reachesTarget
+{-# INLINEABLE pathExistsWithMasks #-}
+pathExistsWithMasks :: Side -> Board -> BlockMasks -> Bool
+pathExistsWithMasks side board (BlockMasks upBlock downBlock rightBlock leftBlock) =
+    sy == targetY || go startBitmap startBitmap
   where
     (sx, sy) = pawnForSide side board
     targetY = case side of
         Hero -> 8
         Villain -> 0
-    target0Idx = targetY * 9 + 0 -- only used as a quick membership-test hint
     targetMask = rowMask targetY
     startBitmap = bits128Bit (sy * 9 + sx)
 
-    upBlock = upBlockMask board
-    downBlock = downBlockMask board
-    rightBlock = rightBlockMask board
-    leftBlock = leftBlockMask board
-
-    -- Tight wavefront loop. The bound (`grid diameter ≤ 16`) ensures
-    -- we always terminate; we additionally exit when no new bits
-    -- appear or when the target row is reached.
-    go !visited !frontier !iters
-        | iters > 81 = visited -- safety cap; should never trip
-        | bits128IsZero frontier = visited
-        | not (bits128IsZero (visited `bits128And` targetMask)) = visited
+    -- Tight wavefront loop. The frontier monotonically shrinks after
+    -- visited cells are removed, so an explicit iteration cap is not
+    -- needed in this hot legality path.
+    go !visited !frontier
+        | bits128IsZero frontier = False
         | otherwise =
             let upMoves =
                     bits128ShiftL (frontier `bits128AndNot` upBlock) 9
@@ -359,12 +452,9 @@ pathExists side board = bits128TestBit reach target0Idx || reachesTarget
                         ((frontier `bits128AndNot` leftBlock) `bits128And` leftShiftMask)
                         1
                 expanded = upMoves `bits128Or` downMoves `bits128Or` rightMoves `bits128Or` leftMoves
-                newFrontier = expanded `bits128AndNot` visited
-                visited' = visited `bits128Or` newFrontier
-             in go visited' newFrontier (iters + 1)
-
-    reach = go startBitmap startBitmap (0 :: Int)
-    reachesTarget = not (bits128IsZero (reach `bits128And` targetMask))
+                !newFrontier = expanded `bits128AndNot` visited
+             in not (bits128IsZero (newFrontier `bits128And` targetMask))
+                    || go (visited `bits128Or` newFrontier) newFrontier
 
 -- | Sprint 8.2 round 3 shortestDistance using the same wavefront BFS
 -- but tracking the BFS-wave count. Returns 99 when unreachable.
@@ -379,10 +469,7 @@ shortestDistance side board = go startBitmap startBitmap 0
     targetMask = rowMask targetY
     startBitmap = bits128Bit (sy * 9 + sx)
 
-    upBlock = upBlockMask board
-    downBlock = downBlockMask board
-    rightBlock = rightBlockMask board
-    leftBlock = leftBlockMask board
+    BlockMasks upBlock downBlock rightBlock leftBlock = blockMasks board
 
     go !visited !frontier !distance
         | not (bits128IsZero (visited `bits128And` targetMask)) = distance
@@ -411,16 +498,22 @@ nonTerminalRank :: Board -> Int
 nonTerminalRank board =
     shortestDistance Villain board - shortestDistance Hero board
 
+{-# INLINE edgeBlocked #-}
 edgeBlocked :: Board -> (Int, Int) -> (Int, Int) -> Bool
 edgeBlocked board (x1, y1) (x2, y2)
     | x1 == x2 && abs (y1 - y2) == 1 =
         let y = min y1 y2
-         in any (uncurry (wallBitSet (boardWallsH board))) [(x1 - 1, y), (x1, y)]
+            h = boardWallsH board
+         in (x1 > 0 && wallBitSetUnsafe h (x1 - 1) y)
+                || (x1 < 8 && wallBitSetUnsafe h x1 y)
     | y1 == y2 && abs (x1 - x2) == 1 =
         let x = min x1 x2
-         in any (uncurry (wallBitSet (boardWallsV board))) [(x, y1 - 1), (x, y1)]
+            v = boardWallsV board
+         in (y1 > 0 && wallBitSetUnsafe v x (y1 - 1))
+                || (y1 < 8 && wallBitSetUnsafe v x y1)
     | otherwise = False
 
+{-# INLINE pawnForSide #-}
 pawnForSide :: Side -> Board -> (Int, Int)
 pawnForSide side board =
     case side of
@@ -429,51 +522,75 @@ pawnForSide side board =
 
 {-# INLINEABLE applyMove #-}
 applyMove :: Action -> Board -> Board
-applyMove action board =
-    advancePly . toggleSide $
-        case (boardSideToMove board, action) of
-            (Hero, Pawn x y) -> board{boardHero = pawnSlot x y}
-            (Villain, Pawn x y) -> board{boardVillain = pawnSlot x y}
-            (Hero, WallH x y) ->
-                board
-                    { boardWallsH = setWallBit (boardWallsH board) x y
-                    , boardHeroWalls = decrement (boardHeroWalls board)
-                    }
-            (Villain, WallH x y) ->
-                board
-                    { boardWallsH = setWallBit (boardWallsH board) x y
-                    , boardVillainWalls = decrement (boardVillainWalls board)
-                    }
-            (Hero, WallV x y) ->
-                board
-                    { boardWallsV = setWallBit (boardWallsV board) x y
-                    , boardHeroWalls = decrement (boardHeroWalls board)
-                    }
-            (Villain, WallV x y) ->
-                board
-                    { boardWallsV = setWallBit (boardWallsV board) x y
-                    , boardVillainWalls = decrement (boardVillainWalls board)
-                    }
+applyMove action board = applyActionId (actionId action) board
 
+{-# INLINE applyActionId #-}
+applyActionId :: Word8 -> Board -> Board
+applyActionId ident board
+    | ident <= 80 =
+        let n = fromIntegral ident
+            x = n `rem` 9
+            y = n `quot` 9
+         in advancePly . toggleSide $
+                case boardSideToMove board of
+                    Hero -> board{boardHero = pawnSlot x y}
+                    Villain -> board{boardVillain = pawnSlot x y}
+    | ident >= 81 && ident <= 144 =
+        let n = fromIntegral ident - 81
+            x = n `rem` 8
+            y = n `quot` 8
+         in advancePly . toggleSide $
+                case boardSideToMove board of
+                    Hero ->
+                        board
+                            { boardWallsH = setWallBitUnsafe (boardWallsH board) x y
+                            , boardHeroWalls = decrement (boardHeroWalls board)
+                            }
+                    Villain ->
+                        board
+                            { boardWallsH = setWallBitUnsafe (boardWallsH board) x y
+                            , boardVillainWalls = decrement (boardVillainWalls board)
+                            }
+    | ident >= 145 && ident <= 208 =
+        let n = fromIntegral ident - 145
+            x = n `rem` 8
+            y = n `quot` 8
+         in advancePly . toggleSide $
+                case boardSideToMove board of
+                    Hero ->
+                        board
+                            { boardWallsV = setWallBitUnsafe (boardWallsV board) x y
+                            , boardHeroWalls = decrement (boardHeroWalls board)
+                            }
+                    Villain ->
+                        board
+                            { boardWallsV = setWallBitUnsafe (boardWallsV board) x y
+                            , boardVillainWalls = decrement (boardVillainWalls board)
+                            }
+    | otherwise = board
+
+{-# INLINE decrement #-}
 decrement :: Word8 -> Word8
 decrement n = if n == 0 then 0 else n - 1
 
+{-# INLINE toggleSide #-}
 toggleSide :: Board -> Board
 toggleSide board = board{boardSideToMove = otherSide (boardSideToMove board)}
 
+{-# INLINE advancePly #-}
 advancePly :: Board -> Board
 advancePly board = board{boardPly = boardPly board + 1}
 
-{-# INLINEABLE isTerminal #-}
+{-# INLINE isTerminal #-}
 isTerminal :: Word16 -> Board -> Bool
 isTerminal maxPlies board =
     terminalOutcome maxPlies board /= nonTerminalOutcome
 
-{-# INLINEABLE terminalOutcome #-}
+{-# INLINE terminalOutcome #-}
 terminalOutcome :: Word16 -> Board -> Float
 terminalOutcome maxPlies board
-    | snd (pawnCoords (boardHero board)) == 8 = 1.0
-    | snd (pawnCoords (boardVillain board)) == 0 = -1.0
+    | boardHero board >= 72 = 1.0
+    | boardVillain board <= 8 = -1.0
     | boardPly board >= maxPlies = 0.0
     | otherwise = nonTerminalOutcome
 
@@ -494,23 +611,21 @@ terminalWinner maxPlies board =
 nonTerminalOutcome :: Float
 nonTerminalOutcome = 2.0
 
+{-# INLINE pawnSlot #-}
 pawnSlot :: Int -> Int -> Word64
 pawnSlot x y = fromIntegral (y * 9 + x)
 
+{-# INLINE pawnCoords #-}
 pawnCoords :: Word64 -> (Int, Int)
 pawnCoords value =
-    let idx = max 0 (min 80 (fromIntegral value))
-     in (idx `mod` 9, idx `div` 9)
+    let idx = fromIntegral value
+     in (idx `rem` 9, idx `quot` 9)
 
-setWallBit :: Word64 -> Int -> Int -> Word64
-setWallBit bits x y
-    | validWallCoord x y = setBit bits (y * 8 + x)
-    | otherwise = bits
+{-# INLINE setWallBitUnsafe #-}
+setWallBitUnsafe :: Word64 -> Int -> Int -> Word64
+setWallBitUnsafe bits x y = setBit bits (y * 8 + x)
 
-wallBitSet :: Word64 -> Int -> Int -> Bool
-wallBitSet bits x y =
-    validWallCoord x y && testBit bits (y * 8 + x)
-
-validWallCoord :: Int -> Int -> Bool
-validWallCoord x y =
-    x >= 0 && x <= 7 && y >= 0 && y <= 7
+{-# INLINE wallBitSetUnsafe #-}
+wallBitSetUnsafe :: Word64 -> Int -> Int -> Bool
+wallBitSetUnsafe bits x y =
+    testBit bits (y * 8 + x)

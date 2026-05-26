@@ -19,23 +19,22 @@ import Control.Monad.ST (ST, runST)
 import Data.Bits (xor)
 import Data.Int (Int32, Int64)
 import Data.List (sortOn)
-import Data.STRef (newSTRef, readSTRef, writeSTRef)
-import Data.Word (Word32, Word64)
+import Data.Word (Word16, Word32, Word64, Word8)
 import MCTS.Engine
-    ( Board
-    , applyMove
-    , legalMoves
+    ( ActionIds
+    , Board
+    , actionIdAtUnsafe
+    , actionIdsLength
+    , applyActionId
+    , legalActionSet
     , nonTerminalOutcome
     , terminalOutcome
-    , terminalWinner
     )
 import MCTS.Rng.Mix (mix)
 import qualified MCTS.Search.Arena as Arena
 import MCTS.Types
     ( Action
-    , Winner (..)
     , actionFromId
-    , actionId
     )
 
 -- | UCT search.
@@ -54,7 +53,7 @@ uctSearch board seed nSims maxPlies =
     let (act, visits, _) = uctSearchWithEquity board seed nSims maxPlies
      in (act, visits)
 
-{-# INLINEABLE terminalPlayout #-}
+{-# INLINE terminalPlayout #-}
 terminalPlayout :: Board -> Word64 -> Int -> Float
 terminalPlayout = rollout
 
@@ -73,49 +72,48 @@ uctSearchWithEquity
     -> Int
     -> (Action, [(Action, Word32)], [(Action, Float)])
 uctSearchWithEquity board seed nSims maxPlies = runST $ do
-    let rootMoves = legalMoves board
+    let rootMoves = legalActionSet board
+        rootMoveCount = actionIdsLength rootMoves
         -- Capacity has to hold every node the recursive descent may
         -- create: root + every legal child of root + one expanded
-        -- child set per sim. `legalMoves` emits at most four pawn
+        -- child set per sim. `legalActionSet` emits at most four pawn
         -- moves plus the twelve-wall cap, so 16 is a safe per-sim
         -- branch bound.
-        capacity = max 32 (1 + length rootMoves + nSims * 16)
+        capacity = max 32 (1 + rootMoveCount + nSims * 16)
     arena <- Arena.newArena capacity
     root <- Arena.allocNode arena (-1) 0xFF
-    rootChildrenIds <- mapM (\action -> Arena.allocNode arena root (actionId action)) rootMoves
-    case rootChildrenIds of
-        firstChild : _ -> Arena.setChildren arena root firstChild (fromIntegral (length rootMoves))
-        [] -> Arena.setChildren arena root (-1) 0
+    (rootFirstChild, rootNumChildren) <- allocChildren arena root rootMoves
+    Arena.setChildren arena root rootFirstChild rootNumChildren
     -- Mark root as already-visited so descent goes through children, not
     -- a rollout from the root itself.
     Arena.addVisits arena root 1
-    let rootChildren = zip rootMoves rootChildrenIds
-    seedRef <- newSTRef seed
-    let runSims i
+    let maxPliesWord = fromIntegral maxPlies
+    let runSims !i !simSeed
             | i >= nSims = pure ()
             | otherwise = do
-                s <- readSTRef seedRef
-                let s' = mix s (fromIntegral i)
-                writeSTRef seedRef s'
-                _ <- descend arena root board s' maxPlies
-                runSims (i + 1)
-    runSims 0
+                let s' = mix simSeed (fromIntegral i)
+                _ <- descend arena root board s' maxPlies maxPliesWord
+                runSims (i + 1) s'
+    runSims 0 seed
     -- Build the visit list and equity list at the root.
-    let collect (action, nid) = do
+    let collect i = do
+            let actionByte = actionIdAtUnsafe rootMoves i
+                nid = rootFirstChild + fromIntegral i
             v <- Arena.readVisits arena nid
             vs <- Arena.readValueSum arena nid
             let visitsW32 = fromIntegral v :: Word32
                 equity = if v == 0 then 0 else vs / fromIntegral v
-            pure (action, visitsW32, equity)
-    rows <- mapM collect rootChildren
-    let sortedRows = sortOn (\(a, _, _) -> actionId a) rows
-        visitsOut = [(a, v) | (a, v, _) <- sortedRows]
-        equityOut = [(a, e) | (a, _, e) <- sortedRows]
+            pure (actionByte, visitsW32, equity)
+    rows <- mapM collect [0 .. rootMoveCount - 1]
+    let sortedRows = sortOn (\(a, _, _) -> a) rows
+        visitsOut = [(actionFromIdUnsafe a, v) | (a, v, _) <- sortedRows]
+        equityOut = [(actionFromIdUnsafe a, e) | (a, _, e) <- sortedRows]
         best = case sortOn finalChoiceKey sortedRows of
-            (a, _, _) : _ -> a
-            [] -> case rootMoves of
-                a : _ -> a
-                [] -> error "MCTS.Search.UCT: no legal moves and no fallback"
+            (a, _, _) : _ -> actionFromIdUnsafe a
+            [] ->
+                if rootMoveCount > 0
+                    then actionFromIdUnsafe (actionIdAtUnsafe rootMoves 0)
+                    else error "MCTS.Search.UCT: no legal moves and no fallback"
     pure (best, visitsOut, equityOut)
   where
     -- Sprint 7.2 cohort agreement: the final choice picks the highest
@@ -124,9 +122,9 @@ uctSearchWithEquity board seed nSims maxPlies = runST $ do
     -- the C++ and Rust search loops); aligning the
     -- Haskell side here drops the previous `nonTerminalRank`-then-
     -- equity tiebreak so the live cohort stays uniform.
-    finalChoiceKey (action, visits, _equity) =
+    finalChoiceKey (actionByte, visits, _equity) =
         ( negate (fromIntegral visits :: Int)
-        , actionId action
+        , actionByte
         )
 
 -- | Recursive descent. Returns the rollout outcome from Hero's
@@ -140,15 +138,17 @@ descend
     -> Board
     -> Word64
     -> Int
+    -> Word16
     -> ST s Float
-descend arena nid board seed maxPlies = do
-    case terminalWinner (fromIntegral maxPlies) board of
-        Just w -> do
-            let outcome = winnerOutcome w
+descend arena nid board seed maxPlies maxPliesWord = do
+    let terminal = terminalOutcome maxPliesWord board
+    if terminal /= nonTerminalOutcome
+        then do
+            let outcome = terminal
             Arena.addVisits arena nid 1
             Arena.addValueSum arena nid outcome
             pure outcome
-        Nothing -> do
+        else do
             visits <- Arena.readVisits arena nid
             if visits == 0
                 then do
@@ -177,16 +177,12 @@ descend arena nid board seed maxPlies = do
                             chosenIdx <- pickByUctIndex arena fc numKids np board
                             let bestNid = fc + chosenIdx
                             actByte <- Arena.readActionId arena bestNid
-                            case actionFromId actByte of
-                                Nothing ->
-                                    error "MCTS.Search.UCT: bad action id in arena"
-                                Just bestAction -> do
-                                    let nextBoard = applyMove bestAction board
-                                        childSeed = mix seed (fromIntegral chosenIdx + 1)
-                                    outcome <- descend arena bestNid nextBoard childSeed maxPlies
-                                    Arena.addVisits arena nid 1
-                                    Arena.addValueSum arena nid outcome
-                                    pure outcome
+                            let nextBoard = applyActionId actByte board
+                                childSeed = mix seed (fromIntegral chosenIdx + 1)
+                            outcome <- descend arena bestNid nextBoard childSeed maxPlies maxPliesWord
+                            Arena.addVisits arena nid 1
+                            Arena.addValueSum arena nid outcome
+                            pure outcome
 
 -- | On a node's second visit, allocate one arena slot per legal move
 -- (contiguously, so the children are addressable as
@@ -194,26 +190,25 @@ descend arena nid board seed maxPlies = do
 -- `(firstChild, numChildren)`.
 expandChildren :: Arena.Arena s -> Arena.NodeId -> Board -> ST s (Arena.NodeId, Int32)
 expandChildren arena parent board = do
-    let moves = legalMoves board
-    case moves of
-        [] -> do
-            Arena.setChildren arena parent (-1) 0
-            pure (-1, 0)
-        _ -> do
-            childIds <- mapM (\m -> Arena.allocNode arena parent (actionId m)) moves
-            case childIds of
-                fc : _ -> do
-                    Arena.setChildren arena parent fc (fromIntegral (length moves))
-                    pure (fc, fromIntegral (length moves))
-                [] -> do
-                    Arena.setChildren arena parent (-1) 0
-                    pure (-1, 0)
+    let moves = legalActionSet board
+    (firstChild, numKids) <- allocChildren arena parent moves
+    Arena.setChildren arena parent firstChild numKids
+    pure (firstChild, numKids)
 
--- | Convert a terminal winner to a Hero-perspective outcome value.
-winnerOutcome :: Winner -> Float
-winnerOutcome HeroWin = 1.0
-winnerOutcome VillainWin = -1.0
-winnerOutcome Draw = 0.0
+allocChildren :: Arena.Arena s -> Arena.NodeId -> ActionIds -> ST s (Arena.NodeId, Int32)
+allocChildren arena parent moves
+    | moveCount == 0 = pure (-1, 0)
+    | otherwise = do
+        firstChild <- go 0 (-1)
+        pure (firstChild, fromIntegral moveCount)
+  where
+    moveCount = actionIdsLength moves
+    go i first
+        | i >= moveCount = pure first
+        | otherwise = do
+            nid <- Arena.allocNode arena parent (actionIdAtUnsafe moves i)
+            let first' = if i == 0 then nid else first
+            go (i + 1) first'
 
 -- | Pick the index (into the contiguous child range) of the best child
 -- by UCT score. `np` is the parent's visit count *after* this descent
@@ -235,56 +230,59 @@ pickByUctIndex
 -- canonical action enumeration already orders pawn moves by y*9+x so
 -- the first emitted move at the initial position is `Pawn 3 0`, in
 -- agreement with the C++ smoke runs).
-pickByUctIndex arena firstChild numKids np _board = do
-    scored <- mapM scoreIdx [0 .. numKids - 1]
-    case sortOn scoreKey scored of
-        (idx, _, _) : _ -> pure idx
-        [] -> pure 0
+pickByUctIndex arena firstChild numKids np _board =
+    go 0 0 0.0
   where
     cParam :: Float
     cParam = 1.41421356
     lnNp :: Float
     lnNp = log (fromIntegral (max 1 np))
+    go !i !bestIdx !bestScore
+        | i >= numKids = pure bestIdx
+        | otherwise = do
+            score <- scoreIdx i
+            let better =
+                    i == 0
+                        || score > bestScore
+                bestIdx' = if better then i else bestIdx
+                bestScore' = if better then score else bestScore
+            go (i + 1) bestIdx' bestScore'
     scoreIdx i = do
         let nid = firstChild + i
         n <- Arena.readVisits arena nid
         v <- Arena.readValueSum arena nid
-        actionByte <- Arena.readActionId arena nid
         let score
                 | n == 0 = 1.0e30
                 | otherwise =
                     let q = v / fromIntegral n
                         u = cParam * sqrt (lnNp / fromIntegral n)
                      in q + u
-        pure (i, score, actionByte)
-    scoreKey (_, score, actionByte) =
-        (negate score, actionByte)
+        pure score
 
 -- | Random rollout from `board` to a terminal state or the ply cap.
-{-# INLINEABLE rollout #-}
+{-# INLINE rollout #-}
 rollout :: Board -> Word64 -> Int -> Float
-rollout = go 0
+rollout board0 seed0 maxPlies = go 0 board0 seed0
   where
-    go !step !board !seed !maxPlies
-        | step >= maxPlies = 0.0
-        | otherwise =
-            let outcome = terminalOutcome (fromIntegral maxPlies) board
-             in if outcome /= nonTerminalOutcome
-                    then outcome
-                    else case legalMoves board of
-                        [] -> 0.0
-                        moves ->
-                            let n = length moves
-                                pick = signedModulo (seed `xor` fromIntegral step) n
-                                action = chooseAction pick moves
-                                next = applyMove action board
-                                nextSeed = mix seed (fromIntegral step)
-                             in go (step + 1) next nextSeed maxPlies
-    chooseAction _ [] = error "MCTS.Search.UCT: no legal moves in rollout"
-    chooseAction idx moves@(fallback : _) =
-        case indexAt (max 0 (min (length moves - 1) idx)) moves of
-            Just action -> action
-            Nothing -> fallback
+    maxPliesWord :: Word16
+    maxPliesWord = fromIntegral maxPlies
+
+    go :: Int -> Board -> Word64 -> Float
+    go !step !board !seed =
+        let !outcome = terminalOutcome maxPliesWord board
+         in if outcome /= nonTerminalOutcome
+                then outcome
+                else
+                    let moves = legalActionSet board
+                        n = actionIdsLength moves
+                     in if n == 0
+                            then 0.0
+                            else
+                                let pick = signedModulo (seed `xor` fromIntegral step) n
+                                    actionByte = actionIdAtUnsafe moves pick
+                                    next = applyActionId actionByte board
+                                    nextSeed = mix seed (fromIntegral step)
+                                 in go (step + 1) next nextSeed
 
     signedModulo :: Word64 -> Int -> Int
     signedModulo draw n =
@@ -293,9 +291,8 @@ rollout = go 0
             remainder = signed `rem` width
          in fromIntegral (if remainder < 0 then remainder + width else remainder)
 
-indexAt :: Int -> [a] -> Maybe a
-indexAt n _
-    | n < 0 = Nothing
-indexAt _ [] = Nothing
-indexAt 0 (value : _) = Just value
-indexAt n (_ : rest) = indexAt (n - 1) rest
+actionFromIdUnsafe :: Word8 -> Action
+actionFromIdUnsafe ident =
+    case actionFromId ident of
+        Just action -> action
+        Nothing -> error "MCTS.Search.UCT: bad action id in arena"

@@ -177,7 +177,7 @@ CLI flag values and the human-readable Roman numerals used in prose:
 |------------------------|-------|------|------|
 | `cpp-legacy` | (i) | `cpp-legacy/` | Verbatim `MCTS_legacy` compatibility and Q6 legacy-envelope evidence |
 | `cpp-imperative` | (ii) | `cpp-imperative/` | Imperative C++23 performance ceiling target; supported PGO/BOLT CLI build path |
-| `cpp-functional` | (iii) | `cpp-functional/` | Functional-style C++23 steelman target; supported shared C++ PGO/BOLT CLI build path |
+| `cpp-functional` | (iii) | `cpp-functional/` | Functional-core C++23 steelman target; supported shared C++ PGO/BOLT CLI build path |
 | `rust` | (iv) | `rust/` | Rust `cdylib`; cross-language second opinion |
 | `haskell` | (v) | `src/MCTS/Engine/`, `src/MCTS/Search/` | Native Haskell engine; the target |
 

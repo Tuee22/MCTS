@@ -15,10 +15,11 @@ module MCTS.Driver
     ) where
 
 import Control.Concurrent (MVar, forkIO, newEmptyMVar, newMVar, putMVar, takeMVar)
-import Control.Exception (evaluate)
+import Control.Exception (bracket_, evaluate)
 import Data.Bits (xor)
 import Data.List (sortOn)
 import Data.Word (Word16, Word32, Word64)
+import GHC.Conc (getNumCapabilities, setNumCapabilities)
 import MCTS.Engine (Board, applyMove, initialBoard, terminalWinner)
 import MCTS.Engine.Envelope (makeEngineEnvelope)
 import MCTS.Rng.Mix (backendNativeSalt, mix)
@@ -200,7 +201,7 @@ runGamePool
     -> (Int -> IO (Either String a))
     -> [Int]
     -> IO [Either String a]
-runGamePool workers runOne gameIds = do
+runGamePool workers runOne gameIds = withCapabilities activeWorkers $ do
     jobs <- newMVar (zip [0 :: Int ..] gameIds)
     results <- newMVar []
     done <- newEmptyMVar
@@ -216,10 +217,20 @@ runGamePool workers runOne gameIds = do
                     current <- takeMVar results
                     putMVar results ((idx, forced) : current)
                     worker
-    mapM_ (\_ -> forkIO worker) [1 .. min workers (max 1 (length gameIds))]
-    mapM_ (\_ -> takeMVar done) [1 .. min workers (max 1 (length gameIds))]
+    mapM_ (\_ -> forkIO worker) [1 .. activeWorkers]
+    mapM_ (\_ -> takeMVar done) [1 .. activeWorkers]
     ordered <- sortOn fst <$> takeMVar results
     pure (map snd ordered)
+  where
+    activeWorkers = min workers (max 1 (length gameIds))
+
+withCapabilities :: Int -> IO a -> IO a
+withCapabilities workers action = do
+    current <- getNumCapabilities
+    let desired = max current (max 1 workers)
+    if desired == current
+        then action
+        else bracket_ (setNumCapabilities desired) (setNumCapabilities current) action
 
 takeJob :: MVar [(Int, Int)] -> IO (Maybe (Int, Int))
 takeJob jobs = do

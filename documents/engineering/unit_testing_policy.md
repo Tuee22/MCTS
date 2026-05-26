@@ -187,7 +187,9 @@ gate.
 Phase 8 Sprint `8.10` closed the fail-closed profile-training requirement, and
 Sprint `7.8` split the report-card rows into terminal playout throughput,
 search-iteration throughput, and played-game throughput. Sprint `8.11` closed the
-final parity rerun and profile-suite review against that refactored metric surface.
+profile-suite review and historical parity rerun against that refactored metric
+surface; Sprint `8.12` closed the active parity refresh after backend (ii)'s
+compact-board correction.
 
 1. **Q1.** Does pure Haskell match maximally-optimised C++ (backend (ii)) on core
    throughput? This requires Q1a terminal playout throughput (`playouts/s`) and
@@ -245,12 +247,19 @@ compares those rates against live backend (ii) where available and renders
 run. Q6 is the all-five legacy-envelope gate, while Q3 carries the visit-count
 equality assertion for `(ii)..(v)`.
 
-The 2026-05-24 Sprint `8.11` aggregate run closed the refactored metric surface
-with `Verdict: Within tolerance`: Q1a terminal playout ST `0.07x`, Q1a MT8
-`0.39x`, Q1b search-iteration ST `0.06x`, Q1b MT8 `0.40x`, Q2 played-game ST
-`0.05x`, Q2 MT8 `0.17x`, Haskell search-iteration scaling `1.02x`, C++ (ii)
-search-iteration scaling `7.36x`, Haskell self-play scaling `0.97x`, C++ (ii)
-self-play scaling `3.72x`, Q6 PASS, and zero live-cohort divergence.
+The 2026-05-26 Sprint `8.12` aggregate run closed the corrected-backend parity
+surface with `Verdict: Within tolerance`: Q1a terminal playout ST `0.99x`,
+Q1a MT8 `0.91x`, Q1b search-iteration ST `1.02x`, Q1b MT8 `0.99x`, Q2
+played-game ST `0.63x`, Q2 MT8 `0.68x`, Haskell search-iteration scaling `6.91x`,
+C++ (ii) search-iteration scaling `6.72x`, Haskell self-play scaling `3.65x`,
+C++ (ii) self-play scaling `3.90x`, Q3/Q4/Q6 PASS, all Cabal stanzas PASS, and
+zero live-cohort divergence.
+The 2026-05-24 Sprint `8.11` aggregate run remains historical refactored-metric
+evidence for the older backend (ii) artefact: Q1a terminal playout ST `0.07x`,
+Q1a MT8 `0.39x`, Q1b search-iteration ST `0.06x`, Q1b MT8 `0.40x`, Q2
+played-game ST `0.05x`, Q2 MT8 `0.17x`, Haskell search-iteration scaling `1.02x`,
+C++ (ii) search-iteration scaling `7.36x`, Haskell self-play scaling `0.97x`,
+C++ (ii) self-play scaling `3.72x`, Q6 PASS, and zero live-cohort divergence.
 The 2026-05-25 Sprint `7.9` aggregate revalidation kept the six-question surface
 within tolerance after the external legacy-reproduction headline row was removed:
 Q1a ST `0.06x`, Q1a MT8 `0.38x`, Q1b ST `0.05x`, Q1b MT8 `0.36x`,

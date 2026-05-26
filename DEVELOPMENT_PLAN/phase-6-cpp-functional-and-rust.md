@@ -1,4 +1,4 @@
-# Phase 6: Backends (iii) C++ Functional-Style and (iv) Rust
+# Phase 6: Backends (iii) C++ Functional-Core and (iv) Rust
 
 **Status**: Authoritative source
 **Supersedes**: N/A
@@ -6,46 +6,46 @@
 [development_plan_standards.md](development_plan_standards.md),
 [system-components.md](system-components.md),
 [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md),
+[../documents/engineering/backend_style_contract.md](../documents/engineering/backend_style_contract.md),
 [../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md)
 **Generated sections**: none
 
-> **Purpose**: Land backend (iii), a functional-style C++ steelman under the same
+> **Purpose**: Land backend (iii), a functional-core C++ steelman under the same
 > optimization stack as backend (ii), and backend (iv) Rust as an independent
 > cross-language systems baseline.
 
 ## Phase Status
 
-✅ **Done.** Rust and `cpp-functional/` are live backends. Backend (iii)
-remains first-class because it isolates C++ style from C++ optimization when
-compared with backend (ii). The shared C++ PGO/BOLT Plan/Apply wiring closed in
-Sprint `5.3`; Phase `6` does not duplicate that build harness. Sprint `6.4`
-reclosed on 2026-05-23: Rust PGO profile data, merged `profdata`, BOLT `.fdata`,
-the bolted cdylib, LLVM objcopy envelope patching, and the final installed
-canonical Rust smoke run are all mandatory Dockerfile-build steps. Sprint `6.6`
-reclosed this phase on 2026-05-21 by aligning backend (iii)'s compact ABI wording
-with backend (ii), and by making Rust's instrumentation/build-artifact contract
-match the code rather than a speculative paired-target description.
+✅ **Done**. Rust and `cpp-functional/` remain live backends. The
+fail-closed Rust PGO/BOLT, backend (iii)/(iv) ABI wording, and Sprint `6.7`
+compact functional-core source-style surfaces are closed. Sprint `6.7` removed
+backend (iii)'s legacy-board/action-text hot path and aligned the C++ functional
+backend with the compact value-state style described in
+[backend_style_contract.md](../documents/engineering/backend_style_contract.md).
 
 ## Phase Summary
 
-Backend (iii) keeps backend (ii)'s data layout, performance budget, compact C ABI
-roles, and Makefile-level optimization target surface while expressing search flow
-with functional-style C++ APIs and data flow. Backend (iv) Rust provides a second
-systems-language implementation with its own release profile, supported PGO/BOLT
-Plan/Apply recipe invoked by the Dockerfile, `mimalloc` allocator, Corridors
-gameplay port, and C ABI. Its Dockerfile build must fail if PGO profile merge,
-BOLT instrumentation, BOLT training, or BOLT optimization cannot produce the
-required optimized cdylib. The final installed Rust cdylib is smoke-tested before
-the image is published.
+Backend (iii) must keep backend (ii)'s performance budget, compact C ABI roles,
+and Makefile-level optimization target surface while using a functional-core C++
+style: compact value-state board, typed numeric action IDs, direct capped legal
+action generation, bitfield path checks, and local scratch/arena mutation hidden
+behind value-style transitions. Backend (iv) Rust provides the same functional-core
+systems-language shape with Rust ownership idioms, its own release profile,
+supported PGO/BOLT Plan/Apply recipe invoked by the Dockerfile, `mimalloc`
+allocator, Corridors gameplay port, and C ABI. Its Dockerfile build must fail if
+PGO profile merge, BOLT instrumentation, BOLT training, or BOLT optimization cannot
+produce the required optimized cdylib. The final installed Rust cdylib is
+smoke-tested before the image is published.
 
-Phase `6` remains closed for backend (iii)/(iv) source, ABI, fail-closed PGO/BOLT
-mechanics, Rust allocator/toolchain integration, and canonical artefact installation.
+Phase `6` is closed for the validated ABI, fail-closed PGO/BOLT mechanics, Rust
+allocator/toolchain integration, canonical artefact installation, and backend
+(iii)'s compact functional-core source/style alignment.
 Phase `8` Sprint `8.10` has since broadened the Dockerfile-time PGO/BOLT training
 workload from the earlier narrow self-play smoke into a bounded profile suite.
 Phase `8` Sprint `8.11` extends and validates that suite with primitive
 terminal-playout and search-iteration profile runs after the metric refactor.
 
-## Sprint 6.1: C++ Functional-Style Engine ✅
+## Sprint 6.1: C++ Functional-Core Engine Baseline ✅
 
 **Status**: Done
 **Implementation**: `cpp-functional/engine/{state.hpp,arena.hpp,xoshiro256pp.hpp,search.hpp,search.cpp}`,
@@ -55,12 +55,13 @@ terminal-playout and search-iteration profile runs after the metric refactor.
 
 ### Objective
 
-Build backend (iii) so the (ii)-vs-(iii) comparison isolates style, not optimization
-effort.
+Build backend (iii) so the (ii)-vs-(iii) comparison can isolate style, not
+optimization effort.
 
 ### Deliverables
 
-- Same arena memory layout and optimization stack as backend (ii).
+- Same flat-arena search class and optimization stack as backend (ii), with the
+  source-style caveats closed by Sprint `6.7`.
 - Functional-style move application, selection outcomes, and descent state transitions.
 - C ABI with the same search/recompute/visit/envelope roles as backend (ii).
 - The C++ functional PGO/BOLT Makefile targets mirror backend (ii); the
@@ -271,15 +272,87 @@ Sprint `6.6` reclosed on 2026-05-21. Validation passed with:
 - `docker compose run --rm mcts mcts docs check`
 - `git diff --check`
 
+## Sprint 6.7: Functional-Core Compact State Alignment ✅
+
+**Status**: Done
+**Implementation**: `cpp-functional/engine/`, `cpp-functional/c-abi/`,
+`rust/src/board.rs`, `rust/src/search.rs`
+**Docs to update**: `README.md`, `00-overview.md`, `system-components.md`,
+`legacy-tracking-for-deletion.md`,
+`../documents/engineering/backend_style_contract.md`,
+`../documents/engineering/compiler_runtime_tuning.md`,
+`../documents/engineering/backend_ffi_contract.md`,
+`../documents/engineering/determinism_contract.md`
+
+### Objective
+
+Make backend (iii) a high-performance functional-core C++ implementation that can
+serve as the close stylistic template for backend (iv) Rust and backend (v)
+Haskell, without copying backend (ii)'s imperative API shape.
+
+### Deliverables
+
+- Replace backend (iii)'s `corridors::board` search representation with a compact
+  value-state board: pawn coordinates, remaining-wall counts, horizontal/vertical
+  wall bitfields, `uint16_t` ply, and numeric `last_action`.
+- Keep backend (iii) idiomatic C++23: value semantics at the boundary, `noexcept`
+  helpers, `constexpr` action/wall mapping, stack/SBO move buffers, contiguous arena
+  storage, and PGO/BOLT/`mimalloc` under the existing C++ build leaf.
+- Remove `get_action_text`, `std::stoi`, full legacy wall-set generation, sort/filter
+  canonicalization, and recursive legacy escapability from backend (iii)'s search and
+  C ABI hot paths.
+- Generate pawn actions plus the first 12 canonical legal walls directly by numeric
+  action ID, preserving Q3 visit-vector order and transcript semantics.
+- Keep Rust's compact value-state implementation aligned with the same names,
+  transition boundaries, legal-action ordering, and local-mutation discipline where
+  doing so improves reviewability without regressing performance.
+- Leave backend (v) Haskell refactoring to Phase `8`, where Haskell parity work can
+  align names or transition boundaries against the same style contract while keeping
+  Phase `3`'s pure-engine baseline intact.
+
+### Validation
+
+- `docker compose run --rm --build mcts mcts test mcts-cross-backend`
+- `docker compose run --rm mcts mcts test mcts-legacy-parity`
+- `docker compose run --rm mcts mcts test mcts-unit`
+- `docker compose run --rm mcts mcts bench terminal-playouts --backend cpp-imperative,cpp-functional --rng native --threading single --count 1000 --seed 42 --max-plies 60`
+- `docker compose run --rm mcts mcts bench search-iters --backend cpp-imperative,cpp-functional --rng native --threading single --count 1000 --seed 42 --max-plies 60`
+- `docker compose run --rm mcts mcts docs check`
+- `docker compose run --rm mcts mcts check-code`
+- `git diff --check`
+
+### Current Validation State
+
+Sprint `6.7` closed on 2026-05-26. Backend (iii) now stores compact value-state
+fields directly in `cpp-functional/engine/state.hpp`, generates capped numeric
+legal successors without `corridors::board`, and applies C ABI actions through
+`try_advance`. The old backend-local legacy `board.*` and `mcts.hpp` copies were
+removed from `cpp-functional/engine/`, and `cpp-functional/Makefile` builds only
+the compact search/ABI translation units.
+
+The focused rebuilt-image performance checks show backend (iii) broadly matching
+backend (ii): terminal playout ST is `19416.9` vs `21508.3` playouts/s, and
+search-iteration ST is `20694.1` vs `20051.8` search-iters/s
+(`cpp-functional` vs `cpp-imperative`, seed `42`, count `1000`, max plies `60`).
+Rust already followed the compact value-state boundary, so no Rust source changes
+were needed for this closure.
+
+### Remaining Work
+
+None.
+
 ## Documentation Requirements
 
 **Engineering docs to create/update:**
 
 - `documents/engineering/backend_ffi_contract.md` — C++ functional and Rust ABI roles,
   including Sprint `6.6` compact-ABI and Rust artefact wording.
+- `documents/engineering/backend_style_contract.md` — functional-core value-state
+  contract for `(iii)`, `(iv)`, and `(v)`, and Sprint `6.7` closure criteria.
 - `documents/engineering/compiler_runtime_tuning.md` — C++ functional/Rust tuning flags,
-  mandatory Dockerfile-time PGO+BOLT success, and the concrete Rust build-artifact
-  contract.
+  mandatory Dockerfile-time PGO+BOLT success, the concrete Rust build-artifact
+  contract, and the requirement that `(iii)` remove legacy representation costs before
+  style is treated as the measured variable.
 - `documents/engineering/haskell_code_guide.md` — Plan/Apply examples for the
   Dockerfile-invoked fail-closed Rust build leaf.
 - `documents/engineering/determinism_contract.md` — Q3 participation and envelope fields.
@@ -292,15 +365,19 @@ Sprint `6.6` reclosed on 2026-05-21. Validation passed with:
 
 - Keep [system-components.md](system-components.md) and
   [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md)
-  aligned with backend (iii) and backend (iv) live status.
+  aligned with backend (iii), backend (iv), and the Phase `8` backend (v)
+  style-alignment dependency.
 - `legacy-tracking-for-deletion.md` records Sprint `6.4` Rust BOLT fallback residue
   until the Dockerfile build fails on missing `.fdata`, and records Sprint `6.6`
   Rust/instrumentation residue as completed after governed docs and build comments
-  agreed.
+  agreed. Sprint `6.7` records the backend (iii) legacy-board/text-action hot-path
+  cleanup as completed after the compact functional-core rewrite landed.
 
 ## Related Documents
 
 - [README.md](README.md)
 - [00-overview.md](00-overview.md)
 - [system-components.md](system-components.md)
+- [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md)
 - [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md)
+- [../documents/engineering/backend_style_contract.md](../documents/engineering/backend_style_contract.md)

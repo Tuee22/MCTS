@@ -1,15 +1,11 @@
-// Backend (iii) C ABI: shim over the functional-style engine under
-// `cpp-functional/engine/`. The engine is the arena-MCTS *with
-// functional-style API surface* (per Sprint 6.1):
-// `std::optional<State>` move attempts, `std::variant<ChildIdx,
-// NoChild>` select outcomes, immutable `State` value semantics at the
-// API boundary. The data layout (arena, flat children, thread_local
-// move buffer) intentionally matches backend (ii) so the (ii)-vs-(iii)
-// comparison isolates style as the variable.
+// Backend (iii) C ABI: shim over the functional-core engine under
+// `cpp-functional/engine/`. The engine keeps value-state transitions at
+// the API boundary while using compact bitfield state, direct numeric
+// action IDs, and the same arena/search memory discipline as the other
+// optimized backends.
 
 #include "mcts_cpp_functional.h"
 
-#include "../engine/board.h"
 #include "../engine/search.hpp"
 #include "../engine/state.hpp"
 
@@ -20,6 +16,7 @@
 #endif
 #include <cstring>
 #include <limits>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -39,29 +36,10 @@ constexpr uint16_t kGameMaxPlies = 10000;
 constexpr uint16_t kSearchMaxPlies = 60;
 
 [[gnu::hot]] static int apply_action_id(mcts_functional::State &state, uint8_t action_id) {
-    std::vector<corridors::board> moves;
-    state.b.get_legal_moves(moves);
-    for (auto &m : moves) {
-        std::string action = m.get_action_text(false);
-        if (action.size() < 5) continue;
-        const bool pawn = action[0] == '*';
-        const bool horizontal = action[0] == 'H';
-        const bool vertical = action[0] == 'V';
-        const size_t open = action.find('(');
-        const size_t comma = action.find(',');
-        const size_t close = action.find(')');
-        if (open == std::string::npos || comma == std::string::npos || close == std::string::npos) continue;
-        const int x = std::stoi(action.substr(open + 1, comma - open - 1));
-        const int y = std::stoi(action.substr(comma + 1, close - comma - 1));
-        uint8_t aid = 0;
-        if (pawn) aid = static_cast<uint8_t>(y * 9 + x);
-        else if (horizontal) aid = static_cast<uint8_t>(81 + y * 8 + x);
-        else if (vertical) aid = static_cast<uint8_t>(145 + y * 8 + x);
-        if (aid == action_id) {
-            state.b = std::move(m);
-            state.ply_count = static_cast<uint16_t>(state.ply_count + 1);
-            return 0;
-        }
+    std::optional<mcts_functional::State> next = mcts_functional::try_advance(state, action_id);
+    if (next.has_value()) {
+        state = *next;
+        return 0;
     }
     return -1;
 }
@@ -91,10 +69,8 @@ extern "C" int mcts_functional_apply_action(mcts_functional_board *board, uint8_
     return applied;
 }
 
-// Sprint 5.3: engine + shim both compile under `-fno-exceptions`.
-// The legacy `throw std::string(...)` paths were replaced with
-// `__builtin_trap()` in `board.cpp` / `mcts.hpp`, so the previous
-// defensive `try`/`catch (...)` wrappers are removed.
+// Engine + shim compile under `-fno-exceptions`; invalid C ABI calls
+// return error sentinels instead of crossing the C boundary.
 
 extern "C" uint8_t mcts_functional_select_uct_move(mcts_functional_board *board,
                                                    uint64_t seed, uint32_t sims) {

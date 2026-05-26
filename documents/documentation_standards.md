@@ -2,7 +2,7 @@
 
 **Status**: Authoritative source
 **Supersedes**: N/A
-**Referenced by**: ../README.md, ../AGENTS.md, ../CLAUDE.md, ../HASKELL_CLI_TOOL.md, ../DEVELOPMENT_PLAN/README.md, ../DEVELOPMENT_PLAN/development_plan_standards.md, ../DEVELOPMENT_PLAN/00-overview.md, engineering/README.md, engineering/benchmark_metrics.md, engineering/cli_command_surface.md, engineering/code_quality.md, engineering/unit_testing_policy.md, engineering/haskell_code_guide.md, engineering/determinism_contract.md, engineering/transcript_format.md, engineering/backend_ffi_contract.md, engineering/compiler_runtime_tuning.md
+**Referenced by**: ../README.md, ../AGENTS.md, ../CLAUDE.md, ../HASKELL_CLI_TOOL.md, ../DEVELOPMENT_PLAN/README.md, ../DEVELOPMENT_PLAN/development_plan_standards.md, ../DEVELOPMENT_PLAN/00-overview.md, engineering/README.md, engineering/benchmark_metrics.md, engineering/cli_command_surface.md, engineering/code_quality.md, engineering/unit_testing_policy.md, engineering/haskell_code_guide.md, engineering/determinism_contract.md, engineering/transcript_format.md, engineering/backend_ffi_contract.md, engineering/backend_style_contract.md, engineering/compiler_runtime_tuning.md
 **Generated sections**: none
 
 > **Purpose**: Single Source of Truth (SSoT) for writing and maintaining documentation

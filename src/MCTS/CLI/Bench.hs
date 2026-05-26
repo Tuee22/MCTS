@@ -1,3 +1,5 @@
+{-# LANGUAGE BangPatterns #-}
+
 module MCTS.CLI.Bench
     ( runBench
     , runBenchWithClock
@@ -10,12 +12,13 @@ module MCTS.CLI.Bench
     ) where
 
 import Control.Concurrent (MVar, forkIO, newEmptyMVar, newMVar, putMVar, takeMVar)
-import Control.Exception (evaluate)
+import Control.Exception (bracket_, evaluate)
 import Control.Monad.IO.Class (liftIO)
 import Data.Bits (xor)
 import qualified Data.Text as Text
 import Data.Word (Word32, Word64)
 import GHC.Clock (getMonotonicTimeNSec)
+import GHC.Conc (getNumCapabilities, setNumCapabilities)
 import MCTS.CLI.Command (BenchPrimitive (..), BenchPrimitiveOptions (..))
 import MCTS.CLI.Output (OutputFormat (..), OutputOptions (..), outputLine)
 import MCTS.Driver
@@ -159,8 +162,7 @@ runHaskellPrimitive primitive options backend =
 haskellChunk :: BenchPrimitive -> BenchPrimitiveOptions -> Backend -> Int -> Int -> Word64
 haskellChunk primitive options backend offset count =
     case primitive of
-        TerminalPlayouts ->
-            foldl' xor 0 [terminalChecksum i | i <- [0 .. count - 1]]
+        TerminalPlayouts -> terminalLoop 0 0
         SearchIters ->
             let seed = primitiveSeed options backend offset
                 (chosen, visits) =
@@ -171,6 +173,10 @@ haskellChunk primitive options backend offset count =
                         (fromIntegral (benchPrimitiveMaxPlies options))
              in searchChecksum seed chosen visits
   where
+    terminalLoop !i !acc
+        | i >= count = acc
+        | otherwise = terminalLoop (i + 1) (acc `xor` terminalChecksum i)
+
     terminalChecksum i =
         let seed = primitiveSeed options backend (offset + i)
             outcome =
@@ -275,23 +281,32 @@ countChunks total workers =
     startFor i = i * base + min i extra
 
 runChunkPool :: Int -> (Int -> Int -> IO Word64) -> [(Int, Int)] -> IO Word64
-runChunkPool workers runChunk chunks = do
-    jobs <- newMVar chunks
-    results <- newMVar []
-    done <- newEmptyMVar
-    let worker = do
-            next <- takeChunk jobs
-            case next of
-                Nothing -> putMVar done ()
-                Just (offset, count) -> do
-                    value <- runChunk offset count
-                    current <- takeMVar results
-                    putMVar results (value : current)
-                    worker
-        nWorkers = min workers (max 1 (length chunks))
-    mapM_ (\_ -> forkIO worker) [1 .. nWorkers]
-    mapM_ (\_ -> takeMVar done) [1 .. nWorkers]
-    foldl' xor 0 <$> takeMVar results
+runChunkPool workers runChunk chunks =
+    withCapabilities workers $ do
+        jobs <- newMVar chunks
+        results <- newMVar []
+        done <- newEmptyMVar
+        let worker = do
+                next <- takeChunk jobs
+                case next of
+                    Nothing -> putMVar done ()
+                    Just (offset, count) -> do
+                        value <- runChunk offset count
+                        current <- takeMVar results
+                        putMVar results (value : current)
+                        worker
+            nWorkers = min workers (max 1 (length chunks))
+        mapM_ (\_ -> forkIO worker) [1 .. nWorkers]
+        mapM_ (\_ -> takeMVar done) [1 .. nWorkers]
+        foldl' xor 0 <$> takeMVar results
+
+withCapabilities :: Int -> IO a -> IO a
+withCapabilities workers action = do
+    current <- getNumCapabilities
+    let desired = max current (max 1 workers)
+    if desired == current
+        then action
+        else bracket_ (setNumCapabilities desired) (setNumCapabilities current) action
 
 takeChunk :: MVar [(Int, Int)] -> IO (Maybe (Int, Int))
 takeChunk jobs = do

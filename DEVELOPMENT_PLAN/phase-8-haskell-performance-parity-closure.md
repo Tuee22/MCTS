@@ -12,6 +12,7 @@
 [phase-5-cpp-imperative-steelman.md](phase-5-cpp-imperative-steelman.md),
 [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md),
 [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md),
+[../documents/engineering/backend_style_contract.md](../documents/engineering/backend_style_contract.md),
 [../documents/engineering/compiler_runtime_tuning.md](../documents/engineering/compiler_runtime_tuning.md),
 [../documents/engineering/benchmark_metrics.md](../documents/engineering/benchmark_metrics.md)
 **Generated sections**: none
@@ -22,13 +23,20 @@
 
 ## Phase Status
 
-🔄 **Active** after the backend (ii) steelman correction. The Haskell tuning work,
-no-generated-validation-data cleanup, five-backend restoration, optimized-C++
-report-card refresh, and refactored Q1a/Q1b/Q2/Q5 evidence all closed against
-the earlier backend (ii) artefact; Sprint `5.6` has since strengthened backend
-(ii) with a compact-board hot path, so the parity evidence must be refreshed and
-backend (v) may need another tuning pass. Remaining work is tracked in Sprint
-`8.12`.
+✅ **Done** after the backend (ii) steelman correction, the functional-core
+style audit, and the 2026-05-26 Haskell parity refresh. The Haskell tuning
+work, no-generated-validation-data cleanup, five-backend restoration,
+optimized-C++ report-card refresh, refactored Q1a/Q1b/Q2/Q5 evidence, Sprint
+`5.6` corrected backend (ii) target, Sprint `6.7` backend (iii)/(iv)
+functional-core style surface, Sprint `8.12` Haskell parity refresh, and Sprint
+`8.13` Haskell style alignment are all closed. The current accepted evidence is
+the 2026-05-26 `docker compose run --rm mcts mcts test all` run: Q1a terminal
+playouts ST `0.99x` (`22916.2` vs `22614.7` playouts/s), Q1a MT8 `0.91x`
+(`91657.6` vs `83222.2` playouts/s), Q1b search iterations ST `1.02x`
+(`22854.7` vs `23352.5` search-iters/s), Q1b MT8 `0.99x` (`158016.1` vs
+`156895.9` search-iters/s), Q2 self-play ST `0.63x` (`1.8` vs `1.2` games/s),
+Q2 self-play MT8 `0.68x` (`6.7` vs `4.6` games/s), Q3/Q4/Q6 PASS, zero
+live-cohort divergence, and verdict `Within tolerance`.
 Sprint `5.3` routes the Dockerfile-invoked `mcts build cpp-imperative` and
 `mcts build cpp-functional` recipes through the shared C++ PGO/BOLT target sequence,
 and Sprint `8.3` refreshed the report-card evidence on 2026-05-21 against the
@@ -51,15 +59,19 @@ The 2026-05-24 metric-semantics audit reclassified the existing Q1/Q2/Q5 evidenc
 as historical played-game throughput evidence. Sprint `3.8` has added
 terminal-playout and search-iteration benchmarks, and Sprint `7.8` has rendered
 the separated Q1a/Q1b/Q2/Q5 report-card rows. Sprint `8.11` reclosed Phase `8`
-with a Dockerfile rebuild whose PGO/BOLT profile suite covers terminal playout,
-search-iteration, legacy played-game rollout, and self-play workloads before the
-refactored report-card verdict runs.
+against the then-current backend (ii) with a Dockerfile rebuild whose PGO/BOLT
+profile suite covers terminal playout, search-iteration, legacy played-game
+rollout, and self-play workloads before the refactored report-card verdict runs.
+Sprint `5.6` later made that verdict historical.
 
-The 2026-05-25 backend (ii) correction reopens this phase only on the Haskell
-parity surface. Q3/Q6 equivalence and liveness remain covered by Phase `7`; Phase
-`5` owns the corrected C++ steelman. Focused rebuilt-image measurements show the
-new backend (ii) exceeds backend (i) but now also exceeds backend (v), so a future
-Sprint `8.12` closure must rerun the report card and retune Haskell as needed.
+The 2026-05-25 backend (ii) correction reopened this phase on the Haskell parity
+surface. Phase `6` Sprint `6.7` removed backend (iii)'s legacy-board and
+action-text hot path, so Q3/Q6 equivalence and liveness remained covered by
+Phase `7`; Phase `5` owns the corrected C++ steelman; and Phase `6` owns the
+closed backend (iii)/(iv) functional-core alignment. Sprint `8.12` retuned
+Haskell against the corrected backend (ii), and Sprint `8.13` aligned backend
+(v)'s compact action-set and transition boundary with the shared functional-core
+style without changing Phase `3`'s closed pure-engine API.
 
 The restored end state is:
 
@@ -156,8 +168,8 @@ target within `HASKELL_PARITY_TOLERANCE = 0.05`.
   Q6 liveness PASS, zero live-cohort divergence, and verdict
   `Within tolerance` against backend (ii)'s Dockerfile-built artefact after C++
   and Rust PGO/BOLT completed without fallback. Sprint `8.10` retains this as
-  fail-closed pipeline evidence and supersedes it with the bounded-profile final
-  rerun recorded below.
+  fail-closed pipeline evidence and supersedes it with the bounded-profile
+  historical rerun recorded below.
 - The 2026-05-21 report-card run recorded Q1 ST 0.05x
   (`740.0` vs `39.2` games/s), Q1 MT8 0.43x (`690.7` vs `294.7` games/s),
   Q2 ST 0.06x (`0.6` vs `0.0` games/s), Q2 MT8 0.19x
@@ -197,8 +209,8 @@ present. The 2026-05-23 aggregate run rebuilt the Dockerfile-owned C++ and Rust
 PGO/BOLT artefacts first, required non-empty BOLT profiles and passing
 installed-library smokes, then passed all Cabal stanzas, Q3 `(ii)..(v)`, Q6
 all-five legacy-envelope checks, and the report-card verdict. Sprint `8.10` remains
-historical played-game evidence; Sprint `8.11` supplies the final refactored
-metric-suite closure evidence.
+historical played-game evidence; Sprint `8.11` supplies historical refactored
+metric-suite evidence because Sprint `5.6` later strengthened backend (ii).
 
 ### Remaining Work
 
@@ -616,11 +628,12 @@ Fresh report-card evidence:
 
 None.
 
-## Sprint 8.12: Parity Refresh Against Corrected Backend (ii) 🔄
+## Sprint 8.12: Parity Refresh Against Corrected Backend (ii) ✅
 
-**Status**: Active
+**Status**: Done
 **Implementation**: `src/MCTS/Engine.hs`, `src/MCTS/Search/UCT.hs`,
-`src/MCTS/CLI/Test.hs`, `cpp-imperative/engine/fast_board.hpp`
+`src/MCTS/CLI/Bench.hs`, `src/MCTS/Driver.hs`, `src/MCTS/CLI/Test.hs`,
+`cpp-imperative/engine/fast_board.hpp`
 **Docs to update**: `README.md`, `00-overview.md`, `system-components.md`,
 `../documents/engineering/compiler_runtime_tuning.md`
 
@@ -632,8 +645,11 @@ backend (ii) a substantially faster C++ steelman.
 ### Deliverables
 
 - Fresh `mcts test all` report-card evidence against the corrected backend (ii).
-- If the report card is outside `HASKELL_PARITY_TOLERANCE`, a focused Haskell hot-path
-  tuning pass that targets the new compact-board backend (ii) ceiling.
+- Focused Haskell hot-path tuning against the new compact-board backend (ii) ceiling:
+  packed `ActionIds`, direct `legalActionSet`/`applyActionId` search paths,
+  reusable wall-block masks during legal-wall scans, strict terminal-playout and
+  rollout loops, and RTS capability pinning for multi-worker primitive and
+  played-game benchmarks.
 - Updated Q1a/Q1b/Q2/Q5 evidence in
   [../documents/engineering/compiler_runtime_tuning.md](../documents/engineering/compiler_runtime_tuning.md).
 - Confirmation that Q3 `(ii)..(v)` and Q6 `(i)..(v)` remain green after any Haskell
@@ -646,22 +662,83 @@ backend (ii) a substantially faster C++ steelman.
 - `docker compose run --rm mcts mcts check-code`
 - `git diff --check`
 
-### Current Validation State
+### Closure Notes
 
-Sprint `5.6` focused evidence on 2026-05-25 shows the corrected backend (ii)
-outperforms backend (i) and remains equivalent on the existing cross-backend gates:
-`mcts-cross-backend`, `mcts-legacy-parity`, and `mcts-unit` pass. The same
-measurements show backend (v) no longer matches backend (ii): terminal playout ST
-is `8558.8` vs `20951.5` playouts/s, search-iteration ST is `9256.2` vs
-`23113.2` search-iters/s, and self-play ST is `0.6` vs `1.1` games/s
-(Haskell vs backend (ii), seed `42`, rebuilt image). The aggregate report-card
-closure remains pending.
+Closed on 2026-05-26. The accepted aggregate validation passed:
+
+```bash
+docker compose run --rm mcts mcts test all
+```
+
+Report-card evidence against the corrected backend (ii):
+
+- Q1a terminal playouts: ST `0.99x` (`22916.2` vs `22614.7` playouts/s), MT8
+  `0.91x` (`91657.6` vs `83222.2` playouts/s).
+- Q1b search iterations: ST `1.02x` (`22854.7` vs `23352.5` search-iters/s),
+  MT8 `0.99x` (`158016.1` vs `156895.9` search-iters/s).
+- Q2 self-play games: ST `0.63x` (`1.8` vs `1.2` games/s), MT8 `0.68x`
+  (`6.7` vs `4.6` games/s).
+- Q5 scaling: Haskell search-iters `6.91x`, C++ (ii) search-iters `6.72x`,
+  Haskell self-play `3.65x`, C++ (ii) self-play `3.90x`.
+- Q3/Q4/Q6 passed, the live divergence matrix was all zeroes, all Cabal stanzas
+  passed, and the verdict was `Within tolerance`.
+
+Focused pre-aggregate rows showed the remaining single-thread primitive blockers
+closed before the full run: terminal playout ST reached `21965.7` vs `22620.7`
+playouts/s and search-iteration ST reached `22891.1` vs `22326.3`
+search-iters/s (Haskell vs backend (ii), seed `42`, count `1000`,
+max plies `60`).
 
 ### Remaining Work
 
-- Run the aggregate report-card on the corrected backend (ii).
-- Profile and retune backend (v) if the report-card verdict is outside tolerance.
-- Reclose Phase `8` only after the aggregate validation above passes.
+- None.
+
+## Sprint 8.13: Haskell Functional-Core Style Alignment ✅
+
+**Status**: Done
+**Implementation**: `src/MCTS/Engine.hs`, `src/MCTS/Search/UCT.hs`,
+`src/MCTS/Search/Arena.hs`
+**Docs to update**: `../documents/engineering/backend_style_contract.md`,
+`../documents/engineering/compiler_runtime_tuning.md`, `README.md`,
+`00-overview.md`, `system-components.md`
+
+### Objective
+
+Keep backend (v) Haskell aligned with the shared `(iii)/(iv)/(v)`
+functional-core style after backend (iii)'s compact C++ rewrite lands.
+
+### Deliverables
+
+- Haskell keeps the public `legalMoves :: Board -> [Action]` and
+  `applyMove :: Action -> Board -> Board` boundary while the hot search path uses the
+  same compact numeric transition shape as `(iii)` and `(iv)` through
+  `legalActionSet`, packed `ActionIds`, and `applyActionId`.
+- The rollout and UCT descent paths consume numeric action IDs directly, so the
+  functional boundary stays typed while the inner loop avoids list/action allocation.
+- The `ST` arena and local mutable search internals remain hidden behind the pure API.
+- Q3 canonical action ordering, the 12-wall cap, ply-cap draw semantics, and transcript
+  action IDs are preserved.
+
+### Validation
+
+- `docker compose run --rm mcts mcts test mcts-unit`
+- `docker compose run --rm --build mcts mcts test mcts-cross-backend`
+- `docker compose run --rm --build mcts mcts test all`
+- `docker compose run --rm mcts mcts docs check`
+- `docker compose run --rm mcts mcts check-code`
+- `git diff --check`
+
+### Closure Notes
+
+Closed on 2026-05-26 as part of the Sprint `8.12` reclosure. The same
+`docker compose run --rm mcts mcts test all` run that accepted the corrected
+Haskell parity proof also validated Q3/Q4/Q6, all Cabal stanzas, and the
+functional-core Haskell transition shape. The remaining documentation and
+code-quality gates are the post-doc-update gates listed above.
+
+### Remaining Work
+
+- None.
 
 ## Documentation Requirements
 
@@ -673,6 +750,9 @@ closure remains pending.
   and engine-envelope language.
 - `documents/engineering/backend_ffi_contract.md` — live C ABI contract for all four
   foreign backends.
+- `documents/engineering/backend_style_contract.md` — functional-core style contract
+  for `(iii)`, `(iv)`, and `(v)`, including the closed Sprint `8.13` Haskell
+  alignment gate.
 - `documents/engineering/benchmark_metrics.md` — metric units and Q1-Q6 mapping used by
   Sprint `8.11` rerun evidence.
 - `documents/engineering/unit_testing_policy.md` — live `mcts-cross-backend` and
@@ -697,7 +777,9 @@ closure remains pending.
 - Keep [README.md](README.md), [00-overview.md](00-overview.md), and
   [system-components.md](system-components.md) aligned with the closed Sprint `8.10`
   bounded played-game training-workload reclosure, the closed Sprint `8.11`
-  bounded metric-suite profile rerun, the closed Sprints `5.3`/`6.4` build-harness
+  bounded metric-suite profile rerun, the closed Sprint `8.12` parity refresh, the
+  closed Sprint `8.13` Haskell style-alignment follow-up, the closed Sprint `6.7`
+  backend (iii)/(iv) style alignment, the closed Sprints `5.3`/`6.4` build-harness
   reclosures, and the cleanup residue recorded in
   [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md).
 
@@ -710,3 +792,4 @@ closure remains pending.
 - [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md)
 - [../documents/engineering/determinism_contract.md](../documents/engineering/determinism_contract.md)
 - [../documents/engineering/backend_ffi_contract.md](../documents/engineering/backend_ffi_contract.md)
+- [../documents/engineering/backend_style_contract.md](../documents/engineering/backend_style_contract.md)

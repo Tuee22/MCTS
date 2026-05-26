@@ -5,16 +5,14 @@
 
 CXX ?= g++
 # Doctrine flag set shared with backend (ii) so the (ii)-vs-(iii)
-# comparison isolates style as the variable. Sprint 5.3 closure:
-# `-fno-exceptions` is now enabled — the legacy `throw std::string(...)`
-# paths in `board.cpp` and `mcts.hpp`'s `lexical_cast` were replaced
-# with `__builtin_trap()`, and the C ABI shim's defensive
-# `try`/`catch (...)` wrappers were removed.
+# comparison isolates source style as the variable. Backend (iii)'s
+# compact functional-core state is header-only; the old legacy
+# `corridors::board` translation unit is no longer part of this build.
 CXXFLAGS ?= -std=c++23 -O3 -march=native -mtune=native -flto -fno-plt -fno-semantic-interposition -fvisibility=hidden -fvisibility-inlines-hidden -fno-exceptions -fPIC -Wno-pessimizing-move -Iengine
 LDFLAGS ?= -shared -flto -Wl,--emit-relocs
 LDLIBS ?= -lmimalloc
 
-ENGINE_SRCS = engine/board.cpp engine/search.cpp c-abi/mcts_cpp_functional.cc
+ENGINE_SRCS = engine/search.cpp c-abi/mcts_cpp_functional.cc
 
 PGO_DIR ?= pgo-profile
 BOLT_DIR ?= bolt-profile

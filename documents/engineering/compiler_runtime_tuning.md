@@ -2,13 +2,14 @@
 
 **Status**: Authoritative source
 **Supersedes**: N/A
-**Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md, ../../DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, ../../DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md, ../../DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md, ../../DEVELOPMENT_PLAN/phase-6-cpp-functional-and-rust.md, ../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, ../documentation_standards.md, ./README.md, ./backend_ffi_contract.md, ./benchmark_metrics.md, ./unit_testing_policy.md
+**Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md, ../../DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, ../../DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md, ../../DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md, ../../DEVELOPMENT_PLAN/phase-6-cpp-functional-and-rust.md, ../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, ../documentation_standards.md, ./README.md, ./backend_ffi_contract.md, ./backend_style_contract.md, ./benchmark_metrics.md, ./unit_testing_policy.md
 **Generated sections**: none
 
 > **Purpose**: Authoritative spec of the per-backend compiler, RTS, and code-level
 > tuning stacks: the backend (i) verbatim exemption, the backend (ii)/(iii)
-> doctrine-flag set with PGO+BOLT+`mimalloc`, the backend (iv) Rust
-> `[profile.release]`, the backend (v) Haskell GHC/LLVM/RTS stack, and the
+> doctrine-flag set with PGO+BOLT+`mimalloc`, the functional-core style boundary
+> owned by `backend_style_contract.md`, the backend (iv) Rust `[profile.release]`,
+> the backend (v) Haskell GHC/LLVM/RTS stack, and the
 > mandatory Dockerfile-time bounded PGO/BOLT training contract plus Haskell PGO
 > asymmetry note.
 
@@ -92,7 +93,7 @@ project hypothesis is proven when backend (v) Haskell matches backend (ii) — n
 (i) — on the refactored Q1/Q2 metrics defined in
 [benchmark_metrics.md](./benchmark_metrics.md).
 
-## Backend (ii) and (iii) — C++ Imperative and Functional-Style
+## Backend (ii) and (iii) — C++ Imperative and Functional-Core
 
 Compiler flags per
 [../../DEVELOPMENT_PLAN/00-overview.md → Hard Constraints item 18](../../DEVELOPMENT_PLAN/00-overview.md):
@@ -112,6 +113,13 @@ summation-order-sensitive and we want backend-internal determinism even though
 equity is excluded from the cross-backend wire format.
 
 GCC only — Clang is not supported on the C++ side.
+
+The style boundary for `(iii)` is owned by
+[backend_style_contract.md](./backend_style_contract.md). In this document,
+"functional-core" never permits a slower legacy representation as the measured
+variable. Backend (iii) must keep the C++ steelman optimization stack while using
+compact value-state operations, typed action IDs, local scratch mutation, and a
+functional-core API/data-flow shape.
 
 ### Build Workflow
 
@@ -176,11 +184,14 @@ neutral or harmful.
    `std::vector<uct_node>` per game, expanded in place, freed in bulk at game
    end. Eliminates refcount traffic, double indirection, per-node destruction,
    and most cache misses during tree descent.
-2. **Compact board state and direct capped move generation.** Backend (ii) must not
-   generate the full legacy wall set and parse action strings before applying the
-   report-card wall cap. It stores the hot state in scalar pawn/wall fields plus
-   8x8 wall bitfields, emits numeric action IDs directly, and checks wall
-   escapability with bitset wavefront expansion.
+2. **Compact board state and direct capped move generation.** The C++ steelman hot
+   path must not generate the full legacy wall set and parse action strings before
+   applying the report-card wall cap. It stores the hot state in scalar pawn/wall
+   fields plus 8x8 wall bitfields, emits numeric action IDs directly, and checks
+   wall escapability with bitset wavefront expansion. Backend (ii) implements this
+   through `FastBoard`; backend (iii) implements the same representation class as
+   compact functional-core value state without copying (ii)'s imperative API
+   shape.
 3. **Per-rollout scratch board with undo or one snapshot per game.** Eliminates
    the per-rollout `board_copy` allocation.
 4. **PGO + BOLT pipeline** as named above.
@@ -233,12 +244,15 @@ C++-generated verification-seed contract by the determinism contract):
     schedule with `xoshiro256++` or `wyrand` where it measurably helps — smaller
     state, faster `next_u64`, equivalent statistical quality for rollouts.
 
-### Backend (iii) Functional-Style Discipline
+### Backend (iii) Functional-Core Discipline
 
-Observes **all** of the above. The "functional style" of (iii) is at the API
-and data-flow level, *not* the memory-representation level — arena allocation
-and mutable scratch state are still required. Both backends run under the same
-optimisation regime so (iii)-vs-(ii) isolates *style* as the variable.
+Observes **all** of the above. The "functional-core style" of (iii) is at the API
+and data-flow level, *not* the memory-representation level: arena allocation,
+compact bitfields, and mutable scratch state are still required. Both C++
+steelman backends run under the same optimisation regime so `(iii)` vs `(ii)`
+isolates style: Sprint `6.7` removed backend (iii)'s legacy-board and
+action-text hot-path residue and moved the cleanup ledger entry to completed in
+[../../DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md](../../DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md).
 
 ## Backend (iv) — Rust
 
@@ -423,10 +437,13 @@ search inner loop. Round 1 takes the rollout's per-step cost from ~1 ms to
   LLVM CPU flags remain deferred as described above).
 - Strict fields everywhere (`{-# UNPACK #-} !Int`), bang patterns on `let`
   bindings inside `ST` blocks.
-- `INLINABLE` on every exported engine primitive. `SPECIALIZE` pragmas are not
-  needed in the current search loop because it is already monomorphic over the
-  concrete `Board` and `Word64` types; if a future refactor introduces a
-  polymorphic game type, the specialisations land with that change.
+- `INLINE`/`INLINABLE` on exported hot-path primitives according to call-site
+  size: small cross-module operations such as `terminalOutcome`, `applyActionId`,
+  and `terminalPlayout` are force-inlined, while larger engine/search entries keep
+  exposed unfoldings for specialization. `SPECIALIZE` pragmas are not needed in
+  the current search loop because it is already monomorphic over the concrete
+  `Board` and `Word64` types; if a future refactor introduces a polymorphic game
+  type, the specialisations land with that change.
 - Pure API at the boundary: `search :: GameState -> Seed -> SearchBudget ->
   Tree -> (Move, Tree)`. `Tree` is opaque; internally backed by the `ST` arena
   and frozen at the API boundary if tree-persistence semantics need it.
@@ -440,9 +457,11 @@ GCC/Clang `-fprofile-use` or `rustc -Cprofile-use`. The Haskell backend
 therefore competes against container-built C++ and Rust artefacts that completed
 their mandatory PGO+BOLT workflows without an equivalent Haskell feedback loop.
 This asymmetry does not permit PGO-only, non-BOLT, or unoptimized foreign
-artefacts. Missing BOLT data is always a build failure; Sprint `8.11` closed the
-metric-suite rerun after the Dockerfile build trained primitive terminal-playout,
-primitive search-iteration, legacy played-game rollout, and self-play workloads.
+artefacts. Missing BOLT data is always a build failure; Sprint `8.11` produced
+historical metric-suite evidence after the Dockerfile build trained primitive
+terminal-playout, primitive search-iteration, legacy played-game rollout, and
+self-play workloads. Sprint `8.12` then refreshed the verdict against the
+corrected Sprint `5.6` backend (ii) target.
 
 This is the asymmetry that most concretely tests the project hypothesis: if
 Haskell matches under these conditions, the result is meaningful; if it falls
@@ -456,7 +475,8 @@ per the [Parity Tolerance](#parity-tolerance) section below, with the gap attrib
 to this asymmetry where appropriate. Sprint `8.10` closed the stricter
 fail-closed played-game gate: the same report-card verdict after the C++ and Rust
 PGO/BOLT profiles are trained on the bounded profile suite. Sprint `8.11` extends
-that suite with direct primitive training and closes the refactored metric verdict.
+that suite with direct primitive training and records refactored metric evidence;
+Sprint `8.12` refreshed that verdict against the corrected backend (ii).
 
 ### Sprint 8.3 — Historical Played-Game Q1 Snapshot
 
@@ -589,7 +609,7 @@ Q3 and Q6 passed, and the live divergence matrix was all zeroes.
 
 Sprint `5.6` corrected backend (ii) on 2026-05-25. Focused rebuilt-image
 benchmarks now show the intended steelman ordering against backend (i), but they
-also reopen Phase `8` parity against backend (v):
+also reopened Phase `8` parity against backend (v):
 
 | Row | Evidence |
 |-----|----------|
@@ -601,9 +621,35 @@ also reopen Phase `8` parity against backend (v):
 | Haskell vs backend (ii), self-play ST | `0.6` vs `1.1` games/s |
 
 The focused Sprint `5.6` gates passed `mcts-cross-backend`, `mcts-legacy-parity`,
-and `mcts-unit`. The aggregate `mcts test all` parity verdict is intentionally
-pending until Sprint `8.12` retunes or revalidates Haskell against this corrected
-backend (ii) ceiling.
+and `mcts-unit`. Sprint `8.12` then retuned Haskell against this corrected backend
+(ii) ceiling.
+
+Sprint `6.7` then removed the backend (iii) representation confounder on
+2026-05-26. Focused rebuilt-image checks now show `(iii)` broadly matching `(ii)`:
+terminal playout ST is `19416.9` vs `21508.3` playouts/s, and search-iteration ST
+is `20694.1` vs `20051.8` search-iters/s (`cpp-functional` vs
+`cpp-imperative`, seed `42`, count `1000`, max plies `60`). This confirms the
+earlier `(ii)`/`(iii)` shortfall was an implementation-shape gap, not an inherent
+cost of functional-core style.
+
+Sprint `8.12` closed on 2026-05-26 with the corrected backend (ii) target. The
+accepted `docker compose run --rm mcts mcts test all` report card recorded:
+
+| Row | Ratio | Evidence |
+|-----|------:|----------|
+| Q1a terminal playout ST | 0.99x | Haskell 22916.2 playouts/s vs cpp-imperative 22614.7 playouts/s |
+| Q1a terminal playout MT8 | 0.91x | Haskell 91657.6 playouts/s vs cpp-imperative 83222.2 playouts/s |
+| Q1b search-iteration ST | 1.02x | Haskell 22854.7 search-iters/s vs cpp-imperative 23352.5 search-iters/s |
+| Q1b search-iteration MT8 | 0.99x | Haskell 158016.1 search-iters/s vs cpp-imperative 156895.9 search-iters/s |
+| Q2 self-play ST | 0.63x | Haskell 1.8 games/s vs cpp-imperative 1.2 games/s |
+| Q2 self-play MT8 | 0.68x | Haskell 6.7 games/s vs cpp-imperative 4.6 games/s |
+| Q5 Haskell search-iteration scaling | 6.91x | 22854.7 -> 158016.1 search-iters/s |
+| Q5 cpp-imperative search-iteration scaling | 6.72x | 23352.5 -> 156895.9 search-iters/s |
+| Q5 Haskell self-play scaling | 3.65x | 1.8 -> 6.7 games/s |
+| Q5 cpp-imperative self-play scaling | 3.90x | 1.2 -> 4.6 games/s |
+
+Q3/Q4/Q6 passed, the divergence matrix was all zeroes, all Cabal stanzas passed,
+and the verdict was **`Within tolerance`**.
 
 ## Parity Tolerance
 

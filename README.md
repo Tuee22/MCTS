@@ -2,7 +2,7 @@
 
 **Status**: Reference only
 **Supersedes**: N/A
-**Referenced by**: AGENTS.md, CLAUDE.md, HASKELL_CLI_TOOL.md, DEVELOPMENT_PLAN/README.md, DEVELOPMENT_PLAN/00-overview.md, DEVELOPMENT_PLAN/system-components.md, DEVELOPMENT_PLAN/phase-0-planning-documentation.md, DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, DEVELOPMENT_PLAN/phase-2-transcript-codec-and-determinism.md, DEVELOPMENT_PLAN/phase-3-haskell-engine.md, DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md, DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md, DEVELOPMENT_PLAN/phase-6-cpp-functional-and-rust.md, DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md, DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, documents/documentation_standards.md, documents/engineering/README.md, documents/engineering/backend_ffi_contract.md, documents/engineering/benchmark_metrics.md, documents/engineering/cli_command_surface.md, documents/engineering/code_quality.md, documents/engineering/compiler_runtime_tuning.md, documents/engineering/determinism_contract.md, documents/engineering/haskell_code_guide.md, documents/engineering/transcript_format.md, documents/engineering/unit_testing_policy.md
+**Referenced by**: AGENTS.md, CLAUDE.md, HASKELL_CLI_TOOL.md, DEVELOPMENT_PLAN/README.md, DEVELOPMENT_PLAN/00-overview.md, DEVELOPMENT_PLAN/system-components.md, DEVELOPMENT_PLAN/phase-0-planning-documentation.md, DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, DEVELOPMENT_PLAN/phase-2-transcript-codec-and-determinism.md, DEVELOPMENT_PLAN/phase-3-haskell-engine.md, DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md, DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md, DEVELOPMENT_PLAN/phase-6-cpp-functional-and-rust.md, DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md, DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, documents/documentation_standards.md, documents/engineering/README.md, documents/engineering/backend_ffi_contract.md, documents/engineering/backend_style_contract.md, documents/engineering/benchmark_metrics.md, documents/engineering/cli_command_surface.md, documents/engineering/code_quality.md, documents/engineering/compiler_runtime_tuning.md, documents/engineering/determinism_contract.md, documents/engineering/haskell_code_guide.md, documents/engineering/transcript_format.md, documents/engineering/unit_testing_policy.md
 **Generated sections**: none
 
 > **Purpose**: Operator-facing project intent, supported entrypoint, backend cohort summary, and links to the authoritative plan and engineering contracts.
@@ -27,11 +27,11 @@ Do not use host `cabal`, `cargo`, `cmake`, `make`, `fourmolu`, `hlint`, reposito
 |---|---------|------------|------|
 | (i) | C++ legacy port | `cpp-legacy` | Verbatim compatibility port of `MCTS_legacy`; Q6 legacy-envelope evidence only, not the performance ceiling. |
 | (ii) | C++ imperative steelman | `cpp-imperative` | Maximally optimised C++ performance ceiling: PGO+BOLT, `mimalloc`, arena search, compact bitfield board, direct capped move generation. |
-| (iii) | C++ functional-style | `cpp-functional` | Same algorithm and optimisation stance as (ii), used to isolate C++ style effects. |
-| (iv) | Rust | `rust` | Cross-language systems baseline with the same FFI/search/recompute contract. |
-| (v) | Haskell | `haskell` | Native in-process target backend; pure API surface with `ST`-arena internals. |
+| (iii) | C++ functional-core | `cpp-functional` | Functional-core C++23 steelman under the same optimisation stack as (ii), using compact value-state search, numeric actions, direct capped legal generation, and the shared style followed by (iv) and (v). |
+| (iv) | Rust | `rust` | Cross-language systems baseline using the same functional-core value-state/search style and FFI/search/recompute contract. |
+| (v) | Haskell | `haskell` | Native in-process target backend; pure API surface, compact value board, and `ST`-arena internals. |
 
-Backends (i)..(iv) are loaded through stable C ABIs from canonical shared libraries produced during the Dockerfile build. Backend (v) runs in-process. The authoritative backend and FFI details live in [backend_ffi_contract.md](documents/engineering/backend_ffi_contract.md) and [compiler_runtime_tuning.md](documents/engineering/compiler_runtime_tuning.md).
+Backends (i)..(iv) are loaded through stable C ABIs from canonical shared libraries produced during the Dockerfile build. Backend (v) runs in-process. The authoritative backend, style, and FFI details live in [backend_style_contract.md](documents/engineering/backend_style_contract.md), [backend_ffi_contract.md](documents/engineering/backend_ffi_contract.md), and [compiler_runtime_tuning.md](documents/engineering/compiler_runtime_tuning.md).
 
 ## Benchmark Metrics
 
@@ -48,6 +48,11 @@ throughput with one search iteration per move, not terminal `playouts/s`.
 Played-game benchmark output uses `games/s` only. The report-card metric refactor
 is tracked in the development plan; the metric taxonomy and Q1-Q6 mapping live in
 [benchmark_metrics.md](documents/engineering/benchmark_metrics.md).
+
+The current Phase 8 report card is closed against the corrected backend (ii)
+target: `docker compose run --rm mcts mcts test all` reports
+`Verdict: Within tolerance` for Haskell vs `cpp-imperative` across Q1a, Q1b, and
+Q2, with Q3/Q4/Q6 also passing.
 
 ## Command Surface
 
@@ -108,5 +113,6 @@ Normal tests do not depend on checked-in generated transcripts, throughput ancho
 - [DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md](DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md) — compatibility and stale-surface cleanup ledger.
 - [HASKELL_CLI_TOOL.md](HASKELL_CLI_TOOL.md) — CLI doctrine.
 - [documents/documentation_standards.md](documents/documentation_standards.md) — documentation topology rules.
+- [documents/engineering/backend_style_contract.md](documents/engineering/backend_style_contract.md) — functional-core style contract for backends (iii), (iv), and (v).
 - [documents/engineering/benchmark_metrics.md](documents/engineering/benchmark_metrics.md) — terminal playout, search-iteration, and played-game metric semantics.
 - [documents/engineering/README.md](documents/engineering/README.md) — engineering-document index.
