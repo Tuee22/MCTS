@@ -71,11 +71,11 @@ benchmarks enabled, installs the test-suite and `mcts-criterion` benchmark
 executables, and builds foreign backend artefacts before runtime commands consume
 them.
 
-The same-day documentation-topology audit found one live stale-reference class:
-`HASKELL_CLI_TOOL.md` is absent from the current worktree while root guidance docs,
-the plan suite, governed engineering docs, and source comments still cite it as the
-canonical CLI doctrine. Sprint `0.3` owns restoring that root doctrine file or
-retargeting the references.
+The same-day documentation-topology audit found one stale-reference class:
+`HASKELL_CLI_TOOL.md` was absent from the current worktree while root guidance docs,
+the plan suite, governed engineering docs, and source comments still cited it as the
+canonical CLI doctrine. Sprint `0.3` restored that root doctrine file on
+2026-05-27, so the existing doctrine citations resolve again.
 
 The 2026-05-24 benchmark-metric audit added stale benchmark labels and report-card
 rows to this ledger. Sprint `3.8` added explicit `terminal-playouts` and
@@ -116,7 +116,7 @@ repository.
 
 | Item | Location | Owning Sprint | Notes |
 |------|----------|---------------|-------|
-| Missing root CLI doctrine target | `HASKELL_CLI_TOOL.md`; references in `README.md`, `AGENTS.md`, `CLAUDE.md`, `DEVELOPMENT_PLAN/`, `documents/`, and source comments | Sprint 0.3 | The current worktree does not contain the file still cited as the authoritative CLI doctrine. Sprint `0.3` must either restore/update `HASKELL_CLI_TOOL.md` or retarget every stale reference to the replacement doctrine source, then move this row to `Completed`. |
+| None. | n/a | n/a | No pending cleanup rows. |
 
 ## Pending Removal Notes
 
@@ -131,6 +131,7 @@ data instead of publishing a fallback shared library.
 
 | Item | Removed In | Notes |
 |------|------------|-------|
+| Missing root CLI doctrine target | Sprint 0.3, 2026-05-27 | Restored `HASKELL_CLI_TOOL.md` as the root authoritative CLI doctrine, kept root guidance docs, `DEVELOPMENT_PLAN/`, governed docs, and source comments on the existing doctrine topology, and made every `HASKELL_CLI_TOOL.md` markdown link resolve again. |
 | Print-only report-card shortfalls | Sprint 8.14, 2026-05-27 | `mcts test all` now returns a non-zero exit code for report-card verdicts `Evidence pending` and `Shortfall`, and only exits 0 for `Within tolerance`. Unit coverage exercises `ReportCard.reportCardPassed`; the accepted aggregate run uses `N_PRIM=20_000`, passed Q3/Q4/Q6 and every Cabal stanza, and recorded `Verdict: Within tolerance`. |
 | Report-card unaligned text and missing raw backend metrics | Sprint 7.10 | `src/MCTS/ReportCard.hs` now renders fixed-width raw-performance, question-summary, divergence-matrix, and final question-answer tables; `src/MCTS/CLI/Test.hs` measures raw Q1a/Q1b/Q2 rates for every backend slot while retaining Haskell-vs-backend-(ii) verdict semantics; JSON exposes the rows under `raw_performance_metrics`; docs state every report-card term and question. |
 | Corrected-backend Haskell parity shortfall | Sprint 8.12, 2026-05-26 | `src/MCTS/Engine.hs`, `src/MCTS/Search/UCT.hs`, `src/MCTS/CLI/Bench.hs`, and `src/MCTS/Driver.hs` now use packed numeric action IDs, direct `legalActionSet`/`applyActionId` hot paths, reusable wall-block masks, strict rollout/terminal loops, and RTS capability pinning for multi-worker benchmark paths. `docker compose run --rm mcts mcts test all` recorded Q1a/Q1b/Q2 within tolerance against corrected backend (ii), Q3/Q4/Q6 PASS, zero live-cohort divergence, and `Verdict: Within tolerance`. |

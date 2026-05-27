@@ -15,14 +15,12 @@
 
 ## Phase Status
 
-🔄 **Active** — Sprint `0.1` (canonical plan suite bootstrap) and Sprint `0.2`
-(doctrine-driven scheduling audit) remain historical `Done` records, but Sprint
-`0.3` is open because the current worktree no longer contains
-`HASKELL_CLI_TOOL.md` while the plan, governed engineering docs, `README.md`,
-`AGENTS.md`, and `CLAUDE.md` still cite it as the authoritative CLI doctrine.
-Later implementation phases remain `Done` on their owned code surfaces; the
-documentation-topology handoff is incomplete until Sprint `0.3` either restores the
-root doctrine file or retargets every doctrine reference to a new canonical source.
+✅ **Done.** Sprint `0.1` (canonical plan suite bootstrap) and Sprint `0.2`
+(doctrine-driven scheduling audit) remain historical `Done` records. Sprint
+`0.3` restored `HASKELL_CLI_TOOL.md` as the root authoritative CLI doctrine on
+2026-05-27, so the plan, governed engineering docs, `README.md`, `AGENTS.md`,
+`CLAUDE.md`, and source comments resolve their existing doctrine citations again.
+Later implementation phases remain `Done` on their owned code surfaces.
 
 ## Phase Summary
 
@@ -38,9 +36,9 @@ The phase does not write Haskell, C++, or Rust source. Every implementation surf
 the CLI, the engine, the FFI bridge, the backends, the test stanzas, the report card —
 is scheduled by this phase but executed by Phases `1`–`8`.
 
-Current topology exception: the root doctrine file named by this phase is absent from
-the current checkout. Sprint `0.3` owns reconciling that gap without reopening the
-backend implementation work already closed in later phases.
+The root doctrine topology is link-complete: Sprint `0.3` restored the
+`HASKELL_CLI_TOOL.md` target without reopening backend implementation work already
+closed in later phases.
 
 ## Sprint 0.1: Canonical Plan Suite Bootstrap ✅
 
@@ -169,9 +167,9 @@ None.
 
 ### Current Reality Note
 
-The current worktree no longer contains `HASKELL_CLI_TOOL.md`. Sprint `0.3` owns the
-live topology reconciliation; Sprint `0.1` remains the historical record of the
-original bootstrap state.
+Before Sprint `0.3`, the worktree no longer contained `HASKELL_CLI_TOOL.md`. Sprint
+`0.3` restored the live topology target; Sprint `0.1` remains the historical record
+of the original bootstrap state.
 
 ## Sprint 0.2: Doctrine-Driven Scheduling Audit ✅
 
@@ -398,9 +396,9 @@ plan-text contradiction. The audit produced no `Pending Removal` row.
 
 None.
 
-## Sprint 0.3: Root CLI Doctrine Topology Reconciliation 🔄
+## Sprint 0.3: Root CLI Doctrine Topology Reconciliation ✅
 
-**Status**: Active
+**Status**: Done
 **Implementation**: `HASKELL_CLI_TOOL.md`, `README.md`, `AGENTS.md`, `CLAUDE.md`,
 `DEVELOPMENT_PLAN/`, `documents/`
 **Docs to update**: `README.md`, `AGENTS.md`, `CLAUDE.md`,
@@ -415,22 +413,20 @@ None.
 
 ### Objective
 
-Make the repository's doctrine topology match the current worktree. The current
-checkout is missing `HASKELL_CLI_TOOL.md`, but root guidance docs, the plan suite,
-and governed engineering docs still cite that file as the canonical CLI doctrine.
+Make the repository's doctrine topology match the current worktree. The root
+doctrine source is `HASKELL_CLI_TOOL.md`, and root guidance docs, the plan suite,
+governed engineering docs, and source comments cite that file as the canonical CLI
+doctrine.
 
 ### Deliverables
 
-- Choose and implement exactly one canonical doctrine topology: restore and update
-  `HASKELL_CLI_TOOL.md`, or retarget the plan standards and every governed reference to
-  a replacement doctrine source.
-- Update root guidance docs, `DEVELOPMENT_PLAN/`, and governed docs so `Referenced by`
-  metadata, related-document lists, and inline doctrine citations resolve under the
-  chosen topology.
+- The canonical doctrine topology is the restored root `HASKELL_CLI_TOOL.md` source.
+- Root guidance docs, `DEVELOPMENT_PLAN/`, governed docs, and source comments keep
+  their existing doctrine citations, which now resolve under the restored topology.
 - Keep Phases `1`–`8` closed on their implementation-owned surfaces unless the doctrine
   topology decision reveals a real code-level contract gap.
-- Keep [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md) populated with
-  the stale-reference cleanup row until the doctrine topology is link-complete again.
+- Move the [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md)
+  stale-reference cleanup row to Completed after validation.
 
 ### Validation
 
@@ -442,10 +438,7 @@ and governed engineering docs still cite that file as the canonical CLI doctrine
 
 ### Remaining Work
 
-- Restore/update `HASKELL_CLI_TOOL.md` or retarget all CLI-doctrine references to the
-  chosen replacement source.
-- Update every affected root, plan, and governed-document cross-reference.
-- Move the pending doctrine-topology cleanup row to `Completed` after validation.
+None.
 
 ## Doctrine Sections Cited
 
@@ -456,8 +449,8 @@ audit every in-scope section. Phases `1`–`8` cite individual doctrine sections
 deliverable level.
 
 The citations below describe the intended doctrine binding and the historical
-Sprint `0.1`/`0.2` audit. Sprint `0.3` must close before these links again constitute
-live link-complete evidence in the current checkout.
+Sprint `0.1`/`0.2` audit. Sprint `0.3` restored these links as live
+link-complete evidence in the current checkout.
 
 The Phase `0`-owned doctrine sections — the meta-rules under which later phases adopt
 doctrine — are:
@@ -506,13 +499,13 @@ doctrine — are:
 - `documents/engineering/compiler_runtime_tuning.md` — project-specific: the
   per-backend tuning stacks from the project README, with doctrine pointers for the
   toolchain pin and the `Subprocess` boundary the build harness uses.
-- Sprint `0.3` additionally owns any doctrine-topology updates needed in every
-  doctrine-overlap governed doc above if the root doctrine file is not restored.
+- Sprint `0.3` restored the root doctrine file, so doctrine-overlap governed docs keep
+  their existing root-doctrine citations.
 
 **Product docs to create/update:**
 
 - `README.md`, `AGENTS.md`, `CLAUDE.md` — keep root plan/doctrine pointers accurate
-  after Sprint `0.3` restores or retargets the CLI doctrine source.
+  after Sprint `0.3` restores the CLI doctrine source.
 
 **Cross-references to add:**
 
@@ -521,8 +514,8 @@ doctrine — are:
   authoritative plan and CLI doctrine entrypoints (Sprint `0.1`).
 - The doctrine itself lists every governed-doc and plan-file consumer in its
   `**Referenced by**` line (Sprint `0.1`).
-- Sprint `0.3` must make every `HASKELL_CLI_TOOL.md` cross-reference resolve again or
-  retarget it to the replacement doctrine source.
+- Sprint `0.3` makes every `HASKELL_CLI_TOOL.md` cross-reference resolve again by
+  restoring the root doctrine file.
 
 ## Related Documents
 

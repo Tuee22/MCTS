@@ -74,13 +74,11 @@ corrected-target parity closure.
 
 ## Current Handoff Status
 
-Documentation topology is the current exception to the otherwise closed handoff:
-Phase `0` Sprint `0.3` is active because `HASKELL_CLI_TOOL.md` is absent from the
-current worktree while the root guidance docs, this plan suite, and governed
-engineering docs still cite it as the authoritative CLI doctrine. This does not
-reopen backend implementation phases on their owned surfaces, but the plan suite is
-not link-complete until the root doctrine file is restored or every doctrine reference
-is retargeted to a new canonical source.
+Documentation topology is closed again: Phase `0` Sprint `0.3` restored
+`HASKELL_CLI_TOOL.md` as the root authoritative CLI doctrine on 2026-05-27,
+keeping the existing root guidance, plan-suite, governed engineering-doc, and
+source-comment citations link-complete. This did not reopen backend
+implementation phases on their owned surfaces.
 
 The 2026-05-19 report card remains useful smoke-baseline audit evidence, and the
 2026-05-21 optimized-C++ report-card refresh remains historical evidence against
@@ -690,9 +688,8 @@ Sprint `6.7` has reclosed the `(iii)/(iv)` compact functional-core style
 alignment, and Sprints `8.12`, `8.13`, and `8.14` have reclosed Haskell parity,
 style follow-up, and report-card verdict gating. Sprint `7.10` has reclosed
 report-card table layout and raw backend metric rendering. Phase `4`
-remains closed on its owned surface. Phase `0` Sprint `0.3` is the only current
-active plan item, and it is scoped to doctrine-link topology rather than backend
-implementation.
+remains closed on its owned surface. Phase `0` Sprint `0.3` has restored the root
+doctrine-link topology without reopening backend implementation phases.
 
 | Surface | Current Repo State | Intended End State |
 |---------|--------------------|--------------------|

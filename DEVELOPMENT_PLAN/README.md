@@ -33,14 +33,12 @@ rules that govern this plan suite.
 
 ## Closure Status
 
-Phase `0` is `Active` on Sprint `0.3`: Sprint `0.1` (plan-suite bootstrap)
-and Sprint `0.2` (doctrine-driven scheduling audit) remain historical `Done`
-records, but the current worktree no longer contains `HASKELL_CLI_TOOL.md`
-while root guidance docs, the plan suite, and governed engineering docs still
-cite it as the authoritative CLI doctrine. Later implementation phases remain
-closed on their owned code and evidence surfaces; the documentation-topology
-handoff is incomplete until Sprint `0.3` restores the root doctrine file or
-retargets every doctrine reference to a new canonical source.
+Phase `0` reclosed Sprint `0.3` on 2026-05-27 by restoring
+`HASKELL_CLI_TOOL.md` as the root authoritative CLI doctrine, keeping the existing
+doctrine topology intact, and moving the stale-reference cleanup row to
+Completed. Sprint `0.1` (plan-suite bootstrap) and Sprint `0.2`
+(doctrine-driven scheduling audit) remain historical `Done` records. Later
+implementation phases remain closed on their owned code and evidence surfaces.
 The 2026-05-21 evidence-surface audit reopened the phases whose governed docs
 or code overclaimed the implementation. Phase `1` reclosed Sprint `1.10` on
 2026-05-21 after generated-document metadata and lint/code-quality contract
@@ -230,6 +228,9 @@ Q1b search-iteration ST 0.67x and MT8 0.67x, Q2 self-play ST 0.59x and MT8
 scaling 7.32x, Haskell self-play scaling 3.42x, C++ (ii) self-play scaling
 3.92x, Q3/Q4/Q6 PASS, all Cabal stanzas PASS, zero live-cohort divergence, and
 `Verdict: Within tolerance`.
+Sprint `0.3` was validated on 2026-05-27 with
+`docker compose run --rm mcts mcts docs check`,
+`docker compose run --rm mcts mcts check-code`, and `git diff --check`.
 
 The 2026-05-19 report-card evidence remains useful smoke-baseline audit context.
 The previous five-backend restoration baseline still provides the starting point:
@@ -450,7 +451,7 @@ A sprint can move to `Done` only when all of the following are true:
 
 | Phase | Name | Status | Document |
 |-------|------|--------|----------|
-| 0 | Planning and Documentation Topology | 🔄 Active (Sprint `0.3` doctrine-topology reconciliation open; Sprints `0.1`/`0.2` remain historical `Done`) | [phase-0-planning-documentation.md](phase-0-planning-documentation.md) |
+| 0 | Planning and Documentation Topology | ✅ Done (Sprint `0.3` root doctrine topology reconciliation closed 2026-05-27) | [phase-0-planning-documentation.md](phase-0-planning-documentation.md) |
 | 1 | Haskell CLI Surface, `CommandSpec`, Lint Stack | ✅ Done (Sprint `1.11` README/lint-write realignment closed 2026-05-24) | [phase-1-haskell-cli-surface.md](phase-1-haskell-cli-surface.md) |
 | 2 | Transcript Codec, RNG, and Determinism Contract | ✅ Done (Sprint `2.9` transcript/envelope doctrine realignment closed 2026-05-24) | [phase-2-transcript-codec-and-determinism.md](phase-2-transcript-codec-and-determinism.md) |
 | 3 | Backend (v) Haskell Engine | ✅ Done (Sprint `3.8` benchmark metric primitives closed 2026-05-24) | [phase-3-haskell-engine.md](phase-3-haskell-engine.md) |
@@ -485,11 +486,9 @@ strengthened backend (ii), Sprint `6.7` closed the backend (iii) compact
 functional-core rewrite, and Sprints `8.12`, `8.13`, and `8.14` closed Haskell
 parity, style alignment, and report-card verdict gating against that corrected
 target.
-Phase `0` Sprint `0.3` remains active on documentation topology only: the current
-checkout is missing the root CLI doctrine file still cited by the plan and governed
-docs. That gap does not reopen Phases `1`–`8` on their implementation-owned
-surfaces, but the overall plan-suite handoff is not link-complete until the doctrine
-topology is reconciled.
+Phase `0` Sprint `0.3` restored the root CLI doctrine file cited by the plan and
+governed docs. That topology repair did not reopen Phases `1`–`8` on their
+implementation-owned surfaces.
 Implemented in the worktree:
 
 - `mcts.cabal`, `cabal.project`, `app/Main.hs`, `src/MCTS/**`, `test/**`,
