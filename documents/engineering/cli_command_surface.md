@@ -60,9 +60,9 @@ From the host, run any listed logical command as
 | `mcts inspect cache list` | Enumerate equity-sidecar entries per transcript |
 | `mcts inspect cache prune [--keep-current] [--dry-run] [--plan-file <path>]` | Delete stale equity-sidecar entries |
 | `mcts inspect divergence <hash-prefix>` | Emit the cross-backend divergence-rate matrix for a single transcript |
-| `mcts test all [--dry-run] [--plan-file <path>]` | Plan/Apply: Dockerfile-built backends, every Cabal stanza, and pinned report card |
+| `mcts test all [--dry-run] [--plan-file <path>]` | Plan/Apply: prebuilt Cabal stanzas, Dockerfile-built backends, and pinned report card |
 | `mcts test parity-anchor <baseline> <candidate> [--dry-run] [--plan-file <path>]` | Plan/Apply: measure a Q1/Q2 parity anchor for explicit backend pairs |
-| `mcts test <stanza>` | Run a named Cabal test-suite stanza |
+| `mcts test <stanza>` | Run a named prebuilt Cabal test-suite executable |
 | `mcts lint files [--write]` | Check whitespace, final newlines, forbidden paths, and tracked generated-file drift |
 | `mcts lint docs [--write]` | Run the generated-docs drift gate |
 | `mcts lint haskell [--write]` | Run Fourmolu, HLint, and the Cabal-format round trip |
@@ -71,7 +71,7 @@ From the host, run any listed logical command as
 | `mcts docs generate [--dry-run] [--plan-file <path>]` | Splice rendered output into markers and write tracked generated paths |
 | `mcts commands [--tree\|--json]` | Flat, tree, or JSON rendering of the command registry |
 | `mcts help <subcommand>` | Focused help pointer for a target command |
-| `mcts check-code` | Doctrine alignment, formatter, HLint, warning-clean build, docs check |
+| `mcts check-code` | Doctrine alignment, formatter, HLint, and generated-doc checks |
 | `mcts build cpp-legacy [--dry-run] [--plan-file <path>]` | Plan/Apply: Dockerfile C++ legacy backend build recipe |
 | `mcts build cpp-imperative [--dry-run] [--plan-file <path>]` | Plan/Apply: Dockerfile C++ imperative backend mandatory PGO/BOLT build recipe |
 | `mcts build cpp-functional [--dry-run] [--plan-file <path>]` | Plan/Apply: Dockerfile C++ functional-style backend mandatory PGO/BOLT build recipe |
@@ -118,9 +118,10 @@ separate Q5 scaling fields in table and JSON form. Text output defines the repor
 terms, then renders aligned raw-performance, question-summary, and divergence-matrix
 tables in that order, followed by a final observed-metric answer table for Q1a-Q6;
 JSON exposes the observed backend rates under `raw_performance_metrics`. The live
-`mcts test all` path requires the live C++ and
-Rust artefacts and populates divergence rows from the measured live `G_V` verify
-cohort over backends (ii)..(v).
+`mcts test all` path requires the Dockerfile-built C++ and Rust artefacts plus
+Dockerfile-prebuilt Cabal test executables. Runtime test/report-card commands
+consume those image-local artefacts and populate divergence rows from the measured
+live `G_V` verify cohort over backends (ii)..(v).
 `mcts build legacy-fixtures` remains an explicit external audit-fixture path; it
 builds `cpp-legacy/build/legacy-to-wire` and passes
 output root, seed, game count, and simulation count as explicit flags. Its output

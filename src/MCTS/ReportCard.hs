@@ -9,6 +9,7 @@ module MCTS.ReportCard
     , Verdict (..)
     , defaultReportCard
     , divergenceRowsFromTranscripts
+    , reportCardPassed
     , reportCardParityTolerance
     , renderReportCard
     , renderReportCardJson
@@ -97,6 +98,13 @@ data ReportCard = ReportCard
 reportCardParityTolerance :: Double
 reportCardParityTolerance = 0.05
 
+reportCardPassed :: ReportCard -> Bool
+reportCardPassed card =
+    case reportVerdict card of
+        WithinTolerance -> True
+        EvidencePending -> False
+        Shortfall _ -> False
+
 defaultReportCard :: ReportCard
 defaultReportCard =
     ReportCard
@@ -153,7 +161,7 @@ renderReportCard card =
                ]
             <> divergenceTable (reportDivergenceRows card)
             <> [ ""
-               , "cabal test                                     PASS    (mcts-unit, mcts-integration, mcts-cross-backend, mcts-legacy-parity, mcts-haskell-style)"
+               , "test stanzas                                   PASS    (mcts-unit, mcts-integration, mcts-cross-backend, mcts-legacy-parity, mcts-haskell-style)"
                , ""
                , "Verdict: " <> renderVerdict (reportVerdict card)
                , ""

@@ -99,19 +99,22 @@ the reproducible Docker development environment that every later sprint builds o
   formatter-tools GHC `9.12.4` for `fourmolu-0.19.0.1` and `hlint-3.10` under
   `/opt/mcts-style-tools/bin/` inside the container. The style compiler is
   isolated from the main project compiler and does not change
-  `with-compiler: ghc-9.14.1`. Host-level fallback to ambient Fourmolu, HLint,
-  Cabal, GHC, or backend toolchains is unsupported. Root-level `compose.yaml`
-  exposes the canonical `docker compose run --rm mcts mcts <command>` entrypoint
-  declared in the project [README](../README.md); there is no long-running daemon
-  container, bind mount, Compose environment-variable block, or `sleep infinity`
-  command.
+  `with-compiler: ghc-9.14.1`. The Dockerfile prebuilds the executable with tests
+  and benchmarks enabled, installs all Cabal test-suite executables plus the
+  `mcts-criterion` benchmark executable, and leaves runtime commands consuming
+  image-local artefacts instead of compiling on first use. Host-level fallback to
+  ambient Fourmolu, HLint, Cabal, GHC, or backend toolchains is unsupported.
+  Root-level `compose.yaml` exposes the canonical
+  `docker compose run --rm mcts mcts <command>` entrypoint declared in the project
+  [README](../README.md); there is no long-running daemon container, bind mount,
+  Compose environment-variable block, or `sleep infinity` command.
 - `docker compose run --rm mcts mcts check-code` succeeds with no warnings under
   the pinned toolchain.
 
 ### Validation
 
 1. `docker compose run --rm mcts mcts check-code` succeeds, proving the container
-   image carries the installed `mcts` binary and the warning-clean build gate.
+   image carries the installed `mcts` binary and the container-owned lint/style gate.
 2. `cabal --version` reports `Cabal 3.16.1.0`; `ghc --version` reports `9.14.1`.
 3. `app/Main.hs` is ≤ 5 lines of business logic; `src/MCTS/App.hs` carries
    `App.main`.
@@ -138,8 +141,8 @@ the reproducible Docker development environment that every later sprint builds o
   Compose entrypoint.
 - Validated on 2026-05-15 through the root Compose entrypoint:
   `ghc --numeric-version == 9.14.1`, `cabal --numeric-version == 3.16.1.0`,
-  and `docker compose run --rm mcts mcts check-code` (including warning-clean
-  `cabal build all`).
+  and `docker compose run --rm mcts mcts check-code`. Warning-clean compilation is
+  now owned by Dockerfile image construction.
 
 ### Remaining Work
 
@@ -565,9 +568,10 @@ forbidden-symbol HLint rules behind the `mcts-haskell-style` test stanza plus th
   `trackingGeneratedPaths` no-hand-edit check, per
   [../HASKELL_CLI_TOOL.md → Forbidden Surfaces](../HASKELL_CLI_TOOL.md).
 - `src/MCTS/CheckCode.hs` owns the `check-code` dispatcher. `src/MCTS/App.hs` routes the
-  top-level `CheckCode` constructor to that owner, which dispatches lint, docs check, and
-  warning-clean `cabal build all` per
-  [../HASKELL_CLI_TOOL.md → CLI surface](../HASKELL_CLI_TOOL.md).
+  top-level `CheckCode` constructor to that owner, which dispatches lint, docs check,
+  and style checks per [../HASKELL_CLI_TOOL.md → CLI surface](../HASKELL_CLI_TOOL.md).
+  Warning-clean compilation is Dockerfile-owned so runtime `check-code` does not
+  compile or link Cabal components.
 - `src/MCTS/CLI/Command.hs` gains the `CheckCode` constructor on the top-level
   `Command` ADT and a matching `CommandSpec` leaf in the registry per
   [Sprint 1.2 ownership note](#sprint-12-commandspec-registry-and-parser-generation-).
@@ -828,8 +832,10 @@ typed boundary and emits structured remedy hints on failure.
   on `ghcup`). `prerequisitesForBuild` and `prerequisitesForTest` resolve
   through `transitiveClosure`.
 - `mcts build *` checks backend build prerequisites before apply, and
-  `mcts test all` / `mcts test <stanza>` check the pinned GHC/Cabal test
-  prerequisite closure before applying Cabal-backed test plans.
+  `mcts test all` / `mcts test <stanza>` check the pinned GHC/Cabal, installed
+  `mcts`, installed test-suite executables, installed `mcts-criterion`, logical
+  backend, and foreign shared-library prerequisite closure before applying
+  image-local test plans.
 - Validated on 2026-05-15 through the root Compose entrypoint with
   `docker compose run --rm mcts mcts test mcts-unit` and
   `docker compose run --rm mcts mcts test mcts-integration`.
@@ -1042,8 +1048,8 @@ enforce the metadata checks the governed documentation topology requires.
   `GeneratedSectionRule` registry agree. A document declaring `none` while carrying a
   generated marker pair fails, and a document declaring a generated key whose markers
   are absent fails.
-- `mcts check-code` runs the documented lint/docs/style/build sequence once per stage;
-  any intentional duplicate check is removed or documented as an explicit safeguard.
+- `mcts check-code` runs the documented lint/docs/style sequence once per stage; any
+  intentional duplicate check is removed or documented as an explicit safeguard.
 - `documents/engineering/haskell_code_guide.md`,
   `documents/engineering/code_quality.md`, and the `mcts-haskell-style` source walker
   agree on the supported-path partial-function policy. If hot-path invariant failures

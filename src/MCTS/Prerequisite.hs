@@ -117,6 +117,48 @@ prerequisiteRegistry =
         "run docker compose run --rm mcts mcts check-code"
         []
         (pure True)
+    , executableNode
+        "mcts-installed"
+        "installed image-local CLI executable"
+        "rebuild the Compose image so Dockerfile installs /usr/local/bin/mcts"
+        []
+        "mcts"
+    , executableNode
+        "mcts-haskell-style-installed"
+        "installed mcts-haskell-style test executable"
+        "rebuild the Compose image so Dockerfile installs /usr/local/bin/mcts-haskell-style"
+        []
+        "mcts-haskell-style"
+    , executableNode
+        "mcts-unit-installed"
+        "installed mcts-unit test executable"
+        "rebuild the Compose image so Dockerfile installs /usr/local/bin/mcts-unit"
+        []
+        "mcts-unit"
+    , executableNode
+        "mcts-integration-installed"
+        "installed mcts-integration test executable"
+        "rebuild the Compose image so Dockerfile installs /usr/local/bin/mcts-integration"
+        []
+        "mcts-integration"
+    , executableNode
+        "mcts-cross-backend-installed"
+        "installed mcts-cross-backend test executable"
+        "rebuild the Compose image so Dockerfile installs /usr/local/bin/mcts-cross-backend"
+        []
+        "mcts-cross-backend"
+    , executableNode
+        "mcts-legacy-parity-installed"
+        "installed mcts-legacy-parity test executable"
+        "rebuild the Compose image so Dockerfile installs /usr/local/bin/mcts-legacy-parity"
+        []
+        "mcts-legacy-parity"
+    , executableNode
+        "mcts-criterion-installed"
+        "installed mcts-criterion benchmark executable"
+        "rebuild the Compose image so Dockerfile installs /usr/local/bin/mcts-criterion"
+        []
+        "mcts-criterion"
     , PrerequisiteNode
         "libmcts-rust-built"
         "Rust cdylib exists for dynamic FFI smoke tests"
@@ -163,6 +205,13 @@ prerequisitesForTest =
         [ "ghc-9.14.1"
         , "cabal-3.16.1.0"
         , "logical-backends"
+        , "mcts-installed"
+        , "mcts-haskell-style-installed"
+        , "mcts-unit-installed"
+        , "mcts-integration-installed"
+        , "mcts-cross-backend-installed"
+        , "mcts-legacy-parity-installed"
+        , "mcts-criterion-installed"
         , "libmcts-cpp-legacy-built"
         , "libmcts-cpp-imperative-built"
         , "libmcts-cpp-functional-built"

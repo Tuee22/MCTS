@@ -47,7 +47,7 @@ runLint command =
 runStyleStanza :: Env.App ExitCode
 runStyleStanza = do
     env <- Env.askEnv
-    result <- liftIO (runStreaming (Subprocess "cabal" ["test", "mcts-haskell-style"] Nothing Nothing))
+    result <- liftIO (runStreaming (Subprocess "mcts-haskell-style" [] Nothing Nothing))
     case result of
         Right _ -> liftIO (outputLine "haskell lint PASS") >> pure ExitSuccess
         Left err -> liftIO (outputLine (renderErrorString (Env.envOutputOptions env) err)) >> pure (ExitFailure 1)

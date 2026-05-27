@@ -30,17 +30,19 @@ is doctrine-owned; the per-backend tuning stacks are project-specific.
   `--plan-file <path>` for Dockerfile use and focused diagnostics.
 
 Normal host validation enters through
-`docker compose run --rm mcts mcts <command>` and consumes Dockerfile-built backend
-artefacts. Rebuild the image with the same one-shot Compose shape, for example
+`docker compose run --rm mcts mcts <command>` and consumes Dockerfile-built Cabal
+components plus backend artefacts. Rebuild the image with the same one-shot Compose
+shape, for example
 `docker compose run --rm --build mcts mcts test all --dry-run`. Direct host
 toolchain use is unsupported.
 
 ## PGO/BOLT Training Workload Doctrine
 
-The accepted steelman C++ and Rust artefacts are built once during
-`docker/Dockerfile` image construction. Runtime commands do not retrain PGO, rerun
-BOLT, switch between per-workload optimized shared libraries, or install fallback
-artefacts. The supported runtime contract is one canonical bolted shared library per
+The accepted Cabal components and steelman C++ and Rust artefacts are built once
+during `docker/Dockerfile` image construction. Runtime commands do not compile Cabal
+test executables, retrain PGO, rerun BOLT, switch between per-workload optimized
+shared libraries, or install fallback artefacts. The supported runtime contract is
+one prebuilt Cabal component cache plus one canonical bolted shared library per
 foreign steelman backend, generated from the Dockerfile-owned profile pipeline.
 
 The profile workload is not fully automatic. The build harness must run the binary
@@ -372,6 +374,9 @@ runners that link against the already optimized library code; duplicating `-fllv
 there would slow validation without changing the backend (v) hot path being tested.
 The `mcts-haskell-style` stanza is likewise a validation runner, not performance
 evidence.
+`docker/Dockerfile` explicitly builds those test runners before the image is
+published so `mcts test all` executes prebuilt stanzas rather than compiling them
+on first use.
 
 `-optlo-mcpu=native` and `-optlc-mcpu=native` remain deferred on the documented
 aarch64 assembler limitation: enabling them inside the pinned container can emit
@@ -567,7 +572,7 @@ the bounded profile suite.
 
 The optimized-C++ Sprint 8.10 verdict was refreshed on 2026-05-23 by
 `docker compose run --rm --build mcts mcts test all` against the canonical workload
-(`G_R=1_000`, `G_S=4`, `S_BENCH=500`, MT8 variants)
+(`N_PRIM=20_000`, `P_MAX=60`, `G_R=1_000`, `G_S=4`, `S_BENCH=500`, MT8 variants)
 and bounded-profile Dockerfile-built canonical artefacts. The Dockerfile build
 produced C++ and Rust BOLT profiles, bolted canonical shared libraries, LLVM
 objcopy-patched envelopes, and passing final installed-library smokes before the
@@ -639,24 +644,27 @@ is `20694.1` vs `20051.8` search-iters/s (`cpp-functional` vs
 earlier `(ii)`/`(iii)` shortfall was an implementation-shape gap, not an inherent
 cost of functional-core style.
 
-Sprint `8.12` closed on 2026-05-26 with the corrected backend (ii) target. The
-accepted `docker compose run --rm mcts mcts test all` report card recorded:
+Sprint `8.14` closed on 2026-05-27 with the corrected backend (ii) target, a
+fail-closed report-card verdict gate, and `N_PRIM=20_000`. The accepted
+`docker compose run --rm mcts mcts test all` report card recorded:
 
 | Row | Ratio | Evidence |
 |-----|------:|----------|
-| Q1a terminal playout ST | 0.99x | Haskell 22916.2 playouts/s vs cpp-imperative 22614.7 playouts/s |
-| Q1a terminal playout MT8 | 0.91x | Haskell 91657.6 playouts/s vs cpp-imperative 83222.2 playouts/s |
-| Q1b search-iteration ST | 1.02x | Haskell 22854.7 search-iters/s vs cpp-imperative 23352.5 search-iters/s |
-| Q1b search-iteration MT8 | 0.99x | Haskell 158016.1 search-iters/s vs cpp-imperative 156895.9 search-iters/s |
-| Q2 self-play ST | 0.63x | Haskell 1.8 games/s vs cpp-imperative 1.2 games/s |
-| Q2 self-play MT8 | 0.68x | Haskell 6.7 games/s vs cpp-imperative 4.6 games/s |
-| Q5 Haskell search-iteration scaling | 6.91x | 22854.7 -> 158016.1 search-iters/s |
-| Q5 cpp-imperative search-iteration scaling | 6.72x | 23352.5 -> 156895.9 search-iters/s |
-| Q5 Haskell self-play scaling | 3.65x | 1.8 -> 6.7 games/s |
-| Q5 cpp-imperative self-play scaling | 3.90x | 1.2 -> 4.6 games/s |
+| Q1a terminal playout ST | 0.72x | Haskell 30804.2 playouts/s vs cpp-imperative 22078.9 playouts/s |
+| Q1a terminal playout MT8 | 0.85x | Haskell 182020.9 playouts/s vs cpp-imperative 154067.0 playouts/s |
+| Q1b search-iteration ST | 0.67x | Haskell 34619.7 search-iters/s vs cpp-imperative 23342.6 search-iters/s |
+| Q1b search-iteration MT8 | 0.67x | Haskell 253507.0 search-iters/s vs cpp-imperative 170816.3 search-iters/s |
+| Q2 self-play ST | 0.59x | Haskell 1.9 games/s vs cpp-imperative 1.1 games/s |
+| Q2 self-play MT8 | 0.68x | Haskell 6.4 games/s vs cpp-imperative 4.3 games/s |
+| Q5 Haskell search-iteration scaling | 7.32x | 34619.7 -> 253507.0 search-iters/s |
+| Q5 cpp-imperative search-iteration scaling | 7.32x | 23342.6 -> 170816.3 search-iters/s |
+| Q5 Haskell self-play scaling | 3.42x | 1.9 -> 6.4 games/s |
+| Q5 cpp-imperative self-play scaling | 3.92x | 1.1 -> 4.3 games/s |
 
 Q3/Q4/Q6 passed, the divergence matrix was all zeroes, all Cabal stanzas passed,
-and the verdict was **`Within tolerance`**.
+and the verdict was **`Within tolerance`**. Earlier 2026-05-27 `N_PRIM=10_000`
+evidence rendered `Shortfall` and now exits non-zero through `mcts test all`,
+so parity regressions fail the aggregate gate instead of remaining print-only.
 
 The current text report card also prints raw Q1a/Q1b/Q2 rates for every backend
 slot before the question-summary table and ends with explicit Q1a-Q6 answers based
@@ -674,13 +682,11 @@ The current implementation renders `Within tolerance` iff
 
     haskell_time / cpp_imperative_time <= 1 + HASKELL_PARITY_TOLERANCE
 
-holds on **both** legacy Q1 and Q2 played-game rows, in both threading modes the
-report card runs. The refactored metric suite applies the same tolerance to Q1a
-terminal playout throughput, Q1b search-iteration throughput, and Q2 played-game
-self-play throughput.
+holds on every measured Q1a terminal-playout, Q1b search-iteration, and Q2
+played-game self-play row, in both threading modes the report card runs.
 Otherwise the verdict is `Shortfall <ratio>`, where
-`ratio = max(Q1_ratio, Q2_ratio) - 1` (the worst-case shortfall over the
-two workloads, expressed as a fraction).
+`ratio = max(Q1a_ratio, Q1b_ratio, Q2_ratio) - 1` (the worst-case shortfall over
+the measured parity rows, expressed as a fraction).
 
 The 5% ceiling is independent of, and stricter than, the 5–15% PGO-attributable
 shortfall band described in [PGO Asymmetry](#pgo-asymmetry). A shortfall that
@@ -688,10 +694,10 @@ lands inside the 5–15% band still renders `Shortfall <ratio>` — the PGO note
 is attached as the attribution, not as an exemption. Only a shortfall of
 `<= 5%` clears the bar.
 
-The implemented threshold lives in `src/MCTS/CLI/Test.hs` as
-`haskellParityTolerance = 0.05`; `cabal.project` mirrors the report-card workload
-knobs, not this verdict threshold. Any threshold change must update that source
-constant and this section in lock-step.
+The implemented threshold lives in `src/MCTS/ReportCard.hs` as
+`reportCardParityTolerance = 0.05`; `cabal.project` mirrors the report-card
+workload knobs, not this verdict threshold. Any threshold change must update that
+source constant and this section in lock-step.
 
 ## Toolchain Pin
 

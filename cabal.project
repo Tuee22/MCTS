@@ -11,6 +11,8 @@ allow-newer: config-ini:containers, config-ini:base
 
 -- Cabal 3.16.1.0 is the pinned project tool.
 -- Report-card knobs:
+-- N_PRIM=20000
+-- P_MAX=60
 -- G_R=1000
 -- G_S=4
 -- G_V=4

@@ -24,19 +24,21 @@
 ## Phase Status
 
 ✅ **Done** after the backend (ii) steelman correction, the functional-core
-style audit, and the 2026-05-26 Haskell parity refresh. The Haskell tuning
+style audit, the 2026-05-26 Haskell parity refresh, and the 2026-05-27
+report-card verdict-gate/sample-stability refresh. The Haskell tuning
 work, no-generated-validation-data cleanup, five-backend restoration,
 optimized-C++ report-card refresh, refactored Q1a/Q1b/Q2/Q5 evidence, Sprint
 `5.6` corrected backend (ii) target, Sprint `6.7` backend (iii)/(iv)
-functional-core style surface, Sprint `8.12` Haskell parity refresh, and Sprint
-`8.13` Haskell style alignment are all closed. The current accepted evidence is
-the 2026-05-26 `docker compose run --rm mcts mcts test all` run: Q1a terminal
-playouts ST `0.99x` (`22916.2` vs `22614.7` playouts/s), Q1a MT8 `0.91x`
-(`91657.6` vs `83222.2` playouts/s), Q1b search iterations ST `1.02x`
-(`22854.7` vs `23352.5` search-iters/s), Q1b MT8 `0.99x` (`158016.1` vs
-`156895.9` search-iters/s), Q2 self-play ST `0.63x` (`1.8` vs `1.2` games/s),
-Q2 self-play MT8 `0.68x` (`6.7` vs `4.6` games/s), Q3/Q4/Q6 PASS, zero
-live-cohort divergence, and verdict `Within tolerance`.
+functional-core style surface, Sprint `8.12` Haskell parity refresh, Sprint
+`8.13` Haskell style alignment, and Sprint `8.14` fail-closed report-card gate
+are all closed. The current accepted evidence is the 2026-05-27
+`docker compose run --rm mcts mcts test all` run: Q1a terminal playouts ST
+`0.72x` (`30804.2` vs `22078.9` playouts/s), Q1a MT8 `0.85x` (`182020.9`
+vs `154067.0` playouts/s), Q1b search iterations ST `0.67x` (`34619.7` vs
+`23342.6` search-iters/s), Q1b MT8 `0.67x` (`253507.0` vs `170816.3`
+search-iters/s), Q2 self-play ST `0.59x` (`1.9` vs `1.1` games/s), Q2
+self-play MT8 `0.68x` (`6.4` vs `4.3` games/s), Q3/Q4/Q6 PASS, zero
+live-cohort divergence, all Cabal stanzas PASS, and verdict `Within tolerance`.
 Sprint `5.3` routes the Dockerfile-invoked `mcts build cpp-imperative` and
 `mcts build cpp-functional` recipes through the shared C++ PGO/BOLT target sequence,
 and Sprint `8.3` refreshed the report-card evidence on 2026-05-21 against the
@@ -69,9 +71,11 @@ surface. Phase `6` Sprint `6.7` removed backend (iii)'s legacy-board and
 action-text hot path, so Q3/Q6 equivalence and liveness remained covered by
 Phase `7`; Phase `5` owns the corrected C++ steelman; and Phase `6` owns the
 closed backend (iii)/(iv) functional-core alignment. Sprint `8.12` retuned
-Haskell against the corrected backend (ii), and Sprint `8.13` aligned backend
+Haskell against the corrected backend (ii), Sprint `8.13` aligned backend
 (v)'s compact action-set and transition boundary with the shared functional-core
-style without changing Phase `3`'s closed pure-engine API.
+style without changing Phase `3`'s closed pure-engine API, and Sprint `8.14`
+made the report-card verdict an exit-code gate while raising the primitive
+sample to `N_PRIM=20_000` for stable MT8 Q1a/Q1b evidence.
 
 The restored end state is:
 
@@ -745,6 +749,54 @@ code-quality gates are the post-doc-update gates listed above.
 
 - None.
 
+## Sprint 8.14: Report-Card Verdict Gate and Primitive Sample Stability ✅
+
+**Status**: Done
+**Implementation**: `src/MCTS/CLI/Test.hs`, `src/MCTS/ReportCard.hs`,
+`cabal.project`
+**Docs to update**: `../documents/engineering/unit_testing_policy.md`,
+`../documents/engineering/compiler_runtime_tuning.md`, `README.md`,
+`00-overview.md`, `system-components.md`
+
+### Objective
+
+Keep the Phase `8` parity proof fail-closed when live report-card evidence falls
+outside tolerance, and keep Q1a/Q1b primitive measurements stable enough that MT8
+timing noise does not reopen a closed parity surface.
+
+### Deliverables
+
+- The report-card primitive workload uses `N_PRIM=20_000` and `P_MAX=60` for Q1a
+  terminal playout and Q1b search-iteration throughput rows.
+- `mcts test all` treats the rendered report-card verdict as an execution gate:
+  `Within tolerance` exits successfully, while `Evidence pending` and `Shortfall`
+  exit non-zero after printing the report card.
+- `ReportCard.reportCardPassed` centralizes that verdict predicate so command
+  execution and unit coverage use the same rule.
+- `cabal.project`, `system-components.md`, and governed engineering docs mirror
+  the updated workload constants and fail-closed verdict behavior.
+
+### Validation
+
+- `docker compose run --rm --build mcts mcts test mcts-unit`
+- `docker compose run --rm mcts mcts check-code`
+- `docker compose run --rm mcts mcts test all`
+- `git diff --check`
+
+### Closure Notes
+
+Closed on 2026-05-27. The accepted `docker compose run --rm mcts mcts test all`
+run exited 0 with verdict `Within tolerance`: Q1a terminal playout ST `0.72x`
+and MT8 `0.85x`, Q1b search-iteration ST `0.67x` and MT8 `0.67x`, Q2
+self-play ST `0.59x` and MT8 `0.68x`, Q3/Q4/Q6 PASS, all Cabal stanzas PASS,
+and zero live-cohort divergence. Earlier same-day `N_PRIM=10_000` evidence
+correctly failed closed with a Q1a MT8 `Shortfall`, proving the new exit-code
+gate catches parity regressions instead of merely printing them.
+
+### Remaining Work
+
+- None.
+
 ## Documentation Requirements
 
 **Engineering docs to create/update:**
@@ -765,9 +817,10 @@ code-quality gates are the post-doc-update gates listed above.
   Sprint `8.10` bounded-profile prerequisite for final report-card closure.
 - `documents/engineering/compiler_runtime_tuning.md` — performance parity against live
   backend (ii), mandatory Dockerfile-time PGO+BOLT success for accepted evidence,
-  native-RNG benchmark semantics, Sprint `8.9` Cabal-stanza flag wording, and the
-  Sprint `8.10` bounded played-game PGO/BOLT training workload doctrine and the
-  Sprint `8.11` refactored metric rerun evidence.
+  native-RNG benchmark semantics, Sprint `8.9` Cabal-stanza flag wording, the
+  Sprint `8.10` bounded played-game PGO/BOLT training workload doctrine, the
+  Sprint `8.11` refactored metric rerun evidence, and the Sprint `8.14`
+  fail-closed report-card verdict/sample-stability gate.
 - `documents/engineering/haskell_code_guide.md` — command/build surface examples.
 
 **Product docs to create/update:**
@@ -783,8 +836,9 @@ code-quality gates are the post-doc-update gates listed above.
   [system-components.md](system-components.md) aligned with the closed Sprint `8.10`
   bounded played-game training-workload reclosure, the closed Sprint `8.11`
   bounded metric-suite profile rerun, the closed Sprint `8.12` parity refresh, the
-  closed Sprint `8.13` Haskell style-alignment follow-up, the closed Sprint `6.7`
-  backend (iii)/(iv) style alignment, the closed Sprints `5.3`/`6.4` build-harness
+  closed Sprint `8.13` Haskell style-alignment follow-up, the closed Sprint `8.14`
+  report-card verdict/sample-stability gate, the closed Sprint `6.7` backend
+  (iii)/(iv) style alignment, the closed Sprints `5.3`/`6.4` build-harness
   reclosures, and the cleanup residue recorded in
   [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md).
 

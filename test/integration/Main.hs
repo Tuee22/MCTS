@@ -22,7 +22,6 @@ import MCTS.Transcript.EquitySidecar
 import MCTS.Types
 import MCTS.Verify.Envelope (checkTranscriptEnvelopesLive)
 import System.Directory (doesFileExist, findExecutable)
-import System.Environment (lookupEnv)
 import System.FilePath (takeBaseName, (</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty (TestTree, defaultMain, testGroup)
@@ -161,13 +160,15 @@ captureMcts args = do
     case maybeMcts of
         Just mctsPath ->
             capture (Subprocess mctsPath args Nothing Nothing)
-        Nothing -> do
-            maybeBuildDir <- lookupEnv "MCTS_CABAL_BUILDDIR"
-            let buildDirArgs =
-                    case maybeBuildDir of
-                        Nothing -> []
-                        Just buildDir -> ["--builddir=" <> buildDir]
-            capture (Subprocess "cabal" (buildDirArgs <> ["exec", "mcts", "--"] <> args) Nothing Nothing)
+        Nothing ->
+            pure
+                ( Left
+                    ( PrerequisiteUnmet
+                        "mcts"
+                        "installed image-local CLI executable"
+                        "rebuild the Compose image so Dockerfile installs /usr/local/bin/mcts"
+                    )
+                )
 
 requireBinaryBenchHash :: ProcessOutput -> IO String
 requireBinaryBenchHash output =

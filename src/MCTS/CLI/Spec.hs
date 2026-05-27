@@ -120,7 +120,7 @@ commandSpec =
                 "Measure backend parity anchor"
                 "mcts test parity-anchor rust haskell --format json"
                 `withOptions` planOptions
-            , leaf "<stanza>" "Run one cabal stanza" "mcts test mcts-unit"
+            , leaf "<stanza>" "Run one prebuilt test stanza" "mcts test mcts-unit"
             ]
         , node
             "lint"

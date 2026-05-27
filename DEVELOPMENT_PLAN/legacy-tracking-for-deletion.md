@@ -65,6 +65,18 @@ README-topology, lint-write, envelope-gating, rollout-byte-consumption,
 FFI-domain-conversion, and divergence-metric rows to Completed. All five backend
 slots remain first-class.
 
+The 2026-05-27 Dockerfile prebuild closure moved normal Cabal compile/link work into
+image construction as well: the image now prebuilds the executable with tests and
+benchmarks enabled, installs the test-suite and `mcts-criterion` benchmark
+executables, and builds foreign backend artefacts before runtime commands consume
+them.
+
+The same-day documentation-topology audit found one live stale-reference class:
+`HASKELL_CLI_TOOL.md` is absent from the current worktree while root guidance docs,
+the plan suite, governed engineering docs, and source comments still cite it as the
+canonical CLI doctrine. Sprint `0.3` owns restoring that root doctrine file or
+retargeting the references.
+
 The 2026-05-24 benchmark-metric audit added stale benchmark labels and report-card
 rows to this ledger. Sprint `3.8` added explicit `terminal-playouts` and
 `search-iters` benchmark leaves, and Sprint `7.8` split the report card into
@@ -76,9 +88,10 @@ rerun, so no metric-suite cleanup row remains pending.
 The 2026-05-25 backend-style audit added backend (iii)'s legacy-board/text-action
 hot path to Pending Removal. Sprint `6.7` closed that cleanup on 2026-05-26 by
 replacing it with compact functional-core value-state C++ while keeping Rust's
-already compact boundary aligned with `(iii)`. Sprints `8.12` and `8.13` then
-closed the Haskell parity and style follow-up against the corrected backend (ii)
-target, so no Phase `8` style or parity cleanup row remains pending.
+already compact boundary aligned with `(iii)`. Sprints `8.12`, `8.13`, and
+`8.14` then closed the Haskell parity, style follow-up, and report-card verdict
+gate against the corrected backend (ii) target, so no Phase `8` style, parity, or
+verdict-gating cleanup row remains pending.
 
 Sprint `7.10` closed the stale report-card presentation shape: text output now
 aligns columns, states the report-card terms and questions, and includes raw
@@ -101,7 +114,9 @@ repository.
 
 ## Pending Removal
 
-None.
+| Item | Location | Owning Sprint | Notes |
+|------|----------|---------------|-------|
+| Missing root CLI doctrine target | `HASKELL_CLI_TOOL.md`; references in `README.md`, `AGENTS.md`, `CLAUDE.md`, `DEVELOPMENT_PLAN/`, `documents/`, and source comments | Sprint 0.3 | The current worktree does not contain the file still cited as the authoritative CLI doctrine. Sprint `0.3` must either restore/update `HASKELL_CLI_TOOL.md` or retarget every stale reference to the replacement doctrine source, then move this row to `Completed`. |
 
 ## Pending Removal Notes
 
@@ -116,9 +131,11 @@ data instead of publishing a fallback shared library.
 
 | Item | Removed In | Notes |
 |------|------------|-------|
+| Print-only report-card shortfalls | Sprint 8.14, 2026-05-27 | `mcts test all` now returns a non-zero exit code for report-card verdicts `Evidence pending` and `Shortfall`, and only exits 0 for `Within tolerance`. Unit coverage exercises `ReportCard.reportCardPassed`; the accepted aggregate run uses `N_PRIM=20_000`, passed Q3/Q4/Q6 and every Cabal stanza, and recorded `Verdict: Within tolerance`. |
 | Report-card unaligned text and missing raw backend metrics | Sprint 7.10 | `src/MCTS/ReportCard.hs` now renders fixed-width raw-performance, question-summary, divergence-matrix, and final question-answer tables; `src/MCTS/CLI/Test.hs` measures raw Q1a/Q1b/Q2 rates for every backend slot while retaining Haskell-vs-backend-(ii) verdict semantics; JSON exposes the rows under `raw_performance_metrics`; docs state every report-card term and question. |
 | Corrected-backend Haskell parity shortfall | Sprint 8.12, 2026-05-26 | `src/MCTS/Engine.hs`, `src/MCTS/Search/UCT.hs`, `src/MCTS/CLI/Bench.hs`, and `src/MCTS/Driver.hs` now use packed numeric action IDs, direct `legalActionSet`/`applyActionId` hot paths, reusable wall-block masks, strict rollout/terminal loops, and RTS capability pinning for multi-worker benchmark paths. `docker compose run --rm mcts mcts test all` recorded Q1a/Q1b/Q2 within tolerance against corrected backend (ii), Q3/Q4/Q6 PASS, zero live-cohort divergence, and `Verdict: Within tolerance`. |
 | Backend (v) Haskell functional-core style follow-up | Sprint 8.13, 2026-05-26 | Haskell keeps the public `legalMoves`/`applyMove` pure boundary while the search hot path uses packed `ActionIds` and numeric transitions aligned with the compact `(iii)/(iv)` style. The `ST` arena remains local to search, and transcript action IDs, canonical action ordering, the 12-wall cap, and ply-cap draw semantics are preserved. |
+| Runtime Cabal builds in normal validation | Dockerfile Cabal prebuild, 2026-05-27 | `docker/Dockerfile` now prebuilds the `mcts` executable with tests and benchmarks enabled, installs all five Cabal test-suite executables plus the `mcts-criterion` benchmark executable, and builds foreign backends before image publication. `mcts test all` no longer runs a runtime `cabal build all` gate or routes recursive CLI steps through `cabal exec mcts`; `mcts check-code` runs lint/docs/style only, with warning-clean compilation owned by image construction. |
 | Backend (iii) legacy-board/text-action hot path | Sprint 6.7, 2026-05-26 | `cpp-functional/engine/state.hpp` now stores compact value-state fields and generates capped numeric legal successors directly; `cpp-functional/engine/search.cpp` uses `std::vector<State>` successor buffers; `cpp-functional/c-abi/mcts_cpp_functional.cc` applies C ABI actions through `try_advance`; `cpp-functional/Makefile` no longer builds the legacy board translation unit; the backend-local legacy `cpp-functional/engine/board.cpp`, `cpp-functional/engine/board.h`, and `cpp-functional/engine/mcts.hpp` copies were removed. Validation passed `mcts-cross-backend`, `mcts-legacy-parity`, `mcts-unit`, and focused `(ii)`/`(iii)` native-RNG performance checks through Compose. |
 | Derived played-game simulation-rate column | Sprint 7.8 follow-up, 2026-05-25 | `src/MCTS/CLI/Bench.hs` now renders played-game benchmarks with only `games/s` in text output and `games_per_second` in JSON. Governed metric docs identify terminal playout, search-iteration, and played-game throughput as the only supported benchmark units. |
 | External legacy-reproduction headline question | Sprint 7.9, 2026-05-25 | Removed the old report-card question that compared backend (i) against external `MCTS_legacy`; the legacy-envelope liveness/overflow gate is now Q6 and the report card has six questions. `mcts build legacy-fixtures` remains an optional external audit helper with no numbered report-card role. The Q6 report-card self-play liveness budget is `S_LP_SIMS=4`; the old `10_000` budget belonged to the removed external-reproduction evidence shape. |
@@ -138,7 +155,7 @@ data instead of publishing a fallback shared library.
 | Rust BOLT PGO-only fallback install | Sprint 6.4, 2026-05-23 | `src/MCTS/CLI/Build.hs` now requires Rust profraw/profdata, BOLT `.fdata`, a bolted cdylib, LLVM objcopy envelope patching, and a final canonical Rust smoke; no PGO-only cdylib is copied to the supported load name when BOLT fails. |
 | Runtime backend builds in normal validation | Dockerfile backend-build migration, 2026-05-22 | `docker/Dockerfile` now invokes `mcts build cpp-legacy`, `mcts build cpp-imperative`, `mcts build cpp-functional`, and `mcts build rust` during image construction; `mcts test all` and `mcts test parity-anchor` no longer rebuild foreign backend artefacts at runtime. |
 | Generated-section metadata overclaim | Sprint 1.10, 2026-05-21 | `mcts docs check` now verifies governed-doc `**Generated sections**:` metadata against physical marker pairs and the `GeneratedSectionRule` registry; fenced Markdown examples are ignored as examples, not real markers. |
-| `check-code` stage-order drift | Sprint 1.10, 2026-05-21 | `mcts check-code` now runs the documented lint/docs/style/build sequence once per stage; validation output contains a single generated-doc check in the lint phase before the warning-clean build. |
+| `check-code` stage-order drift | Sprint 1.10, 2026-05-21 | `mcts check-code` now runs the documented lint/docs/style sequence once per stage; validation output contains a single generated-doc check in the lint phase. Dockerfile image construction owns warning-clean compilation. |
 | Supported-path partial-function wording drift | Sprint 1.10, 2026-05-21 | `documents/engineering/haskell_code_guide.md` and `documents/engineering/code_quality.md` now describe the narrow hot-path invariant-failure exception instead of claiming an unconditional partial-function ban. |
 | Transcript forward-compat overclaim | Sprint 2.8, 2026-05-21 | `src/MCTS/Transcript.hs` now requires `envelope_offset == 48`, rejects unsupported envelope versions, and unit-tests additive v1 envelope trailing bytes. |
 | Action smart-constructor overclaim | Sprint 2.8, 2026-05-21 | The governed transcript docs describe the implemented `Action` conversion: legal actions are `0..208`, reserved bytes are not accepted, and `255` remains sentinel-only. |
@@ -156,7 +173,7 @@ data instead of publishing a fallback shared library.
 | C++ Makefile PGO+BOLT target surface | Sprint 5.3 Makefile baseline, updated Sprint 6.4, 2026-05-18; CLI wiring closed 2026-05-21 | `cpp-imperative/Makefile` and `cpp-functional/Makefile` contain PGO generate/use, BOLT instrument/optimize, and canonical install targets. The supported `mcts build` Plan/Apply wiring for those targets is closed by `cppPgoBoltPlan`. |
 | Backend (iv) Rust Corridors gameplay port | Sprint 6.3, 2026-05-16; updated Sprint 7.2, 2026-05-18 | `rust/src/board.rs`, `rust/src/rollout.rs`, and `rust/src/search.rs` carry the real Corridors game state, rollout loop, and arena MCTS, and `MCTS.Driver.Dispatch.runBatchDispatch` routes `--backend rust` through the real FFI engine when the cdylib is present. |
 | Foreign-engine recompute streaming to `.eq` sidecars | Sprint 7.5, 2026-05-16 | `MCTS.Engine.ForeignRecompute.foreignRecomputeEqStream` drives backend recompute ABIs through transcripts, `MCTS.Verify.Divergence.divergenceVsEqStream` scores the resulting `EqStream`, and `mcts inspect divergence` renders cached and available foreign recompute rows. |
-| Measured Q1-Q6 report-card evidence | Sprint 7.3 / Sprint 8.12 evidence closure, updated 2026-05-26 | `docker compose run --rm mcts mcts test all` passed against the corrected backend (ii) on 2026-05-26, recording Q1a terminal-playout ST 0.99x and MT8 0.91x, Q1b search-iteration ST 1.02x and MT8 0.99x, Q2 played-game ST 0.63x and MT8 0.68x, Q5 Haskell search-iteration scaling 6.91x, Q5 C++ (ii) search-iteration scaling 6.72x, Q5 Haskell self-play scaling 3.65x, Q5 C++ (ii) self-play scaling 3.90x, zero live-cohort divergence, Q3/Q4/Q6 PASS, all Cabal stanzas PASS, and verdict `Within tolerance`. The 2026-05-24 Sprint 8.11 and 2026-05-25 Sprint 7.9 rows remain historical against the older backend (ii) artefact. |
+| Measured Q1-Q6 report-card evidence | Sprint 7.3 / Sprint 8.14 evidence closure, updated 2026-05-27 | `docker compose run --rm mcts mcts test all` passed against the corrected backend (ii) on 2026-05-27, recording Q1a terminal-playout ST 0.72x and MT8 0.85x, Q1b search-iteration ST 0.67x and MT8 0.67x, Q2 played-game ST 0.59x and MT8 0.68x, Q5 Haskell search-iteration scaling 7.32x, Q5 C++ (ii) search-iteration scaling 7.32x, Q5 Haskell self-play scaling 3.42x, Q5 C++ (ii) self-play scaling 3.92x, zero live-cohort divergence, Q3/Q4/Q6 PASS, all Cabal stanzas PASS, and verdict `Within tolerance`. The 2026-05-26 Sprint 8.12, 2026-05-24 Sprint 8.11, and 2026-05-25 Sprint 7.9 rows remain historical against older sample, artefact, or metric shapes. |
 | Pure Haskell parity proof vs backend (ii) | Sprint 8.2 / Sprint 8.3 closure, 2026-05-19 | Sprint 8.1 closed the LLVM/RTS tuning baseline. Sprint 8.2 ran three profile-driven rounds on 2026-05-16: round 1 IntSet (~6.2x speedup), round 2 strict-pair Word64 (regression, reverted), round 3 wavefront-bitmap BFS over `Bits128` (~52x legal-moves / ~33x uct-search vs round 1; combined ~320x / ~200x vs original baseline). |
 | Deterministic placeholder transcript hash | Sprint 2.2 baseline closure | Replaced `pseudoSha256Hex` in `src/MCTS/Transcript.hs` with the pure SHA-256 implementation in `src/MCTS/Crypto/SHA256.hs`; `runConfigHash` and `playTranscriptHash` now emit SHA-256 hex digests. |
 | No-op sidecar cache and divergence inspect placeholders | Sprint 2.7 / Sprint 7.5 baseline closure | Replaced fixed `inspect cache list`, `inspect cache prune`, and `inspect divergence` output with `MCTS.Transcript.EquitySidecar` cache discovery/pruning and `MCTS.Verify.Divergence` metric rendering. |

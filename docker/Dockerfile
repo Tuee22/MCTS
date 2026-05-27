@@ -79,11 +79,21 @@ WORKDIR /workspace/MCTS
 
 COPY . /workspace/MCTS
 
-RUN cabal build all \
-    && cabal install exe:mcts \
-        --installdir /usr/local/bin \
-        --install-method=copy \
-        --overwrite-policy=always
+RUN cabal build --enable-tests --enable-benchmarks all \
+    && cabal build --enable-tests --enable-benchmarks \
+        test:mcts-haskell-style \
+        test:mcts-unit \
+        test:mcts-integration \
+        test:mcts-cross-backend \
+        test:mcts-legacy-parity \
+        bench:mcts-criterion \
+    && install -m 0755 "$(cabal list-bin --enable-tests --enable-benchmarks test:mcts-haskell-style)" /usr/local/bin/mcts-haskell-style \
+    && install -m 0755 "$(cabal list-bin --enable-tests --enable-benchmarks test:mcts-unit)" /usr/local/bin/mcts-unit \
+    && install -m 0755 "$(cabal list-bin --enable-tests --enable-benchmarks test:mcts-integration)" /usr/local/bin/mcts-integration \
+    && install -m 0755 "$(cabal list-bin --enable-tests --enable-benchmarks test:mcts-cross-backend)" /usr/local/bin/mcts-cross-backend \
+    && install -m 0755 "$(cabal list-bin --enable-tests --enable-benchmarks test:mcts-legacy-parity)" /usr/local/bin/mcts-legacy-parity \
+    && install -m 0755 "$(cabal list-bin --enable-tests --enable-benchmarks bench:mcts-criterion)" /usr/local/bin/mcts-criterion \
+    && install -m 0755 "$(cabal list-bin --enable-tests --enable-benchmarks exe:mcts)" /usr/local/bin/mcts
 
 RUN mcts build cpp-legacy \
     && mcts build cpp-imperative \

@@ -33,10 +33,14 @@ rules that govern this plan suite.
 
 ## Closure Status
 
-Phase `0` is `Done`: Sprint `0.1` (plan-suite bootstrap) closed on initial
-commit and Sprint `0.2` (doctrine-driven scheduling audit) closed on
-2026-05-14 with the audit replay recorded in
-[phase-0-planning-documentation.md](phase-0-planning-documentation.md).
+Phase `0` is `Active` on Sprint `0.3`: Sprint `0.1` (plan-suite bootstrap)
+and Sprint `0.2` (doctrine-driven scheduling audit) remain historical `Done`
+records, but the current worktree no longer contains `HASKELL_CLI_TOOL.md`
+while root guidance docs, the plan suite, and governed engineering docs still
+cite it as the authoritative CLI doctrine. Later implementation phases remain
+closed on their owned code and evidence surfaces; the documentation-topology
+handoff is incomplete until Sprint `0.3` restores the root doctrine file or
+retargets every doctrine reference to a new canonical source.
 The 2026-05-21 evidence-surface audit reopened the phases whose governed docs
 or code overclaimed the implementation. Phase `1` reclosed Sprint `1.10` on
 2026-05-21 after generated-document metadata and lint/code-quality contract
@@ -112,7 +116,9 @@ same functional-core style that backend (iv) Rust and backend (v) Haskell can
 follow. Phase `8` Sprint `8.13` closed on 2026-05-26 by keeping Haskell's public
 pure API while moving the hot search path to packed numeric `ActionIds`,
 `legalActionSet`, and `applyActionId`, matching the shared `(iii)/(iv)/(v)`
-functional-core style.
+functional-core style. Phase `8` Sprint `8.14` closed on 2026-05-27 by making
+the report-card verdict an exit-code gate and raising `N_PRIM` to `20_000` for
+stable MT8 primitive evidence.
 
 This audit does not change the project hypothesis: one Haskell CLI keeps
 all five backend slots live, Q3 proves visit-count equivalence for `(ii)..(v)`
@@ -214,6 +220,16 @@ search-iteration ST 1.02x and MT8 0.99x, Q2 self-play ST 0.63x and MT8 0.68x,
 Haskell search-iteration scaling 6.91x, C++ (ii) search-iteration scaling 6.72x,
 Haskell self-play scaling 3.65x, C++ (ii) self-play scaling 3.90x, Q3/Q4/Q6 PASS,
 zero live-cohort divergence, and `Verdict: Within tolerance`.
+Sprint `8.14` was validated on 2026-05-27 with
+`docker compose run --rm --build mcts mcts test mcts-unit`,
+`docker compose run --rm mcts mcts check-code`,
+`docker compose run --rm mcts mcts test all`, and `git diff --check`. The
+accepted report card recorded Q1a terminal-playout ST 0.72x and MT8 0.85x,
+Q1b search-iteration ST 0.67x and MT8 0.67x, Q2 self-play ST 0.59x and MT8
+0.68x, Haskell search-iteration scaling 7.32x, C++ (ii) search-iteration
+scaling 7.32x, Haskell self-play scaling 3.42x, C++ (ii) self-play scaling
+3.92x, Q3/Q4/Q6 PASS, all Cabal stanzas PASS, zero live-cohort divergence, and
+`Verdict: Within tolerance`.
 
 The 2026-05-19 report-card evidence remains useful smoke-baseline audit context.
 The previous five-backend restoration baseline still provides the starting point:
@@ -434,15 +450,15 @@ A sprint can move to `Done` only when all of the following are true:
 
 | Phase | Name | Status | Document |
 |-------|------|--------|----------|
-| 0 | Planning and Documentation Topology | ✅ Done | [phase-0-planning-documentation.md](phase-0-planning-documentation.md) |
+| 0 | Planning and Documentation Topology | 🔄 Active (Sprint `0.3` doctrine-topology reconciliation open; Sprints `0.1`/`0.2` remain historical `Done`) | [phase-0-planning-documentation.md](phase-0-planning-documentation.md) |
 | 1 | Haskell CLI Surface, `CommandSpec`, Lint Stack | ✅ Done (Sprint `1.11` README/lint-write realignment closed 2026-05-24) | [phase-1-haskell-cli-surface.md](phase-1-haskell-cli-surface.md) |
 | 2 | Transcript Codec, RNG, and Determinism Contract | ✅ Done (Sprint `2.9` transcript/envelope doctrine realignment closed 2026-05-24) | [phase-2-transcript-codec-and-determinism.md](phase-2-transcript-codec-and-determinism.md) |
 | 3 | Backend (v) Haskell Engine | ✅ Done (Sprint `3.8` benchmark metric primitives closed 2026-05-24) | [phase-3-haskell-engine.md](phase-3-haskell-engine.md) |
 | 4 | Backend (i) C++ Legacy Port and FFI Bridge | ✅ Done (Sprint `4.5` FFI domain-conversion contract realignment closed 2026-05-24) | [phase-4-cpp-legacy-port-and-ffi-bridge.md](phase-4-cpp-legacy-port-and-ffi-bridge.md) |
 | 5 | Backend (ii) C++ Imperative Steelman with PGO+BOLT | ✅ Done (Sprint `5.3` fail-closed C++ PGO/BOLT, Sprint `5.5` compact C ABI, and Sprint `5.6` compact-board hot path reclosures are complete) | [phase-5-cpp-imperative-steelman.md](phase-5-cpp-imperative-steelman.md) |
 | 6 | Backends (iii) C++ Functional-Core and (iv) Rust | ✅ Done (Sprint `6.7` compact functional-core state alignment closed 2026-05-26; Sprints `6.4` and `6.6` remain closed on build/ABI surfaces) | [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md) |
-| 7 | Cross-Backend Verify, Test Stanzas, POC Report Card | ✅ Done (Sprint `7.9` six-question report-card renumbering closed 2026-05-25) | [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md) |
-| 8 | Haskell Performance Parity Closure and Five-Backend Restoration | ✅ Done (Sprint `8.12` parity refresh and Sprint `8.13` Haskell style alignment closed 2026-05-26) | [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md) |
+| 7 | Cross-Backend Verify, Test Stanzas, POC Report Card | ✅ Done (Sprint `7.10` report-card table/raw-metric/final-answer renderer closed) | [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md) |
+| 8 | Haskell Performance Parity Closure and Five-Backend Restoration | ✅ Done (Sprint `8.14` report-card verdict/sample-stability gate closed 2026-05-27) | [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md) |
 
 ## Current Plan Status
 
@@ -466,8 +482,14 @@ benchmark leaves, and Sprint `7.8` has closed the report-card split into
 unit-aware Q1a/Q1b/Q2/Q5 rows. Sprint `8.11` has closed the refactored metric
 rerun against those rows for the then-current backend (ii). Sprint `5.6` then
 strengthened backend (ii), Sprint `6.7` closed the backend (iii) compact
-functional-core rewrite, and Sprints `8.12` and `8.13` closed Haskell parity and
-style alignment against that corrected target.
+functional-core rewrite, and Sprints `8.12`, `8.13`, and `8.14` closed Haskell
+parity, style alignment, and report-card verdict gating against that corrected
+target.
+Phase `0` Sprint `0.3` remains active on documentation topology only: the current
+checkout is missing the root CLI doctrine file still cited by the plan and governed
+docs. That gap does not reopen Phases `1`–`8` on their implementation-owned
+surfaces, but the overall plan-suite handoff is not link-complete until the doctrine
+topology is reconciled.
 Implemented in the worktree:
 
 - `mcts.cabal`, `cabal.project`, `app/Main.hs`, `src/MCTS/**`, `test/**`,
@@ -574,11 +596,16 @@ Implemented in the worktree:
   `fourmolu-0.19.0.1` plus `hlint-3.10` into the container; the fuller hard-error
   rule set lives in `.hlint.yaml` for that external `hlint` path.
 - `mcts lint files` fails on tracked generated-file drift, `mcts lint haskell`
-  delegates to `cabal test mcts-haskell-style`, and `mcts check-code` runs lint/docs
-  plus `cabal build all` through the dedicated `MCTS.CheckCode` module.
-- `mcts test all` routes recursive CLI invocations through `cabal exec mcts -- ...`,
-  `mcts test parity-anchor <baseline> <candidate>` provides a focused legacy Q1/Q2
-  backend-pair parity measurement, and
+  runs the installed `mcts-haskell-style` test executable, and `mcts check-code`
+  runs the lint/docs/style gates through the dedicated `MCTS.CheckCode` module.
+  Warning-clean compilation is Dockerfile-owned.
+- `docker/Dockerfile` prebuilds the `mcts` executable with tests and benchmarks
+  enabled, installs all five Cabal test-suite executables plus the
+  `mcts-criterion` benchmark executable, and builds all four foreign backend shared
+  libraries before publishing the image. `mcts test all` routes recursive CLI invocations
+  through the installed image-local `mcts` binary, `mcts test parity-anchor
+  <baseline> <candidate>` provides a focused legacy Q1/Q2 backend-pair parity
+  measurement, and
   `mcts bench terminal-playouts|search-iters|rollouts|selfplay` accepts backend
   cohorts in the report-card command form. The `bench rollouts` spelling remains a
   documented legacy played-game workload name; lower-level primitive throughput uses
@@ -664,7 +691,8 @@ report-card evidence against fail-closed build artefacts on 2026-05-23, and Spri
 audit reopened Sprint `8.11`; Sprint `8.11` reclosed on 2026-05-24 with the
 refactored metric-suite report-card evidence. Sprint `5.6` and the backend-style
 audit reopened Sprints `6.7`, `8.12`, and `8.13`; all three reclosed by
-2026-05-26.
+2026-05-26. Sprint `8.14` reclosed the report-card verdict/sample-stability gate
+on 2026-05-27.
 
 ## Exit Definition
 
@@ -695,8 +723,8 @@ This plan is complete only when all of the following are true:
    `mcts-cross-backend`, `mcts-legacy-parity`, `mcts-haskell-style`) and the tidy
    report-card summary block answering Q1–Q6. The live workload constants are
    implemented in `MCTS.CLI.Test` and mirrored in `cabal.project` comments:
-   `G_R=1_000`, `G_S=4`, `G_V=4`, `G_LP=2`, `S_BENCH=500`, `S_VERIFY=500`,
-   `S_LP_SIMS=4`, and `S_LP=42`.
+   `N_PRIM=20_000`, `P_MAX=60`, `G_R=1_000`, `G_S=4`, `G_V=4`, `G_LP=2`,
+   `S_BENCH=500`, `S_VERIFY=500`, `S_LP_SIMS=4`, and `S_LP=42`.
 6. Pure Haskell backend (v) matches backend (ii) C++ steelman on Q1a terminal
    playout throughput, Q1b search-iteration throughput, and Q2 played-game self-play
    throughput within the parity tolerance per
@@ -780,10 +808,11 @@ This plan is complete only when all of the following are true:
     long-running daemon container, no bind-mounted workspace, no Compose-level
     environment-variable block, and no `sleep infinity` placeholder. The first
     `docker compose run --rm` call builds the image when it is absent, including
-    the four foreign backend shared libraries. All supported runtime project work
-    happens through this short-lived container entrypoint and consumes those
-    Dockerfile-built artefacts without rebuilding them. Host-level `.build/`
-    artefacts, repository `.sh` scripts, and `bootstrap/` helpers are unsupported.
+    the prebuilt Cabal component cache and the four foreign backend shared
+    libraries. All supported runtime project work happens through this short-lived
+    container entrypoint and consumes those Dockerfile-built artefacts without
+    rebuilding them. Host-level `.build/` artefacts, repository `.sh` scripts, and
+    `bootstrap/` helpers are unsupported.
 24. [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md) tracks the
     stale tooling residue; stale two-backend wording and two-backend code paths are
     corrected or explicitly tracked until corrected.

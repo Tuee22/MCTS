@@ -132,41 +132,51 @@ from normal `mcts test all`.
 The doctrine-mandatory canonical test command. Phase 7 Sprint 7.3 owns the
 implementation. From the host, run it as
 `docker compose run --rm mcts mcts test all`; the first run builds the image when
-needed, including the Dockerfile-owned foreign backend artefacts. Before applying
-the plan, `checkPrerequisites prerequisitesForTest` checks the pinned Haskell
-toolchain, logical backend coverage, and the Dockerfile-built foreign shared
-libraries. Runtime validation then consumes those artefacts. Internally, the plan
+needed. Image construction compiles the `mcts` executable with tests and benchmarks
+enabled, installs the `mcts-criterion` benchmark executable, installs all five Cabal
+test-suite executables, and produces the Dockerfile-owned foreign backend artefacts
+before publishing the image. Before
+applying the plan,
+`checkPrerequisites prerequisitesForTest` checks the pinned Haskell toolchain,
+the installed image-local `mcts` binary, installed test-suite executables, the
+installed `mcts-criterion` benchmark executable, logical backend coverage, and the
+Dockerfile-built foreign shared libraries.
+Runtime validation then consumes those image-local artefacts. Internally, the plan
 is a typed `[Subprocess]` sequence run via `Plan / Apply`:
 
-1. `mcts lint files` (rendered as `cabal exec mcts -- lint files` in the current
-   apply plan; whitespace, final newline, `forbiddenPathRegistry`,
-   `trackingGeneratedPaths` no-hand-edit) — first per the doctrine's
+1. `mcts lint files` (rendered as an image-local `mcts lint files` subprocess;
+   whitespace, final newline, `forbiddenPathRegistry`, `trackingGeneratedPaths`
+   no-hand-edit) — first per the doctrine's
    [Aggregate dispatch](../../HASKELL_CLI_TOOL.md) lint-first ordering.
-2. `mcts lint docs` (rendered as `cabal exec mcts -- lint docs`; generated-section
-   drift on the `GeneratedSectionRule` registry).
-3. Inside the container, `cabal build all` warning-clean under the pinned
-   toolchain.
-4. Inside the container, `cabal test mcts-haskell-style` (`cabal format`
-   temp-file round-trip,
+2. `mcts lint docs` (rendered as an image-local `mcts lint docs` subprocess;
+   generated-section drift on the `GeneratedSectionRule` registry).
+3. Inside the container, run the installed `mcts-haskell-style` executable
+   (`cabal format` temp-file round-trip,
    `/opt/mcts-style-tools/bin/fourmolu --mode check`,
    `/opt/mcts-style-tools/bin/hlint --with-group=default --with-group=extra`
    with only `Error:` findings blocking, and the source-walker guard). The
    style tools are installed inside the container with the separate pinned
    formatter-tools GHC `9.12.4`; ambient host tools are never used as a fallback.
-5. Inside the container, `cabal test mcts-unit`.
-6. Inside the container, `cabal test mcts-integration`.
-7. Inside the container, `cabal test mcts-cross-backend`.
-8. Inside the container, `cabal test mcts-legacy-parity`.
-9. Pinned report-card workload — Q1/Q2/Q5 are measured inside the report-card
+4. Inside the container, run the installed `mcts-unit` executable.
+5. Inside the container, run the installed `mcts-integration` executable.
+6. Inside the container, run the installed `mcts-cross-backend` executable.
+7. Inside the container, run the installed `mcts-legacy-parity` executable.
+8. Pinned report-card workload — Q1/Q2/Q5 are measured inside the report-card
    builder through the no-write batch runner, while Q3/Q6 are rendered as
-   explicit checks through `cabal exec mcts -- ...` so the
-   command does not depend on a separate `mcts` executable on `PATH`. Q3 is the
-   live visit-vector equality gate for `(ii)..(v)`; Q6 is the all-five
-   legacy-envelope liveness/overflow gate. Q1/Q2 measure Haskell against backend (ii)
-   without relying on a checked-in throughput file.
-10. Render the tidy summary block from the collected `ReportCard` value,
-    including the `visit/move` divergence matrix populated from the measured
-    `G_V` verify transcripts on the live `mcts test all` path.
+   explicit checks through the installed image-local `mcts` binary. Q3 is the live
+   visit-vector equality gate for `(ii)..(v)`; Q6 is the all-five legacy-envelope
+   liveness/overflow gate. Q1/Q2 measure Haskell against backend (ii) without
+   relying on a checked-in throughput file.
+9. Render the tidy summary block from the collected `ReportCard` value,
+   including the `visit/move` divergence matrix populated from the measured
+   `G_V` verify transcripts on the live `mcts test all` path.
+
+The stanza commands are execution gates over Dockerfile-prebuilt test executables
+installed on the image `PATH`. A runtime `mcts test all` run should not invoke Cabal
+to configure, compile, or link a test suite. If a non-build command emits Cabal
+`Configuring`, `Building`, or `Linking` output after the image is already built, the
+image is stale or the Dockerfile prebuild contract has regressed; rebuild the image
+with `--build`.
 
 `--dry-run` renders the typed plan and exits 0. `--plan-file <path>` writes the
 rendered plan for out-of-band review. `--format json` emits the JSON form of the
@@ -233,14 +243,15 @@ The current Q1-Q6 results come from the pinned report-card workload. Live execut
 constants are implemented in `MCTS.CLI.Test` and mirrored in `cabal.project`
 comments per
 [../../DEVELOPMENT_PLAN/system-components.md → POC Report-Card
-Knobs](../../DEVELOPMENT_PLAN/system-components.md): `N_PRIM = 1_000`,
+Knobs](../../DEVELOPMENT_PLAN/system-components.md): `N_PRIM = 20_000`,
 `P_MAX = 60`, `G_R = 1_000`, `G_S = 4`, `G_V = 4`, `G_LP = 2`,
 `S_BENCH = 500`, `S_VERIFY = 500`, `S_LP_SIMS = 4`, `S_LP = 42`.
 
-`mcts test all` requires the Dockerfile-built live foreign artefacts before running
-the Cabal stanzas and final report card. The current gate proves those artefacts are
-present, fail-closed, and produced from the bounded metric-suite Dockerfile-time
-PGO/BOLT training suite. The measured report-card builder uses the production
+`mcts test all` requires the Dockerfile-built live foreign artefacts and the
+Dockerfile-prebuilt Cabal test executables before executing the test stanzas and final
+report card. The current gate proves those artefacts are present, fail-closed, and
+produced from the bounded metric-suite Dockerfile-time PGO/BOLT training suite. The
+measured report-card builder uses the production
 monotonic clock for live Haskell primitive throughput through the direct benchmark
 runners and for live played-game throughput through `runBatchNoWriteDispatch`. It
 measures raw Q1a/Q1b/Q2 rates for every backend slot, compares the Haskell rows
@@ -262,13 +273,15 @@ The text renderer is an aligned-table contract:
 The JSON renderer exposes the same observed rates under
 `raw_performance_metrics` and keeps the existing unit-specific Q1/Q2/Q5 fields.
 
-The 2026-05-26 Sprint `8.12` aggregate run closed the corrected-backend parity
-surface with `Verdict: Within tolerance`: Q1a terminal playout ST `0.99x`,
-Q1a MT8 `0.91x`, Q1b search-iteration ST `1.02x`, Q1b MT8 `0.99x`, Q2
-played-game ST `0.63x`, Q2 MT8 `0.68x`, Haskell search-iteration scaling `6.91x`,
-C++ (ii) search-iteration scaling `6.72x`, Haskell self-play scaling `3.65x`,
-C++ (ii) self-play scaling `3.90x`, Q3/Q4/Q6 PASS, all Cabal stanzas PASS, and
-zero live-cohort divergence.
+The 2026-05-27 Sprint `8.14` aggregate run closed the corrected-backend parity
+surface with `Verdict: Within tolerance`: Q1a terminal playout ST `0.72x`,
+Q1a MT8 `0.85x`, Q1b search-iteration ST `0.67x`, Q1b MT8 `0.67x`, Q2
+played-game ST `0.59x`, Q2 MT8 `0.68x`, Haskell search-iteration scaling `7.32x`,
+C++ (ii) search-iteration scaling `7.32x`, Haskell self-play scaling `3.42x`,
+C++ (ii) self-play scaling `3.92x`, Q3/Q4/Q6 PASS, all Cabal stanzas PASS, and
+zero live-cohort divergence. Same-day `N_PRIM=10_000` evidence rendered
+`Shortfall` and now exits non-zero through `mcts test all`; only `Within tolerance`
+is a successful aggregate verdict.
 The 2026-05-24 Sprint `8.11` aggregate run remains historical refactored-metric
 evidence for the older backend (ii) artefact: Q1a terminal playout ST `0.07x`,
 Q1a MT8 `0.39x`, Q1b search-iteration ST `0.06x`, Q1b MT8 `0.40x`, Q2

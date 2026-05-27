@@ -243,9 +243,9 @@ legacyFixturePlan options =
 --
 -- The whole pipeline rides the typed `Subprocess` boundary; no
 -- ad-hoc `callProcess` or `System.Process` smart constructors live in
--- this module. The training runs invoke `cabal exec mcts` so the
--- exact same binary that ships the rest of the CLI drives the training
--- workload — there is no separate training executable.
+-- this module. The training runs invoke the installed image-local
+-- `mcts` binary so backend image construction does not ask Cabal to
+-- configure or link anything after the CLI has been installed.
 cppPgoBoltPlan :: String -> [Subprocess]
 cppPgoBoltPlan backend =
     [ resetCppProfileDirectories
@@ -522,11 +522,8 @@ trainingRunsFor backend = map (trainingRunFor backend)
 trainingRunFor :: String -> TrainingRun -> Subprocess
 trainingRunFor backend run =
     Subprocess
-        "cabal"
-        ( [ "exec"
-          , "mcts"
-          , "--"
-          , "bench"
+        "mcts"
+        ( [ "bench"
           , trainingMetricName (trainingMetric run)
           , "--backend"
           , backend

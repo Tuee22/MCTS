@@ -52,13 +52,19 @@ Running `mcts check-code` dispatches, in order:
 1. `mcts lint files` — `forbiddenPathRegistry` + `trackingGeneratedPaths`
    no-hand-edit check.
 2. `mcts lint docs` — `mcts docs check` (marker drift detection).
-3. `mcts lint haskell` — `fourmolu --mode check` + `hlint` + `cabal format`
-   temp-file round-trip byte-equality.
-4. Inside the container, `cabal build all` warning-clean under the pinned
-   toolchain.
+3. `mcts lint haskell` — executes the installed `mcts-haskell-style` test
+   executable, which runs `fourmolu --mode check`, `hlint`, and the `cabal format`
+   temp-file round-trip byte-equality check.
 
 Failure of any step exits non-zero with the failing stage's `AppError` rendered
 through the single `renderError :: AppError -> Text` boundary.
+
+Warning-clean compilation is owned by `docker/Dockerfile`, not by runtime
+`check-code`. The image build compiles the library and executable with tests and
+benchmarks enabled, installs the `mcts-criterion` benchmark executable, and installs
+all five Cabal test-suite executables before publishing the image; `check-code` then
+runs only lint/docs/style gates against that image-local toolchain. Runtime
+`check-code` output should not include Cabal compile/link work.
 
 ## Lint Stack
 

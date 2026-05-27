@@ -100,7 +100,11 @@ runWithOutput output command =
                                                         else renderReportCard card
                                                     )
                                                 )
-                                                >> pure ExitSuccess
+                                                >> pure
+                                                    ( if reportCardPassed card
+                                                        then ExitSuccess
+                                                        else ExitFailure 1
+                                                    )
                                 else pure code
         TestParityAnchor opts -> do
             let plan = parityAnchorPlan opts
@@ -151,14 +155,14 @@ runWithOutput output command =
                                                             then ExitSuccess
                                                             else ExitFailure 1
                                         else pure code
-        TestStanza stanza -> do
-            prerequisites <- liftIO (checkPrerequisites prerequisitesForTest)
-            case prerequisites of
+        TestStanza stanza ->
+            case testStanzaPlan stanza of
                 Left err -> liftIO (outputLine (renderErrorString output err)) >> pure (ExitFailure 1)
-                Right () ->
-                    runStanzaPlan
-                        output
-                        (Plan ("test " <> stanza) [Subprocess "cabal" ["test", stanza] Nothing Nothing])
+                Right plan -> do
+                    prerequisites <- liftIO (checkPrerequisites prerequisitesForTest)
+                    case prerequisites of
+                        Left err -> liftIO (outputLine (renderErrorString output err)) >> pure (ExitFailure 1)
+                        Right () -> runStanzaPlan output plan
 
 testAllPlan :: Plan Subprocess
 testAllPlan =
@@ -167,12 +171,11 @@ testAllPlan =
         , planSteps =
             [ mctsStep ["lint", "files"]
             , mctsStep ["lint", "docs"]
-            , Subprocess "cabal" ["build", "all"] Nothing Nothing
-            , Subprocess "cabal" ["test", "mcts-haskell-style"] Nothing Nothing
-            , Subprocess "cabal" ["test", "mcts-unit"] Nothing Nothing
-            , Subprocess "cabal" ["test", "mcts-integration"] Nothing Nothing
-            , Subprocess "cabal" ["test", "mcts-cross-backend"] Nothing Nothing
-            , Subprocess "cabal" ["test", "mcts-legacy-parity"] Nothing Nothing
+            , testStep "mcts-haskell-style"
+            , testStep "mcts-unit"
+            , testStep "mcts-integration"
+            , testStep "mcts-cross-backend"
+            , testStep "mcts-legacy-parity"
             , mctsStep
                 [ "verify"
                 , "rollouts"
@@ -227,12 +230,28 @@ parityAnchorPlan opts =
                 <> backendIdentifier (parityAnchorBaseline opts)
                 <> " "
                 <> backendIdentifier (parityAnchorCandidate opts)
-        , planSteps =
-            [Subprocess "cabal" ["build", "all"] Nothing Nothing]
+        , planSteps = []
         }
 
 mctsStep :: [String] -> Subprocess
-mctsStep args = Subprocess "cabal" (["exec", "mcts", "--"] <> args) Nothing Nothing
+mctsStep args = Subprocess "mcts" args Nothing Nothing
+
+testStep :: String -> Subprocess
+testStep stanza = Subprocess stanza [] Nothing Nothing
+
+testStanzaPlan :: String -> Either AppError (Plan Subprocess)
+testStanzaPlan stanza
+    | stanza `elem` testStanzaNames = Right (Plan ("test " <> stanza) [testStep stanza])
+    | otherwise = Left (ParseError ("unknown test stanza: " <> stanza))
+
+testStanzaNames :: [String]
+testStanzaNames =
+    [ "mcts-haskell-style"
+    , "mcts-unit"
+    , "mcts-integration"
+    , "mcts-cross-backend"
+    , "mcts-legacy-parity"
+    ]
 
 runStanzaPlan :: OutputOptions -> Plan Subprocess -> Env.App ExitCode
 runStanzaPlan output = applyWithEnv (runTestStep output)
@@ -575,7 +594,7 @@ reportCardRolloutGames :: Int
 reportCardRolloutGames = 1000
 
 reportCardPrimitiveCount :: Int
-reportCardPrimitiveCount = 1000
+reportCardPrimitiveCount = 20000
 
 reportCardPrimitiveMaxPlies :: Word16
 reportCardPrimitiveMaxPlies = 60

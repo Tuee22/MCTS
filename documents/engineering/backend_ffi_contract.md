@@ -471,7 +471,8 @@ data AppError
 
 - `SubprocessFailed` is raised by the typed `Subprocess` boundary
   (`runStreaming` / `capture` non-zero exit) when an external child process
-  fails — the PGO+BOLT build harness, `cabal test`, `llvm-bolt`, etc.
+  fails — the PGO/BOLT build harness, installed test-stanza executables,
+  `llvm-bolt`, etc.
 - `FFIFailure` is raised by the in-process FFI bridge when a C ABI symbol
   signals an exceptional condition through the shared-library boundary.
 

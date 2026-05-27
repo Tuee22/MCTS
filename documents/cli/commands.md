@@ -25,7 +25,7 @@
 - `mcts inspect divergence` - Show divergence matrix
 - `mcts test all` - Run full suite and report card
 - `mcts test parity-anchor` - Measure backend parity anchor
-- `mcts test <stanza>` - Run one cabal stanza
+- `mcts test <stanza>` - Run one prebuilt test stanza
 - `mcts lint files` - Lint files
 - `mcts lint docs` - Lint docs
 - `mcts lint haskell` - Lint Haskell

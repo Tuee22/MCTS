@@ -74,6 +74,14 @@ corrected-target parity closure.
 
 ## Current Handoff Status
 
+Documentation topology is the current exception to the otherwise closed handoff:
+Phase `0` Sprint `0.3` is active because `HASKELL_CLI_TOOL.md` is absent from the
+current worktree while the root guidance docs, this plan suite, and governed
+engineering docs still cite it as the authoritative CLI doctrine. This does not
+reopen backend implementation phases on their owned surfaces, but the plan suite is
+not link-complete until the root doctrine file is restored or every doctrine reference
+is retargeted to a new canonical source.
+
 The 2026-05-19 report card remains useful smoke-baseline audit evidence, and the
 2026-05-21 optimized-C++ report-card refresh remains historical evidence against
 the then-canonical backend (ii) artefact. Under the 2026-05-22 fail-closed
@@ -115,7 +123,9 @@ measurements. Phase `3` has closed the missing benchmark primitives, Phase `7`
 has closed the report-card row split, and Phase `8` Sprint `8.11` closed the
 refactored parity rerun against the then-current backend (ii). Sprint `8.12`
 has refreshed that evidence against the corrected backend (ii), and the accepted
-report-card verdict is `Within tolerance`.
+report-card verdict is `Within tolerance`. Sprint `8.14` closed on 2026-05-27
+by making that verdict an exit-code gate and raising `N_PRIM` to `20_000` for
+stable primitive MT8 evidence.
 Phase `7` Sprint `7.9` revalidated the headline report-card mapping on
 2026-05-25: there are six questions, Q6 is the all-five legacy-envelope gate,
 and external `MCTS_legacy` reproduction fixtures are optional audit data rather
@@ -140,6 +150,9 @@ same style backend (iv) Rust already followed. Phase `8` Sprint `8.13` is
 closed after Sprint `8.12`; backend (v) Haskell now keeps its pure API boundary
 while its hot search path follows the same compact numeric action-set transition
 style as `(iii)` and `(iv)`.
+Phase `8` Sprint `8.14` is also closed: `mcts test all` now exits non-zero for
+`Evidence pending` or `Shortfall` report-card verdicts and exits successfully
+only for `Within tolerance`.
 
 ## Target Outcome
 
@@ -261,9 +274,10 @@ temporary or operator-provided roots.
   `tasty` as the in-stanza runner; `mcts test all` is a Plan/Apply command whose
   exact sequence is owned by
   [../documents/engineering/unit_testing_policy.md](../documents/engineering/unit_testing_policy.md)
-  and whose high-level surface covers lint/docs prerequisites, warning-clean build,
-  Dockerfile-built canonical foreign backend artefacts, Cabal stanzas, verify
-  cohorts, the pinned no-write report-card workload, and the tidy summary block.
+  and whose high-level surface covers lint/docs prerequisites, Dockerfile-prebuilt
+  Cabal test executables, Dockerfile-built canonical foreign backend artefacts,
+  prebuilt stanza execution, verify cohorts, the pinned no-write report-card
+  workload, and the tidy summary block.
   The text report card defines its terms, renders aligned raw-performance,
   question-summary, and divergence-matrix tables in that order, and ends with
   explicit Q1a-Q6 answers based on the observed metrics and gate outcomes.
@@ -538,16 +552,17 @@ referenceability.
 27. `mcts test all` is the doctrine-mandatory canonical test command. The live Cabal
     stanzas are `mcts-unit`, `mcts-integration`, `mcts-cross-backend`,
     `mcts-legacy-parity`, and `mcts-haskell-style`. A single `tasty` tree spanning all
-    tiers is forbidden.
+    tiers is forbidden. Dockerfile image construction prebuilds each test-suite
+    executable so runtime stanza execution does not compile or link on first use.
 28. `fourmolu.yaml` at repo root pins the twelve doctrine-mandated settings; the
     `mcts-haskell-style` stanza enforces them plus `cabal format` temp-file round-trip
     byte-equality through the separate formatter-tools install (`ghc-9.12.4`,
     `fourmolu-0.19.0.1`, `hlint-3.10`) under `/opt/mcts-style-tools/bin/` inside the
     container. Host `PATH` fallback is never allowed.
 29. Report-card live workload constants are implemented in `MCTS.CLI.Test` and
-    mirrored in `cabal.project` comments: `G_R = 1_000`, `G_S = 4`,
-    `G_V = 4`, `G_LP = 2`, `S_BENCH = 500`, `S_VERIFY = 500`,
-    `S_LP_SIMS = 4`, and `S_LP = 42`.
+    mirrored in `cabal.project` comments: `N_PRIM = 20_000`, `P_MAX = 60`,
+    `G_R = 1_000`, `G_S = 4`, `G_V = 4`, `G_LP = 2`, `S_BENCH = 500`,
+    `S_VERIFY = 500`, `S_LP_SIMS = 4`, and `S_LP = 42`.
 30. All five backend identifiers, build leaves, transcript wire tags, and verification
     roles remain first-class. Checked-in generated transcripts, throughput JSON,
     report-card schemas, and renderer snapshots are not part of the normal validation
@@ -654,7 +669,7 @@ referenceability.
 | 5 | Phase 3 | Backend (ii) likewise builds on the FFI bridge pattern; it is independent of (i) once the pattern is established, so Phases 4 and 5 may proceed in parallel after Phase 3 closes |
 | 6 | Phase 5 | Backend (iii) shares (ii)'s optimisation stack and must be developed against the validated steelman; Sprint `6.7` removed legacy representation costs so `(iii)`, `(iv)`, and `(v)` can share the functional-core style contract |
 | 7 | Phases 4, 5, 6 | Cross-backend `verify`, legacy parity, and the POC report card require all five backend slots to produce evidence |
-| 8 | Phase 7 plus fail-closed Sprints `5.3`, `6.4`, and `6.7` | Performance parity closure requires report-card numbers against optimized backend (ii) after Dockerfile-time PGO/BOLT succeeds and the report card separates terminal playout, search-iteration, and played-game metrics; Phase `8` owns the restored five-backend live surface, Sprint `8.3` refreshed the report card against reclosed fail-closed build artefacts, Sprint `8.10` closed the historical played-game profile-representativeness gap, Sprint `8.11` closed the refactored metric rerun, Sprint `8.12` refreshed against the corrected backend (ii), and Sprint `8.13` kept backend (v) aligned with the functional-core style after Sprint `6.7` |
+| 8 | Phase 7 plus fail-closed Sprints `5.3`, `6.4`, and `6.7` | Performance parity closure requires report-card numbers against optimized backend (ii) after Dockerfile-time PGO/BOLT succeeds and the report card separates terminal playout, search-iteration, and played-game metrics; Phase `8` owns the restored five-backend live surface, Sprint `8.3` refreshed the report card against reclosed fail-closed build artefacts, Sprint `8.10` closed the historical played-game profile-representativeness gap, Sprint `8.11` closed the refactored metric rerun, Sprint `8.12` refreshed against the corrected backend (ii), Sprint `8.13` kept backend (v) aligned with the functional-core style after Sprint `6.7`, and Sprint `8.14` made the report-card verdict an exit-code gate with the stable `N_PRIM=20_000` primitive sample |
 
 ## Current Baseline
 
@@ -672,20 +687,22 @@ bounded played-game profile-training gate. The 2026-05-24 metric audit reopened
 Sprint `3.8`, Sprint `7.8`, and Sprint `8.11`; all three have reclosed. Sprint
 `5.6` then reopened Sprint `8.12` for parity against the corrected backend (ii).
 Sprint `6.7` has reclosed the `(iii)/(iv)` compact functional-core style
-alignment, and Sprints `8.12` and `8.13` have reclosed Haskell parity and style
-follow-up. Sprint `7.10` has reclosed report-card table layout and raw backend
-metric rendering. Phase `4`
-remains closed on its owned surface.
+alignment, and Sprints `8.12`, `8.13`, and `8.14` have reclosed Haskell parity,
+style follow-up, and report-card verdict gating. Sprint `7.10` has reclosed
+report-card table layout and raw backend metric rendering. Phase `4`
+remains closed on its owned surface. Phase `0` Sprint `0.3` is the only current
+active plan item, and it is scoped to doctrine-link topology rather than backend
+implementation.
 
 | Surface | Current Repo State | Intended End State |
 |---------|--------------------|--------------------|
 | Repository layout | `app/`, `src/MCTS/`, `src/MCTS/Generated/`, `cpp-legacy/`, `cpp-imperative/`, `cpp-functional/`, `rust/`, `bench/`, `test/`, `docker/`, root `compose.yaml`, `cabal.project`, `fourmolu.yaml`, `.hlint.yaml`, `.gitignore`, `.dockerignore`, `mcts.cabal`, generated-artefact targets `documents/cli/commands.md`, `share/man/man1/mcts.1`, and `share/completion/{bash,zsh,fish}/` | Same layout, with no generated validation data required under `test/` and no checked-in PGO/BOLT profile snapshots |
-| Build artefacts | `mcts.cabal` declares the `mcts` binary, live Haskell test stanzas, and the doctrine-standard dependency envelope; host validation enters through `docker compose run --rm mcts mcts check-code` under the pinned toolchain. The foreign backend tree is live for `cpp-legacy/`, `cpp-imperative`, `cpp-functional`, and `rust`; Dockerfile invokes the C++ and Rust PGO/BOLT Plan/Apply build recipes during image construction, and those recipes fail closed on missing profile data, missing `.fdata`, failed BOLT output, or a crashing installed bolted library. PGO/BOLT training uses the bounded metric-suite profile suite owned by Sprints `8.10` and `8.11`, including terminal playout, search-iteration, legacy played-game rollout, and self-play workloads. | Container-image `mcts` binary produced by `docker/Dockerfile`, plus image-local shared libraries for `cpp-legacy`, optimized `cpp-imperative`, optimized `cpp-functional`, and `rust`; runtime validation consumes those artefacts without rebuilding them, and steelman shared libraries exist only after successful Dockerfile-time PGO/BOLT trained on an accepted profile suite |
-| CLI surface | The complete command family is wired: `bench`, `verify`, `verify legacy-parity`, `inspect`, `test`, `lint`, `docs`, `commands`, `help`, `check-code`, `build`, and `play`. Generated command docs are checked against the renderer, tracked generated-file drift fails `mcts lint files`, generated path/section registries live under `src/MCTS/Generated/`, parser topology is rendered from `CommandSpec` with explicit leaf option parsers, and `mcts test all` routes recursive CLI calls through `cabal exec mcts -- ...`. | Same surface backed by real C++/Rust/Haskell engines: bench/play/inspect dispatch through selected foreign backends when their shared libraries are present and the relevant ABI path can represent the run, Q3 covers `(ii)..(v)`, Q6 covers all five, Dockerfile-invoked build recipes exist for `cpp-legacy`, `cpp-imperative`, `cpp-functional`, and `rust`, and `legacy-fixtures` remains explicit external audit-fixture generation |
-| Test stanzas | Five live Cabal stanzas currently exist: `mcts-unit`, `mcts-integration`, `mcts-cross-backend`, `mcts-legacy-parity`, `mcts-haskell-style`; each stanza has its own `tasty` runner, `mcts-cross-backend` invokes real `mcts verify` subprocesses serially around the process-pinned dynamic-library and shared C++ RNG bridge path, and `docker compose run --rm mcts mcts test all` is the host validation gate under the pinned container toolchain. `mcts-unit` uses semantic/property/temp-dir checks instead of `tasty-golden`. | Keep all validation data generated in memory or temporary directories during the run, so clean-clone validation has no `test/golden/` prerequisite |
+| Build artefacts | `mcts.cabal` declares the `mcts` binary, live Haskell test stanzas, benchmark stanza, and the doctrine-standard dependency envelope; host validation enters through `docker compose run --rm mcts mcts check-code` under the pinned toolchain. The foreign backend tree is live for `cpp-legacy/`, `cpp-imperative`, `cpp-functional`, and `rust`; Dockerfile invokes the C++ and Rust PGO/BOLT Plan/Apply build recipes during image construction, and those recipes fail closed on missing profile data, missing `.fdata`, failed BOLT output, or a crashing installed bolted library. PGO/BOLT training uses the bounded metric-suite profile suite owned by Sprints `8.10` and `8.11`, including terminal playout, search-iteration, legacy played-game rollout, and self-play workloads. | Container-image `mcts` binary, installed Cabal test-suite executables, installed `mcts-criterion` benchmark executable, and image-local shared libraries for `cpp-legacy`, optimized `cpp-imperative`, optimized `cpp-functional`, and `rust` produced by `docker/Dockerfile`; runtime validation consumes those artefacts without rebuilding them, and steelman shared libraries exist only after successful Dockerfile-time PGO/BOLT trained on an accepted profile suite |
+| CLI surface | The complete command family is wired: `bench`, `verify`, `verify legacy-parity`, `inspect`, `test`, `lint`, `docs`, `commands`, `help`, `check-code`, `build`, and `play`. Generated command docs are checked against the renderer, tracked generated-file drift fails `mcts lint files`, generated path/section registries live under `src/MCTS/Generated/`, parser topology is rendered from `CommandSpec` with explicit leaf option parsers, and `mcts test all` routes recursive CLI calls through the installed image-local `mcts` binary. | Same surface backed by real C++/Rust/Haskell engines: bench/play/inspect dispatch through selected foreign backends when their shared libraries are present and the relevant ABI path can represent the run, Q3 covers `(ii)..(v)`, Q6 covers all five, Dockerfile-invoked build recipes exist for `cpp-legacy`, `cpp-imperative`, `cpp-functional`, and `rust`, and `legacy-fixtures` remains explicit external audit-fixture generation |
+| Test stanzas | Five live Cabal stanzas currently exist: `mcts-unit`, `mcts-integration`, `mcts-cross-backend`, `mcts-legacy-parity`, `mcts-haskell-style`; each stanza has its own `tasty` runner, Dockerfile prebuilds every test executable, `mcts-cross-backend` invokes real `mcts verify` subprocesses serially around the process-pinned dynamic-library and shared C++ RNG bridge path, and `docker compose run --rm mcts mcts test all` is the host validation gate under the pinned container toolchain. `mcts-unit` uses semantic/property/temp-dir checks instead of `tasty-golden`. | Keep all validation data generated in memory or temporary directories during the run, so clean-clone validation has no `test/golden/` prerequisite and no runtime test-stanza compilation |
 | Toolchain | `mcts.cabal` pins `tested-with: ghc ==9.14.1`; `cabal.project` pins `with-compiler: ghc-9.14.1` and mirrors the report-card constants as comments. The style-tool policy pins GHC `9.12.4` only for Fourmolu/HLint installation inside the container. | GHC `9.14.1`, Cabal `3.16.1.0`, style GHC `9.12.4` for `fourmolu-0.19.0.1` / `hlint-3.10`, GCC latest stable on `ubuntu:24.04`, Rust latest stable with pinned minor, LLVM pinned in the Dockerfile |
 | Determinism contract | Live C++ and Rust foreign backends dispatch through real FFI engines under `bench`, `play`, `inspect divergence`, Q3 `verify` when shared libraries are present and the fixed search-horizon ABI can represent the run, and Q6 `verify legacy-parity`; the integration stanza's direct live-FFI smoke cases are Rust-specific, with C++ live coverage carried by Q3/Q6/report-card surfaces. Transcript codec, full v1 envelope, process-pinned envelope and C++ RNG dynamic handles, SHA-256 content addressing, cache root resolution, prefix lookup, binary `MEQ1` equity sidecars, layered envelope checks, `divergenceVsEqStream`, compact foreign recompute/read-visits evidence surfaces, canonical search-side 12-wall child caps across the current live cohort, decoded real-binary transcript determinism, and hard-fail `VerifyMismatch` rollout/self-play cohorts in `mcts-cross-backend` are implemented. Sprints `2.8` and `7.6` tighten version handling and sidecar/recompute labeling. | Enforced by live-FFI-capable cross-backend `mcts verify {rollouts,selfplay}` over `(ii)..(v)`, decoded same-backend transcript checks, Rust live FFI-envelope cases under `mcts-integration`, and Q6 legacy-envelope checks across all five |
-| Performance parity | The 2026-05-26 Sprint `8.12` `docker compose run --rm mcts mcts test all` run recorded corrected-backend rows: Q1a ST 0.99×, Q1a MT8 0.91×, Q1b ST 1.02×, Q1b MT8 0.99×, Q2 ST 0.63×, Q2 MT8 0.68×, Q5 Haskell search-iteration scaling 6.91×, Q5 C++ (ii) search-iteration scaling 6.72×, Q5 Haskell self-play scaling 3.65×, Q5 C++ (ii) self-play scaling 3.90×, Q6 liveness PASS, zero live-cohort divergence, and `Verdict: Within tolerance`. Sprint `7.10` keeps the same verdict semantics while adding aligned raw Q1a/Q1b/Q2 performance rows for every backend before the question summary and divergence matrix, plus a final observed-metric answer table for Q1a-Q6. The 2026-05-24 Sprint `8.11`, 2026-05-21 fallback-backed optimized-C++ run, and 2026-05-23 Sprint `8.10` played-game rows remain historical audit evidence against older artefact or metric shapes. | Haskell (v) within tolerance of optimized live C++ (ii) on Q1a terminal playout throughput, Q1b search-iteration throughput, and Q2 played-game self-play throughput, single-threaded and on 8 workers where applicable, without checked-in generated throughput anchors |
+| Performance parity | The 2026-05-27 Sprint `8.14` `docker compose run --rm mcts mcts test all` run recorded corrected-backend rows with `N_PRIM=20_000`: Q1a ST 0.72×, Q1a MT8 0.85×, Q1b ST 0.67×, Q1b MT8 0.67×, Q2 ST 0.59×, Q2 MT8 0.68×, Q5 Haskell search-iteration scaling 7.32×, Q5 C++ (ii) search-iteration scaling 7.32×, Q5 Haskell self-play scaling 3.42×, Q5 C++ (ii) self-play scaling 3.92×, Q6 liveness PASS, all Cabal stanzas PASS, zero live-cohort divergence, and `Verdict: Within tolerance`. Sprint `7.10` keeps the same verdict semantics while adding aligned raw Q1a/Q1b/Q2 performance rows for every backend before the question summary and divergence matrix, plus a final observed-metric answer table for Q1a-Q6. The 2026-05-26 Sprint `8.12`, 2026-05-24 Sprint `8.11`, 2026-05-21 fallback-backed optimized-C++ run, and 2026-05-23 Sprint `8.10` played-game rows remain historical audit evidence against older artefact, sample, or metric shapes. | Haskell (v) within tolerance of optimized live C++ (ii) on Q1a terminal playout throughput, Q1b search-iteration throughput, and Q2 played-game self-play throughput, single-threaded and on 8 workers where applicable, without checked-in generated throughput anchors |
 
 ## Related Documents
 

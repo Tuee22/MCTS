@@ -19,7 +19,9 @@ All build, run, validation, formatting, linting, documentation-generation, test,
 docker compose run --rm mcts mcts <command>
 ```
 
-Do not use host `cabal`, `cargo`, `cmake`, `make`, `fourmolu`, `hlint`, repository shell wrappers, `docker compose up`, or `docker compose exec` as project workflows. The pinned container owns GHC, Cabal, LLVM/BOLT, Rust, style tools, and the foreign backend shared libraries.
+Do not use host `cabal`, `cargo`, `cmake`, `make`, `fourmolu`, `hlint`, repository shell wrappers, `docker compose up`, or `docker compose exec` as project workflows. The pinned container owns GHC, Cabal, LLVM/BOLT, Rust, style tools, the prebuilt Cabal component cache, and the foreign backend shared libraries.
+
+The Docker image build compiles the `mcts` executable with tests and benchmarks enabled, installs all Cabal test-suite executables, installs the `mcts-criterion` benchmark executable, and produces the four foreign backend shared libraries before the image is published. After the image is built, ordinary `mcts` runtime, lint, docs, test, verify, inspect, play, and benchmark commands should execute from image-local artefacts without compiling or linking on the fly. If a non-build command prints Cabal `Building...`, `Configuring...`, or `Linking...` output, treat the image as stale or incorrectly prewarmed and rebuild it with `--build`.
 
 ## Backend Cohort
 
@@ -52,7 +54,9 @@ is tracked in the development plan; the metric taxonomy and Q1-Q6 mapping live i
 The current Phase 8 report card is closed against the corrected backend (ii)
 target: `docker compose run --rm mcts mcts test all` reports
 `Verdict: Within tolerance` for Haskell vs `cpp-imperative` across Q1a, Q1b, and
-Q2, with Q3/Q4/Q6 also passing.
+Q2, with Q3/Q4/Q6 also passing. The same command fails non-zero for `Evidence
+pending` or `Shortfall` verdicts; the canonical primitive sample is
+`N_PRIM=20_000`.
 
 The text report card defines its terms before the evidence block, then renders
 three aligned evidence tables in this order: raw backend performance metrics for
@@ -79,7 +83,7 @@ docker compose run --rm mcts mcts inspect list
 docker compose run --rm mcts mcts check-code
 ```
 
-`mcts build cpp-legacy`, `mcts build cpp-imperative`, `mcts build cpp-functional`, and `mcts build rust` are Dockerfile-owned build leaves. Runtime validation consumes the canonical artefacts already built into the image; refreshing them normally means rebuilding the Compose image:
+`mcts build cpp-legacy`, `mcts build cpp-imperative`, `mcts build cpp-functional`, and `mcts build rust` are Dockerfile-owned build leaves. The Dockerfile also prebuilds and installs the Cabal test and benchmark executables so later validation runs consume image-local artefacts instead of compiling test stanzas on demand. Refreshing any build artefact normally means rebuilding the Compose image:
 
 ```bash
 docker compose run --rm --build mcts mcts test all

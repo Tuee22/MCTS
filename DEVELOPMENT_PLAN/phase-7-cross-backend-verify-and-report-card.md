@@ -117,7 +117,7 @@ None.
 ## Sprint 7.3: `mcts test all` Report Card ✅
 
 **Status**: Done
-**Implementation**: `src/MCTS/CLI/Test.hs`, `cabal.project`
+**Implementation**: `src/MCTS/CLI/Test.hs`, `docker/Dockerfile`, `cabal.project`
 **Docs to update**: `documents/engineering/unit_testing_policy.md`,
 `documents/engineering/compiler_runtime_tuning.md`
 
@@ -133,6 +133,9 @@ Emit one concise report-card block answering Q1-Q6.
 - Q4: same-backend determinism over multiple seeds.
 - Q5: scaling rows for Haskell and backend (ii).
 - Q6: all-five legacy-envelope liveness/overflow evidence.
+- Runtime validation consumes Dockerfile-prebuilt Cabal test-suite executables and
+  the installed image-local `mcts` binary; compile/link work belongs to image
+  construction rather than the `mcts test all` apply phase.
 
 ### Validation
 

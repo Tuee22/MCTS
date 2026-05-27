@@ -15,10 +15,14 @@
 
 ## Phase Status
 
-✅ **Done** — Sprint `0.1` (canonical plan suite bootstrap) and Sprint `0.2`
-(doctrine-driven scheduling audit) both `Done`. Every in-scope doctrine identifier
-from [../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md) is bound to an owned
-deliverable in Phases `1`–`8`; the audit replay is recorded in Sprint `0.2`'s body.
+🔄 **Active** — Sprint `0.1` (canonical plan suite bootstrap) and Sprint `0.2`
+(doctrine-driven scheduling audit) remain historical `Done` records, but Sprint
+`0.3` is open because the current worktree no longer contains
+`HASKELL_CLI_TOOL.md` while the plan, governed engineering docs, `README.md`,
+`AGENTS.md`, and `CLAUDE.md` still cite it as the authoritative CLI doctrine.
+Later implementation phases remain `Done` on their owned code surfaces; the
+documentation-topology handoff is incomplete until Sprint `0.3` either restores the
+root doctrine file or retargets every doctrine reference to a new canonical source.
 
 ## Phase Summary
 
@@ -33,6 +37,10 @@ that every doctrine-adoption sprint must follow.
 The phase does not write Haskell, C++, or Rust source. Every implementation surface —
 the CLI, the engine, the FFI bridge, the backends, the test stanzas, the report card —
 is scheduled by this phase but executed by Phases `1`–`8`.
+
+Current topology exception: the root doctrine file named by this phase is absent from
+the current checkout. Sprint `0.3` owns reconciling that gap without reopening the
+backend implementation work already closed in later phases.
 
 ## Sprint 0.1: Canonical Plan Suite Bootstrap ✅
 
@@ -158,6 +166,12 @@ where the source of truth lives.
 ### Remaining Work
 
 None.
+
+### Current Reality Note
+
+The current worktree no longer contains `HASKELL_CLI_TOOL.md`. Sprint `0.3` owns the
+live topology reconciliation; Sprint `0.1` remains the historical record of the
+original bootstrap state.
 
 ## Sprint 0.2: Doctrine-Driven Scheduling Audit ✅
 
@@ -384,6 +398,55 @@ plan-text contradiction. The audit produced no `Pending Removal` row.
 
 None.
 
+## Sprint 0.3: Root CLI Doctrine Topology Reconciliation 🔄
+
+**Status**: Active
+**Implementation**: `HASKELL_CLI_TOOL.md`, `README.md`, `AGENTS.md`, `CLAUDE.md`,
+`DEVELOPMENT_PLAN/`, `documents/`
+**Docs to update**: `README.md`, `AGENTS.md`, `CLAUDE.md`,
+`documents/documentation_standards.md`, `documents/engineering/README.md`,
+`documents/engineering/cli_command_surface.md`, `documents/engineering/code_quality.md`,
+`documents/engineering/unit_testing_policy.md`,
+`documents/engineering/haskell_code_guide.md`,
+`documents/engineering/compiler_runtime_tuning.md`,
+`DEVELOPMENT_PLAN/README.md`, `DEVELOPMENT_PLAN/00-overview.md`,
+`DEVELOPMENT_PLAN/system-components.md`,
+`DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md`
+
+### Objective
+
+Make the repository's doctrine topology match the current worktree. The current
+checkout is missing `HASKELL_CLI_TOOL.md`, but root guidance docs, the plan suite,
+and governed engineering docs still cite that file as the canonical CLI doctrine.
+
+### Deliverables
+
+- Choose and implement exactly one canonical doctrine topology: restore and update
+  `HASKELL_CLI_TOOL.md`, or retarget the plan standards and every governed reference to
+  a replacement doctrine source.
+- Update root guidance docs, `DEVELOPMENT_PLAN/`, and governed docs so `Referenced by`
+  metadata, related-document lists, and inline doctrine citations resolve under the
+  chosen topology.
+- Keep Phases `1`–`8` closed on their implementation-owned surfaces unless the doctrine
+  topology decision reveals a real code-level contract gap.
+- Keep [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md) populated with
+  the stale-reference cleanup row until the doctrine topology is link-complete again.
+
+### Validation
+
+- Link audit: every markdown link to `HASKELL_CLI_TOOL.md` either resolves to an
+  existing file or is removed/retargeted by the same change.
+- `docker compose run --rm mcts mcts docs check`
+- `docker compose run --rm mcts mcts check-code`
+- `git diff --check`
+
+### Remaining Work
+
+- Restore/update `HASKELL_CLI_TOOL.md` or retarget all CLI-doctrine references to the
+  chosen replacement source.
+- Update every affected root, plan, and governed-document cross-reference.
+- Move the pending doctrine-topology cleanup row to `Completed` after validation.
+
 ## Doctrine Sections Cited
 
 Sprint `0.1` is structural rather than doctrine-adopting; it instantiates the plan
@@ -391,6 +454,10 @@ suite and the doctrine-citation contract but binds no specific doctrine section 
 code-level deliverable. Sprint `0.2` cites the doctrine globally — its purpose is to
 audit every in-scope section. Phases `1`–`8` cite individual doctrine sections at the
 deliverable level.
+
+The citations below describe the intended doctrine binding and the historical
+Sprint `0.1`/`0.2` audit. Sprint `0.3` must close before these links again constitute
+live link-complete evidence in the current checkout.
 
 The Phase `0`-owned doctrine sections — the meta-rules under which later phases adopt
 doctrine — are:
@@ -439,10 +506,13 @@ doctrine — are:
 - `documents/engineering/compiler_runtime_tuning.md` — project-specific: the
   per-backend tuning stacks from the project README, with doctrine pointers for the
   toolchain pin and the `Subprocess` boundary the build harness uses.
+- Sprint `0.3` additionally owns any doctrine-topology updates needed in every
+  doctrine-overlap governed doc above if the root doctrine file is not restored.
 
 **Product docs to create/update:**
 
-- None.
+- `README.md`, `AGENTS.md`, `CLAUDE.md` — keep root plan/doctrine pointers accurate
+  after Sprint `0.3` restores or retargets the CLI doctrine source.
 
 **Cross-references to add:**
 
@@ -451,6 +521,8 @@ doctrine — are:
   authoritative plan and CLI doctrine entrypoints (Sprint `0.1`).
 - The doctrine itself lists every governed-doc and plan-file consumer in its
   `**Referenced by**` line (Sprint `0.1`).
+- Sprint `0.3` must make every `HASKELL_CLI_TOOL.md` cross-reference resolve again or
+  retarget it to the replacement doctrine source.
 
 ## Related Documents
 

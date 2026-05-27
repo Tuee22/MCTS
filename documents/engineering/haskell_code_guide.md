@@ -89,10 +89,11 @@ across the five backends. The current baseline uses exact version probes for
 `ghc-9.14.1 --numeric-version == 9.14.1` and
 `cabal --numeric-version == 3.16.1.0`, LLVM/BOLT `19.x`, Rust `1.95.0`, LLD `19`,
 `mimalloc` via library-path probes, executable/file probes for the remaining
-build-command prerequisites (`c++`, Rust and C++ profile directories, and canonical
-foreign shared-library nodes), and
+build-command prerequisites (`c++`, Dockerfile-installed `mcts`/test/benchmark
+executables, Rust and C++ profile directories, and canonical foreign shared-library
+nodes), and
 emits `AppError PrerequisiteUnmet` with a remedy hint before applying backend build
-plans or Cabal-backed test plans.
+plans or image-local test plans.
 
 ### `Env`
 
@@ -174,7 +175,7 @@ alongside the user-facing variants:
   `nodeId`, `nodeDescription`, and remedy hint.
 - `SubprocessFailed` — `runStreaming` / `capture` returns a non-zero exit code
   through the typed `Subprocess` boundary (the Rust PGO/BOLT build harness, C++
-  smoke builds, the `cabal test` invocation, etc.). Reserved for the subprocess
+  smoke builds, the installed test-stanza executables, etc.). Reserved for the subprocess
   boundary only.
 - `FFIFailure` — a C ABI call through the Haskell FFI raised. Carries the
   backend identity (`Backend`), the C ABI symbol that raised, and the decoded

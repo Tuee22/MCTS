@@ -129,11 +129,14 @@ import MCTS.Prerequisite
     , transitiveClosure
     )
 import MCTS.ReportCard
-    ( ReportDivergenceRow (..)
+    ( ReportCard (..)
+    , ReportDivergenceRow (..)
+    , Verdict (..)
     , defaultReportCard
     , divergenceRowsFromTranscripts
     , renderReportCard
     , renderReportCardJson
+    , reportCardPassed
     )
 import MCTS.Rng.Mix (backendNativeSalt, mix)
 import qualified MCTS.Search.Arena as Arena
@@ -1158,6 +1161,25 @@ exercisePrerequisiteClosure = do
     assert "test prerequisite closure includes ghc" ("ghc-9.14.1" `elem` testClosure)
     assert "test prerequisite closure includes cabal" ("cabal-3.16.1.0" `elem` testClosure)
     assert "test prerequisite closure includes ghcup dependency" ("ghcup" `elem` testClosure)
+    assert "test prerequisite closure includes installed mcts" ("mcts-installed" `elem` testClosure)
+    assert
+        "test prerequisite closure includes installed style stanza"
+        ("mcts-haskell-style-installed" `elem` testClosure)
+    assert
+        "test prerequisite closure includes installed unit stanza"
+        ("mcts-unit-installed" `elem` testClosure)
+    assert
+        "test prerequisite closure includes installed integration stanza"
+        ("mcts-integration-installed" `elem` testClosure)
+    assert
+        "test prerequisite closure includes installed cross-backend stanza"
+        ("mcts-cross-backend-installed" `elem` testClosure)
+    assert
+        "test prerequisite closure includes installed legacy-parity stanza"
+        ("mcts-legacy-parity-installed" `elem` testClosure)
+    assert
+        "test prerequisite closure includes installed benchmark runner"
+        ("mcts-criterion-installed" `elem` testClosure)
     assert
         "test prerequisite closure includes cpp-legacy artefact"
         ("libmcts-cpp-legacy-built" `elem` testClosure)
@@ -1199,6 +1221,9 @@ exercisePlanShape = do
 exerciseTestAllPlanConsumesDockerfileArtifacts :: IO ()
 exerciseTestAllPlanConsumesDockerfileArtifacts = do
     let renderedSteps = map renderSubprocess (planSteps testAllPlan)
+        expectedVerifyRollouts =
+            "mcts verify rollouts --backend cpp-imperative,cpp-functional,rust,haskell"
+                <> " --threading single --games 4 --seed 42 --max-plies 200"
         runtimeBackendBuild step =
             any
                 (`List.isInfixOf` step)
@@ -1210,6 +1235,22 @@ exerciseTestAllPlanConsumesDockerfileArtifacts = do
     assert
         "test all does not rebuild backend artefacts at runtime"
         (not (any runtimeBackendBuild renderedSteps))
+    assert
+        "test all does not run a Cabal build gate at runtime"
+        (not ("cabal build all" `elem` renderedSteps))
+    assert
+        "test all does not run Cabal at runtime"
+        (not (any ("cabal " `List.isPrefixOf`) renderedSteps))
+    assert
+        "test all recursive CLI steps use the installed image-local mcts binary"
+        ("mcts lint files" `elem` renderedSteps && expectedVerifyRollouts `elem` renderedSteps)
+    assert
+        "test all executes image-local test stanza binaries directly"
+        ( "mcts-unit" `elem` renderedSteps
+            && "mcts-integration" `elem` renderedSteps
+            && "mcts-cross-backend" `elem` renderedSteps
+            && "mcts-legacy-parity" `elem` renderedSteps
+        )
 
 exercisePlanOptionMetadata :: IO ()
 exercisePlanOptionMetadata = do
@@ -1622,15 +1663,15 @@ exerciseRustBuildPlan = do
         )
     assert
         "Rust PGO training emits refactored metric-suite ST/MT8 native runs"
-        ( all (== "cabal") pgoTrainingCommands
-            && allCabalTraining pgoTrainingArgs
+        ( all (== "mcts") pgoTrainingCommands
+            && allInstalledCliTraining pgoTrainingArgs
             && trainingCoversBoundedShape pgoTrainingArgs
             && any ("500" `elem`) pgoTrainingArgs
         )
     assert
         "Rust BOLT training emits shorter refactored metric-suite native runs"
-        ( all (== "cabal") boltTrainingCommands
-            && allCabalTraining boltTrainingArgs
+        ( all (== "mcts") boltTrainingCommands
+            && allInstalledCliTraining boltTrainingArgs
             && trainingCoversBoundedShape boltTrainingArgs
             && any ("100" `elem`) boltTrainingArgs
         )
@@ -1670,7 +1711,7 @@ exerciseRustBuildPlan = do
         (case reverse argsOf of (_smoke : patch : _) -> argContains patch ".envelope_build_id"; _ -> False)
     assert
         "Rust final step smokes the installed BOLT artefact"
-        ( commands !! smokeIndex == "cabal"
+        ( commands !! smokeIndex == "mcts"
             && "rust" `elem` argsOf !! smokeIndex
             && "selfplay" `elem` argsOf !! smokeIndex
             && "1" `elem` argsOf !! smokeIndex
@@ -1745,12 +1786,11 @@ exerciseRustBuildPlan = do
     argContains args needle =
         any (T.isInfixOf (T.pack needle) . T.pack) args
 
-allCabalTraining :: [[String]] -> Bool
-allCabalTraining =
+allInstalledCliTraining :: [[String]] -> Bool
+allInstalledCliTraining =
     all
         ( \args ->
-            "exec" `elem` args
-                && "bench" `elem` args
+            "bench" `elem` args
                 && "native" `elem` args
                 && "--max-plies" `elem` args
                 && (("1" `elem` args) || ("60" `elem` args))
@@ -1850,21 +1890,21 @@ exerciseCppBuildPlan = do
         )
     assert
         "C++ PGO training emits refactored metric-suite ST/MT8 native runs"
-        ( allCabalTraining pgoTrainingArgs
+        ( allInstalledCliTraining pgoTrainingArgs
             && trainingCoversBoundedShape pgoTrainingArgs
             && all ("cpp-imperative" `elem`) pgoTrainingArgs
             && any ("500" `elem`) pgoTrainingArgs
         )
     assert
         "C++ BOLT training emits shorter refactored metric-suite native runs"
-        ( allCabalTraining boltTrainingArgs
+        ( allInstalledCliTraining boltTrainingArgs
             && trainingCoversBoundedShape boltTrainingArgs
             && all ("cpp-imperative" `elem`) boltTrainingArgs
             && any ("100" `elem`) boltTrainingArgs
         )
     assert
-        "C++ plan trains PGO and BOLT artefacts through cabal exec"
-        (all (\idx -> commands !! idx == "cabal" && "exec" `elem` argsOf !! idx) trainingIndexes)
+        "C++ plan trains PGO and BOLT artefacts through installed mcts"
+        (all (\idx -> commands !! idx == "mcts" && "bench" `elem` argsOf !! idx) trainingIndexes)
     assert
         "C++ training forces scoped foreign library dispatch"
         (all (scopedProfileTrainingEnv . (steps !!)) trainingIndexes)
@@ -1876,7 +1916,7 @@ exerciseCppBuildPlan = do
         )
     assert
         "C++ final step smokes the installed BOLT artefact"
-        ( commands !! smokeIndex == "cabal"
+        ( commands !! smokeIndex == "mcts"
             && "cpp-imperative" `elem` argsOf !! smokeIndex
             && "selfplay" `elem` argsOf !! smokeIndex
             && "1" `elem` argsOf !! smokeIndex
@@ -2355,6 +2395,15 @@ exerciseReportCardRenderer = do
         (not ("Q7  Legacy" `contains` renderedText))
     assert "report card text renders verdict" ("Verdict:" `contains` renderedText)
     assert
+        "report card verdict gate fails pending evidence"
+        (not (reportCardPassed defaultReportCard))
+    assert
+        "report card verdict gate accepts within-tolerance evidence"
+        (reportCardPassed defaultReportCard{reportVerdict = WithinTolerance})
+    assert
+        "report card verdict gate rejects parity shortfalls"
+        (not (reportCardPassed defaultReportCard{reportVerdict = Shortfall 0.5}))
+    assert
         "report card JSON has required top-level keys"
         ( jsonObjectHasKeys
             jsonValue
@@ -2618,12 +2667,12 @@ exerciseErrorRenderer = do
 
 exerciseSubprocessRenderer :: IO ()
 exerciseSubprocessRenderer = do
-    let subprocess = Subprocess "cabal" ["exec", "mcts", "--", "inspect", "show", "a b"] Nothing Nothing
+    let subprocess = Subprocess "mcts" ["inspect", "show", "a b"] Nothing Nothing
         rendered = renderSubprocess subprocess
         failure = renderError (SubprocessFailed rendered 2)
     assert
         "subprocess render quotes spaced arguments"
-        (rendered == "cabal exec mcts -- inspect show 'a b'")
+        (rendered == "mcts inspect show 'a b'")
     assert "subprocess failure includes rendered command" (T.pack rendered `T.isInfixOf` failure)
     assert "subprocess failure includes exit code" (T.pack "exit=2" `T.isInfixOf` failure)
 
