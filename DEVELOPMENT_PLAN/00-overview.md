@@ -247,7 +247,8 @@ temporary or operator-provided roots.
   stable compiler with the
   pinned `[profile.release]` (`opt-level = 3`, `lto = "fat"`, `codegen-units = 1`,
   `panic = "abort"`, `strip = "debuginfo"`), `RUSTFLAGS=-C target-cpu=native -C
-  link-arg=-fuse-ld=lld -C link-arg=-Wl,--emit-relocs`, `mimalloc` through the
+  link-arg=-B/usr/lib/llvm-19/bin -C link-arg=-fuse-ld=lld -C
+  link-arg=-Wl,--emit-relocs`, `mimalloc` through the
   container system library as `#[global_allocator]`, two-stage rustc PGO, and BOLT
   post-link. Their current accepted profiles use the same Dockerfile-time bounded
   metric-suite profile suite as backend (ii): terminal playout, search-iteration,
@@ -497,7 +498,8 @@ referenceability.
     `8.11` adds and validates the primitive benchmark workloads.
 19. Backend (iv) Rust uses `[profile.release]` with `opt-level = 3`, `lto = "fat"`,
     `codegen-units = 1`, `panic = "abort"`, `strip = "debuginfo"`. `RUSTFLAGS=-C
-    target-cpu=native -C link-arg=-fuse-ld=lld -C link-arg=-Wl,--emit-relocs`.
+    target-cpu=native -C link-arg=-B/usr/lib/llvm-19/bin -C link-arg=-fuse-ld=lld
+    -C link-arg=-Wl,--emit-relocs`.
     `mimalloc` as `#[global_allocator]` through the container system library.
     Two-stage `rustc -Cprofile-generate` / `-Cprofile-use` PGO. BOLT post-link.
     The Dockerfile build must fail if profile merge, BOLT instrumentation, BOLT

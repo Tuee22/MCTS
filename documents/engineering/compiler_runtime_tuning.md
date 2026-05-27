@@ -269,7 +269,11 @@ panic = "abort"
 strip = "debuginfo"
 ```
 
-`RUSTFLAGS`: `-C target-cpu=native -C link-arg=-fuse-ld=lld -C link-arg=-Wl,--emit-relocs`.
+`RUSTFLAGS`:
+
+```text
+-C target-cpu=native -C link-arg=-B/usr/lib/llvm-19/bin -C link-arg=-fuse-ld=lld -C link-arg=-Wl,--emit-relocs
+```
 
 ### Build Workflow
 
@@ -277,12 +281,13 @@ During image construction, `docker/Dockerfile` invokes the `mcts build rust`
 Plan/Apply leaf:
 
 - **Two-stage PGO** via
-  `RUSTFLAGS="-C target-cpu=native -C link-arg=-fuse-ld=lld -C
-  link-arg=-Wl,--emit-relocs -C
+  `RUSTFLAGS="-C target-cpu=native -C link-arg=-B/usr/lib/llvm-19/bin
+  -C link-arg=-fuse-ld=lld -C link-arg=-Wl,--emit-relocs -C
   profile-generate=/workspace/MCTS/rust/pgo-profile"` → bounded metric-suite training
   suite → hard-failing `llvm-profdata merge` into
   `rust/pgo-profile/merged.profdata` → `RUSTFLAGS="-C target-cpu=native -C
-  link-arg=-fuse-ld=lld -C link-arg=-Wl,--emit-relocs -C
+  link-arg=-B/usr/lib/llvm-19/bin -C link-arg=-fuse-ld=lld -C
+  link-arg=-Wl,--emit-relocs -C
   profile-use=/workspace/MCTS/rust/pgo-profile/merged.profdata"`.
 - **BOLT** post-link: temporarily install the BOLT-instrumented copy of the PGO
   cdylib at the canonical FFI load name for a shorter bounded metric-suite training run,
@@ -536,10 +541,12 @@ optimization beyond the `thread_local` move buffer.
 
 ### Sprint 5.3 / 6.4 / 8.3 PGO+BOLT Status
 
-The live Rust and C++ backend install surfaces are fail-closed. On amd64, the
+The live Rust and C++ backend install surfaces are fail-closed. On linux/amd64
+and linux/arm64, the
 Dockerfile-invoked `rustPgoBoltPlan` in `src/MCTS/CLI/Build.hs` completes cargo
-`-Cprofile-generate` with `-C target-cpu=native -C link-arg=-fuse-ld=lld
--C link-arg=-Wl,--emit-relocs`, the bounded PGO training run,
+`-Cprofile-generate` with `-C target-cpu=native -C
+link-arg=-B/usr/lib/llvm-19/bin -C link-arg=-fuse-ld=lld -C
+link-arg=-Wl,--emit-relocs`, the bounded PGO training run,
 `llvm-profdata merge`, `-Cprofile-use` with the same target CPU/linker/relocation
 flags, BOLT instrumentation/training, canonical install, LLVM objcopy
 `engine_build_id` patching, and a final installed-library smoke. The C++ Makefiles

@@ -152,8 +152,8 @@ Build Rust under a serious systems-language optimization envelope.
 
 - `[profile.release]` with `opt-level = 3`, fat LTO, one codegen unit,
   `panic = "abort"`, and `strip = "debuginfo"` so BOLT can read symbols.
-- `RUSTFLAGS=-C target-cpu=native -C link-arg=-fuse-ld=lld
-  -C link-arg=-Wl,--emit-relocs`.
+- `RUSTFLAGS=-C target-cpu=native -C link-arg=-B/usr/lib/llvm-19/bin
+  -C link-arg=-fuse-ld=lld -C link-arg=-Wl,--emit-relocs`.
 - `mimalloc` as the global allocator through the container system library and the
   local `SystemMiMalloc` `GlobalAlloc` wrapper; no crates.io allocator dependency is
   required for the Dockerfile build.

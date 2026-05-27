@@ -503,6 +503,9 @@ rustPgoBoltPlan =
     rustPgoFlags mode profileDir =
         unwords
             [ "-C target-cpu=native"
+            , -- Ubuntu's lld-19 package keeps the unversioned ld.lld here;
+              -- GCC's -fuse-ld=lld needs this search prefix on linux/arm64.
+              "-C link-arg=-B/usr/lib/llvm-19/bin"
             , "-C link-arg=-fuse-ld=lld"
             , "-C link-arg=-Wl,--emit-relocs"
             , "-C "
