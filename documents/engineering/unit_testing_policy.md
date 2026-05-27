@@ -172,12 +172,13 @@ is a typed `[Subprocess]` sequence run via `Plan / Apply`:
 rendered plan for out-of-band review. `--format json` emits the JSON form of the
 `ReportCard` value for CI consumption, including explicit
 `q1a_terminal_playouts_*`, `q1b_search_iters_*`, `q2_selfplay_games_*`,
-unit-specific Q5 scaling fields, and `divergence_matrix` rows.
+unit-specific Q5 scaling fields, `raw_performance_metrics`, and
+`divergence_matrix` rows.
 
 ## POC Headline Questions
 
-The report card is required to answer six project questions owned by this policy,
-using the metric units defined in
+The report card is required to answer six headline project questions owned by this
+policy, with Q1 rendered as Q1a/Q1b metric subquestions, using the metric units defined in
 [benchmark_metrics.md](./benchmark_metrics.md). Q1/Q2 compare against the live backend
 (ii) artefact that `mcts test all` consumes from the Dockerfile-built C++ PGO/BOLT
 path. That path is mandatory and fail-closed: missing PGO data, missing BOLT
@@ -191,23 +192,23 @@ profile-suite review and historical parity rerun against that refactored metric
 surface; Sprint `8.12` closed the active parity refresh after backend (ii)'s
 compact-board correction.
 
-1. **Q1.** Does pure Haskell match maximally-optimised C++ (backend (ii)) on core
-   throughput? This requires Q1a terminal playout throughput (`playouts/s`) and
-   Q1b search-iteration throughput (`search-iters/s`), single-threaded and on
-   8-worker batches where batching applies.
-2. **Q2.** Does pure Haskell match backend (ii) on complete self-play throughput
+1. **Q1a.** Does pure Haskell match backend (ii) on terminal playout throughput
+   (`playouts/s`), single-threaded and on 8-worker batches where batching applies?
+2. **Q1b.** Does pure Haskell match backend (ii) on search-iteration throughput
+   (`search-iters/s`), single-threaded and on 8-worker batches where batching applies?
+3. **Q2.** Does pure Haskell match backend (ii) on complete self-play throughput
    (`games/s`) at the report-card search budget, single-threaded and on 8 workers?
-3. **Q3.** Do live backends (ii)..(v) produce bit-for-bit identical
+4. **Q3.** Do live backends (ii)..(v) produce bit-for-bit identical
    determinism payloads under `--rng cpp` (round-robin verify on both rollouts and
    self-play)?
-4. **Q4.** Does same-backend determinism hold across runs (same backend, same
+5. **Q4.** Does same-backend determinism hold across runs (same backend, same
    seed, same logical game inputs ⇒ identical determinism payloads) for every
    backend?
-5. **Q5.** How do the Haskell and live C++ (ii) anchors scale from
+6. **Q5.** How do the Haskell and live C++ (ii) anchors scale from
    `--threading single` to `--threading multi --workers 8`? Search-iteration
    scaling and played-game scaling must be reported separately; terminal playout
    scaling is diagnostic for Q1a.
-6. **Q6.** Do all five backend slots pass the legacy-envelope liveness/overflow gate?
+7. **Q6.** Do all five backend slots pass the legacy-envelope liveness/overflow gate?
 
 **Backend (i) basis caveat.** Backend (i) `cpp-legacy` is a verbatim port and
 inherits the legacy's lack of a game-level ply cap (see
@@ -232,9 +233,9 @@ The current Q1-Q6 results come from the pinned report-card workload. Live execut
 constants are implemented in `MCTS.CLI.Test` and mirrored in `cabal.project`
 comments per
 [../../DEVELOPMENT_PLAN/system-components.md → POC Report-Card
-Knobs](../../DEVELOPMENT_PLAN/system-components.md): `G_R = 1_000`, `G_S =
-4`, `G_V = 4`, `G_LP = 2`, `S_BENCH = 500`, `S_VERIFY = 500`,
-`S_LP_SIMS = 4`, `S_LP = 42`.
+Knobs](../../DEVELOPMENT_PLAN/system-components.md): `N_PRIM = 1_000`,
+`P_MAX = 60`, `G_R = 1_000`, `G_S = 4`, `G_V = 4`, `G_LP = 2`,
+`S_BENCH = 500`, `S_VERIFY = 500`, `S_LP_SIMS = 4`, `S_LP = 42`.
 
 `mcts test all` requires the Dockerfile-built live foreign artefacts before running
 the Cabal stanzas and final report card. The current gate proves those artefacts are
@@ -242,10 +243,24 @@ present, fail-closed, and produced from the bounded metric-suite Dockerfile-time
 PGO/BOLT training suite. The measured report-card builder uses the production
 monotonic clock for live Haskell primitive throughput through the direct benchmark
 runners and for live played-game throughput through `runBatchNoWriteDispatch`. It
-compares those rates against live backend (ii) where available and renders
-`Evidence pending` only in deterministic semantic unit values, not in a live full
-run. Q6 is the all-five legacy-envelope gate, while Q3 carries the visit-count
-equality assertion for `(ii)..(v)`.
+measures raw Q1a/Q1b/Q2 rates for every backend slot, compares the Haskell rows
+against live backend (ii) where available, and renders `Evidence pending` only in
+deterministic semantic unit values, not in a live full run. Q6 is the all-five
+legacy-envelope gate, while Q3 carries the visit-count equality assertion for
+`(ii)..(v)`.
+
+The text renderer is an aligned-table contract:
+
+1. Brief term definitions (`ST`, `MT8`, `Q1a`, `Q1b`, `Q2`, `Q5`,
+   `visit/move`).
+2. Raw performance metrics for each backend slot and metric family.
+3. The question summary table, with every Q1a/Q1b/Q2/Q3/Q4/Q5/Q6 question stated.
+4. The divergence matrix table.
+5. A final question-answer table that explicitly answers Q1a-Q6 from the observed
+   ratios, scaling values, divergence rates, and gate outcomes.
+
+The JSON renderer exposes the same observed rates under
+`raw_performance_metrics` and keeps the existing unit-specific Q1/Q2/Q5 fields.
 
 The 2026-05-26 Sprint `8.12` aggregate run closed the corrected-backend parity
 surface with `Verdict: Within tolerance`: Q1a terminal playout ST `0.99x`,
@@ -274,12 +289,14 @@ dependent wrapping.
 
 `mcts-unit` asserts the rendered tidy summary block semantically with sentinel
 placeholders substituted for live wall-clock numbers and host arch. The tests
-cover row order, labels, ratio fields, Q1–Q6 presence, and the
-`visit/move` divergence matrix without reading a snapshot. Paired JSON tests
-assert the evidence-pending Q1/Q2/Q5 fields, `divergence_matrix`, and required
-keys directly so schema drift fails in `mcts-unit`. The README's tidy summary
-remains the user-facing rendering reference, but it is not copied into a
-checked-in generated fixture.
+cover table order, labels, ratio fields, raw metric fields, Q1–Q6 question
+presence, the final observed-metric Q1a-Q6 answer table, and the `visit/move`
+divergence matrix without reading a snapshot.
+Paired JSON tests assert the evidence-pending Q1/Q2/Q5 fields,
+`raw_performance_metrics`, `divergence_matrix`, and required keys directly so
+schema drift fails in `mcts-unit`. The README's tidy summary remains the
+user-facing rendering reference, but it is not copied into a checked-in generated
+fixture.
 
 ## Cross-References
 

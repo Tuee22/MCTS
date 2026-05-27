@@ -263,6 +263,9 @@ temporary or operator-provided roots.
   and whose high-level surface covers lint/docs prerequisites, warning-clean build,
   Dockerfile-built canonical foreign backend artefacts, Cabal stanzas, verify
   cohorts, the pinned no-write report-card workload, and the tidy summary block.
+  The text report card defines its terms, renders aligned raw-performance,
+  question-summary, and divergence-matrix tables in that order, and ends with
+  explicit Q1a-Q6 answers based on the observed metrics and gate outcomes.
   Owned by
   [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md).
 - **Haskell performance parity closure.** GHC `-O2 -fllvm`,
@@ -627,9 +630,9 @@ referenceability.
     visit-count or move disagreement (the existing contract); `--rng native`
     cross-backend and cross-build same-backend comparisons surface
     `move_disagreement_rate` and `visit_disagreement_rate` annotations in the REPL
-    column headers and in the `mcts test all` report-card matrix, warning when the
-    measured rate exceeds the thresholds (mirrored in `cabal.project` comments after
-    Phase 7 calibration).
+    column headers and in the third `mcts test all` report-card table, warning when
+    the measured rate exceeds the thresholds (mirrored in `cabal.project` comments
+    after Phase 7 calibration).
 40. Normal validation must pass from a clean clone without pre-existing transcripts,
     throughput anchors, report-card schemas, renderer snapshots, or other generated
     validation data. Tests generate transcripts, sidecars, report-card values, and
@@ -668,7 +671,8 @@ Sprint `3.8`, Sprint `7.8`, and Sprint `8.11`; all three have reclosed. Sprint
 `5.6` then reopened Sprint `8.12` for parity against the corrected backend (ii).
 Sprint `6.7` has reclosed the `(iii)/(iv)` compact functional-core style
 alignment, and Sprints `8.12` and `8.13` have reclosed Haskell parity and style
-follow-up. Phase `4`
+follow-up. Sprint `7.10` has reclosed report-card table layout and raw backend
+metric rendering. Phase `4`
 remains closed on its owned surface.
 
 | Surface | Current Repo State | Intended End State |
@@ -679,7 +683,7 @@ remains closed on its owned surface.
 | Test stanzas | Five live Cabal stanzas currently exist: `mcts-unit`, `mcts-integration`, `mcts-cross-backend`, `mcts-legacy-parity`, `mcts-haskell-style`; each stanza has its own `tasty` runner, `mcts-cross-backend` invokes real `mcts verify` subprocesses serially around the process-pinned dynamic-library and shared C++ RNG bridge path, and `docker compose run --rm mcts mcts test all` is the host validation gate under the pinned container toolchain. `mcts-unit` uses semantic/property/temp-dir checks instead of `tasty-golden`. | Keep all validation data generated in memory or temporary directories during the run, so clean-clone validation has no `test/golden/` prerequisite |
 | Toolchain | `mcts.cabal` pins `tested-with: ghc ==9.14.1`; `cabal.project` pins `with-compiler: ghc-9.14.1` and mirrors the report-card constants as comments. The style-tool policy pins GHC `9.12.4` only for Fourmolu/HLint installation inside the container. | GHC `9.14.1`, Cabal `3.16.1.0`, style GHC `9.12.4` for `fourmolu-0.19.0.1` / `hlint-3.10`, GCC latest stable on `ubuntu:24.04`, Rust latest stable with pinned minor, LLVM pinned in the Dockerfile |
 | Determinism contract | Live C++ and Rust foreign backends dispatch through real FFI engines under `bench`, `play`, `inspect divergence`, Q3 `verify` when shared libraries are present and the fixed search-horizon ABI can represent the run, and Q6 `verify legacy-parity`; the integration stanza's direct live-FFI smoke cases are Rust-specific, with C++ live coverage carried by Q3/Q6/report-card surfaces. Transcript codec, full v1 envelope, process-pinned envelope and C++ RNG dynamic handles, SHA-256 content addressing, cache root resolution, prefix lookup, binary `MEQ1` equity sidecars, layered envelope checks, `divergenceVsEqStream`, compact foreign recompute/read-visits evidence surfaces, canonical search-side 12-wall child caps across the current live cohort, decoded real-binary transcript determinism, and hard-fail `VerifyMismatch` rollout/self-play cohorts in `mcts-cross-backend` are implemented. Sprints `2.8` and `7.6` tighten version handling and sidecar/recompute labeling. | Enforced by live-FFI-capable cross-backend `mcts verify {rollouts,selfplay}` over `(ii)..(v)`, decoded same-backend transcript checks, Rust live FFI-envelope cases under `mcts-integration`, and Q6 legacy-envelope checks across all five |
-| Performance parity | The 2026-05-26 Sprint `8.12` `docker compose run --rm mcts mcts test all` run recorded corrected-backend rows: Q1a ST 0.99×, Q1a MT8 0.91×, Q1b ST 1.02×, Q1b MT8 0.99×, Q2 ST 0.63×, Q2 MT8 0.68×, Q5 Haskell search-iteration scaling 6.91×, Q5 C++ (ii) search-iteration scaling 6.72×, Q5 Haskell self-play scaling 3.65×, Q5 C++ (ii) self-play scaling 3.90×, Q6 liveness PASS, zero live-cohort divergence, and `Verdict: Within tolerance`. The 2026-05-24 Sprint `8.11`, 2026-05-21 fallback-backed optimized-C++ run, and 2026-05-23 Sprint `8.10` played-game rows remain historical audit evidence against older artefact or metric shapes. | Haskell (v) within tolerance of optimized live C++ (ii) on Q1a terminal playout throughput, Q1b search-iteration throughput, and Q2 played-game self-play throughput, single-threaded and on 8 workers where applicable, without checked-in generated throughput anchors |
+| Performance parity | The 2026-05-26 Sprint `8.12` `docker compose run --rm mcts mcts test all` run recorded corrected-backend rows: Q1a ST 0.99×, Q1a MT8 0.91×, Q1b ST 1.02×, Q1b MT8 0.99×, Q2 ST 0.63×, Q2 MT8 0.68×, Q5 Haskell search-iteration scaling 6.91×, Q5 C++ (ii) search-iteration scaling 6.72×, Q5 Haskell self-play scaling 3.65×, Q5 C++ (ii) self-play scaling 3.90×, Q6 liveness PASS, zero live-cohort divergence, and `Verdict: Within tolerance`. Sprint `7.10` keeps the same verdict semantics while adding aligned raw Q1a/Q1b/Q2 performance rows for every backend before the question summary and divergence matrix, plus a final observed-metric answer table for Q1a-Q6. The 2026-05-24 Sprint `8.11`, 2026-05-21 fallback-backed optimized-C++ run, and 2026-05-23 Sprint `8.10` played-game rows remain historical audit evidence against older artefact or metric shapes. | Haskell (v) within tolerance of optimized live C++ (ii) on Q1a terminal playout throughput, Q1b search-iteration throughput, and Q2 played-game self-play throughput, single-threaded and on 8 workers where applicable, without checked-in generated throughput anchors |
 
 ## Related Documents
 

@@ -2307,14 +2307,47 @@ exerciseReportCardRenderer = do
         jsonValue = decodeJsonValue "renderReportCardJson defaultReportCard" renderedJson
     assert "report card text renders title" ("MCTS POC report card" `contains` renderedText)
     assert
-        "report card text renders determinism section"
-        ("Cross-backend determinism" `contains` renderedText)
+        "report card text renders raw metrics table"
+        ("Raw performance metrics" `contains` renderedText)
+    assert
+        "report card text renders question summary table"
+        ("Question summary" `contains` renderedText)
+    assert
+        "report card text renders final question answers table"
+        ("Question answers" `contains` renderedText)
+    assert
+        "report card text answers Q1a from observed metrics"
+        ( "Pending: observed terminal playout throughput metrics are not available yet."
+            `contains` renderedText
+        )
+    assert
+        "report card text answers Q3 from divergence metrics"
+        ("Yes: max observed visit/move disagreement is 0.0000/0.0000." `contains` renderedText)
+    assert
+        "report card text states Q3"
+        ("Do live backends (ii)..(v) produce identical cpp-RNG determinism payloads?" `contains` renderedText)
     assert
         "report card text renders visit/move thresholds in matrix order"
         ("thresholds native 0.050/0.005, cross-build 0.010/0.001" `contains` renderedText)
     assert
         "report card text renders the six-question legacy-envelope row"
-        ("Q6  Legacy envelope across all backends" `contains` renderedText)
+        ("Do all five backend slots pass the legacy-envelope liveness/overflow gate?" `contains` renderedText)
+    assert
+        "report card text renders aligned raw table columns"
+        ( any
+            (\line -> "Backend" `prefixOf` line && "Metric" `contains` line && "Unit" `contains` line)
+            (lines renderedText)
+        )
+    assert
+        "report card text orders raw metrics before other tables"
+        ( sectionOrder renderedText
+            == ["Raw performance metrics", "Question summary", "Divergence matrix", "Question answers"]
+        )
+    assert
+        "report card text ends with explicit Q6 answer"
+        ( "Q6" `prefixOf` lastNonEmptyLine renderedText
+            && "legacy-envelope gate completed all five backend slots" `contains` lastNonEmptyLine renderedText
+        )
     assert
         "report card text no longer renders an external legacy reproduction question"
         (not ("Q7  Legacy" `contains` renderedText))
@@ -2328,6 +2361,7 @@ exerciseReportCardRenderer = do
             , "q2_selfplay_games_st"
             , "q5_cpp_imperative_search_iters_scaling"
             , "q5_cpp_imperative_selfplay_games_scaling"
+            , "raw_performance_metrics"
             , "divergence_matrix"
             , "verdict"
             ]
@@ -2345,6 +2379,13 @@ exerciseReportCardRenderer = do
             { transcriptConfig = (transcriptConfig sampleTranscript){runBackend = backend}
             , transcriptEnvelope = makeLogicalEnvelope backend CppRng
             }
+    sectionOrder rendered =
+        [ marker
+        | line <- lines rendered
+        , marker <- ["Raw performance metrics", "Question summary", "Divergence matrix", "Question answers"]
+        , marker `contains` line
+        ]
+    lastNonEmptyLine rendered = last (filter (not . null) (lines rendered))
 
 decodeJsonValue :: String -> String -> Value
 decodeJsonValue label raw =

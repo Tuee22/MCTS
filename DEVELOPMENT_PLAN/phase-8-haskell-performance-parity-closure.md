@@ -80,6 +80,11 @@ The restored end state is:
   must use Dockerfile-built artefacts that completed PGO and BOLT without fallback
   and must report the explicit units defined in
   [../documents/engineering/benchmark_metrics.md](../documents/engineering/benchmark_metrics.md).
+- Sprint `7.10` report-card output adds raw Q1a/Q1b/Q2 rates for every backend slot
+  ahead of the parity question summary and divergence matrix, then ends with
+  explicit Q1a-Q6 answers based on observed ratios, scaling values, divergence
+  rates, and gate outcomes. Those raw rows are context; the Phase `8` verdict still
+  gates on Haskell (v) versus backend (ii).
 - Performance benchmarks use each backend's own/native deterministic RNG contract.
 - Q3 logical-equivalence verification covers `(ii)..(v)` under `--rng cpp`.
 - Q6 legacy-envelope verification covers all five backend slots.
@@ -754,7 +759,7 @@ code-quality gates are the post-doc-update gates listed above.
   for `(iii)`, `(iv)`, and `(v)`, including the closed Sprint `8.13` Haskell
   alignment gate.
 - `documents/engineering/benchmark_metrics.md` — metric units and Q1-Q6 mapping used by
-  Sprint `8.11` rerun evidence.
+  Sprint `8.11` rerun evidence, plus Sprint `7.10` raw backend metric table terms.
 - `documents/engineering/unit_testing_policy.md` — live `mcts-cross-backend` and
   `mcts-legacy-parity` roles without checked-in generated validation data, plus the
   Sprint `8.10` bounded-profile prerequisite for final report-card closure.

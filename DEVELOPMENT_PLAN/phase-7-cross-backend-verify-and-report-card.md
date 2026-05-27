@@ -45,7 +45,11 @@ Sprint `7.9` closed on 2026-05-25 after the headline report-card mapping was
 renumbered to Q1-Q6 and the aggregate report card revalidated with verdict
 `Within tolerance` for the then-current backend (ii) artefact. Sprint `5.6` later
 strengthened backend (ii), and Phase `8` Sprint `8.12` refreshed the parity
-evidence while this phase remains closed for report-card structure.
+evidence while this phase remains closed for report-card structure. Sprint `7.10`
+keeps that structure closed by making the text renderer define its terms, align
+columns, render raw performance metrics for every backend ahead of the question
+summary and divergence matrix, end with observed-metric answers for Q1a-Q6, and
+expose the raw rows in JSON.
 
 ## Sprint 7.1: Cabal Test Organization ✅
 
@@ -388,6 +392,53 @@ Closed on 2026-05-25. The focused validation passed, and the aggregate
 card with Q6 legacy-envelope PASS, zero live-cohort divergence, and verdict
 `Within tolerance`.
 
+## Sprint 7.10: Report-Card Tables, Raw Backend Metrics, and Final Answers ✅
+
+**Status**: Done
+**Implementation**: `src/MCTS/ReportCard.hs`, `src/MCTS/CLI/Test.hs`,
+`test/unit/Main.hs`
+**Docs to update**: `README.md`, `documents/engineering/benchmark_metrics.md`,
+`documents/engineering/unit_testing_policy.md`,
+`documents/engineering/cli_command_surface.md`,
+`documents/engineering/determinism_contract.md`, `DEVELOPMENT_PLAN/README.md`,
+`DEVELOPMENT_PLAN/00-overview.md`, `DEVELOPMENT_PLAN/system-components.md`,
+`DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md`
+
+### Objective
+
+Make the human report-card output readable as aligned tables while preserving the
+Q1/Q2/Q5 verdict semantics and the no-generated-validation-data doctrine, and end
+the report card with explicit Q1a-Q6 answers derived from the observed metrics and
+gate outcomes.
+
+### Deliverables
+
+- Text output defines `ST`, `MT8`, Q1a, Q1b, Q2, Q5, and `visit/move` before
+  rendering evidence.
+- A raw performance table records Q1a/Q1b/Q2 observed rates for every backend slot
+  and appears before the question-summary and divergence-matrix tables.
+- The question-summary table states every Q1a/Q1b/Q2/Q3/Q4/Q5/Q6 question and keeps
+  Haskell-vs-backend-(ii) parity ratios as the load-bearing Q1/Q2 evidence.
+- The divergence matrix remains the third table and is rendered with aligned
+  backend columns.
+- A final question-answer table explicitly answers Q1a-Q6 from the observed
+  parity ratios, scaling values, divergence rates, and gate outcomes.
+- JSON output includes `raw_performance_metrics` alongside the unit-specific
+  Q1/Q2/Q5 fields and `divergence_matrix`.
+- `legacy-tracking-for-deletion.md` records the prior unaligned/no-raw-table report
+  card shape as completed stale-surface cleanup.
+
+### Validation
+
+- `docker compose run --rm mcts mcts test mcts-unit`
+- `docker compose run --rm mcts mcts docs check`
+- `docker compose run --rm mcts mcts check-code`
+- `git diff --check`
+
+### Remaining Work
+
+None.
+
 ## Documentation Requirements
 
 **Engineering docs to create/update:**
@@ -396,11 +447,12 @@ card with Q6 legacy-envelope PASS, zero live-cohort divergence, and verdict
   Sprint `7.6` replay/divergence evidence labels and Sprint `7.8` report-card
   metric units.
 - `documents/engineering/benchmark_metrics.md` — benchmark unit taxonomy and Q1-Q6 metric
-  mapping for Sprint `7.8`.
+  mapping for Sprint `7.8`, plus Sprint `7.10` report-card term definitions and raw
+  backend metric table semantics.
 - `documents/engineering/determinism_contract.md` — Q3/Q6 semantics, RNG split, and
   Sprint `7.6` originator/foreign-view replay semantics.
 - `documents/engineering/unit_testing_policy.md` — test stanza ownership and no generated
-  validation data.
+  validation data, plus the Sprint `7.10` report-card table layout.
 
 **Product docs to create/update:**
 
@@ -411,7 +463,8 @@ card with Q6 legacy-envelope PASS, zero live-cohort divergence, and verdict
 - Keep [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md)
   aligned with live C++ verification and report-card measurement.
 - `legacy-tracking-for-deletion.md` records Sprint `7.6` replay/divergence residue as
-  completed after output labels and live recompute row coverage were reclosed.
+  completed after output labels and live recompute row coverage were reclosed, and
+  records Sprint `7.10` report-card text-layout residue as completed.
 
 ## Related Documents
 

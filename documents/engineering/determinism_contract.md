@@ -729,11 +729,13 @@ and `MCTS.Verify.Divergence.divergenceVsEqStream` scores a transcript against a
 cached or recomputed chosen-action `EqStream`, including `equity_l2_drift`.
 `MCTS.ReportCard`
 renders the report-card divergence matrix in both table and JSON
-form from typed rows; `mcts test all` populates those rows from the measured
-`G_V = 4` self-play verify cohort after the Plan/Apply subprocess sequence
-succeeds. `mcts-integration` exercises the same measured builder at smoke scale
-and validates cached recompute-sidecar consumption through `mcts inspect
-divergence`. The 2026-05-19 canonical report-card run recorded a zero
+form from typed rows after the raw-performance and question-summary tables, then
+ends text output with explicit observed-metric answers for Q1a-Q6;
+`mcts test all` populates those rows from the measured `G_V = 4` self-play
+verify cohort after the Plan/Apply subprocess sequence succeeds.
+`mcts-integration` exercises the same measured builder at smoke scale and
+validates cached recompute-sidecar consumption through `mcts inspect divergence`.
+The 2026-05-19 canonical report-card run recorded a zero
 `visit/move` divergence matrix across the `(ii)..(v)` cohort under `--rng cpp`; the
 same zero-divergence threshold remains the live Q3 gate.
 
@@ -777,11 +779,13 @@ pairs in the same order as matrix cells: visit/move.
   originator, colour-coded against thresholds) belongs to the Sprint 7.5
   divergence-matrix surface.
 - **Report card** (`mcts test all`): the headline output includes a
-  per-backend-pair divergence matrix. Under `--rng cpp` every
-  off-diagonal element reads `0.0% / 0.0%`; anything else is a smell
-  to investigate. The default renderer and JSON payload are checked by semantic
-  unit assertions with a constructed zero matrix, while the live `mcts test all`
-  report-card path derives its matrix from the measured `G_V` workload.
+  per-backend-pair divergence matrix after the raw performance and question
+  summary tables, followed by a final Q1a-Q6 answer table derived from observed
+  metrics and gate outcomes. Under `--rng cpp` every off-diagonal element reads
+  `0.0% / 0.0%`; anything else is a smell to investigate. The default renderer
+  and JSON payload are checked by semantic unit assertions with a constructed
+  zero matrix, while the live `mcts test all` report-card path derives its
+  matrix from the measured `G_V` workload.
 - **`mcts inspect divergence <hash>`**: emits the divergence matrix for
   a single transcript across all available cached backend columns.
   Forensic use only. Owned by

@@ -114,9 +114,13 @@ legacy-parity {rollouts,selfplay}` pins `--rng cpp`, single-threading, and
 liveness/overflow without requiring backend (i)'s historical search tree to match
 the steelman visit vectors. The report-card renderer emits explicit Q1a terminal
 `playouts/s`, Q1b search-iteration `search-iters/s`, Q2 played-game `games/s`, and
-separate Q5 scaling fields in table and JSON form. The live `mcts test all` path
-requires the live C++ and Rust artefacts and populates divergence rows from the
-measured live `G_V` verify cohort over backends (ii)..(v).
+separate Q5 scaling fields in table and JSON form. Text output defines the report-card
+terms, then renders aligned raw-performance, question-summary, and divergence-matrix
+tables in that order, followed by a final observed-metric answer table for Q1a-Q6;
+JSON exposes the observed backend rates under `raw_performance_metrics`. The live
+`mcts test all` path requires the live C++ and
+Rust artefacts and populates divergence rows from the measured live `G_V` verify
+cohort over backends (ii)..(v).
 `mcts build legacy-fixtures` remains an explicit external audit-fixture path; it
 builds `cpp-legacy/build/legacy-to-wire` and passes
 output root, seed, game count, and simulation count as explicit flags. Its output

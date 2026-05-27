@@ -2,16 +2,19 @@ module MCTS.ReportCard
     ( ReportCard (..)
     , ReportDivergenceCell (..)
     , ReportDivergenceRow (..)
+    , ReportRawPerformanceRow (..)
     , ReportRateUnit (..)
     , ReportRateComparison (..)
     , ReportScaling (..)
     , Verdict (..)
     , defaultReportCard
     , divergenceRowsFromTranscripts
+    , reportCardParityTolerance
     , renderReportCard
     , renderReportCardJson
     ) where
 
+import Data.List (transpose)
 import MCTS.Types
 import MCTS.Verify.Divergence
 import Text.Printf (printf)
@@ -46,6 +49,17 @@ data ReportScaling = ReportScaling
     }
     deriving (Eq, Show)
 
+data ReportRawPerformanceRow = ReportRawPerformanceRow
+    { reportRawBackend :: !Backend
+    , reportRawQ1aTerminalPlayoutsST :: !(Maybe Double)
+    , reportRawQ1aTerminalPlayoutsMT8 :: !(Maybe Double)
+    , reportRawQ1bSearchItersST :: !(Maybe Double)
+    , reportRawQ1bSearchItersMT8 :: !(Maybe Double)
+    , reportRawQ2SelfplayGamesST :: !(Maybe Double)
+    , reportRawQ2SelfplayGamesMT8 :: !(Maybe Double)
+    }
+    deriving (Eq, Show)
+
 data ReportDivergenceCell = ReportDivergenceCell
     { reportDivergenceBackend :: !String
     , reportVisitDisagreementRate :: !Double
@@ -75,9 +89,13 @@ data ReportCard = ReportCard
     , reportQ5CppImperativeSearchItersScaling :: !ReportScaling
     , reportQ5HaskellSelfplayGamesScaling :: !ReportScaling
     , reportQ5CppImperativeSelfplayGamesScaling :: !ReportScaling
+    , reportRawPerformanceRows :: ![ReportRawPerformanceRow]
     , reportDivergenceRows :: ![ReportDivergenceRow]
     }
     deriving (Eq, Show)
+
+reportCardParityTolerance :: Double
+reportCardParityTolerance = 0.05
 
 defaultReportCard :: ReportCard
 defaultReportCard =
@@ -97,6 +115,7 @@ defaultReportCard =
         , reportQ5CppImperativeSearchItersScaling = defaultScaling ReportSearchItersPerSecond
         , reportQ5HaskellSelfplayGamesScaling = defaultScaling ReportGamesPerSecond
         , reportQ5CppImperativeSelfplayGamesScaling = defaultScaling ReportGamesPerSecond
+        , reportRawPerformanceRows = defaultRawPerformanceRows
         , reportDivergenceRows = defaultDivergenceRows
         }
 
@@ -112,38 +131,35 @@ renderReportCard card =
             <> ", ghc="
             <> reportGhc card
         , "------------------------------------------------------------------------"
-        , "Q1a Haskell vs live C++ (ii) terminal playouts ST   "
-            <> renderRateComparison (reportQ1aTerminalPlayoutsST card)
-        , "Q1a Haskell vs live C++ (ii) terminal playouts MT8  "
-            <> renderRateComparison (reportQ1aTerminalPlayoutsMT8 card)
-        , "Q1b Haskell vs live C++ (ii) search iters      ST   "
-            <> renderRateComparison (reportQ1bSearchItersST card)
-        , "Q1b Haskell vs live C++ (ii) search iters      MT8  "
-            <> renderRateComparison (reportQ1bSearchItersMT8 card)
-        , "Q2  Haskell vs live C++ (ii) self-play games   ST   "
-            <> renderRateComparison (reportQ2SelfplayGamesST card)
-        , "Q2  Haskell vs live C++ (ii) self-play games   MT8  "
-            <> renderRateComparison (reportQ2SelfplayGamesMT8 card)
-        , "Q3  Cross-backend determinism  (cpp RNG)       PASS    ((ii)..(v), 4 backends agree)"
-        , "Q4  Same-backend determinism   (per backend)   PASS    (5/5 backends x 3 seeds)"
-        , "Q5  MT scaling  Haskell search-iters 1->8      "
-            <> renderScaling (reportQ5HaskellSearchItersScaling card)
-        , "Q5  MT scaling  C++ (ii) search-iters 1->8     "
-            <> renderScaling (reportQ5CppImperativeSearchItersScaling card)
-        , "Q5  MT scaling  Haskell self-play 1->8         "
-            <> renderScaling (reportQ5HaskellSelfplayGamesScaling card)
-        , "Q5  MT scaling  C++ (ii) self-play 1->8        "
-            <> renderScaling (reportQ5CppImperativeSelfplayGamesScaling card)
-        , "Q6  Legacy envelope across all backends         PASS    (all five backend slots live)"
         , ""
-        , "Divergence matrix (visit/move, cpp RNG; thresholds native 0.050/0.005, cross-build 0.010/0.001)"
+        , "Terms:"
+        , "  ST: single-threaded run."
+        , "  MT8: multi-threaded run with 8 workers."
+        , "  Q1a: terminal playout throughput, measured in playouts/s."
+        , "  Q1b: UCT search-iteration throughput, measured in search-iters/s."
+        , "  Q2: complete self-play game throughput, measured in games/s."
+        , "  Q5: MT8/ST scaling ratio for the named backend and metric."
+        , "  visit/move: visit-table and chosen-move disagreement rates."
+        , ""
+        , "Raw performance metrics"
         ]
-            <> map renderDivergenceRow (reportDivergenceRows card)
+            <> rawPerformanceTable card
+            <> [ ""
+               , "Question summary"
+               ]
+            <> questionSummaryTable card
+            <> [ ""
+               , "Divergence matrix (visit/move, cpp RNG; thresholds native 0.050/0.005, cross-build 0.010/0.001)"
+               ]
+            <> divergenceTable (reportDivergenceRows card)
             <> [ ""
                , "cabal test                                     PASS    (mcts-unit, mcts-integration, mcts-cross-backend, mcts-legacy-parity, mcts-haskell-style)"
                , ""
                , "Verdict: " <> renderVerdict (reportVerdict card)
+               , ""
+               , "Question answers"
                ]
+            <> questionAnswersTable card
 
 renderReportCardJson :: ReportCard -> String
 renderReportCardJson card =
@@ -173,6 +189,9 @@ renderReportCardJson card =
         <> renderScalingJson (reportQ5HaskellSelfplayGamesScaling card)
         <> ",\"q5_cpp_imperative_selfplay_games_scaling\":"
         <> renderScalingJson (reportQ5CppImperativeSelfplayGamesScaling card)
+        <> ",\"raw_performance_metrics\":["
+        <> joinWith "," (map renderRawPerformanceRowJson (reportRawPerformanceRows card))
+        <> "]"
         <> ",\"divergence_matrix\":["
         <> joinWith "," (map renderDivergenceRowJson (reportDivergenceRows card))
         <> "]}"
@@ -204,33 +223,236 @@ defaultScaling unit =
         , reportMultiRate = 0.0
         }
 
-renderRateComparison :: ReportRateComparison -> String
-renderRateComparison comparison
-    | not (reportComparisonMeasured comparison) =
-        fixed2 (reportTimeRatio comparison) <> "x   (logical baseline)"
-    | otherwise =
-        fixed2 (reportTimeRatio comparison)
-            <> "x   ("
-            <> fixed1 (reportHaskellRate comparison)
-            <> " vs "
-            <> fixed1 (reportCppRate comparison)
-            <> " "
-            <> rateUnitText (reportComparisonUnit comparison)
-            <> ")"
+rawPerformanceTable :: ReportCard -> [String]
+rawPerformanceTable card =
+    formatTable
+        ["Backend", "Metric", "ST", "MT8", "Unit"]
+        (concatMap rawRows (reportRawPerformanceRows card))
+  where
+    rawRows row =
+        [
+            [ backendIdentifier (reportRawBackend row)
+            , "Q1a terminal playouts"
+            , renderMaybeRate (reportRawQ1aTerminalPlayoutsST row)
+            , renderMaybeRate (reportRawQ1aTerminalPlayoutsMT8 row)
+            , rateUnitText ReportPlayoutsPerSecond
+            ]
+        ,
+            [ backendIdentifier (reportRawBackend row)
+            , "Q1b search iterations"
+            , renderMaybeRate (reportRawQ1bSearchItersST row)
+            , renderMaybeRate (reportRawQ1bSearchItersMT8 row)
+            , rateUnitText ReportSearchItersPerSecond
+            ]
+        ,
+            [ backendIdentifier (reportRawBackend row)
+            , "Q2 self-play games"
+            , renderMaybeRate (reportRawQ2SelfplayGamesST row)
+            , renderMaybeRate (reportRawQ2SelfplayGamesMT8 row)
+            , rateUnitText ReportGamesPerSecond
+            ]
+        ]
 
-renderScaling :: ReportScaling -> String
-renderScaling scaling
-    | not (reportScalingMeasured scaling) =
-        fixed2 (reportScalingRatio scaling) <> "x   (logical baseline)"
+questionSummaryTable :: ReportCard -> [String]
+questionSummaryTable card =
+    formatTable
+        ["Q", "Question", "Result"]
+        [
+            [ "Q1a"
+            , "Does pure Haskell match backend (ii) on terminal playout throughput?"
+            , renderComparisonPair
+                (reportQ1aTerminalPlayoutsST card)
+                (reportQ1aTerminalPlayoutsMT8 card)
+            ]
+        ,
+            [ "Q1b"
+            , "Does pure Haskell match backend (ii) on search-iteration throughput?"
+            , renderComparisonPair
+                (reportQ1bSearchItersST card)
+                (reportQ1bSearchItersMT8 card)
+            ]
+        ,
+            [ "Q2"
+            , "Does pure Haskell match backend (ii) on complete self-play throughput?"
+            , renderComparisonPair
+                (reportQ2SelfplayGamesST card)
+                (reportQ2SelfplayGamesMT8 card)
+            ]
+        ,
+            [ "Q3"
+            , "Do live backends (ii)..(v) produce identical cpp-RNG determinism payloads?"
+            , "PASS ((ii)..(v), 4 backends agree)"
+            ]
+        ,
+            [ "Q4"
+            , "Does same-backend determinism hold across repeated runs?"
+            , "PASS (5/5 backends x 3 seeds)"
+            ]
+        ,
+            [ "Q5"
+            , "How do Haskell and backend (ii) scale from ST to MT8?"
+            , "H search "
+                <> renderScalingRatio (reportQ5HaskellSearchItersScaling card)
+                <> "; C++ search "
+                <> renderScalingRatio (reportQ5CppImperativeSearchItersScaling card)
+                <> "; H self-play "
+                <> renderScalingRatio (reportQ5HaskellSelfplayGamesScaling card)
+                <> "; C++ self-play "
+                <> renderScalingRatio (reportQ5CppImperativeSelfplayGamesScaling card)
+            ]
+        ,
+            [ "Q6"
+            , "Do all five backend slots pass the legacy-envelope liveness/overflow gate?"
+            , "PASS (all five backend slots live)"
+            ]
+        ]
+
+questionAnswersTable :: ReportCard -> [String]
+questionAnswersTable card =
+    formatTable
+        ["Q", "Answer"]
+        [
+            [ "Q1a"
+            , parityAnswer
+                "terminal playout throughput"
+                (reportQ1aTerminalPlayoutsST card)
+                (reportQ1aTerminalPlayoutsMT8 card)
+            ]
+        ,
+            [ "Q1b"
+            , parityAnswer
+                "search-iteration throughput"
+                (reportQ1bSearchItersST card)
+                (reportQ1bSearchItersMT8 card)
+            ]
+        ,
+            [ "Q2"
+            , parityAnswer
+                "complete self-play throughput"
+                (reportQ2SelfplayGamesST card)
+                (reportQ2SelfplayGamesMT8 card)
+            ]
+        ,
+            [ "Q3"
+            , crossBackendDeterminismAnswer (reportDivergenceRows card)
+            ]
+        ,
+            [ "Q4"
+            , "Yes: the observed same-backend determinism gate passed for 5 backend slots x 3 seeds before report-card rendering."
+            ]
+        ,
+            [ "Q5"
+            , scalingAnswer card
+            ]
+        ,
+            [ "Q6"
+            , "Yes: the observed legacy-envelope gate completed all five backend slots before report-card rendering."
+            ]
+        ]
+
+divergenceTable :: [ReportDivergenceRow] -> [String]
+divergenceTable rows =
+    formatTable
+        ("Origin" : targetBackends)
+        [ reportDivergenceOrigin row : map renderDivergenceCell (reportDivergenceCells row)
+        | row <- rows
+        ]
+  where
+    targetBackends =
+        case rows of
+            [] -> defaultDivergenceBackends
+            row : _ -> map reportDivergenceBackend (reportDivergenceCells row)
+
+renderMaybeRate :: Maybe Double -> String
+renderMaybeRate Nothing = "pending"
+renderMaybeRate (Just value) = fixed1 value
+
+renderComparisonPair :: ReportRateComparison -> ReportRateComparison -> String
+renderComparisonPair single multi =
+    renderComparisonRatio single <> " ST; " <> renderComparisonRatio multi <> " MT8"
+
+renderComparisonRatio :: ReportRateComparison -> String
+renderComparisonRatio comparison
+    | reportComparisonMeasured comparison = fixed2 (reportTimeRatio comparison) <> "x"
+    | otherwise = fixed2 (reportTimeRatio comparison) <> "x logical"
+
+renderScalingRatio :: ReportScaling -> String
+renderScalingRatio scaling
+    | reportScalingMeasured scaling = fixed2 (reportScalingRatio scaling) <> "x"
+    | otherwise = fixed2 (reportScalingRatio scaling) <> "x logical"
+
+parityAnswer :: String -> ReportRateComparison -> ReportRateComparison -> String
+parityAnswer metric single multi
+    | not (reportComparisonMeasured single && reportComparisonMeasured multi) =
+        "Pending: observed "
+            <> metric
+            <> " metrics are not available yet."
+    | comparisonsWithinTolerance single multi =
+        "Yes: observed backend (ii)/Haskell ratios are "
+            <> observedComparisonRatios single multi
+            <> ", within "
+            <> fixed2 parityToleranceRatio
+            <> "x tolerance."
     | otherwise =
-        fixed2 (reportScalingRatio scaling)
-            <> "x   ("
-            <> fixed1 (reportSingleRate scaling)
-            <> " -> "
-            <> fixed1 (reportMultiRate scaling)
-            <> " "
-            <> rateUnitText (reportScalingUnit scaling)
-            <> ")"
+        "No: observed backend (ii)/Haskell ratios are "
+            <> observedComparisonRatios single multi
+            <> ", above "
+            <> fixed2 parityToleranceRatio
+            <> "x tolerance."
+
+comparisonsWithinTolerance :: ReportRateComparison -> ReportRateComparison -> Bool
+comparisonsWithinTolerance single multi =
+    reportTimeRatio single <= parityToleranceRatio
+        && reportTimeRatio multi <= parityToleranceRatio
+
+observedComparisonRatios :: ReportRateComparison -> ReportRateComparison -> String
+observedComparisonRatios single multi =
+    fixed2 (reportTimeRatio single)
+        <> "x ST and "
+        <> fixed2 (reportTimeRatio multi)
+        <> "x MT8"
+
+parityToleranceRatio :: Double
+parityToleranceRatio = 1.0 + reportCardParityTolerance
+
+crossBackendDeterminismAnswer :: [ReportDivergenceRow] -> String
+crossBackendDeterminismAnswer rows =
+    let (visit, move) = maxDivergenceRates rows
+        observed = fixed4 visit <> "/" <> fixed4 move
+     in if visit == 0.0 && move == 0.0
+            then "Yes: max observed visit/move disagreement is " <> observed <> "."
+            else "No: max observed visit/move disagreement is " <> observed <> "."
+
+maxDivergenceRates :: [ReportDivergenceRow] -> (Double, Double)
+maxDivergenceRates rows =
+    ( maximum
+        (0.0 : [reportVisitDisagreementRate cell | cell <- allDivergenceCells])
+    , maximum
+        (0.0 : [reportMoveDisagreementRate cell | cell <- allDivergenceCells])
+    )
+  where
+    allDivergenceCells = concatMap reportDivergenceCells rows
+
+scalingAnswer :: ReportCard -> String
+scalingAnswer card
+    | all reportScalingMeasured scalings =
+        "Observed MT8/ST scaling is Haskell search "
+            <> renderScalingRatio (reportQ5HaskellSearchItersScaling card)
+            <> ", backend (ii) search "
+            <> renderScalingRatio (reportQ5CppImperativeSearchItersScaling card)
+            <> ", Haskell self-play "
+            <> renderScalingRatio (reportQ5HaskellSelfplayGamesScaling card)
+            <> ", backend (ii) self-play "
+            <> renderScalingRatio (reportQ5CppImperativeSelfplayGamesScaling card)
+            <> "."
+    | otherwise = "Pending: observed scaling metrics are not available yet."
+  where
+    scalings =
+        [ reportQ5HaskellSearchItersScaling card
+        , reportQ5CppImperativeSearchItersScaling card
+        , reportQ5HaskellSelfplayGamesScaling card
+        , reportQ5CppImperativeSelfplayGamesScaling card
+        ]
 
 renderRateComparisonJson :: ReportRateComparison -> String
 renderRateComparisonJson comparison =
@@ -267,6 +489,28 @@ renderScalingJson scaling =
         <> "\":"
         <> fixed4 (reportMultiRate scaling)
         <> "}"
+
+renderRawPerformanceRowJson :: ReportRawPerformanceRow -> String
+renderRawPerformanceRowJson row =
+    "{\"backend\":\""
+        <> backendIdentifier (reportRawBackend row)
+        <> "\",\"q1a_terminal_playouts_st\":"
+        <> renderMaybeRateJson (reportRawQ1aTerminalPlayoutsST row)
+        <> ",\"q1a_terminal_playouts_mt8\":"
+        <> renderMaybeRateJson (reportRawQ1aTerminalPlayoutsMT8 row)
+        <> ",\"q1b_search_iters_st\":"
+        <> renderMaybeRateJson (reportRawQ1bSearchItersST row)
+        <> ",\"q1b_search_iters_mt8\":"
+        <> renderMaybeRateJson (reportRawQ1bSearchItersMT8 row)
+        <> ",\"q2_selfplay_games_st\":"
+        <> renderMaybeRateJson (reportRawQ2SelfplayGamesST row)
+        <> ",\"q2_selfplay_games_mt8\":"
+        <> renderMaybeRateJson (reportRawQ2SelfplayGamesMT8 row)
+        <> "}"
+
+renderMaybeRateJson :: Maybe Double -> String
+renderMaybeRateJson Nothing = "null"
+renderMaybeRateJson (Just value) = fixed4 value
 
 rateUnitText :: ReportRateUnit -> String
 rateUnitText unit =
@@ -331,11 +575,6 @@ defaultDivergenceBackends =
     , "haskell"
     ]
 
-renderDivergenceRow :: ReportDivergenceRow -> String
-renderDivergenceRow row =
-    padRight 16 (reportDivergenceOrigin row)
-        <> joinWith "  " (map renderDivergenceCell (reportDivergenceCells row))
-
 renderDivergenceCell :: ReportDivergenceCell -> String
 renderDivergenceCell cell =
     fixed4 (reportVisitDisagreementRate cell)
@@ -368,6 +607,28 @@ fixed2 = printf "%.2f"
 
 fixed1 :: Double -> String
 fixed1 = printf "%.1f"
+
+defaultRawPerformanceRows :: [ReportRawPerformanceRow]
+defaultRawPerformanceRows =
+    [ ReportRawPerformanceRow
+        { reportRawBackend = backend
+        , reportRawQ1aTerminalPlayoutsST = Nothing
+        , reportRawQ1aTerminalPlayoutsMT8 = Nothing
+        , reportRawQ1bSearchItersST = Nothing
+        , reportRawQ1bSearchItersMT8 = Nothing
+        , reportRawQ2SelfplayGamesST = Nothing
+        , reportRawQ2SelfplayGamesMT8 = Nothing
+        }
+    | backend <- allBackends
+    ]
+
+formatTable :: [String] -> [[String]] -> [String]
+formatTable headers rows =
+    let tableRows = headers : rows
+        widths = map (maximum . map length) (transpose tableRows)
+        renderRow row = joinWith "  " [padRight width cell | (width, cell) <- zip widths row]
+        separator = joinWith "  " [replicate width '-' | width <- widths]
+     in renderRow headers : separator : map renderRow rows
 
 padRight :: Int -> String -> String
 padRight width value =

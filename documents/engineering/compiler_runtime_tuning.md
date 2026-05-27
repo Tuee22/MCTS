@@ -651,6 +651,12 @@ accepted `docker compose run --rm mcts mcts test all` report card recorded:
 Q3/Q4/Q6 passed, the divergence matrix was all zeroes, all Cabal stanzas passed,
 and the verdict was **`Within tolerance`**.
 
+The current text report card also prints raw Q1a/Q1b/Q2 rates for every backend
+slot before the question-summary table and ends with explicit Q1a-Q6 answers based
+on the observed ratios, scaling values, divergence rates, and gate outcomes. Those
+raw rows are diagnostic context for the full cohort; the parity verdict above
+remains Haskell (v) versus backend (ii).
+
 ## Parity Tolerance
 
 The Phase 8 Sprint 8.3 verdict pins on a single constant:

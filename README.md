@@ -54,6 +54,14 @@ target: `docker compose run --rm mcts mcts test all` reports
 `Verdict: Within tolerance` for Haskell vs `cpp-imperative` across Q1a, Q1b, and
 Q2, with Q3/Q4/Q6 also passing.
 
+The text report card defines its terms before the evidence block, then renders
+three aligned evidence tables in this order: raw backend performance metrics for
+every backend slot, the Q1a/Q1b/Q2/Q3/Q4/Q5/Q6 question summary, and the
+`visit/move` divergence matrix. It ends with an explicit question-answer summary
+derived from the observed ratios, scaling values, divergence rates, and gate
+outcomes. JSON output includes the same raw metric fields under
+`raw_performance_metrics`.
+
 ## Command Surface
 
 The full generated command reference is [documents/cli/commands.md](documents/cli/commands.md); the command contract is [cli_command_surface.md](documents/engineering/cli_command_surface.md).

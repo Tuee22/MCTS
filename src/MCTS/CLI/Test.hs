@@ -61,6 +61,7 @@ data ReportPerformance = ReportPerformance
     , performanceQ1bSearchItersMT8 :: !ReportRateComparison
     , performanceQ2SelfplayGamesST :: !ReportRateComparison
     , performanceQ2SelfplayGamesMT8 :: !ReportRateComparison
+    , performanceRawRows :: ![ReportRawPerformanceRow]
     }
     deriving (Eq, Show)
 
@@ -288,6 +289,7 @@ buildMeasuredReportCard = do
                                 ReportGamesPerSecond
                                 (reportCppRate q2ST)
                                 (reportCppRate q2MT8)
+                        , reportRawPerformanceRows = performanceRawRows measured
                         , reportVerdict = verdictFromRatios ratios
                         }
 
@@ -327,49 +329,56 @@ buildReportPerformance
     -> IO (Either AppError ReportPerformance)
 buildReportPerformance clock = do
     q1aST <-
-        measurePrimitiveLiveComparison
+        measurePrimitiveRates
             clock
             TerminalPlayouts
             SingleThreaded
     q1aMT8 <-
-        measurePrimitiveLiveComparison
+        measurePrimitiveRates
             clock
             TerminalPlayouts
             (MultiThreaded 8)
     q1bST <-
-        measurePrimitiveLiveComparison
+        measurePrimitiveRates
             clock
             SearchIters
             SingleThreaded
     q1bMT8 <-
-        measurePrimitiveLiveComparison
+        measurePrimitiveRates
             clock
             SearchIters
             (MultiThreaded 8)
     q2ST <-
-        measureLiveComparison
+        measureSelfplayRates
             clock
-            CppImperative
-            Selfplay
             SingleThreaded
-            reportCardSelfplayGames
-            reportCardBenchSims
     q2MT8 <-
-        measureLiveComparison
+        measureSelfplayRates
             clock
-            CppImperative
-            Selfplay
             (MultiThreaded 8)
-            reportCardSelfplayGames
-            reportCardBenchSims
-    pure $
+    pure $ do
+        q1aSTRates <- q1aST
+        q1aMT8Rates <- q1aMT8
+        q1bSTRates <- q1bST
+        q1bMT8Rates <- q1bMT8
+        q2STRates <- q2ST
+        q2MT8Rates <- q2MT8
         ReportPerformance
-            <$> q1aST
-            <*> q1aMT8
-            <*> q1bST
-            <*> q1bMT8
-            <*> q2ST
-            <*> q2MT8
+            <$> comparisonFromRates ReportPlayoutsPerSecond q1aSTRates
+            <*> comparisonFromRates ReportPlayoutsPerSecond q1aMT8Rates
+            <*> comparisonFromRates ReportSearchItersPerSecond q1bSTRates
+            <*> comparisonFromRates ReportSearchItersPerSecond q1bMT8Rates
+            <*> comparisonFromRates ReportGamesPerSecond q2STRates
+            <*> comparisonFromRates ReportGamesPerSecond q2MT8Rates
+            <*> pure
+                ( rawPerformanceRowsFrom
+                    q1aSTRates
+                    q1aMT8Rates
+                    q1bSTRates
+                    q1bMT8Rates
+                    q2STRates
+                    q2MT8Rates
+                )
 
 buildParityAnchor
     :: IO Word64
@@ -417,40 +426,6 @@ buildParityAnchor clock baseline candidate = do
             , inputSims = FixedSims sims
             }
 
-measureLiveComparison
-    :: IO Word64
-    -> Backend
-    -> Workload
-    -> Threading
-    -> Int
-    -> Int
-    -> IO (Either AppError ReportRateComparison)
-measureLiveComparison clock cppBackend workload threading games sims = do
-    cpp <- measureBackend clock baseInputs cppBackend
-    haskell <- measureBackend clock baseInputs Haskell
-    pure $ do
-        cppRate <- cpp
-        haskellRate <- haskell
-        Right
-            ReportRateComparison
-                { reportComparisonMeasured = True
-                , reportComparisonUnit = ReportGamesPerSecond
-                , reportTimeRatio = safeRatio cppRate haskellRate
-                , reportHaskellRate = haskellRate
-                , reportCppRate = cppRate
-                }
-  where
-    baseInputs =
-        defaultRunInputs
-            { inputWorkload = workload
-            , inputRng = NativeRng
-            , inputThreading = threading
-            , inputGames = games
-            , inputSeed = 42
-            , inputMaxPlies = 200
-            , inputSims = FixedSims sims
-            }
-
 measureBackend :: IO Word64 -> RunInputs -> Backend -> IO (Either AppError Double)
 measureBackend clock inputs backend = do
     start <- clock
@@ -467,25 +442,13 @@ measureBackend clock inputs backend = do
                             / fromIntegral elapsedNanos
                         )
 
-measurePrimitiveLiveComparison
+measurePrimitiveRates
     :: IO Word64
     -> BenchPrimitive
     -> Threading
-    -> IO (Either AppError ReportRateComparison)
-measurePrimitiveLiveComparison clock primitive threading = do
-    cpp <- measurePrimitive CppImperative
-    haskell <- measurePrimitive Haskell
-    pure $ do
-        cppRate <- cpp
-        haskellRate <- haskell
-        Right
-            ReportRateComparison
-                { reportComparisonMeasured = True
-                , reportComparisonUnit = primitiveReportUnit primitive
-                , reportTimeRatio = safeRatio cppRate haskellRate
-                , reportHaskellRate = haskellRate
-                , reportCppRate = cppRate
-                }
+    -> IO (Either AppError [(Backend, Double)])
+measurePrimitiveRates clock primitive threading =
+    sequenceRateResults <$> mapM measurePrimitive allBackends
   where
     options =
         BenchPrimitiveOptions
@@ -497,16 +460,74 @@ measurePrimitiveLiveComparison clock primitive threading = do
             }
     measurePrimitive backend = do
         result <- measurePrimitiveBackendRate clock primitive options backend
-        pure $
-            case result of
-                Left message -> Left (IOErrorText message)
-                Right rate -> Right rate
+        pure (backend, either (Left . IOErrorText) Right result)
 
-primitiveReportUnit :: BenchPrimitive -> ReportRateUnit
-primitiveReportUnit primitive =
-    case primitive of
-        TerminalPlayouts -> ReportPlayoutsPerSecond
-        SearchIters -> ReportSearchItersPerSecond
+measureSelfplayRates
+    :: IO Word64
+    -> Threading
+    -> IO (Either AppError [(Backend, Double)])
+measureSelfplayRates clock threading =
+    sequenceRateResults <$> mapM measureSelfplay allBackends
+  where
+    inputs =
+        defaultRunInputs
+            { inputWorkload = Selfplay
+            , inputRng = NativeRng
+            , inputThreading = threading
+            , inputGames = reportCardSelfplayGames
+            , inputSeed = 42
+            , inputMaxPlies = 200
+            , inputSims = FixedSims reportCardBenchSims
+            }
+    measureSelfplay backend = do
+        result <- measureBackend clock inputs backend
+        pure (backend, result)
+
+sequenceRateResults :: [(Backend, Either AppError Double)] -> Either AppError [(Backend, Double)]
+sequenceRateResults [] = Right []
+sequenceRateResults ((_, Left err) : _) = Left err
+sequenceRateResults ((backend, Right rate) : rest) =
+    ((backend, rate) :) <$> sequenceRateResults rest
+
+comparisonFromRates :: ReportRateUnit -> [(Backend, Double)] -> Either AppError ReportRateComparison
+comparisonFromRates unit rates = do
+    cppRate <- lookupRate CppImperative rates
+    haskellRate <- lookupRate Haskell rates
+    Right
+        ReportRateComparison
+            { reportComparisonMeasured = True
+            , reportComparisonUnit = unit
+            , reportTimeRatio = safeRatio cppRate haskellRate
+            , reportHaskellRate = haskellRate
+            , reportCppRate = cppRate
+            }
+
+rawPerformanceRowsFrom
+    :: [(Backend, Double)]
+    -> [(Backend, Double)]
+    -> [(Backend, Double)]
+    -> [(Backend, Double)]
+    -> [(Backend, Double)]
+    -> [(Backend, Double)]
+    -> [ReportRawPerformanceRow]
+rawPerformanceRowsFrom q1aST q1aMT8 q1bST q1bMT8 q2ST q2MT8 =
+    [ ReportRawPerformanceRow
+        { reportRawBackend = backend
+        , reportRawQ1aTerminalPlayoutsST = lookup backend q1aST
+        , reportRawQ1aTerminalPlayoutsMT8 = lookup backend q1aMT8
+        , reportRawQ1bSearchItersST = lookup backend q1bST
+        , reportRawQ1bSearchItersMT8 = lookup backend q1bMT8
+        , reportRawQ2SelfplayGamesST = lookup backend q2ST
+        , reportRawQ2SelfplayGamesMT8 = lookup backend q2MT8
+        }
+    | backend <- allBackends
+    ]
+
+lookupRate :: Backend -> [(Backend, Double)] -> Either AppError Double
+lookupRate backend rates =
+    case lookup backend rates of
+        Just rate -> Right rate
+        Nothing -> Left (IOErrorText ("missing report-card rate for " <> backendIdentifier backend))
 
 scalingFrom :: ReportRateUnit -> Double -> Double -> ReportScaling
 scalingFrom unit singleRate multiRate =
@@ -526,7 +547,7 @@ verdictFromRatios :: [Double] -> Verdict
 verdictFromRatios ratios =
     let worst = maximum (1.0 : ratios)
         shortfall = worst - 1.0
-     in if shortfall <= haskellParityTolerance
+     in if shortfall <= reportCardParityTolerance
             then WithinTolerance
             else Shortfall shortfall
 
@@ -577,12 +598,9 @@ reportCardLegacyParityGames = 2
 reportCardLegacyParitySims :: Int
 reportCardLegacyParitySims = 4
 
-haskellParityTolerance :: Double
-haskellParityTolerance = 0.05
-
 parityAnchorWithinTolerance :: ParityAnchorResult -> Bool
 parityAnchorWithinTolerance result =
-    all ((<= 1.0 + haskellParityTolerance) . anchorTimeRatio) (anchorRows result)
+    all ((<= 1.0 + reportCardParityTolerance) . anchorTimeRatio) (anchorRows result)
 
 renderParityAnchor :: ParityAnchorResult -> String
 renderParityAnchor result =
@@ -637,7 +655,7 @@ renderParityAnchorJson result =
         <> ",\"seed\":42"
         <> ",\"max_plies\":200"
         <> ",\"tolerance\":"
-        <> fixed4 haskellParityTolerance
+        <> fixed4 reportCardParityTolerance
         <> ",\"within_tolerance\":"
         <> renderBool (parityAnchorWithinTolerance result)
         <> ",\"shortfall\":"

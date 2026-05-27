@@ -80,6 +80,12 @@ already compact boundary aligned with `(iii)`. Sprints `8.12` and `8.13` then
 closed the Haskell parity and style follow-up against the corrected backend (ii)
 target, so no Phase `8` style or parity cleanup row remains pending.
 
+Sprint `7.10` closed the stale report-card presentation shape: text output now
+aligns columns, states the report-card terms and questions, and includes raw
+Q1a/Q1b/Q2 metrics for every backend slot before the question summary and
+divergence matrix, followed by explicit Q1a-Q6 answers based on observed metrics
+and gate outcomes. No pending report-card presentation cleanup remains.
+
 Two classes of entries populate this ledger over time:
 
 1. **Doctrine-deviation residue.** Any worktree behavior that the implemented code
@@ -110,6 +116,7 @@ data instead of publishing a fallback shared library.
 
 | Item | Removed In | Notes |
 |------|------------|-------|
+| Report-card unaligned text and missing raw backend metrics | Sprint 7.10 | `src/MCTS/ReportCard.hs` now renders fixed-width raw-performance, question-summary, divergence-matrix, and final question-answer tables; `src/MCTS/CLI/Test.hs` measures raw Q1a/Q1b/Q2 rates for every backend slot while retaining Haskell-vs-backend-(ii) verdict semantics; JSON exposes the rows under `raw_performance_metrics`; docs state every report-card term and question. |
 | Corrected-backend Haskell parity shortfall | Sprint 8.12, 2026-05-26 | `src/MCTS/Engine.hs`, `src/MCTS/Search/UCT.hs`, `src/MCTS/CLI/Bench.hs`, and `src/MCTS/Driver.hs` now use packed numeric action IDs, direct `legalActionSet`/`applyActionId` hot paths, reusable wall-block masks, strict rollout/terminal loops, and RTS capability pinning for multi-worker benchmark paths. `docker compose run --rm mcts mcts test all` recorded Q1a/Q1b/Q2 within tolerance against corrected backend (ii), Q3/Q4/Q6 PASS, zero live-cohort divergence, and `Verdict: Within tolerance`. |
 | Backend (v) Haskell functional-core style follow-up | Sprint 8.13, 2026-05-26 | Haskell keeps the public `legalMoves`/`applyMove` pure boundary while the search hot path uses packed `ActionIds` and numeric transitions aligned with the compact `(iii)/(iv)` style. The `ST` arena remains local to search, and transcript action IDs, canonical action ordering, the 12-wall cap, and ply-cap draw semantics are preserved. |
 | Backend (iii) legacy-board/text-action hot path | Sprint 6.7, 2026-05-26 | `cpp-functional/engine/state.hpp` now stores compact value-state fields and generates capped numeric legal successors directly; `cpp-functional/engine/search.cpp` uses `std::vector<State>` successor buffers; `cpp-functional/c-abi/mcts_cpp_functional.cc` applies C ABI actions through `try_advance`; `cpp-functional/Makefile` no longer builds the legacy board translation unit; the backend-local legacy `cpp-functional/engine/board.cpp`, `cpp-functional/engine/board.h`, and `cpp-functional/engine/mcts.hpp` copies were removed. Validation passed `mcts-cross-backend`, `mcts-legacy-parity`, `mcts-unit`, and focused `(ii)`/`(iii)` native-RNG performance checks through Compose. |

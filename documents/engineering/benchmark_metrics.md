@@ -49,6 +49,28 @@ Documentation may refer to `bench rollouts` only as a legacy played-game CLI
 name. The report card uses the explicit primitive leaves for Q1a/Q1b and keeps
 played-game self-play rows under `games/s`.
 
+## Report-Card Terms
+
+The text report card defines these terms before rendering evidence:
+
+| Term | Definition |
+|------|------------|
+| `ST` | Single-threaded benchmark or verification run. |
+| `MT8` | Multi-threaded benchmark run with 8 workers. |
+| `Q1a` | Terminal playout throughput question, reported in `playouts/s`. |
+| `Q1b` | UCT/MCTS search-iteration throughput question, reported in `search-iters/s`. |
+| `Q2` | Complete self-play game throughput question, reported in `games/s`. |
+| `Q5` | `MT8 / ST` scaling ratio for the named backend and metric. |
+| `visit/move` | Divergence matrix cell containing visit-table and chosen-move disagreement rates. |
+
+Raw backend performance metrics are observed rates, not ratios. The text report
+card renders one raw table row per backend and metric family before the question
+summary and divergence-matrix tables, then ends with an explicit Q1a-Q6 answer
+summary derived from the observed ratios, scaling values, divergence rates, and
+gate outcomes. Q1/Q2 verdict logic still uses backend (v) Haskell against backend
+(ii) `cpp-imperative`; the extra raw rows are context for all five backend slots,
+not additional pass/fail gates.
+
 ## Benchmark Leaves
 
 The refactored suite provides or retains these operator-facing benchmark
@@ -65,14 +87,15 @@ compare different units as if they were interchangeable.
 
 ## Q1-Q6 Mapping
 
-| Question | Metric evidence required |
-|----------|--------------------------|
-| Q1 | Backend (v) Haskell vs backend (ii) C++ on core throughput. This needs two subrows: Q1a terminal playout throughput (`playouts/s`) and Q1b search-iteration throughput (`search-iters/s`), each single-threaded and 8-worker where batching applies. |
-| Q2 | Backend (v) Haskell vs backend (ii) C++ on played-game self-play throughput (`games/s`) at the report-card search budget, single-threaded and 8-worker. |
-| Q3 | Cross-backend determinism for `(ii)..(v)` under `--rng cpp`; compares canonical visit payloads and chosen moves, not performance rates. |
-| Q4 | Same-backend determinism for each backend across repeated runs with the same logical inputs. |
-| Q5 | Scaling evidence. Report search-iteration scaling and played-game scaling separately; terminal-playout scaling may be included as Q1a diagnostic evidence. Do not infer search-core scaling from `games/s` alone. |
-| Q6 | Legacy-envelope liveness/overflow across all five backend slots. This is not a throughput claim and not a visit-vector equality claim for backend (i). |
+| Question | Stated question | Metric evidence required |
+|----------|-----------------|--------------------------|
+| Q1a | Does pure Haskell match backend (ii) on terminal playout throughput? | Backend (v) Haskell vs backend (ii) C++ on terminal playout throughput (`playouts/s`), single-threaded and 8-worker where batching applies. |
+| Q1b | Does pure Haskell match backend (ii) on search-iteration throughput? | Backend (v) Haskell vs backend (ii) C++ on search-iteration throughput (`search-iters/s`), single-threaded and 8-worker where batching applies. |
+| Q2 | Does pure Haskell match backend (ii) on complete self-play throughput? | Backend (v) Haskell vs backend (ii) C++ on played-game self-play throughput (`games/s`) at the report-card search budget, single-threaded and 8-worker. |
+| Q3 | Do live backends `(ii)..(v)` produce identical `--rng cpp` determinism payloads? | Cross-backend determinism for `(ii)..(v)` under `--rng cpp`; compares canonical visit payloads and chosen moves, not performance rates. |
+| Q4 | Does same-backend determinism hold across repeated runs? | Same-backend determinism for each backend across repeated runs with the same logical inputs. |
+| Q5 | How do Haskell and backend (ii) scale from `ST` to `MT8`? | Search-iteration scaling and played-game scaling reported separately; terminal-playout scaling may be included as Q1a diagnostic evidence. Do not infer search-core scaling from `games/s` alone. |
+| Q6 | Do all five backend slots pass the legacy-envelope liveness/overflow gate? | Legacy-envelope liveness/overflow across all five backend slots. This is not a throughput claim and not a visit-vector equality claim for backend (i). |
 
 The historical Q1/Q2/Q5 rows emitted before this taxonomy are legacy
 **played-game** evidence. They are useful for audit and integration diagnostics,

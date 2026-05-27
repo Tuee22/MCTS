@@ -85,6 +85,14 @@ reproduction helper remains audit-only, and Q6 is the all-five legacy-envelope
 liveness/overflow gate. The aggregate revalidation kept the report-card verdict
 `Within tolerance`.
 
+Phase `7` Sprint `7.10` keeps the report-card renderer closed by defining each
+display term, aligning text-table columns, rendering raw Q1a/Q1b/Q2 performance
+metrics for every backend slot ahead of the question summary and divergence
+matrix, ending the text report with explicit Q1a-Q6 answers based on observed
+ratios, scaling values, divergence rates, and gate outcomes, and adding the same
+observed-rate rows to JSON as `raw_performance_metrics`. This changes the output
+shape, not the Q1/Q2/Q5 verdict semantics.
+
 Phase `5` Sprint `5.6` closed on 2026-05-25 after backend (ii)'s hot path was
 redesigned around a compact bitfield board, direct capped legal-move generation,
 numeric action IDs, and wavefront escapability checks. Focused rebuilt-image
@@ -185,6 +193,10 @@ Q1b MT8 0.36x, Q2 ST 0.05x, Q2 MT8 0.17x, Haskell search-iteration scaling
 0.97x, C++ (ii) search-iteration scaling 7.47x, Haskell self-play scaling
 1.03x, C++ (ii) self-play scaling 3.69x, Q6 PASS, zero live-cohort divergence,
 and `Verdict: Within tolerance`.
+
+Sprint `7.10` is validated by the focused renderer/unit gate,
+`docker compose run --rm mcts mcts docs check`,
+`docker compose run --rm mcts mcts check-code`, and `git diff --check`.
 
 Sprint `5.6` was validated on 2026-05-25 with
 `docker compose run --rm --build mcts mcts bench selfplay --backend cpp-legacy,cpp-imperative,haskell --rng native --threading single --games 4 --seed 42 --max-plies 200 --sims 500`,
