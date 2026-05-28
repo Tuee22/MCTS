@@ -11,7 +11,7 @@ module MCTS.CLI.Bench
     , monotonicNanos
     ) where
 
-import Control.Concurrent (MVar, forkIO, newEmptyMVar, newMVar, putMVar, takeMVar)
+import Control.Concurrent (MVar, forkOn, newEmptyMVar, newMVar, putMVar, takeMVar)
 import Control.Exception (bracket_, evaluate)
 import Control.Monad.IO.Class (liftIO)
 import Data.Bits (xor)
@@ -296,7 +296,7 @@ runChunkPool workers runChunk chunks =
                         putMVar results (value : current)
                         worker
             nWorkers = min workers (max 1 (length chunks))
-        mapM_ (\_ -> forkIO worker) [1 .. nWorkers]
+        mapM_ (\cap -> forkOn cap worker) [0 .. nWorkers - 1]
         mapM_ (\_ -> takeMVar done) [1 .. nWorkers]
         foldl' xor 0 <$> takeMVar results
 

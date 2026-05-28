@@ -74,6 +74,21 @@ additional pass/fail gates. Backend (iv) Rust raw rows remain context rather tha
 Q1/Q2 verdict inputs after Phase `6` Sprint `6.8` aligns its hot path with the
 functional-core cohort.
 
+The Sprint `8.14` `Within tolerance` verdict is current-artifact evidence for the
+Sprint `5.6` backend `(ii)` implementation. Phase `5` Sprint `5.7` has since
+closed the full imperative C++ kernel steelman, so Phase `8` Sprint `8.15` owns
+the active Haskell shortfall exposed by rerunning these Q1a, Q1b, Q2, and Q5
+metric rows against the fully steelmanned `(ii)` target.
+Focused accepted Sprint `8.15` Haskell changes improve the local hot path but
+still leave the aggregate handoff open after backend `(ii)`'s Sprint `5.7`
+steelman. The latest accepted aggregate rerun still fails closed with `Verdict: Shortfall`:
+Q1a backend `(ii)`/Haskell ratios `1.06x` ST and `1.27x` MT8, Q1b
+`1.05x` ST and `1.11x` MT8, and Q2 `0.98x` ST and `1.11x` MT8
+(`Shortfall 0.2678864950323545`). The accepted Haskell changes now include
+single-constructor action transitions with the no-ply rollout variant, in
+addition to the earlier compact pawn slots, direct non-terminal action sets,
+packed-slot path starts, and no-wall legal-action fast path.
+
 ## Benchmark Leaves
 
 The refactored suite provides or retains these operator-facing benchmark
@@ -105,6 +120,9 @@ The historical Q1/Q2/Q5 rows emitted before this taxonomy are legacy
 **played-game** evidence. They are useful for audit and integration diagnostics,
 but current Q1/Q5 closure uses the explicit `playouts/s`, `search-iters/s`, and
 `games/s` report-card rows instead of treating those historical rows as final.
+After Sprint `5.7` changed backend `(ii)`, the Sprint `8.14` rows joined the audit
+history. Sprint `8.15` remains active until the new-target metric evidence either
+closes within tolerance or records an accepted non-parity outcome.
 
 ## Legacy C++ Basis
 
@@ -128,4 +146,4 @@ legacy-envelope question is Q6.
 - [compiler_runtime_tuning.md](./compiler_runtime_tuning.md) — backend tuning and parity tolerance.
 - [determinism_contract.md](./determinism_contract.md) — Q3/Q4/Q6 correctness envelopes.
 - [semantic_parity_contract.md](./semantic_parity_contract.md) — Q7 semantic-parity evidence and normalized divergence score.
-- [../../DEVELOPMENT_PLAN/README.md](../../DEVELOPMENT_PLAN/README.md) — phase status and reopened metric-suite work.
+- [../../DEVELOPMENT_PLAN/README.md](../../DEVELOPMENT_PLAN/README.md) — phase status, metric-suite history, and active parity work.

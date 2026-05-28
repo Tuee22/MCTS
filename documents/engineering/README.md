@@ -22,6 +22,12 @@ the development plan changes the supported architecture, the affected doctrine d
 must be updated in the same change so they continue to describe the implemented
 repository state.
 
+Current planning note: Phase `5` Sprint `5.7` has closed backend `(ii)`'s full
+imperative hot-path steelman, and Phase `8` Sprint `8.15` is active on the
+Haskell parity shortfall exposed by the first post-`5.7` rebaseline. The Sprint
+`8.14` report-card verdict is historical current-artifact evidence for the older
+Sprint `5.6` backend `(ii)` target.
+
 The canonical CLI doctrine for this project lives at
 [../../HASKELL_CLI_TOOL.md](../../HASKELL_CLI_TOOL.md). The overlap docs below
 (`cli_command_surface.md`, `code_quality.md`, `unit_testing_policy.md`,
@@ -40,13 +46,13 @@ own their content outright.
 | [code_quality.md](./code_quality.md) | The `mcts check-code` gate and the lint stack; build/warning-clean compilation is Dockerfile-owned; defers to the doctrine on Lint, Format, Code-Quality Stack, Generated Artifacts, and Forbidden Surfaces |
 | [unit_testing_policy.md](./unit_testing_policy.md) | The six current live Cabal test stanzas, including `mcts-semantic-parity` for Q7, the `mcts test all` Plan/Apply command, the report-card workload/output layout, the Dockerfile-built steelman artefact and prebuilt-test-executable prerequisite, and the no-generated-validation-data rule; defers to the doctrine on Test Organization |
 | [haskell_code_guide.md](./haskell_code_guide.md) | How the project uses `Subprocess`, `Plan / Apply`, `prerequisiteRegistry`, `Env`, `AppError`, and GADT state machines; defers to the doctrine on each pattern |
-| [benchmark_metrics.md](./benchmark_metrics.md) | Terminal playout, search-iteration, and played-game throughput semantics, including report-card term definitions, Q1-Q7 evidence mapping, raw backend metrics, final observed answers, and the current `bench rollouts` legacy-name caveat |
+| [benchmark_metrics.md](./benchmark_metrics.md) | Terminal playout, search-iteration, and played-game throughput semantics, including report-card term definitions, Q1-Q7 evidence mapping, raw backend metrics, current-artifact observed answers, the active Sprint `8.15` rebaseline shortfall, and the current `bench rollouts` legacy-name caveat |
 | [determinism_contract.md](./determinism_contract.md) | RNG split, per-game `splitmix64(master_seed, game_index)` seed derivation, ply-cap draw rule, visit-count vs equity asymmetry, legacy parity envelope |
 | [semantic_parity_contract.md](./semantic_parity_contract.md) | Q7 semantic parity for `(ii)..(v)`, including rule-state/replay/search-invariant checks, terminal rejection, and the normalized divergence-score contract |
 | [transcript_format.md](./transcript_format.md) | Little-endian binary wire format, single-byte action enumeration, content addressing, git-style hash-prefix lookup |
 | [backend_ffi_contract.md](./backend_ffi_contract.md) | C ABI shape across the live C-ABI backends, `unsafe`/`safe` import policy, `--rng cpp` plumbing, canonical FFI load names, and the one-bolted-library-per-backend runtime contract |
 | [backend_style_contract.md](./backend_style_contract.md) | Functional-core style contract for backends (iii), (iv), and (v): compact value state, typed action transitions, deterministic legal-action order, permitted local mutation, and completed Rust hot-path alignment |
-| [compiler_runtime_tuning.md](./compiler_runtime_tuning.md) | Per-backend tuning stack: legacy (i) exemption, (ii)/(iii) doctrine flag set, mandatory Dockerfile-time bounded PGO/BOLT success for steelman foreign backends, (iv) Rust `[profile.release]` and hot-path refactor, (v) Haskell GHC/LLVM/RTS tuning, Haskell PGO asymmetry note |
+| [compiler_runtime_tuning.md](./compiler_runtime_tuning.md) | Per-backend tuning stack: legacy (i) exemption, (ii)/(iii) doctrine flag set, mandatory Dockerfile-time bounded PGO/BOLT success for steelman foreign backends, closed Sprint `5.7` backend `(ii)` kernel/profile target, (iv) Rust `[profile.release]` and hot-path refactor, (v) Haskell GHC/LLVM/RTS tuning, Haskell PGO asymmetry note |
 
 ## Quick Navigation
 
@@ -91,6 +97,7 @@ own their content outright.
 ### Tuning
 
 - [Backend (ii)/(iii) Flag Set](./compiler_runtime_tuning.md#backend-ii-and-iii--c-imperative-and-functional-core)
+- [Sprint 5.7 Backend (ii) Hot-Path Target](./compiler_runtime_tuning.md#backend-ii-and-iii--c-imperative-and-functional-core)
 - [PGO/BOLT Training Workload Doctrine](./compiler_runtime_tuning.md#pgobolt-training-workload-doctrine)
 - [Backend (iv) Rust `[profile.release]`](./compiler_runtime_tuning.md#rust-profile)
 - [Backend (v) Haskell GHC/RTS](./compiler_runtime_tuning.md#haskell-tuning)

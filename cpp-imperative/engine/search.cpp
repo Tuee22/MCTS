@@ -5,23 +5,13 @@
 #include "state.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <limits>
-#include <utility>
-#include <vector>
 
 namespace mcts_imperative {
 namespace {
-
-thread_local std::vector<FastBoard> tls_move_buffer;
-
-// Decode the post-flip action id returned through the C ABI. Haskell flips
-// this raw id back to the absolute action-id perspective when the absolute
-// Hero is to move.
-[[gnu::hot]] static uint8_t decode_action_id(const FastBoard &b) noexcept {
-    return b.get_action_id(false);
-}
 
 [[gnu::hot, gnu::always_inline]] static inline uint64_t splitmix64(uint64_t input) noexcept {
     const uint64_t z1 = input + 0x9e3779b97f4a7c15ULL;
@@ -34,19 +24,13 @@ thread_local std::vector<FastBoard> tls_move_buffer;
     return splitmix64(seed + 0x9e3779b97f4a7c15ULL * (index + 1));
 }
 
-[[gnu::hot]] static void legal_moves_for_state(const State &state, std::vector<FastBoard> &moves) {
-    moves.clear();
-    state.b.get_capped_legal_moves(moves, state.ply_count);
-}
-
 [[gnu::hot]] static bool terminal_outcome(const State &state, uint16_t max_plies, double &outcome) noexcept {
-    const bool even_ply = (state.ply_count % 2) == 0;
     if (state.b.hero_wins()) {
-        outcome = even_ply ? 1.0 : -1.0;
+        outcome = 1.0;
         return true;
     }
     if (state.b.villain_wins()) {
-        outcome = even_ply ? -1.0 : 1.0;
+        outcome = -1.0;
         return true;
     }
     if (state.ply_count >= max_plies) {
@@ -56,123 +40,165 @@ thread_local std::vector<FastBoard> tls_move_buffer;
     return false;
 }
 
-[[gnu::hot]] static void expand(Arena &arena, uint32_t node_idx, uint16_t max_plies) {
-    UctNode &node = arena[node_idx];
-    if (node.expanded) return;
-    node.expanded = 1;
-    double outcome = 0.0;
-    if (terminal_outcome(node.state, max_plies, outcome)) {
-        node.terminal = 1;
-        return;
-    }
-
-    legal_moves_for_state(node.state, tls_move_buffer);
-    const uint32_t n = static_cast<uint32_t>(tls_move_buffer.size());
-    if (n == 0) {
-        node.terminal = 1;
-        return;
-    }
-
-    const uint32_t first = arena.reserve_children(n);
-    UctNode &parent = arena[node_idx];
-    parent.first_child_idx = first;
-    parent.n_children = static_cast<uint16_t>(n);
-    const uint16_t child_ply = static_cast<uint16_t>(parent.state.ply_count + 1);
-    for (uint32_t i = 0; i < n; ++i) {
-        UctNode &child = arena[first + i];
-        child.state.b = std::move(tls_move_buffer[i]);
-        child.state.ply_count = child_ply;
-        child.parent_idx = node_idx;
-        child.first_child_idx = kNoIndex;
-        child.n_children = 0;
-        child.expanded = 0;
-        child.terminal = terminal_outcome(child.state, max_plies, outcome) ? 1 : 0;
-        child.visit_count = 0;
-        child.q_sum = 0.0;
-    }
-}
-
-[[gnu::hot]] static uint32_t select_best_ucb(const Arena &arena, uint32_t parent_idx, double c) noexcept {
-    const UctNode &parent = arena[parent_idx];
-    const uint32_t first = parent.first_child_idx;
-    const uint16_t n = parent.n_children;
-    const double parent_visits = static_cast<double>(parent.visit_count + 1);
-    const double log_parent = std::log(parent_visits > 0.0 ? parent_visits : 1.0);
-    double best_score = -std::numeric_limits<double>::infinity();
-    uint32_t best_idx = first;
-    for (uint16_t i = 0; i < n; ++i) {
-        __builtin_prefetch(&arena[first + i], 0, 1);
-    }
-    for (uint16_t i = 0; i < n; ++i) {
-        const UctNode &child = arena[first + i];
-        const double score =
-            child.visit_count == 0
-                ? 1.0e30
-                : (child.q_sum / static_cast<double>(child.visit_count))
-                    + c * std::sqrt(log_parent / static_cast<double>(child.visit_count));
-        if (score > best_score) {
-            best_score = score;
-            best_idx = first + i;
-        }
-    }
-    return best_idx;
-}
-
-[[gnu::hot]] static double rollout(const State &start, uint64_t seed, uint16_t max_plies) {
-    State current = start;
-    uint64_t current_seed = seed;
-    for (uint16_t step = 0; step < max_plies; ++step) {
-        double outcome = 0.0;
-        if (terminal_outcome(current, max_plies, outcome)) return outcome;
-        legal_moves_for_state(current, tls_move_buffer);
-        const size_t n = tls_move_buffer.size();
-        if (n == 0) return 0.0;
-        const int64_t signed_draw = static_cast<int64_t>(current_seed ^ static_cast<uint64_t>(step));
-        int64_t pick_signed = signed_draw % static_cast<int64_t>(n);
-        if (pick_signed < 0) pick_signed += static_cast<int64_t>(n);
-        const size_t pick = static_cast<size_t>(pick_signed);
-        current.b = std::move(tls_move_buffer[pick]);
-        current.ply_count = static_cast<uint16_t>(current.ply_count + 1);
-        current_seed = mix(current_seed, step);
-    }
-    return 0.0;
-}
-
 [[gnu::hot, gnu::always_inline]] static inline void add_value(Arena &arena, uint32_t node_idx, double value) noexcept {
     UctNode &node = arena[node_idx];
     ++node.visit_count;
     node.q_sum += value;
 }
 
-[[gnu::hot]] static double descend(Arena &arena, uint32_t node_idx, uint64_t seed, uint16_t max_plies, double c) {
+[[gnu::hot]] static void expand(
+    Arena &arena,
+    uint32_t node_idx,
+    const State &state,
+    uint16_t max_plies)
+{
+    UctNode &node = arena[node_idx];
+    if (node.expanded) return;
+    node.expanded = 1;
     double outcome = 0.0;
-    if (terminal_outcome(arena[node_idx].state, max_plies, outcome)) {
-        add_value(arena, node_idx, outcome);
-        return outcome;
+    if (terminal_outcome(state, max_plies, outcome)) {
+        node.terminal = 1;
+        return;
     }
 
-    const uint32_t visits = arena[node_idx].visit_count;
-    if (visits == 0) {
-        outcome = rollout(arena[node_idx].state, seed, max_plies);
-        add_value(arena, node_idx, outcome);
-        return outcome;
+    ActionBuffer actions;
+    state.b.legal_actions(actions);
+    if (actions.empty()) {
+        node.terminal = 1;
+        return;
     }
 
-    if (!arena[node_idx].expanded) {
-        expand(arena, node_idx, max_plies);
+    const uint32_t first = arena.reserve_children(static_cast<uint32_t>(actions.size));
+    UctNode &parent = arena[node_idx];
+    parent.first_child_idx = first;
+    parent.n_children = static_cast<uint16_t>(actions.size);
+    for (uint32_t i = 0; i < actions.size; ++i) {
+        UctNode &child = arena[first + i];
+        child.parent_idx = node_idx;
+        child.first_child_idx = kNoIndex;
+        child.visit_count = 0;
+        child.q_sum = 0.0;
+        child.n_children = 0;
+        child.action_id = actions[i];
+        child.expanded = 0;
+        child.terminal = 0;
     }
-    const UctNode &node = arena[node_idx];
-    if (node.terminal || node.n_children == 0) {
-        ++arena[node_idx].visit_count;
-        return 0.0;
+}
+
+[[gnu::hot]] static uint32_t select_best_ucb_offset(
+    const Arena &arena,
+    uint32_t parent_idx,
+    double c) noexcept
+{
+    const UctNode &parent = arena[parent_idx];
+    const uint32_t first = parent.first_child_idx;
+    const uint16_t n = parent.n_children;
+    const double parent_visits = static_cast<double>(parent.visit_count + 1);
+    const double log_parent = std::log(parent_visits > 0.0 ? parent_visits : 1.0);
+    double best_score = -std::numeric_limits<double>::infinity();
+    uint32_t best_offset = 0;
+    for (uint16_t i = 0; i < n; ++i) {
+        const UctNode &child = arena[first + i];
+        if (child.visit_count == 0) return i;
+        const double score =
+            (child.q_sum / static_cast<double>(child.visit_count))
+                + c * std::sqrt(log_parent / static_cast<double>(child.visit_count));
+        if (score > best_score) {
+            best_score = score;
+            best_offset = i;
+        }
+    }
+    return best_offset;
+}
+
+[[gnu::hot]] static double rollout(const State &start, uint64_t seed, uint16_t max_plies) {
+    State current = start;
+    uint64_t current_seed = seed;
+    ActionBuffer actions;
+    for (uint16_t step = 0; step < max_plies; ++step) {
+        double outcome = 0.0;
+        if (terminal_outcome(current, max_plies, outcome)) return outcome;
+        current.b.legal_actions(actions);
+        if (actions.empty()) return 0.0;
+        const int64_t signed_draw = static_cast<int64_t>(current_seed ^ static_cast<uint64_t>(step));
+        int64_t pick_signed = signed_draw % static_cast<int64_t>(actions.size);
+        if (pick_signed < 0) pick_signed += static_cast<int64_t>(actions.size);
+        current.apply_action_unchecked(actions[static_cast<size_t>(pick_signed)]);
+        current_seed = mix(current_seed, step);
+    }
+    return 0.0;
+}
+
+[[gnu::hot]] static double descend_iterative(
+    Arena &arena,
+    uint32_t root_idx,
+    const State &root_state,
+    uint64_t seed,
+    uint16_t max_plies,
+    double c)
+{
+    State current = root_state;
+    uint32_t node_idx = root_idx;
+    uint64_t current_seed = seed;
+    std::array<uint32_t, 256> path{};
+    size_t path_size = 0;
+    double outcome = 0.0;
+
+    while (true) {
+        path[path_size++] = node_idx;
+        if (terminal_outcome(current, max_plies, outcome)) {
+            break;
+        }
+
+        UctNode &node = arena[node_idx];
+        if (node.visit_count == 0) {
+            outcome = rollout(current, current_seed, max_plies);
+            break;
+        }
+
+        if (!node.expanded) {
+            expand(arena, node_idx, current, max_plies);
+        }
+        if (node.terminal || node.n_children == 0) {
+            outcome = 0.0;
+            break;
+        }
+
+        const uint32_t child_offset = select_best_ucb_offset(arena, node_idx, c);
+        const uint32_t chosen = node.first_child_idx + child_offset;
+        current.apply_action_unchecked(arena[chosen].action_id);
+        current_seed = mix(current_seed, static_cast<uint64_t>(child_offset) + 1);
+        node_idx = chosen;
     }
 
-    const uint32_t chosen = select_best_ucb(arena, node_idx, c);
-    const uint32_t child_offset = chosen - arena[node_idx].first_child_idx;
-    const uint64_t child_seed = mix(seed, static_cast<uint64_t>(child_offset) + 1);
-    outcome = descend(arena, chosen, child_seed, max_plies, c);
-    add_value(arena, node_idx, outcome);
+    for (size_t i = 0; i < path_size; ++i) {
+        add_value(arena, path[i], outcome);
+    }
     return outcome;
+}
+
+[[gnu::always_inline]] static inline uint8_t raw_action_for_root(
+    const State &root_state,
+    uint8_t absolute_action_id) noexcept {
+    return FastBoard::abi_action_from_absolute(root_state.b.side_to_move, absolute_action_id);
+}
+
+[[gnu::hot]] static void push_visit(
+    SearchOutput &out,
+    const State &root_state,
+    uint8_t absolute_action_id,
+    uint32_t visits) noexcept {
+    if (out.visit_count < out.visits.size()) {
+        out.visits[out.visit_count++] =
+            std::pair<uint8_t, uint32_t>{raw_action_for_root(root_state, absolute_action_id), visits};
+    }
+}
+
+[[gnu::hot]] static void sort_visits(SearchOutput &out) noexcept {
+    std::sort(
+        out.visits.begin(),
+        out.visits.begin() + static_cast<std::ptrdiff_t>(out.visit_count),
+        [](const auto &a, const auto &b) { return a.first < b.first; });
 }
 
 }  // namespace
@@ -193,56 +219,75 @@ SearchOutput run_search(
         return out;
     }
     if (root_state.ply_count >= max_plies) {
-        legal_moves_for_state(root_state, tls_move_buffer);
-        if (tls_move_buffer.empty()) {
+        ActionBuffer actions;
+        root_state.b.legal_actions(actions);
+        if (actions.empty()) {
             out.ok = false;
             return out;
         }
-        out.visits.reserve(tls_move_buffer.size());
-        for (const auto &move : tls_move_buffer) {
-            out.visits.emplace_back(decode_action_id(move), 0);
+        for (size_t i = 0; i < actions.size; ++i) {
+            push_visit(out, root_state, actions[i], 0);
         }
-        out.chosen_action_id = decode_action_id(tls_move_buffer.front());
+        out.chosen_absolute_action_id = actions[0];
+        out.chosen_action_id = raw_action_for_root(root_state, actions[0]);
         out.chosen_equity = 0.0;
-        std::sort(out.visits.begin(), out.visits.end(),
-                  [](const auto &a, const auto &b) { return a.first < b.first; });
+        sort_visits(out);
         out.ok = true;
         return out;
     }
 
-    const uint32_t reserve_nodes = std::max<uint32_t>(32, 1 + 16 + sims * 16);
-    Arena arena(reserve_nodes);
-    const uint32_t root_idx = arena.emplace(State{root_state}, kNoIndex);
-    expand(arena, root_idx, max_plies);
-    if (arena[root_idx].terminal || arena[root_idx].n_children == 0) {
+    ActionBuffer root_actions;
+    root_state.b.legal_actions(root_actions);
+    if (root_actions.empty()) {
         out.ok = false;
         return out;
     }
-    arena[root_idx].visit_count = 1;
+
+    const uint32_t reserve_nodes =
+        std::max<uint32_t>(32, 1 + static_cast<uint32_t>(root_actions.size) + sims * kMaxLegalActions);
+    Arena arena(reserve_nodes);
+    const uint32_t root_idx = arena.emplace(kNoAction, kNoIndex);
+    const uint32_t first = arena.reserve_children(static_cast<uint32_t>(root_actions.size));
+    UctNode &root_node = arena[root_idx];
+    root_node.expanded = 1;
+    root_node.first_child_idx = first;
+    root_node.n_children = static_cast<uint16_t>(root_actions.size);
+    root_node.visit_count = 1;
+    for (uint32_t i = 0; i < root_actions.size; ++i) {
+        UctNode &child = arena[first + i];
+        child.parent_idx = root_idx;
+        child.first_child_idx = kNoIndex;
+        child.visit_count = 0;
+        child.q_sum = 0.0;
+        child.n_children = 0;
+        child.action_id = root_actions[i];
+        child.expanded = 0;
+        child.terminal = 0;
+    }
 
     uint64_t sim_seed = seed;
     for (uint32_t i = 0; i < sims; ++i) {
         sim_seed = mix(sim_seed, static_cast<uint64_t>(i));
-        (void)descend(arena, root_idx, sim_seed, max_plies, exploration_c);
+        (void)descend_iterative(arena, root_idx, root_state, sim_seed, max_plies, exploration_c);
     }
 
     const UctNode &root = arena[root_idx];
-    out.visits.reserve(root.n_children);
     uint32_t best_visits = 0;
     uint32_t best_child = root.first_child_idx;
     for (uint16_t i = 0; i < root.n_children; ++i) {
-        const UctNode &child = arena[root.first_child_idx + i];
-        out.visits.emplace_back(decode_action_id(child.state.b), child.visit_count);
+        const uint32_t child_idx = root.first_child_idx + i;
+        const UctNode &child = arena[child_idx];
+        push_visit(out, root_state, child.action_id, child.visit_count);
         if (child.visit_count > best_visits) {
             best_visits = child.visit_count;
-            best_child = root.first_child_idx + i;
+            best_child = child_idx;
         }
     }
-    std::sort(out.visits.begin(), out.visits.end(),
-              [](const auto &a, const auto &b) { return a.first < b.first; });
+    sort_visits(out);
 
     const UctNode &chosen = arena[best_child];
-    out.chosen_action_id = decode_action_id(chosen.state.b);
+    out.chosen_absolute_action_id = chosen.action_id;
+    out.chosen_action_id = raw_action_for_root(root_state, chosen.action_id);
     out.chosen_equity =
         chosen.visit_count == 0
             ? std::numeric_limits<double>::quiet_NaN()
@@ -280,7 +325,8 @@ uint64_t benchmark_search_iters(
 {
     SearchOutput out = run_search(root_state, count, max_plies, rng_kind, seed);
     uint64_t checksum = seed ^ static_cast<uint64_t>(out.chosen_action_id);
-    for (const auto &row : out.visits) {
+    for (size_t i = 0; i < out.visit_count; ++i) {
+        const auto &row = out.visits[i];
         checksum ^= (static_cast<uint64_t>(row.first) << 32) ^ static_cast<uint64_t>(row.second);
     }
     return checksum;

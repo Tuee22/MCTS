@@ -112,6 +112,12 @@ Sprint `7.11` closed the narrow report-card presentation cleanup: empirical
 divergence-threshold constants and renderer text were replaced by a single
 normalized divergence score plus Q7 semantic-parity evidence.
 
+The 2026-05-28 backend `(ii)` steelman audit reopened Phase `5` for Sprint `5.7`
+and Phase `8` for Sprint `8.15`. Sprint `5.7` has closed the imperative-kernel
+residue in backend `(ii)`. The remaining pending row tracks the active Haskell
+parity shortfall exposed by the fail-closed report-card rebaseline against that
+stronger `(ii)` target.
+
 Two classes of entries populate this ledger over time:
 
 1. **Doctrine-deviation residue.** Any worktree behavior that the implemented code
@@ -127,7 +133,9 @@ repository.
 
 ## Pending Removal
 
-No pending rows.
+| Item | Location | Why slated for removal/correction | Owning sprint |
+|------|----------|-----------------------------------|---------------|
+| Haskell-vs-`(ii)` Sprint `5.7` parity shortfall | `src/MCTS/Engine.hs`, `src/MCTS/Search/{Arena.hs,UCT.hs}`, `src/MCTS/CLI/{Bench.hs,Test.hs}`, `src/MCTS/Driver.hs`, `src/MCTS/ReportCard.hs`, `documents/engineering/{benchmark_metrics.md,unit_testing_policy.md,compiler_runtime_tuning.md}` | The 2026-05-28 `docker compose run --rm --build mcts mcts test all` run passed functional gates but failed closed with `Verdict: Shortfall` against the fully steelmanned backend `(ii)`: Q1a `1.13x` ST / `1.49x` MT8, Q1b `1.14x` ST / `1.15x` MT8, and Q2 `1.01x` ST / `1.19x` MT8 backend `(ii)` over Haskell. Focused accepted Haskell changes now include compact pawn slots, no-ply rollout apply, fused arena visit/value updates, first-unvisited UCT child selection, worker `forkOn` pinning, direct packed-slot path starts, a no-wall legal-action fast path, and single-constructor action transitions; the latest accepted aggregate remains short with Q1a `1.06x` ST / `1.27x` MT8, Q1b `1.05x` ST / `1.11x` MT8, and Q2 `0.98x` ST / `1.11x` MT8 backend `(ii)` over Haskell. Sprint `8.15` must either close those gaps within tolerance or record an accepted non-parity outcome. | Sprint `8.15` |
 
 ## Pending Removal Notes
 
@@ -142,6 +150,9 @@ data instead of publishing a fallback shared library.
 
 | Item | Removed In | Notes |
 |------|------------|-------|
+| Backend `(ii)` child-board and full-state tree hot-path residue | Sprint 5.7, 2026-05-28 | `cpp-imperative/engine/fast_board.hpp`, `state.hpp`, `arena.hpp`, and `search.cpp` now use fixed-capacity action-id generation, absolute side-to-move board state, action-only tree nodes, and per-generation wall block masks instead of child-board generation, full-board flips, full-state tree snapshots, and repeated wall/path reconstruction. |
+| Backend `(ii)` C ABI trusted-search allocation/replay residue | Sprint 5.7, 2026-05-28 | `cpp-imperative/c-abi/mcts_cpp_imperative.cc` keeps external `apply_action` validating while `search_move`, `recompute_move`, and `select_uct_move` apply trusted chosen moves through internal unchecked transitions and fixed visit buffers. |
+| Backend `(ii)` profile-training representativeness after kernel rewrite | Sprint 5.7, 2026-05-28 | The Dockerfile-owned `mcts build cpp-imperative` path rebuilt successfully after the kernel rewrite, trained PGO/BOLT on the bounded Q1a/Q1b/Q2 profile suite, installed the canonical bolted shared library, and smoked it before validation consumed it. |
 | Rust hot-path structural residue | Sprint 6.8, 2026-05-28 | `rust/src/board.rs` uses bit-parallel `u128` wavefront path checks and fixed-capacity action buffers; `rust/src/search.rs` reserves the child-bound arena shape and reduces expansion clone churn; `rust/src/c_abi.rs` reads visit vectors from board-handle-local cache state instead of a global synchronized map. Focused terminal-playout/search-iteration benchmarks and Q3/Q6 verification gates passed through Compose. |
 | Divergence threshold renderer/comment residue | Sprint 7.11, 2026-05-28 | `src/MCTS/ReportCard.hs` renders a normalized divergence score derived from the `visit/move` matrix, JSON exposes `normalized_divergence_score`, `test/unit/Main.hs` constructs a non-zero matrix to prove the score is not hard-coded, and `mcts-semantic-parity` supplies the Q7 semantic-parity gate. |
 | Stale README authority citations | Sprint 0.4, 2026-05-27 | README remains operator-facing and reference-only. Doctrine scope now points to `DEVELOPMENT_PLAN/00-overview.md`; transcript wire-format width, report-card rendering, FFI, determinism, and tuning citations point to governed engineering docs or local implementation contracts instead of treating README as the source of truth. |

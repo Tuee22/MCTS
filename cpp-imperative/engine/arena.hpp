@@ -1,14 +1,10 @@
-// Arena-allocated MCTS tree per Sprint 5.1's doctrine character:
+// Arena-allocated MCTS tree per Sprint 5.7's hot-path steelman:
 //   * flat `std::vector<UctNode>` instead of `std::shared_ptr<uct_node>`
 //   * each parent records `first_child_idx : u32` and `n_children : u16`
 //     (no per-node `std::vector`)
-//   * the alternating-side state always lives at the node — children are
-//     stored as full board copies; the per-rollout scratch board reuse
-//     lives in `search.cpp`.
-//
-// The legal-move generation reuses the legacy `corridors::board`
-// move enumerator from `cpp-imperative/engine/board.{cpp,h}` (a
-// byte-identical port of the legacy Corridors implementation).
+//   * nodes store only the action from their parent plus hot visit/value
+//     fields. Board state is carried on the descent stack and materialized
+//     only for the selected child path.
 
 #pragma once
 
@@ -31,14 +27,14 @@ inline constexpr uint32_t kNoIndex = std::numeric_limits<uint32_t>::max();
 inline constexpr size_t kCacheLine = 64;
 
 struct alignas(kCacheLine) UctNode {
-    State state{};                  // parent-relative board (post-move)
     uint32_t parent_idx = kNoIndex; // index in arena; kNoIndex for root
     uint32_t first_child_idx = kNoIndex;
-    uint16_t n_children = 0;
-    uint8_t  expanded = 0;          // 0 until select() has expanded children
-    uint8_t  terminal = 0;          // 1 when state.is_terminal(max_plies)
     uint32_t visit_count = 0;
     double   q_sum = 0.0;           // sum of backprop'd hero-perspective equities
+    uint16_t n_children = 0;
+    uint8_t  action_id = kNoAction; // absolute action from parent; sentinel for root
+    uint8_t  expanded = 0;          // 0 until select() has expanded children
+    uint8_t  terminal = 0;          // 1 when state.is_terminal(max_plies)
 };
 
 // Arena owns every UctNode in the current search. The vector is reserved
@@ -57,12 +53,11 @@ public:
         return static_cast<uint32_t>(nodes_.size());
     }
 
-    // Appends one node and returns its index. Caller-supplied state
-    // is moved in to avoid an extra board copy.
-    [[gnu::hot]] uint32_t emplace(State &&s, uint32_t parent_idx) {
+    // Appends one node and returns its index.
+    [[gnu::hot]] uint32_t emplace(uint8_t action_id, uint32_t parent_idx) {
         nodes_.emplace_back();
         UctNode &node = nodes_.back();
-        node.state = std::move(s);
+        node.action_id = action_id;
         node.parent_idx = parent_idx;
         return static_cast<uint32_t>(nodes_.size() - 1);
     }

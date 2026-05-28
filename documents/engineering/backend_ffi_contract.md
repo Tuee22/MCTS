@@ -115,6 +115,9 @@ returns the same canonical one-byte action IDs, applies moves through the
 backend's legal-move surface, and exposes no board internals to Haskell. The
 functional-core style requirements are owned by
 [backend_style_contract.md](./backend_style_contract.md).
+Sprint `5.7` replaced backend `(ii)` internals with action-only generation,
+absolute side-to-move state, split hot/cold tree storage, and trusted internal
+apply/cache buffers while keeping this public compact ABI shape stable.
 Sprint `6.8` performs a Rust-only internal handle cleanup: the optional last-visit
 cache moves from a global synchronized map into the opaque Rust board handle. This
 does not add or remove C ABI symbols; it only makes backend (iv)'s implementation

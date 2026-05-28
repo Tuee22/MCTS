@@ -25,6 +25,7 @@ module MCTS.Search.Arena
     , addVisits
     , readValueSum
     , addValueSum
+    , addVisitValue
     , readActionId
     , readParent
     , readFirstChild
@@ -124,6 +125,14 @@ addValueSum :: Arena s -> NodeId -> Float -> ST s ()
 addValueSum arena nid v = do
     !current <- readArray (arenaValueSum arena) nid
     writeArray (arenaValueSum arena) nid (current + v)
+
+{-# INLINEABLE addVisitValue #-}
+addVisitValue :: Arena s -> NodeId -> Float -> ST s ()
+addVisitValue arena nid v = do
+    !currentVisits <- readArray (arenaVisits arena) nid
+    writeArray (arenaVisits arena) nid (currentVisits + 1)
+    !currentValue <- readArray (arenaValueSum arena) nid
+    writeArray (arenaValueSum arena) nid (currentValue + v)
 
 {-# INLINEABLE readActionId #-}
 readActionId :: Arena s -> NodeId -> ST s Word8

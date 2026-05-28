@@ -10,6 +10,8 @@
 #include "state.hpp"
 #include "xoshiro256pp.hpp"
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <random>
@@ -44,8 +46,12 @@ struct RngBackend {
 };
 
 struct SearchOutput {
-    std::vector<std::pair<uint8_t, uint32_t>> visits;  // sorted ascending by action_id
+    std::array<std::pair<uint8_t, uint32_t>, kMaxLegalActions> visits{};
+    size_t visit_count = 0;
+    // Raw public-ABI action ID, sorted and returned through the C ABI.
     uint8_t chosen_action_id = 0;
+    // Absolute internal action ID applied through the trusted path.
+    uint8_t chosen_absolute_action_id = 0;
     // Hero-perspective equity of the chosen child (`q_sum / visits`),
     // matching `MCTS.Search.UCT.uctSearchWithEquity`.
     double chosen_equity = std::numeric_limits<double>::quiet_NaN();

@@ -22,11 +22,13 @@ import Data.List (sortOn)
 import Data.Word (Word16, Word32, Word64, Word8)
 import MCTS.Engine
     ( ActionIds
-    , Board
+    , Board (..)
     , actionIdAtUnsafe
     , actionIdsLength
     , applyActionId
+    , applyActionIdNoPly
     , legalActionSet
+    , legalActionSetNonTerminal
     , nonTerminalOutcome
     , terminalOutcome
     )
@@ -145,8 +147,7 @@ descend arena nid board seed maxPlies maxPliesWord = do
     if terminal /= nonTerminalOutcome
         then do
             let outcome = terminal
-            Arena.addVisits arena nid 1
-            Arena.addValueSum arena nid outcome
+            Arena.addVisitValue arena nid outcome
             pure outcome
         else do
             visits <- Arena.readVisits arena nid
@@ -154,8 +155,7 @@ descend arena nid board seed maxPlies maxPliesWord = do
                 then do
                     -- First visit to a non-terminal leaf: rollout.
                     let outcome = rollout board seed maxPlies
-                    Arena.addVisits arena nid 1
-                    Arena.addValueSum arena nid outcome
+                    Arena.addVisitValue arena nid outcome
                     pure outcome
                 else do
                     -- Subsequent visit: ensure children exist, pick by UCT,
@@ -173,15 +173,14 @@ descend arena nid board seed maxPlies maxPliesWord = do
                             Arena.addVisits arena nid 1
                             pure 0.0
                         else do
-                            np <- pure (visits + 1)
+                            let !np = visits + 1
                             chosenIdx <- pickByUctIndex arena fc numKids np board
                             let bestNid = fc + chosenIdx
                             actByte <- Arena.readActionId arena bestNid
                             let nextBoard = applyActionId actByte board
                                 childSeed = mix seed (fromIntegral chosenIdx + 1)
                             outcome <- descend arena bestNid nextBoard childSeed maxPlies maxPliesWord
-                            Arena.addVisits arena nid 1
-                            Arena.addValueSum arena nid outcome
+                            Arena.addVisitValue arena nid outcome
                             pure outcome
 
 -- | On a node's second visit, allocate one arena slot per legal move
@@ -190,7 +189,7 @@ descend arena nid board seed maxPlies maxPliesWord = do
 -- `(firstChild, numChildren)`.
 expandChildren :: Arena.Arena s -> Arena.NodeId -> Board -> ST s (Arena.NodeId, Int32)
 expandChildren arena parent board = do
-    let moves = legalActionSet board
+    let moves = legalActionSetNonTerminal board
     (firstChild, numKids) <- allocChildren arena parent moves
     Arena.setChildren arena parent firstChild numKids
     pure (firstChild, numKids)
@@ -240,49 +239,46 @@ pickByUctIndex arena firstChild numKids np _board =
     go !i !bestIdx !bestScore
         | i >= numKids = pure bestIdx
         | otherwise = do
-            score <- scoreIdx i
-            let better =
-                    i == 0
-                        || score > bestScore
-                bestIdx' = if better then i else bestIdx
-                bestScore' = if better then score else bestScore
-            go (i + 1) bestIdx' bestScore'
-    scoreIdx i = do
-        let nid = firstChild + i
-        n <- Arena.readVisits arena nid
-        v <- Arena.readValueSum arena nid
-        let score
-                | n == 0 = 1.0e30
-                | otherwise =
+            let nid = firstChild + i
+            n <- Arena.readVisits arena nid
+            if n == 0
+                then pure i
+                else do
+                    v <- Arena.readValueSum arena nid
                     let q = v / fromIntegral n
                         u = cParam * sqrt (lnNp / fromIntegral n)
-                     in q + u
-        pure score
+                        score = q + u
+                        better =
+                            i == 0
+                                || score > bestScore
+                        bestIdx' = if better then i else bestIdx
+                        bestScore' = if better then score else bestScore
+                    go (i + 1) bestIdx' bestScore'
 
 -- | Random rollout from `board` to a terminal state or the ply cap.
 {-# INLINE rollout #-}
 rollout :: Board -> Word64 -> Int -> Float
-rollout board0 seed0 maxPlies = go 0 board0 seed0
+rollout board0 seed0 maxPlies = go 0 (boardPly board0) board0 seed0
   where
     maxPliesWord :: Word16
     maxPliesWord = fromIntegral maxPlies
 
-    go :: Int -> Board -> Word64 -> Float
-    go !step !board !seed =
-        let !outcome = terminalOutcome maxPliesWord board
-         in if outcome /= nonTerminalOutcome
-                then outcome
-                else
-                    let moves = legalActionSet board
-                        n = actionIdsLength moves
-                     in if n == 0
-                            then 0.0
-                            else
-                                let pick = signedModulo (seed `xor` fromIntegral step) n
-                                    actionByte = actionIdAtUnsafe moves pick
-                                    next = applyActionId actionByte board
-                                    nextSeed = mix seed (fromIntegral step)
-                                 in go (step + 1) next nextSeed
+    go :: Int -> Word16 -> Board -> Word64 -> Float
+    go !step !ply !board !seed
+        | boardHero board >= 72 = 1.0
+        | boardVillain board <= 8 = -1.0
+        | ply >= maxPliesWord = 0.0
+        | otherwise =
+            let moves = legalActionSetNonTerminal board
+                n = actionIdsLength moves
+             in if n == 0
+                    then 0.0
+                    else
+                        let pick = signedModulo (seed `xor` fromIntegral step) n
+                            actionByte = actionIdAtUnsafe moves pick
+                            next = applyActionIdNoPly actionByte board
+                            nextSeed = mix seed (fromIntegral step)
+                         in go (step + 1) (ply + 1) next nextSeed
 
     signedModulo :: Word64 -> Int -> Int
     signedModulo draw n =

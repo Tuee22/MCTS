@@ -28,12 +28,12 @@ The Docker image build compiles the `mcts` executable with tests and benchmarks 
 | # | Backend | Identifier | Role |
 |---|---------|------------|------|
 | (i) | C++ legacy port | `cpp-legacy` | Verbatim compatibility port of `MCTS_legacy`; Q6 legacy-envelope evidence only, not the performance ceiling. |
-| (ii) | C++ imperative steelman | `cpp-imperative` | Maximally optimised C++ performance ceiling: PGO+BOLT, `mimalloc`, arena search, compact bitfield board, direct capped move generation. |
+| (ii) | C++ imperative steelman | `cpp-imperative` | Maximally optimised C++ performance ceiling. Sprint `5.7` closed the remaining hot-path steelman work: action-id successor generation, absolute side-to-move board state, action-only/SoA tree storage, reusable wall-block masks, internal trusted apply/cache paths, and representative PGO+BOLT training. |
 | (iii) | C++ functional-core | `cpp-functional` | Functional-core C++23 steelman under the same optimisation stack as (ii), using compact value-state search, numeric actions, direct capped legal generation, and the shared style followed by (iv) and (v). |
 | (iv) | Rust | `rust` | Cross-language systems baseline using a compatible functional-core value-state and FFI/search/recompute contract; Sprint `6.8` aligns its hot path with `(iii)`/`(v)` using bit-parallel path checks, stack action buffers, child-bound arena sizing, and board-local visit caching. |
-| (v) | Haskell | `haskell` | Native in-process target backend; pure API surface, compact value board, and `ST`-arena internals. |
+| (v) | Haskell | `haskell` | Native in-process target backend; pure API surface, compact value board, direct slot-based path checks, and `ST`-arena internals. |
 
-Backends (i)..(iv) are loaded through stable C ABIs from canonical shared libraries produced during the Dockerfile build. Backend (v) runs in-process. Rust now uses the same functional-core hot-path shape as `(iii)` and `(v)` while remaining a raw-performance context row rather than the Q1/Q2 verdict target. The authoritative backend, style, and FFI details live in [backend_style_contract.md](documents/engineering/backend_style_contract.md), [backend_ffi_contract.md](documents/engineering/backend_ffi_contract.md), and [compiler_runtime_tuning.md](documents/engineering/compiler_runtime_tuning.md).
+Backends (i)..(iv) are loaded through stable C ABIs from canonical shared libraries produced during the Dockerfile build. Backend (v) runs in-process. Rust now uses the same functional-core hot-path shape as `(iii)` and `(v)` while remaining a raw-performance context row rather than the Q1/Q2 verdict target. The authoritative backend, style, and FFI details live in [backend_style_contract.md](documents/engineering/backend_style_contract.md), [backend_ffi_contract.md](documents/engineering/backend_ffi_contract.md), and [compiler_runtime_tuning.md](documents/engineering/compiler_runtime_tuning.md). Sprint `5.7` kept the `(ii)` public ABI stable while replacing internal search-kernel and profile-training paths.
 
 ## Benchmark Metrics
 
@@ -50,11 +50,19 @@ throughput with one search iteration per move, not terminal `playouts/s`.
 Played-game benchmark output uses `games/s` only. The metric taxonomy and Q1-Q7 mapping live in
 [benchmark_metrics.md](documents/engineering/benchmark_metrics.md).
 
-The Phase 8 report-card gate is closed against the corrected backend (ii)
-target and remains enforced by `docker compose run --rm mcts mcts test all`: it reports
-`Verdict: Within tolerance` for Haskell vs `cpp-imperative` across Q1a, Q1b, and
-Q2, with Q3/Q4/Q6 also passing. The same command fails non-zero for `Evidence
-pending` or `Shortfall` verdicts; the canonical primitive sample is
+The latest closed Phase 8 report-card gate remains the Sprint `8.14`
+current-artifact evidence against the Sprint `5.6` backend (ii) target. Sprint
+`5.7` has since strengthened backend `(ii)`, and Sprint `8.15` is active on the
+fresh Haskell parity shortfall exposed by the first rebaseline. Focused Sprint
+`8.15` Haskell tuning has landed local hot-path changes, including direct
+slot-based path-start checks, a no-wall legal-action fast path, and
+single-constructor action transitions with a no-ply rollout variant, but the
+latest accepted aggregate rerun still returns `Verdict: Shortfall 0.2678864950323545`
+against the post-`5.7` target: Q1a backend `(ii)`/Haskell ratios `1.06x` ST and
+`1.27x` MT8, Q1b `1.05x` ST and `1.11x` MT8, and Q2 `0.98x` ST and `1.11x` MT8.
+The aggregate gate still fails non-zero for `Evidence pending` or `Shortfall`
+verdicts
+and succeeds only for `Within tolerance`; the canonical primitive sample is
 `N_PRIM=20_000`.
 
 Phase 7 Sprint `7.11` adds Q7 semantic parity for `(ii)..(v)`: a

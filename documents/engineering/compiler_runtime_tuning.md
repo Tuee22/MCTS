@@ -80,6 +80,14 @@ training uses scoped dynamic-library loading plus exported GCOV dump hooks so
 `.gcda` is flushed before `-fprofile-use`; Rust training keeps the cdylib pinned and
 relies on process-exit `.profraw` emission before `llvm-profdata merge`.
 
+Sprint `5.7` closed backend `(ii)` profile representativeness for the rewritten
+kernel. The earlier suite remains accepted for the Sprint `5.6` `FastBoard` and
+full-node arena artefact, while the post-`5.7` action-id generation, absolute
+side-to-move state, action-only or split hot/cold tree storage, and trusted
+internal buffers define the current `(ii)` training target. Runtime commands still
+consume one canonical bolted shared library and never select workload-specific
+optimized libraries.
+
 ## Backend (i) — `cpp-legacy` (Exempt)
 
 Backend (i) is **exempt** from the optimisation stack. (i) is strictly verbatim
@@ -173,6 +181,15 @@ added the bounded profile suite described in
 mandatory sequence. Sprint `5.6` replaces backend (ii)'s legacy-board hot path
 with `FastBoard`, a compact scalar/bitfield board that emits capped legal moves
 directly and checks wall escapability with bitset wavefront expansion.
+
+Sprint `5.7` closed backend `(ii)`'s full hot-path steelman. The compiler flag,
+allocator, and fail-closed PGO/BOLT requirements above remain necessary but are not
+by themselves the steelman proof; the closed target is fixed-capacity action-id
+legal generation, absolute side-to-move board state instead of per-child full-board
+flips, action-only or split hot/cold MCTS tree layout, precomputed/reused wall
+conflict and block masks, trusted internal apply/visit buffers that avoid replay
+allocation, and a post-rewrite PGO/BOLT profile suite. The public compact C ABI
+remains the governed runtime boundary.
 
 ### Code-Level Requirements
 
@@ -678,7 +695,8 @@ cost of functional-core style.
 
 Sprint `8.14` closed on 2026-05-27 with the corrected backend (ii) target, a
 fail-closed report-card verdict gate, and `N_PRIM=20_000`. The accepted
-`docker compose run --rm mcts mcts test all` report card recorded:
+`docker compose run --rm mcts mcts test all` report card recorded the current
+Sprint `5.6` artefact evidence:
 
 | Row | Ratio | Evidence |
 |-----|------:|----------|
@@ -697,9 +715,32 @@ Q3/Q4/Q6 passed, the divergence matrix was all zeroes, all Cabal stanzas passed,
 and the verdict was **`Within tolerance`**. Earlier 2026-05-27 `N_PRIM=10_000`
 evidence rendered `Shortfall` and now exits non-zero through `mcts test all`,
 so parity regressions fail the aggregate gate instead of remaining print-only.
+Phase `5` Sprint `5.7` has since closed lower-level backend `(ii)` hot-path
+steelman work, so this verdict is not the final Phase `8` handoff. Sprint `8.15`
+must close or record the Haskell shortfall from the rerun against the new `(ii)`
+kernel and retuned PGO/BOLT profile suite.
+
+Focused Sprint `8.15` Haskell tuning has accepted compact `Word8` pawn slots,
+non-terminal action-set paths, no-ply rollout apply, fused arena visit/value
+updates, first-unvisited UCT child selection, worker `forkOn` pinning, and direct
+packed-slot path starts in `pathExistsWithMasks`, plus a no-wall legal-action fast
+path in `appendWallActionIds` and single-constructor action transitions with a
+no-ply rollout variant. The aggregate rerun after those accepted changes remains
+short of the post-`5.7` target with `Verdict: Shortfall 0.2678864950323545`:
+Q1a backend `(ii)`/Haskell ratios `1.06x` ST and `1.27x` MT8, Q1b `1.05x` ST
+and `1.11x` MT8, and Q2 `0.98x` ST and `1.11x` MT8. Rejected measured
+candidates include direct wall enumeration, iterative descent, cached board
+coordinates, direct wall-bit-index apply, direct terminal checks in
+`UCT.descend`, strict `quotRem` index decoding in the action/wall hot path,
+direct wall-index legality/trial-mask decoding, and Word64 signed-modulo
+correction-table rollout selection because they regressed the focused rows. Later
+forced splitmix inlining with primitive seed hoisting also regressed focused
+Q1a/Q1b primitive rows, and bulk arena child reservation is rejected because the
+aggregate report-card rerun worsened the shortfall to
+`Shortfall 0.35914394441567055` despite passing functional gates.
 
 The current text report card also prints raw Q1a/Q1b/Q2 rates for every backend
-slot before the question-summary table and ends with explicit Q1a-Q6 answers based
+slot before the question-summary table and ends with explicit Q1a-Q7 answers based
 on the observed ratios, scaling values, divergence rates, and gate outcomes. Those
 raw rows are diagnostic context for the full cohort; the parity verdict above
 remains Haskell (v) versus backend (ii).

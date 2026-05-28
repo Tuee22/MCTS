@@ -2,7 +2,7 @@
 
 **Status**: Authoritative source
 **Supersedes**: N/A
-**Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/00-overview.md, ../../DEVELOPMENT_PLAN/system-components.md, ../../DEVELOPMENT_PLAN/phase-6-cpp-functional-and-rust.md, ../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, ../documentation_standards.md, ./README.md, ./backend_ffi_contract.md, ./compiler_runtime_tuning.md, ./determinism_contract.md
+**Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/00-overview.md, ../../DEVELOPMENT_PLAN/system-components.md, ../../DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md, ../../DEVELOPMENT_PLAN/phase-6-cpp-functional-and-rust.md, ../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, ../documentation_standards.md, ./README.md, ./backend_ffi_contract.md, ./compiler_runtime_tuning.md, ./determinism_contract.md
 **Generated sections**: none
 
 > **Purpose**: Define the functional-core style shared by backends (iii), (iv),
@@ -29,6 +29,12 @@ require `(iii)` to copy `(ii)`'s imperative API shape, but it does require `(iii
 to use the same class of compact representation and hot-path work as `(iv)` and
 `(v)` so that measured differences are attributable to style rather than legacy
 object-model residue.
+
+Phase `5` Sprint `5.7` closed only backend `(ii)`'s imperative-kernel steelman. It
+does not reopen the closed functional implementations in `(iii)`, `(iv)`, or
+`(v)`. The Sprint `5.7` target is action-id generation, absolute side-to-move
+state, action-only or split hot/cold tree storage, reusable wall masks, trusted
+internal apply/cache paths, and retuned PGO/BOLT training for `(ii)`.
 
 ## Functional-Core Rule
 

@@ -26,6 +26,11 @@ struct State {
         if (b.villain_wins()) return -1.0;
         return 0.0;  // ply-cap draw
     }
+
+    [[gnu::hot, gnu::always_inline]] inline void apply_action_unchecked(uint8_t action_id) noexcept {
+        b.apply_action_unchecked(action_id);
+        ply_count = static_cast<uint16_t>(ply_count + 1);
+    }
 };
 
 }  // namespace mcts_imperative

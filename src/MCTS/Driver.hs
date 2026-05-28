@@ -14,7 +14,7 @@ module MCTS.Driver
     , uctChooseMove
     ) where
 
-import Control.Concurrent (MVar, forkIO, newEmptyMVar, newMVar, putMVar, takeMVar)
+import Control.Concurrent (MVar, forkOn, newEmptyMVar, newMVar, putMVar, takeMVar)
 import Control.Exception (bracket_, evaluate)
 import Data.Bits (xor)
 import Data.List (sortOn)
@@ -217,7 +217,7 @@ runGamePool workers runOne gameIds = withCapabilities activeWorkers $ do
                     current <- takeMVar results
                     putMVar results ((idx, forced) : current)
                     worker
-    mapM_ (\_ -> forkIO worker) [1 .. activeWorkers]
+    mapM_ (\cap -> forkOn cap worker) [0 .. activeWorkers - 1]
     mapM_ (\_ -> takeMVar done) [1 .. activeWorkers]
     ordered <- sortOn fst <$> takeMVar results
     pure (map snd ordered)

@@ -17,7 +17,7 @@ CXXFLAGS ?= -std=c++23 -O3 -march=native -mtune=native -flto -fno-plt -fno-seman
 LDFLAGS ?= -shared -flto -Wl,--emit-relocs
 LDLIBS ?= -lmimalloc
 
-ENGINE_SRCS = engine/board.cpp engine/search.cpp c-abi/mcts_cpp_imperative.cc
+ENGINE_SRCS = engine/search.cpp c-abi/mcts_cpp_imperative.cc
 
 PGO_DIR ?= pgo-profile
 BOLT_DIR ?= bolt-profile

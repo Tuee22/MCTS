@@ -39,7 +39,8 @@ Phase `0` reclosed Sprint `0.3` on 2026-05-27 by restoring
 doctrine topology intact, and moving the stale-reference cleanup row to
 Completed. Sprint `0.1` (plan-suite bootstrap) and Sprint `0.2`
 (doctrine-driven scheduling audit) remain historical `Done` records. Later
-implementation phases remain closed on their owned code and evidence surfaces.
+implementation phases remain closed on their owned code and evidence surfaces
+except active Phase `8` Sprint `8.15` described below.
 The 2026-05-21 evidence-surface audit reopened the phases whose governed docs
 or code overclaimed the implementation. Phase `1` reclosed Sprint `1.10` on
 2026-05-21 after generated-document metadata and lint/code-quality contract
@@ -64,12 +65,15 @@ harmony sweep reclosed Phase `1` Sprint `1.11`, Phase `2` Sprint `2.9`, Phase `3
 Sprint `3.7`, Phase `4` Sprint `4.5`, and Phase `7` Sprint `7.7` after README
 topology, lint `--write`, transcript envelope gates, rollout byte consumption, FFI
 domain-conversion wording, and divergence metric language were aligned with the
-current implementation. Phase `5` remains `Done`; Phase `6` remains `Done` for
-fail-closed PGO/BOLT mechanics, ABI contracts, canonical artefact installation,
-the Sprint `6.7` backend (iii) compact functional-core source-style surface, and
-Sprint `6.8` backend (iv) Rust hot-path structural alignment: bit-parallel path
-checks, fixed-capacity action buffers, full child-bound arena reservation, reduced
-clone churn, and board-handle-local visit caching.
+current implementation. Phase `5` remains `Done` for fail-closed PGO/BOLT
+mechanics, ABI contracts, canonical artefact installation, Sprint `5.6`
+compact-board work, and Sprint `5.7` full backend `(ii)` hot-path steelman.
+Phase `6` remains `Done` for fail-closed PGO/BOLT mechanics,
+ABI contracts, canonical artefact installation, the Sprint `6.7` backend (iii)
+compact functional-core source-style surface, and Sprint `6.8` backend (iv) Rust
+hot-path structural alignment: bit-parallel path checks, fixed-capacity action
+buffers, full child-bound arena reservation, reduced clone churn, and
+board-handle-local visit caching.
 
 The 2026-05-24 benchmark-metric audit reopened the metric suite without changing
 the five-backend hypothesis. Phase `3` Sprint `3.8` closed on 2026-05-24 after
@@ -129,7 +133,9 @@ wire-format, report-card, and tuning citations to the plan or governed engineeri
 docs. Phase `1` Sprint `1.12` reclosed the generated `bench rollouts` summary drift
 on the same date by updating `CommandSpec`, the generated command-matrix renderer,
 and semantic unit coverage so generated docs call the command a legacy played-game
-benchmark. Phases `2`–`8` remain closed on their owned behavior surfaces.
+benchmark. Phases `2`–`7` remain closed on their owned behavior surfaces, and
+Phase `8` is active only for Sprint `8.15` Haskell parity closure against the
+Sprint `5.7` backend `(ii)` target.
 
 Phase `6` Sprint `6.8` closed on 2026-05-28 while keeping Rust's existing
 correctness, C ABI, and PGO/BOLT build contract intact. It replaced the Rust
@@ -143,15 +149,34 @@ from the report-card surface, and replacing it with a single normalized divergen
 score derived from the `visit/move` matrix. This does not reopen Q3, Q4, Q6, or
 Phase `8` performance parity on their already closed surfaces.
 
+The backend `(ii)` steelman audit on 2026-05-28 reopened Phase `5` for Sprint
+`5.7` because the imperative C++ ceiling still contained lower-level hot-path
+residue: child-board materialization during legal generation, per-child
+orientation flips, full-state tree-node storage, repeated wall/path mask work,
+trusted-search replay/allocation paths, and profile-training assumptions tied to
+the older kernel. Sprint `5.7` has closed that backend `(ii)` work without
+reopening the closed functional implementations in Phase `6`. It does leave the
+final Phase `8` handoff incomplete: Sprint `8.15` is active on the Haskell
+shortfall exposed by the fresh Q1a/Q1b/Q2/Q5, Q3, Q6, and Q7 rebaseline against
+the fully steelmanned `(ii)` target.
+
 This audit does not change the project hypothesis: one Haskell CLI keeps
 all five backend slots live, Q3 proves visit-count equivalence for `(ii)..(v)`
 under `--rng cpp`, Q6 covers all five slots under the legacy envelope, Q7 proves
 semantic MCTS parity for `(ii)..(v)` under weaker-than-bit-equality checks,
 backend (iv) Rust remains the cross-language systems baseline after Sprint `6.8`
-hot-path alignment, and the
-refactored Q1/Q2 suite measures backend (v) Haskell against backend (ii)
-`cpp-imperative` using the explicit metric units in
+hot-path alignment, and the refactored Q1/Q2 suite measures backend (v) Haskell
+against backend (ii) `cpp-imperative` using the explicit metric units in
 [../documents/engineering/benchmark_metrics.md](../documents/engineering/benchmark_metrics.md).
+The current closed `Within tolerance` verdict is historical current-artifact
+evidence for the Sprint `5.6` backend `(ii)` artefact; Sprint `8.15` remains
+active after focused Haskell hot-path tuning, including direct slot-based
+path-start checks, a no-wall legal-action fast path, and single-constructor
+action transitions, until Haskell closes the post-`5.7` shortfall or the plan
+records an accepted non-parity outcome. The latest Sprint `8.15` aggregate rerun
+still fails closed with `Verdict: Shortfall 0.2678864950323545`: Q1a backend
+`(ii)`/Haskell ratios `1.06x` ST and `1.27x` MT8, Q1b `1.05x` ST and `1.11x`
+MT8, and Q2 `0.98x` ST and `1.11x` MT8.
 
 The Phase `1` reclosure was validated with
 `docker compose run --rm mcts mcts docs check`,
@@ -256,6 +281,13 @@ Q1b search-iteration ST 0.67x and MT8 0.67x, Q2 self-play ST 0.59x and MT8
 scaling 7.32x, Haskell self-play scaling 3.42x, C++ (ii) self-play scaling
 3.92x, Q3/Q4/Q6 PASS, all Cabal stanzas PASS, zero live-cohort divergence, and
 `Verdict: Within tolerance`.
+Focused Sprint `8.15` increments on 2026-05-28 were validated with
+`docker compose run --rm --build mcts mcts test mcts-unit`, focused Q1a/Q1b/Q2
+benchmarks against backend `(ii)`, and `docker compose run --rm mcts mcts test
+all`. The accepted action-transition rewrite reduced the aggregate shortfall but
+did not close Phase `8`: Q1a backend `(ii)`/Haskell ratios are now `1.06x` ST
+and `1.27x` MT8, Q1b `1.05x` ST and `1.11x` MT8, Q2 `0.98x` ST and `1.11x`
+MT8, and the aggregate verdict remains `Shortfall 0.2678864950323545`.
 Sprint `0.3` was validated on 2026-05-27 with
 `docker compose run --rm mcts mcts docs check`,
 `docker compose run --rm mcts mcts check-code`, and `git diff --check`.
@@ -489,10 +521,10 @@ A sprint can move to `Done` only when all of the following are true:
 | 2 | Transcript Codec, RNG, and Determinism Contract | ✅ Done (Sprint `2.9` transcript/envelope doctrine realignment closed 2026-05-24) | [phase-2-transcript-codec-and-determinism.md](phase-2-transcript-codec-and-determinism.md) |
 | 3 | Backend (v) Haskell Engine | ✅ Done (Sprint `3.8` benchmark metric primitives closed 2026-05-24) | [phase-3-haskell-engine.md](phase-3-haskell-engine.md) |
 | 4 | Backend (i) C++ Legacy Port and FFI Bridge | ✅ Done (Sprint `4.5` FFI domain-conversion contract realignment closed 2026-05-24) | [phase-4-cpp-legacy-port-and-ffi-bridge.md](phase-4-cpp-legacy-port-and-ffi-bridge.md) |
-| 5 | Backend (ii) C++ Imperative Steelman with PGO+BOLT | ✅ Done (Sprint `5.3` fail-closed C++ PGO/BOLT, Sprint `5.5` compact C ABI, and Sprint `5.6` compact-board hot path reclosures are complete) | [phase-5-cpp-imperative-steelman.md](phase-5-cpp-imperative-steelman.md) |
+| 5 | Backend (ii) C++ Imperative Steelman with PGO+BOLT | ✅ Done (Sprint `5.7` full hot-path steelman closed; Sprints `5.3`, `5.5`, and `5.6` remain closed for their delivered surfaces) | [phase-5-cpp-imperative-steelman.md](phase-5-cpp-imperative-steelman.md) |
 | 6 | Backends (iii) C++ Functional-Core and (iv) Rust | ✅ Done for build/ABI, backend (iii) compact functional-core state alignment, and Sprint `6.8` Rust hot-path structural alignment | [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md) |
 | 7 | Cross-Backend Verify, Test Stanzas, POC Report Card | ✅ Done (Sprint `7.11` Q7 semantic parity and normalized divergence score closed) | [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md) |
-| 8 | Haskell Performance Parity Closure and Five-Backend Restoration | ✅ Done (Sprint `8.14` report-card verdict/sample-stability gate closed 2026-05-27) | [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md) |
+| 8 | Haskell Performance Parity Closure and Five-Backend Restoration | 🔄 Active (Sprint `8.15` Haskell-vs-`(ii)` shortfall after closed Sprint `5.7`; Sprint `8.14` remains historical current-artifact evidence) | [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md) |
 
 ## Current Plan Status
 
@@ -519,6 +551,20 @@ strengthened backend (ii), Sprint `6.7` closed the backend (iii) compact
 functional-core rewrite, and Sprints `8.12`, `8.13`, and `8.14` closed Haskell
 parity, style alignment, and report-card verdict gating against that corrected
 target.
+Sprint `5.7` has closed backend `(ii)`'s imperative hot path: action-id
+generation without child-board materialization, absolute side-to-move state,
+action-only tree storage, reusable wall block masks, fixed/trusted internal C ABI
+buffers, and retuned PGO/BOLT training. Sprint `8.15` is active because the first
+post-`5.7` report-card rebaseline failed closed with a Haskell shortfall against
+the fully steelmanned `(ii)` target. Accepted Sprint `8.15` Haskell changes keep
+the pure API while narrowing local hot-path overhead through compact pawn slots,
+non-terminal action sets, no-ply rollout apply, fused arena updates, worker
+pinning, direct packed-slot path starts, a no-wall legal-action fast path, and
+single-constructor action transitions.
+The latest accepted aggregate rerun still fails closed with
+`Verdict: Shortfall 0.2678864950323545`: Q1a backend `(ii)`/Haskell ratios
+`1.06x` ST and `1.27x` MT8, Q1b `1.05x` ST and `1.11x` MT8, and Q2 `0.98x` ST
+and `1.11x` MT8.
 Phase `0` Sprint `0.3` restored the root CLI doctrine file cited by the plan and
 governed docs. Sprint `0.4` then removed remaining README-as-authority citation drift:
 README is reference-only, `00-overview.md` owns the doctrine-scope split, and governed

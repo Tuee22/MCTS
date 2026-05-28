@@ -23,15 +23,15 @@
 
 ## Phase Status
 
-✅ **Done** after the backend (ii) steelman correction, the functional-core
-style audit, the 2026-05-26 Haskell parity refresh, and the 2026-05-27
-report-card verdict-gate/sample-stability refresh. The Haskell tuning
-work, no-generated-validation-data cleanup, five-backend restoration,
-optimized-C++ report-card refresh, refactored Q1a/Q1b/Q2/Q5 evidence, Sprint
-`5.6` corrected backend (ii) target, Sprint `6.7` backend (iii) compact
-functional-core style surface, Sprint `8.12` Haskell parity refresh, Sprint
-`8.13` Haskell style alignment, and Sprint `8.14` fail-closed report-card gate
-are all closed. The current accepted evidence is the 2026-05-27
+🔄 **Active.** Sprint `8.15` reopens this phase for the Haskell-vs-`(ii)`
+rebaseline after Phase `5` Sprint `5.7` landed the full backend `(ii)` hot-path
+steelman. The Haskell tuning work, no-generated-validation-data cleanup,
+five-backend restoration, optimized-C++ report-card refresh, refactored
+Q1a/Q1b/Q2/Q5 evidence, Sprint `5.6` corrected backend (ii) target, Sprint `6.7`
+backend (iii) compact functional-core style surface, Sprint `8.12` Haskell parity
+refresh, Sprint `8.13` Haskell style alignment, and Sprint `8.14` fail-closed
+report-card gate remain closed for their owned surfaces. The last accepted
+pre-`5.7` evidence is the 2026-05-27
 `docker compose run --rm mcts mcts test all` run: Q1a terminal playouts ST
 `0.72x` (`30804.2` vs `22078.9` playouts/s), Q1a MT8 `0.85x` (`182020.9`
 vs `154067.0` playouts/s), Q1b search iterations ST `0.67x` (`34619.7` vs
@@ -39,6 +39,36 @@ vs `154067.0` playouts/s), Q1b search iterations ST `0.67x` (`34619.7` vs
 search-iters/s), Q2 self-play ST `0.59x` (`1.9` vs `1.1` games/s), Q2
 self-play MT8 `0.68x` (`6.4` vs `4.3` games/s), Q3/Q4/Q6 PASS, zero
 live-cohort divergence, all Cabal stanzas PASS, and verdict `Within tolerance`.
+This is now historical evidence against the Sprint `5.6` artefact.
+
+The first Sprint `8.15` rebaseline ran on 2026-05-28 through
+`docker compose run --rm --build mcts mcts test all`. It passed files/docs/style,
+unit, integration, cross-backend, legacy-parity, semantic-parity, Q3, Q4, Q6, Q7,
+and zero-divergence gates against the Sprint `5.7` backend `(ii)` kernel, then
+failed closed with `Verdict: Shortfall`. Observed backend `(ii)`/Haskell ratios
+were Q1a terminal playouts `1.13x` ST and `1.49x` MT8, Q1b search iterations
+`1.14x` ST and `1.15x` MT8, and Q2 self-play `1.01x` ST and `1.19x` MT8. Sprint
+`8.15` is active until Haskell either closes those gaps within
+`HASKELL_PARITY_TOLERANCE = 0.05` or the plan records an accepted non-parity
+outcome.
+
+Focused Sprint `8.15` Haskell work accepted compact `Word8` pawn slots,
+non-terminal legal-action sets, no-ply rollout application with local ply tracking,
+fused arena visit/value updates, first-unvisited UCT child selection, and `forkOn`
+worker pinning for benchmark and game pools, plus direct packed-slot path starts
+in `pathExistsWithMasks`, a no-wall legal-action fast path, and
+single-constructor action transitions with a no-ply rollout variant. The aggregate
+rerun after those accepted changes still fails closed with
+`Verdict: Shortfall 0.2678864950323545`: Q1a backend `(ii)`/Haskell ratios
+`1.06x` ST and `1.27x` MT8, Q1b `1.05x` ST and `1.11x` MT8, and Q2 `0.98x` ST
+and `1.11x` MT8. Measured but rejected candidates include direct wall enumeration,
+iterative descent, cached coordinate fields in `Board`, direct wall-bit-index
+apply, direct terminal checks in `UCT.descend`, and strict `quotRem` index
+decoding in the action/wall hot path, direct wall-index legality/trial-mask
+decoding, Word64 signed-modulo correction-table rollout selection, forced
+splitmix inlining with primitive seed hoisting, and bulk arena child reservation;
+each passed focused unit validation but regressed the focused terminal-playout,
+search-iteration, self-play, or aggregate report-card rows.
 Sprint `5.3` routes the Dockerfile-invoked `mcts build cpp-imperative` and
 `mcts build cpp-functional` recipes through the shared C++ PGO/BOLT target sequence,
 and Sprint `8.3` refreshed the report-card evidence on 2026-05-21 against the
@@ -82,6 +112,11 @@ Phase `6` Sprint `6.8` does not reopen this phase. Rust raw-performance rows are
 context for the full backend cohort after that sprint removes known Rust hot-path
 residue, but the Phase `8` verdict continues to gate backend (v) Haskell against
 backend (ii) `cpp-imperative`.
+
+The 2026-05-28 backend `(ii)` steelman audit reopened this phase, and Sprint `5.7`
+has now removed the remaining `(ii)` search-kernel and profile-training residue.
+Sprint `8.15` owns the active Haskell parity shortfall exposed by the fresh
+Q1a/Q1b/Q2/Q5 rebaseline.
 
 The restored end state is:
 
@@ -398,7 +433,14 @@ C++-stream-compatible.
 
 - `docker compose run --rm mcts mcts docs check`
 - `docker compose run --rm --build mcts mcts test mcts-cross-backend`
-- `docker compose run --rm --build mcts mcts test all`
+- `docker compose run --rm --build mcts mcts test mcts-unit`
+- `docker compose run --rm mcts mcts bench terminal-playouts --backend cpp-imperative,haskell --rng native --threading single --count 20000 --seed 42 --max-plies 60`
+- `docker compose run --rm mcts mcts bench terminal-playouts --backend cpp-imperative,haskell --rng native --threading multi --workers 8 --count 20000 --seed 42 --max-plies 60`
+- `docker compose run --rm mcts mcts bench search-iters --backend cpp-imperative,haskell --rng native --threading single --count 20000 --seed 42 --max-plies 60`
+- `docker compose run --rm mcts mcts bench search-iters --backend cpp-imperative,haskell --rng native --threading multi --workers 8 --count 20000 --seed 42 --max-plies 60`
+- `docker compose run --rm mcts mcts bench selfplay --backend cpp-imperative,haskell --rng native --threading single --games 4 --seed 42 --max-plies 200 --sims 500`
+- `docker compose run --rm mcts mcts bench selfplay --backend cpp-imperative,haskell --rng native --threading multi --workers 8 --games 4 --seed 42 --max-plies 200 --sims 500`
+- `docker compose run --rm mcts mcts test all`
 - `docker compose run --rm mcts mcts check-code`
 - `git diff --check`
 - Residue search for stale two-backend wording in `README.md`, `DEVELOPMENT_PLAN/`,
@@ -553,7 +595,14 @@ performance path.
 - `docker compose run --rm mcts mcts build cpp-imperative --dry-run`
 - `docker compose run --rm mcts mcts build cpp-functional --dry-run`
 - `docker compose run --rm mcts mcts build rust --dry-run`
-- `docker compose run --rm --build mcts mcts test all`
+- `docker compose run --rm --build mcts mcts test mcts-unit`
+- `docker compose run --rm mcts mcts bench terminal-playouts --backend cpp-imperative,haskell --rng native --threading single --count 20000 --seed 42 --max-plies 60`
+- `docker compose run --rm mcts mcts bench terminal-playouts --backend cpp-imperative,haskell --rng native --threading multi --workers 8 --count 20000 --seed 42 --max-plies 60`
+- `docker compose run --rm mcts mcts bench search-iters --backend cpp-imperative,haskell --rng native --threading single --count 20000 --seed 42 --max-plies 60`
+- `docker compose run --rm mcts mcts bench search-iters --backend cpp-imperative,haskell --rng native --threading multi --workers 8 --count 20000 --seed 42 --max-plies 60`
+- `docker compose run --rm mcts mcts bench selfplay --backend cpp-imperative,haskell --rng native --threading single --games 4 --seed 42 --max-plies 200 --sims 500`
+- `docker compose run --rm mcts mcts bench selfplay --backend cpp-imperative,haskell --rng native --threading multi --workers 8 --games 4 --seed 42 --max-plies 200 --sims 500`
+- `docker compose run --rm mcts mcts test all`
 - `docker compose run --rm mcts mcts docs check`
 - `docker compose run --rm mcts mcts check-code`
 - `git diff --check`
@@ -803,6 +852,122 @@ gate catches parity regressions instead of merely printing them.
 
 - None.
 
+## Sprint 8.15: Backend (ii) Steelman Rebaseline 🔄
+
+**Status**: Active
+**Implementation**: `src/MCTS/CLI/Test.hs`, `src/MCTS/ReportCard.hs`,
+`documents/engineering/{benchmark_metrics.md,unit_testing_policy.md,compiler_runtime_tuning.md}`,
+`DEVELOPMENT_PLAN/{README.md,00-overview.md,system-components.md}`
+**Docs to update**: `README.md`, `00-overview.md`, `system-components.md`,
+`../documents/engineering/benchmark_metrics.md`,
+`../documents/engineering/unit_testing_policy.md`,
+`../documents/engineering/compiler_runtime_tuning.md`
+
+### Objective
+
+Reclose the Haskell performance-parity handoff after backend `(ii)` is fully
+steelmanned by Sprint `5.7`. The first rebaseline shows an explicit Haskell
+shortfall, so this sprint now owns focused Haskell performance work plus a fresh
+report-card verdict against the new `(ii)` kernel.
+
+### Deliverables
+
+- Fresh Q1a terminal playout, Q1b search-iteration, Q2 self-play, and Q5 scaling
+  evidence for backend (v) Haskell versus backend `(ii)` after Sprint `5.7`.
+- Fresh Q3, Q6, and Q7 evidence proving the reworked backend `(ii)` remains in the
+  live correctness and semantic-parity cohorts.
+- Report-card verdict classification that honestly records `Within tolerance`,
+  `Evidence pending`, or `Shortfall` against the new target.
+- Focused Haskell hot-path changes only where measured Q1a/Q1b/Q2 evidence shows
+  a shortfall against the Sprint `5.7` backend `(ii)` target.
+- Updated README, development plan status, and governed engineering docs that
+  distinguish historical/current-artifact evidence from the final rebaseline.
+
+### Current Evidence
+
+Accepted Sprint `8.15` Haskell tuning keeps the pure backend API while narrowing
+local hot-path overhead: compact `Word8` pawn slots, direct non-terminal action
+sets, no-ply rollout apply with local ply tracking, fused arena visit/value
+updates, first-unvisited UCT child selection, worker `forkOn` pinning, and direct
+packed-slot path starts in `pathExistsWithMasks`, plus the no-wall legal-action
+fast path in `appendWallActionIds` and the shared optional-ply
+`applyActionIdWithPlyIncrement` transition path.
+
+Focused validation after the transition-path rewrite used the report-card
+workload constants (`N_PRIM=20_000`, primitive `--max-plies 60`, self-play
+`--games 4 --sims 500 --max-plies 200`) against backend `(ii)`:
+
+- Q1a terminal playouts: ST `37354.7` vs `35671.4` playouts/s; MT8 `246237.3`
+  vs `182027.4` playouts/s.
+- Q1b search iterations: ST `39245.2` vs `35265.2` search-iters/s; MT8
+  `273413.1` vs `195406.1` search-iters/s.
+- Q2 self-play: ST `1.8` vs `1.9` games/s; MT8 `6.4` vs `5.5` games/s.
+
+The aggregate rerun after the transition-path rewrite passes the
+files/docs/style, unit, integration, cross-backend, legacy-parity,
+semantic-parity, Q3, Q4, Q6, Q7, and zero-divergence gates, then fails closed with
+`Verdict: Shortfall 0.2678864950323545`:
+
+- Q1a terminal playouts: backend `(ii)`/Haskell `1.06x` ST (`36809.1` vs
+  `34786.8` playouts/s), `1.27x` MT8 (`267646.1` vs `211096.3` playouts/s).
+- Q1b search iterations: backend `(ii)`/Haskell `1.05x` ST (`39074.4` vs
+  `37079.2` search-iters/s), `1.11x` MT8 (`299348.8` vs `269384.0`
+  search-iters/s).
+- Q2 self-play: backend `(ii)`/Haskell `0.98x` ST (`2.0` vs `2.0` games/s),
+  `1.11x` MT8 (`7.4` vs `6.7` games/s).
+- Q5 scaling: Haskell search `7.27x`, backend `(ii)` search `7.66x`, Haskell
+  self-play `3.35x`, backend `(ii)` self-play `3.79x`.
+
+The strict `quotRem` index-decode candidate is rejected after passing
+`mcts-unit` but regressing the focused Q1a/Q1b rows: Haskell Q1a fell to
+`30787.8` ST and `153879.6` MT8 playouts/s, and Haskell Q1b fell to `31974.8`
+ST and `148508.2` MT8 search-iters/s.
+
+The direct wall-index legality/trial-mask candidate is rejected after passing
+`mcts-unit` but regressing the focused primitive rows: Q1a measured `35522.3`
+vs `33116.5` ST and `252956.7` vs `184728.7` MT8 playouts/s; Q1b measured
+`38324.8` vs `33844.6` ST and `244060.6` vs `175051.3` MT8 search-iters/s.
+
+The Word64 signed-modulo correction-table rollout-selection candidate preserved
+the Haskell primitive checksums and passed `mcts-unit`, but is rejected because
+the focused rows stayed below the accepted baseline: Q1a measured `36368.8` vs
+`33474.3` ST and `245645.3` vs `185101.2` MT8 playouts/s; Q1b measured
+`40632.6` vs `34720.2` ST and `245171.4` vs `189598.5` MT8 search-iters/s.
+Q2 was not rerun for these rejected candidates because Q1a/Q1b already failed
+to improve the active shortfall.
+
+The forced splitmix inlining plus primitive seed-hoisting candidate passed
+`mcts-unit`, but is rejected after focused primitive rows regressed against the
+accepted baseline: Q1a measured `35476.7` vs `33190.6` ST and `265489.0` vs
+`194248.4` MT8 playouts/s; Q1b measured `40652.4` vs `35920.2` ST and
+`263020.3` vs `190048.2` MT8 search-iters/s.
+
+The bulk arena child-reservation candidate passed `mcts-unit` and improved the
+focused Q2 MT8 row to `6.3` vs `5.9` games/s, but is rejected because the
+aggregate report-card rerun worsened the active shortfall. The aggregate passed
+files/docs/style, unit, integration, cross-backend, legacy-parity,
+semantic-parity, Q3, Q4, Q6, Q7, and zero-divergence gates, then failed closed
+with `Verdict: Shortfall 0.35914394441567055`: Q1a backend `(ii)`/Haskell
+`1.13x` ST and `1.36x` MT8, Q1b `1.09x` ST and `1.07x` MT8, and Q2 `0.97x`
+ST and `1.10x` MT8.
+
+### Validation
+
+- `docker compose run --rm --build mcts mcts test all`
+- `docker compose run --rm mcts mcts docs check`
+- `docker compose run --rm mcts mcts check-code`
+- `git diff --check`
+
+### Remaining Work
+
+- Close the measured Q1a ST/MT8, Q1b ST/MT8, and Q2 MT8 Haskell shortfalls against
+  the Sprint `5.7` backend `(ii)` target, or record an accepted non-parity outcome.
+- Rerun focused Q1a/Q1b/Q2 benchmarks and the aggregate report card after any
+  subsequent Haskell changes.
+- Update the plan and governed engineering docs with final Sprint `8.15` evidence
+  after the aggregate verdict either returns `Within tolerance` or records accepted
+  non-parity.
+
 ## Documentation Requirements
 
 **Engineering docs to create/update:**
@@ -821,7 +986,8 @@ gate catches parity regressions instead of merely printing them.
   terms, and Sprint `7.11` semantic-parity implementation.
 - `documents/engineering/unit_testing_policy.md` — live `mcts-cross-backend` and
   `mcts-legacy-parity` roles without checked-in generated validation data, plus the
-  Sprint `8.10` bounded-profile prerequisite for final report-card closure.
+  Sprint `8.10` bounded-profile prerequisite for current-artifact report-card
+  closure and the active Sprint `8.15` rebaseline shortfall.
 - `documents/engineering/compiler_runtime_tuning.md` — performance parity against live
   backend (ii), mandatory Dockerfile-time PGO+BOLT success for accepted evidence,
   native-RNG benchmark semantics, Sprint `8.9` Cabal-stanza flag wording, the
@@ -844,7 +1010,8 @@ gate catches parity regressions instead of merely printing them.
   bounded played-game training-workload reclosure, the closed Sprint `8.11`
   bounded metric-suite profile rerun, the closed Sprint `8.12` parity refresh, the
   closed Sprint `8.13` Haskell style-alignment follow-up, the closed Sprint `8.14`
-  report-card verdict/sample-stability gate, the closed Sprint `6.7` backend
+  report-card verdict/sample-stability gate, the active Sprint `8.15` rebaseline
+  shortfall, the closed Sprint `5.7` backend `(ii)` steelman, the closed Sprint `6.7` backend
   (iii)/(iv) style alignment, the closed Sprints `5.3`/`6.4` build-harness
   reclosures, and the cleanup residue recorded in
   [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md).

@@ -1,11 +1,8 @@
 // Backend (ii) C ABI: thin shim over the imperative-steelman engine
 // under `cpp-imperative/engine/`. The engine is the doctrine-character
-// arena-allocated MCTS per Sprint 5.1 — flat children, `Word16` ply
-// counter + ply-cap terminal, thread_local move-list buffer,
-// `__builtin_prefetch` on the UCB descent, xoshiro256++ under
-// `--rng native`. Exceptions stay enabled in the shim layer because
-// `corridors::board` throws `std::string` from its eval path; the
-// `-fno-exceptions` engine build remains a ledger item.
+// arena-allocated MCTS per Sprint 5.7 — flat children, `Word16` ply
+// counter + ply-cap terminal, fixed action buffers, action-only tree
+// nodes, and a trusted selected-action transition after search.
 
 #include "mcts_cpp_imperative.h"
 
@@ -14,6 +11,7 @@
 #include "../engine/state.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cfenv>
 #if defined(__x86_64__) || defined(__i386__)
 #include <cpuid.h>
@@ -21,8 +19,8 @@
 #include <cstdio>
 #include <cstring>
 #include <limits>
+#include <new>
 #include <utility>
-#include <vector>
 
 #ifndef MCTS_GIT_COMMIT
 #define MCTS_GIT_COMMIT "0000000000000000000000000000000000000000"
@@ -38,7 +36,9 @@
 // lookup on the last-search action set.
 struct mcts_imperative_board {
     mcts_imperative::State state{};
-    std::vector<std::pair<uint8_t, uint32_t>> last_visits{};
+    std::array<uint8_t, mcts_imperative::kMaxLegalActions> last_visit_actions{};
+    std::array<uint32_t, mcts_imperative::kMaxLegalActions> last_visit_counts{};
+    uint8_t last_visit_len = 0;
     uint8_t last_chosen = 0;
 };
 
@@ -47,17 +47,45 @@ namespace {
 constexpr uint16_t kGameMaxPlies = 10000;
 constexpr uint16_t kSearchMaxPlies = 60;
 
-[[gnu::hot]] static int apply_action_id(mcts_imperative::State &state, uint8_t action_id) {
-    std::vector<mcts_imperative::FastBoard> moves;
-    state.b.get_capped_legal_moves(moves, state.ply_count);
-    for (auto &m : moves) {
-        if (m.get_action_id(false) == action_id) {
-            state.b = std::move(m);
-            state.ply_count = static_cast<uint16_t>(state.ply_count + 1);
+[[gnu::hot]] static int apply_action_id(mcts_imperative::State &state, uint8_t raw_action_id) {
+    mcts_imperative::ActionBuffer actions;
+    const uint8_t absolute_action_id = state.b.absolute_action_from_abi(raw_action_id);
+    state.b.legal_actions(actions);
+    for (size_t i = 0; i < actions.size; ++i) {
+        if (actions[i] == absolute_action_id) {
+            state.apply_action_unchecked(absolute_action_id);
             return 0;
         }
     }
     return -1;
+}
+
+[[gnu::hot]] static void apply_trusted_action_id(
+    mcts_imperative::State &state,
+    uint8_t absolute_action_id) noexcept {
+    state.apply_action_unchecked(absolute_action_id);
+}
+
+[[gnu::hot]] static void clear_visit_cache(mcts_imperative_board *board) noexcept {
+    board->last_visit_len = 0;
+    board->last_chosen = 0;
+}
+
+[[gnu::hot]] static void store_search_result(
+    mcts_imperative_board *board,
+    const mcts_imperative::SearchOutput &result,
+    uint8_t *out_action_ids,
+    uint32_t *out_visits) noexcept {
+    const size_t count = std::min(result.visit_count, board->last_visit_actions.size());
+    board->last_visit_len = static_cast<uint8_t>(count);
+    board->last_chosen = result.chosen_action_id;
+    for (size_t i = 0; i < count; ++i) {
+        const auto &row = result.visits[i];
+        board->last_visit_actions[i] = row.first;
+        board->last_visit_counts[i] = row.second;
+        out_action_ids[i] = row.first;
+        out_visits[i] = row.second;
+    }
 }
 
 }  // namespace
@@ -79,8 +107,7 @@ extern "C" int mcts_imperative_apply_action(mcts_imperative_board *board, uint8_
     if (!board) return -1;
     const int applied = apply_action_id(board->state, action_id);
     if (applied == 0) {
-        board->last_visits.clear();
-        board->last_chosen = 0;
+        clear_visit_cache(board);
     }
     return applied;
 }
@@ -101,7 +128,8 @@ extern "C" uint8_t mcts_imperative_select_uct_move(mcts_imperative_board *board,
         mcts_imperative::RngBackend::Mt19937,
         seed);
     if (!result.ok) return 0;
-    if (apply_action_id(board->state, result.chosen_action_id) != 0) return 0;
+    apply_trusted_action_id(board->state, result.chosen_absolute_action_id);
+    clear_visit_cache(board);
     return result.chosen_action_id;
 }
 
@@ -117,14 +145,9 @@ extern "C" int32_t mcts_imperative_search_move(
         mcts_imperative::RngBackend::Mt19937,
         seed);
     if (!result.ok) return -1;
-    if (apply_action_id(board->state, result.chosen_action_id) != 0) return -1;
-    const int32_t count = static_cast<int32_t>(result.visits.size());
-    board->last_visits = result.visits;
-    board->last_chosen = result.chosen_action_id;
-    for (int32_t i = 0; i < count; ++i) {
-        out_action_ids[i] = result.visits[i].first;
-        out_visits[i] = result.visits[i].second;
-    }
+    apply_trusted_action_id(board->state, result.chosen_absolute_action_id);
+    const int32_t count = static_cast<int32_t>(result.visit_count);
+    store_search_result(board, result, out_action_ids, out_visits);
     *out_chosen = result.chosen_action_id;
     return count;
 }
@@ -144,14 +167,9 @@ extern "C" int32_t mcts_imperative_recompute_move(
         mcts_imperative::RngBackend::Mt19937,
         seed);
     if (!result.ok) return -1;
-    if (apply_action_id(board->state, result.chosen_action_id) != 0) return -1;
-    const int32_t count = static_cast<int32_t>(result.visits.size());
-    board->last_visits = result.visits;
-    board->last_chosen = result.chosen_action_id;
-    for (int32_t i = 0; i < count; ++i) {
-        out_action_ids[i] = result.visits[i].first;
-        out_visits[i] = result.visits[i].second;
-    }
+    apply_trusted_action_id(board->state, result.chosen_absolute_action_id);
+    const int32_t count = static_cast<int32_t>(result.visit_count);
+    store_search_result(board, result, out_action_ids, out_visits);
     *out_chosen = result.chosen_action_id;
     *out_equity = result.chosen_equity;
     return count;
@@ -188,8 +206,8 @@ extern "C" uint32_t mcts_imperative_read_visits(
     const mcts_imperative_board *board, uint8_t action_id) {
 #if MCTS_IMPERATIVE_INSTRUMENTED
     if (!board) return 0;
-    for (const auto &pair : board->last_visits) {
-        if (pair.first == action_id) return pair.second;
+    for (uint8_t i = 0; i < board->last_visit_len; ++i) {
+        if (board->last_visit_actions[i] == action_id) return board->last_visit_counts[i];
     }
 #else
     (void)board;

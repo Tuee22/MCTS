@@ -14,19 +14,16 @@
 
 ## Phase Status
 
-✅ **Done.** `cpp-imperative/` contains the arena-MCTS steelman source, live
-parser/build/verify/FFI dispatch, Makefile-level PGO/BOLT/`mimalloc` targets, and
-Dockerfile-invoked `mcts build cpp-imperative` / `mcts build cpp-functional`
-Plan/Apply recipes through the shared C++ PGO/BOLT target sequence. Sprint `5.3`
-reclosed on 2026-05-23: C++ BOLT `.fdata` production is mandatory, PGO-only or
-unoptimized fallback installs are removed, LLVM objcopy patches BOLT-produced
-shared objects without corrupting them, and the Dockerfile build smokes the
-installed bolted libraries before publishing the image. Sprint `5.5` reclosed
-Phase `5` on 2026-05-21 by aligning the backend (ii) C ABI contract with the
-compact live evidence ABI that exists, not speculative tree/rng lifecycle handles.
-Sprint `5.6` reclosed Phase `5` on 2026-05-25 by replacing the leftover
-legacy-board hot path with a compact backend (ii) board, direct capped move
-generation, and bitset wavefront escapability checks.
+✅ **Done.** Sprint `5.7` closes Phase `5` for the full backend `(ii)` hot-path
+steelman. The closed Sprint `5.3`, `5.5`, and `5.6` evidence remains valid for
+parser/build/verify/FFI dispatch, Makefile-level PGO/BOLT/`mimalloc` targets,
+fail-closed Dockerfile-owned C++ build mechanics, compact C ABI contract, and
+compact `FastBoard` legacy-path removal. Sprint `5.7` removes the remaining
+lower-level kernel residue: child-board materialization during legal generation,
+per-child full-board orientation flips, full-state tree-node storage, repeated
+wall/path-mask reconstruction, and trusted-search allocation/replay paths. The
+fresh Phase `8` Sprint `8.15` report-card rebaseline now measures Haskell against
+this stronger `(ii)` target and records an active Haskell parity shortfall.
 
 ## Phase Summary
 
@@ -41,15 +38,13 @@ instrumentation or optimization cannot produce usable data, the image build must
 instead of installing a PGO-only or unoptimized artefact under a bolted or canonical
 load name.
 
-Phase `5` remains closed for the backend (ii) source, ABI, fail-closed PGO/BOLT
-mechanics, compact-board hot path, and canonical artefact installation surfaces.
-The 2026-05-25 backend (ii) correction strengthens the C++ ceiling and reopens
-Phase `8` parity evidence until backend (v) is rebenchmarked and retuned against
-this corrected target. Phase `8` Sprint `8.10` has since broadened the
-Dockerfile-time PGO/BOLT training workload from the earlier narrow self-play smoke
-into a bounded profile suite. Phase `8` Sprint `8.11` extends and validates that
-suite with primitive terminal-playout and search-iteration profile runs after the
-metric refactor.
+Phase `5` is closed for source, ABI, fail-closed PGO/BOLT mechanics,
+compact-board hot path, full kernel steelman, and canonical artefact installation
+surfaces. Sprint `5.7` makes backend `(ii)` a data-layout and search-kernel
+steelman, not merely a compiler-pipeline steelman. The 2026-05-25 backend (ii)
+correction and the 2026-05-28 Sprint `5.7` kernel rewrite strengthen the C++
+ceiling; Phase `8` Sprint `8.15` owns the resulting Haskell-vs-`(ii)` parity
+shortfall.
 
 ## Sprint 5.1: Source Tree and Engine Shape ✅
 
@@ -305,6 +300,101 @@ The rebuilt-image correctness gates passed: `mcts-cross-backend`,
 
 None.
 
+## Sprint 5.7: Backend (ii) Full Hot-Path Steelman ✅
+
+**Status**: Done
+**Implementation**: `cpp-imperative/engine/{fast_board.hpp,state.hpp,arena.hpp,search.cpp}`,
+`cpp-imperative/c-abi/mcts_cpp_imperative.cc`, `cpp-imperative/Makefile`,
+`src/MCTS/CLI/Build.hs`
+**Docs to update**: `README.md`, `00-overview.md`, `system-components.md`,
+`phase-8-haskell-performance-parity-closure.md`, `legacy-tracking-for-deletion.md`,
+`../documents/engineering/compiler_runtime_tuning.md`,
+`../documents/engineering/backend_style_contract.md`,
+`../documents/engineering/benchmark_metrics.md`,
+`../documents/engineering/unit_testing_policy.md`
+
+### Objective
+
+Make backend `(ii)` the strongest reasonable imperative C++ search-kernel target
+before drawing the final Haskell-vs-C++ performance conclusion. Sprint `5.6`
+removed legacy-board and text-action costs; Sprint `5.7` removed remaining
+layout, allocation, orientation, and profile-training residue inside the optimized
+kernel while keeping the compact public C ABI stable.
+
+### Deliverables
+
+- Replace child-board legal generation with fixed-capacity action-id generation.
+  Search should materialize a board only for the selected successor or for a local
+  legality trial, not for every candidate returned by the generator.
+- Replace per-child full-board flips and wall-bitfield reversal with an absolute
+  board plus explicit side-to-move state. Normalize only at ABI/transcript
+  boundaries if a boundary requires it.
+- Replace full-`State` per node / 64-byte AoS scan pressure with action-only tree
+  storage or a split hot/cold structure-of-arrays layout. UCT selection should scan
+  visits, value, and action IDs without loading full board snapshots.
+- Reuse or precompute wall block masks, conflict masks, and per-cell path blockers.
+  The hot wall-legality check must not rebuild path masks for every candidate.
+- Keep descent/backprop iterative where it removes call overhead, avoid repeated
+  terminal evaluation in the same step, early-return the first unvisited child, and
+  remove or justify manual prefetching with profile evidence.
+- Use fixed output and visit buffers on trusted internal paths. `search_move`
+  should apply its chosen action through an internal trusted transition instead of
+  replaying through full legal-move regeneration; external `apply_action` remains
+  validating.
+- Retune Dockerfile-time PGO/BOLT training after the kernel rewrite so profiles
+  represent Q1a terminal playouts, Q1b search iterations, and Q2 self-play on the
+  new code shape rather than the old `FastBoard`/full-node tree mix.
+- Record before/after evidence for backend `(ii)` terminal playout throughput,
+  search-iteration throughput, and self-play throughput, plus Q3, Q6, and Q7
+  correctness/semantic gates.
+
+### Validation
+
+- `docker compose run --rm --build mcts mcts bench terminal-playouts --backend cpp-imperative,haskell --rng native --threading single --count 20000 --seed 42 --max-plies 60`
+- `docker compose run --rm mcts mcts bench terminal-playouts --backend cpp-imperative,haskell --rng native --threading multi --workers 8 --count 20000 --seed 42 --max-plies 60`
+- `docker compose run --rm mcts mcts bench search-iters --backend cpp-imperative,haskell --rng native --threading single --count 20000 --seed 42 --max-plies 60`
+- `docker compose run --rm mcts mcts bench search-iters --backend cpp-imperative,haskell --rng native --threading multi --workers 8 --count 20000 --seed 42 --max-plies 60`
+- `docker compose run --rm mcts mcts bench selfplay --backend cpp-imperative,haskell --rng native --threading single --games 4 --seed 42 --max-plies 200 --sims 500`
+- `docker compose run --rm mcts mcts bench selfplay --backend cpp-imperative,haskell --rng native --threading multi --workers 8 --games 4 --seed 42 --max-plies 200 --sims 500`
+- `docker compose run --rm mcts mcts verify rollouts --backend cpp-imperative,cpp-functional,rust,haskell --threading single --games 4 --seed 42 --max-plies 200`
+- `docker compose run --rm mcts mcts verify selfplay --backend cpp-imperative,cpp-functional,rust,haskell --threading single --games 4 --seed 42 --max-plies 200 --sims 500`
+- `docker compose run --rm mcts mcts test mcts-cross-backend`
+- `docker compose run --rm mcts mcts test mcts-legacy-parity`
+- `docker compose run --rm mcts mcts test mcts-semantic-parity`
+- `docker compose run --rm --build mcts mcts test all`
+- `docker compose run --rm mcts mcts docs check`
+- `docker compose run --rm mcts mcts check-code`
+- `git diff --check`
+
+### Remaining Work
+
+None.
+
+### Closure Notes
+
+Closed on 2026-05-28. The backend `(ii)` kernel now generates fixed-capacity
+action IDs, stores absolute board state with explicit side-to-move, keeps MCTS tree
+nodes action-only instead of full-state snapshots, reuses wall block masks within
+legal generation, applies trusted search results through internal unchecked
+transitions, and keeps external C ABI `apply_action` validating. The `cpp-imperative`
+Makefile now builds the active search kernel without the old legacy board
+translation unit.
+
+Validation passed through the supported Compose entrypoint:
+
+- `docker compose run --rm --build mcts mcts test mcts-unit`
+- `docker compose run --rm mcts mcts test mcts-cross-backend`
+- `docker compose run --rm mcts mcts test mcts-legacy-parity`
+- `docker compose run --rm mcts mcts test mcts-semantic-parity`
+- `docker compose run --rm mcts mcts verify rollouts --backend cpp-imperative,cpp-functional,rust,haskell --threading single --games 4 --seed 42 --max-plies 200`
+- `docker compose run --rm mcts mcts verify selfplay --backend cpp-imperative,cpp-functional,rust,haskell --threading single --games 4 --seed 42 --max-plies 200 --sims 500`
+
+The aggregate `docker compose run --rm --build mcts mcts test all` run rebuilt the
+Dockerfile-owned backend artefacts and passed files/docs/style/unit/integration,
+cross-backend, legacy-parity, semantic-parity, Q3, Q4, Q6, and Q7 gates. It exited
+non-zero because Phase `8` Sprint `8.15` correctly reported `Verdict: Shortfall`
+against the stronger backend `(ii)` target.
+
 ## Documentation Requirements
 
 **Engineering docs to create/update:**
@@ -318,6 +408,13 @@ None.
 - `documents/engineering/haskell_code_guide.md` — Plan/Apply examples for the
   Dockerfile-invoked fail-closed C++ build leaves.
 - `documents/engineering/determinism_contract.md` — Q3 equivalence participation.
+- `documents/engineering/backend_style_contract.md` — explicit boundary that Sprint
+  `5.7` changes only backend `(ii)`'s imperative kernel, not the closed functional
+  implementations.
+- `documents/engineering/benchmark_metrics.md` and
+  `documents/engineering/unit_testing_policy.md` — mark the Sprint `8.14`
+  report-card evidence as historical current-artifact evidence and Sprint `8.15`
+  as active on the post-`5.7` Haskell shortfall.
 
 **Product docs to create/update:**
 
@@ -326,11 +423,11 @@ None.
 **Cross-references to add:**
 
 - Keep [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md)
-  aligned with live backend (ii) measurement.
-- `legacy-tracking-for-deletion.md` carries Sprint `5.3` fail-open C++ PGO/BOLT
-  residue until the Makefile/CLI path fails the Dockerfile build on missing `.fdata`;
-  it carries Sprint `5.5` ABI overclaim residue until backend (ii)'s governed ABI
-  and headers agree.
+  aligned with live backend (ii) measurement; Sprint `8.15` is active on the
+  measured Haskell-vs-`(ii)` shortfall.
+- `legacy-tracking-for-deletion.md` keeps the Sprint `5.7` backend `(ii)`
+  hot-path/profile-training cleanup in Completed and carries only the active
+  Sprint `8.15` parity shortfall row for this handoff.
 
 ## Related Documents
 
