@@ -28,7 +28,7 @@ style audit, the 2026-05-26 Haskell parity refresh, and the 2026-05-27
 report-card verdict-gate/sample-stability refresh. The Haskell tuning
 work, no-generated-validation-data cleanup, five-backend restoration,
 optimized-C++ report-card refresh, refactored Q1a/Q1b/Q2/Q5 evidence, Sprint
-`5.6` corrected backend (ii) target, Sprint `6.7` backend (iii)/(iv)
+`5.6` corrected backend (ii) target, Sprint `6.7` backend (iii) compact
 functional-core style surface, Sprint `8.12` Haskell parity refresh, Sprint
 `8.13` Haskell style alignment, and Sprint `8.14` fail-closed report-card gate
 are all closed. The current accepted evidence is the 2026-05-27
@@ -70,12 +70,18 @@ The 2026-05-25 backend (ii) correction reopened this phase on the Haskell parity
 surface. Phase `6` Sprint `6.7` removed backend (iii)'s legacy-board and
 action-text hot path, so Q3/Q6 equivalence and liveness remained covered by
 Phase `7`; Phase `5` owns the corrected C++ steelman; and Phase `6` owns the
-closed backend (iii)/(iv) functional-core alignment. Sprint `8.12` retuned
+closed backend (iii) functional-core alignment plus Sprint `6.8` Rust hot-path
+follow-up. Sprint `8.12` retuned
 Haskell against the corrected backend (ii), Sprint `8.13` aligned backend
 (v)'s compact action-set and transition boundary with the shared functional-core
 style without changing Phase `3`'s closed pure-engine API, and Sprint `8.14`
 made the report-card verdict an exit-code gate while raising the primitive
 sample to `N_PRIM=20_000` for stable MT8 Q1a/Q1b evidence.
+
+Phase `6` Sprint `6.8` does not reopen this phase. Rust raw-performance rows are
+context for the full backend cohort after that sprint removes known Rust hot-path
+residue, but the Phase `8` verdict continues to gate backend (v) Haskell against
+backend (ii) `cpp-imperative`.
 
 The restored end state is:
 
@@ -84,9 +90,9 @@ The restored end state is:
   must use Dockerfile-built artefacts that completed PGO and BOLT without fallback
   and must report the explicit units defined in
   [../documents/engineering/benchmark_metrics.md](../documents/engineering/benchmark_metrics.md).
-- Sprint `7.10` report-card output adds raw Q1a/Q1b/Q2 rates for every backend slot
+- Sprints `7.10` and `7.11` report-card output add raw Q1a/Q1b/Q2 rates for every backend slot
   ahead of the parity question summary and divergence matrix, then ends with
-  explicit Q1a-Q6 answers based on observed ratios, scaling values, divergence
+  explicit Q1a-Q7 answers based on observed ratios, scaling values, divergence
   rates, and gate outcomes. Those raw rows are context; the Phase `8` verdict still
   gates on Haskell (v) versus backend (ii).
 - Performance benchmarks use each backend's own/native deterministic RNG contract.
@@ -810,8 +816,9 @@ gate catches parity regressions instead of merely printing them.
 - `documents/engineering/backend_style_contract.md` — functional-core style contract
   for `(iii)`, `(iv)`, and `(v)`, including the closed Sprint `8.13` Haskell
   alignment gate.
-- `documents/engineering/benchmark_metrics.md` — metric units and Q1-Q6 mapping used by
-  Sprint `8.11` rerun evidence, plus Sprint `7.10` raw backend metric table terms.
+- `documents/engineering/benchmark_metrics.md` — metric units and Q1-Q7 mapping,
+  including Sprint `8.11` rerun evidence, Sprint `7.10` raw backend metric table
+  terms, and Sprint `7.11` semantic-parity implementation.
 - `documents/engineering/unit_testing_policy.md` — live `mcts-cross-backend` and
   `mcts-legacy-parity` roles without checked-in generated validation data, plus the
   Sprint `8.10` bounded-profile prerequisite for final report-card closure.

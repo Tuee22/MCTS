@@ -309,7 +309,8 @@ the `lld` linker flag in both PGO Cargo builds, profile merge guard, canonical
 install path `rust/target/release/libmcts_rust.so`, local `SystemMiMalloc` global
 allocator, LLVM objcopy post-link `engine_build_id` patching, and final installed
 cdylib smoke inside the pinned amd64 container. Like C++, Rust trains on the
-bounded metric-suite profile suite.
+bounded metric-suite profile suite. Sprint `6.8` closes Rust's implementation
+shape gap against `(iii)` and `(v)` without changing the build envelope.
 
 ### Code-Level Requirements
 
@@ -319,6 +320,18 @@ bounded metric-suite profile suite.
   `ply >= max_plies` with eval `0.0`. Part of the per-rollout snapshot/undo
   path.
 - Tree as `Vec<Node>` with `u32` child indices, mirroring the C++ arena.
+- Search arena capacity reserves the full child-bound shape, equivalent to
+  `1 + root_children + sims * 16`, so ordinary searches do not reallocate and copy
+  node/state vectors.
+- Path-existence checks use `u128` wavefront masks over the 9x9 grid. The old
+  queue-based iterative BFS shape remains only historical Sprint `6.3` closure
+  context.
+- Legal-action generation uses stack or packed fixed-capacity action buffers for the
+  pawn-plus-12-wall action set. Per-rollout `Vec` allocation is not part of the
+  target Rust hot path.
+- The optional `read_visits` cache belongs inside the Rust board handle, mirroring
+  the C++ handle-local cache shape; the old global synchronized map is historical
+  Sprint `6.8` cleanup residue.
 - `#[inline(always)]` on hot leaf operations, `#[cold]` on error and terminal
   paths.
 - `core::hint::unreachable_unchecked` where a precondition genuinely guarantees
@@ -326,6 +339,25 @@ bounded metric-suite profile suite.
 - Bit ops via `u64::count_ones` / `u64::trailing_zeros` (lower to the same
   `popcnt` / `tzcnt` as the C++ builtins).
 - No `Rc` / `Arc` in the hot path. No `Box<dyn Trait>` in the search.
+
+### Sprint 6.8 Rust Hot-Path Refactor
+
+Sprint `6.8` makes backend (iv) use the same structural hot path as the
+already-aligned `(iii)` and `(v)` implementations:
+
+- `rust/src/board.rs` replaces queue BFS path checks with the bit-parallel wavefront
+  masks used by `(iii)` and `(v)`;
+- `rust/src/search.rs` replaces per-rollout and per-expansion heap `Vec<u8>` action
+  buffers with a fixed-capacity action buffer;
+- Rust search arenas reserve to the same child-bound formula used by C++ and Haskell;
+- expansion/descent avoids unnecessary board clones while preserving value-state
+  semantics;
+- optional visit-vector cache state moves from the global synchronized map into the
+  opaque Rust board handle in `rust/src/c_abi.rs`.
+
+The expected evidence is not a new parity question: Q3/Q6 continue to own correctness.
+The new evidence is focused native-RNG Q1a/Q1b/Q2 raw performance for `rust` against
+`cpp-functional` and `haskell`, plus the aggregate gates required by Phase `6`.
 
 ## Backend (v) — Haskell
 

@@ -16,12 +16,18 @@
 
 ## Phase Status
 
-✅ **Done**. Rust and `cpp-functional/` remain live backends. The
-fail-closed Rust PGO/BOLT, backend (iii)/(iv) ABI wording, and Sprint `6.7`
+✅ **Done** for the currently validated ABI/build surfaces, backend (iii)
+compact functional-core alignment, and Sprint `6.8` Rust hot-path structural
+alignment. Rust and `cpp-functional/` remain live backends.
+The fail-closed Rust PGO/BOLT, backend (iii)/(iv) ABI wording, and Sprint `6.7`
 compact functional-core source-style surfaces are closed. Sprint `6.7` removed
 backend (iii)'s legacy-board/action-text hot path and aligned the C++ functional
 backend with the compact value-state style described in
 [backend_style_contract.md](../documents/engineering/backend_style_contract.md).
+Sprint `6.8` keeps that history intact: Rust already had the compact value-state
+boundary, and now uses the same bit-parallel path checks, stack action buffers,
+child-bound arena sizing, reduced clone discipline, and board-handle visit cache
+shape that `(iii)` and `(v)` use.
 
 ## Phase Summary
 
@@ -38,8 +44,11 @@ produce the required optimized cdylib. The final installed Rust cdylib is
 smoke-tested before the image is published.
 
 Phase `6` is closed for the validated ABI, fail-closed PGO/BOLT mechanics, Rust
-allocator/toolchain integration, canonical artefact installation, and backend
-(iii)'s compact functional-core source/style alignment.
+allocator/toolchain integration, canonical artefact installation, backend
+(iii)'s compact functional-core source/style alignment, and backend (iv)'s Rust
+implementation shape. Rust now uses the same bit-parallel path checks,
+fixed-capacity action buffers, arena sizing, and board-local visit cache
+discipline as the aligned functional-core cohort.
 Phase `8` Sprint `8.10` has since broadened the Dockerfile-time PGO/BOLT training
 workload from the earlier narrow self-play smoke into a bounded profile suite.
 Phase `8` Sprint `8.11` extends and validates that suite with primitive
@@ -334,8 +343,81 @@ The focused rebuilt-image performance checks show backend (iii) broadly matching
 backend (ii): terminal playout ST is `19416.9` vs `21508.3` playouts/s, and
 search-iteration ST is `20694.1` vs `20051.8` search-iters/s
 (`cpp-functional` vs `cpp-imperative`, seed `42`, count `1000`, max plies `60`).
-Rust already followed the compact value-state boundary, so no Rust source changes
-were needed for this closure.
+Rust already had the compact value-state boundary, so no Rust source changes
+were needed for Sprint `6.7`'s backend (iii) closure. Later raw-performance review
+showed that this was not enough for Rust: Sprint `6.8` replaces the remaining Rust
+hot-path residue without changing the Sprint `6.7` C++ functional closure claim.
+
+### Remaining Work
+
+None.
+
+## Sprint 6.8: Rust Hot-Path Structural Alignment ✅
+
+**Status**: Done
+**Implementation**: `rust/src/board.rs`, `rust/src/search.rs`, `rust/src/tree.rs`,
+`rust/src/c_abi.rs`
+**Docs to update**: `README.md`, `00-overview.md`, `system-components.md`,
+`legacy-tracking-for-deletion.md`,
+`../documents/engineering/backend_style_contract.md`,
+`../documents/engineering/compiler_runtime_tuning.md`,
+`../documents/engineering/backend_ffi_contract.md`
+
+### Objective
+
+Make backend (iv) Rust use the same structural hot path as backend (iii)
+`cpp-functional` and backend (v) Haskell while preserving the existing C ABI,
+Q3/Q6 semantics, Rust ownership boundaries, and Dockerfile-owned PGO/BOLT build
+contract.
+
+### Deliverables
+
+- Replace Rust's queue-based escapability check with bit-parallel `u128`
+  wavefront masks derived from the 8x8 horizontal and vertical wall bitfields.
+- Replace per-rollout and per-expansion heap `Vec<u8>` legal-action buffers with a
+  fixed-capacity action buffer for pawn moves plus the first 12 legal walls.
+- Reserve the Rust search arena to the same child-bound shape used by C++ and
+  Haskell, avoiding node/state vector reallocation during ordinary search budgets.
+- Reduce avoidable board cloning in expansion and descent while keeping value-state
+  transitions at the API boundary.
+- Move optional `read_visits` state into the opaque Rust board handle instead of the
+  global synchronized board-address map.
+- Keep `mcts_rust_*` C ABI symbols and transcript action IDs unchanged.
+
+### Validation
+
+- `docker compose run --rm --build mcts mcts bench terminal-playouts --backend cpp-functional,rust,haskell --rng native --threading single --count 20000 --seed 42 --max-plies 60`
+- `docker compose run --rm mcts mcts bench search-iters --backend cpp-functional,rust,haskell --rng native --threading single --count 20000 --seed 42 --max-plies 60`
+- `docker compose run --rm mcts mcts verify rollouts --backend cpp-imperative,cpp-functional,rust,haskell --threading single --games 4 --seed 42 --max-plies 200`
+- `docker compose run --rm mcts mcts verify selfplay --backend cpp-imperative,cpp-functional,rust,haskell --threading single --games 4 --seed 42 --max-plies 200 --sims 500`
+- `docker compose run --rm mcts mcts test mcts-cross-backend`
+- `docker compose run --rm mcts mcts test mcts-legacy-parity`
+- `docker compose run --rm mcts mcts test all`
+- `docker compose run --rm mcts mcts docs check`
+- `docker compose run --rm mcts mcts check-code`
+- `git diff --check`
+
+### Current Validation State
+
+Sprint `6.8` closed on 2026-05-28. The focused native-RNG single-threaded
+benchmarks over `cpp-functional`, `rust`, and `haskell` passed with Rust in the
+functional-core cohort range:
+
+- `terminal-playouts`, count `20000`, seed `42`, max plies `60`: Rust
+  `22213.0` playouts/s, `cpp-functional` `20927.8`, Haskell `31008.9`.
+- `search-iters`, count `20000`, seed `42`, max plies `60`: Rust `23164.4`
+  search-iters/s, `cpp-functional` `22436.5`, Haskell `33278.1`.
+
+The focused correctness gates also passed:
+
+- `verify rollouts` for `(ii)..(v)`, 4 games, seed `42`, max plies `200`;
+- `verify selfplay` for `(ii)..(v)`, 4 games, seed `42`, max plies `200`,
+  `--sims 500`;
+- `mcts-cross-backend`;
+- `mcts-legacy-parity`.
+
+The aggregate docs/code/final-test gates are shared with Sprint `7.11` closure
+because both reopened surfaces landed in the same worktree update.
 
 ### Remaining Work
 
@@ -348,13 +430,17 @@ None.
 - `documents/engineering/backend_ffi_contract.md` — C++ functional and Rust ABI roles,
   including Sprint `6.6` compact-ABI and Rust artefact wording.
 - `documents/engineering/backend_style_contract.md` — functional-core value-state
-  contract for `(iii)`, `(iv)`, and `(v)`, and Sprint `6.7` closure criteria.
+  contract for `(iii)`, `(iv)`, and `(v)`, Sprint `6.7` closure criteria, and
+  Sprint `6.8` Rust hot-path alignment.
 - `documents/engineering/compiler_runtime_tuning.md` — C++ functional/Rust tuning flags,
   mandatory Dockerfile-time PGO+BOLT success, the concrete Rust build-artifact
   contract, and the requirement that `(iii)` remove legacy representation costs before
-  style is treated as the measured variable.
+  style is treated as the measured variable, plus the Rust wavefront/action
+  buffer/arena/cache refactor.
 - `documents/engineering/haskell_code_guide.md` — Plan/Apply examples for the
   Dockerfile-invoked fail-closed Rust build leaf.
+- `documents/engineering/backend_ffi_contract.md` — Rust board-handle-local visit
+  cache while preserving the existing C ABI.
 - `documents/engineering/determinism_contract.md` — Q3 participation and envelope fields.
 
 **Product docs to create/update:**
@@ -371,7 +457,9 @@ None.
   until the Dockerfile build fails on missing `.fdata`, and records Sprint `6.6`
   Rust/instrumentation residue as completed after governed docs and build comments
   agreed. Sprint `6.7` records the backend (iii) legacy-board/text-action hot-path
-  cleanup as completed after the compact functional-core rewrite landed.
+  cleanup as completed after the compact functional-core rewrite landed. Sprint
+  `6.8` records Rust's queue-BFS/action-buffer/arena/clone/cache residue as
+  completed after the Rust hot-path structural refactor landed and validated.
 
 ## Related Documents
 

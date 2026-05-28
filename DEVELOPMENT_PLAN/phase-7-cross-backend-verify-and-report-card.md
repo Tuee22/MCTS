@@ -7,7 +7,8 @@
 [system-components.md](system-components.md),
 [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md),
 [../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md),
-[../documents/engineering/benchmark_metrics.md](../documents/engineering/benchmark_metrics.md)
+[../documents/engineering/benchmark_metrics.md](../documents/engineering/benchmark_metrics.md),
+[../documents/engineering/semantic_parity_contract.md](../documents/engineering/semantic_parity_contract.md)
 **Generated sections**: none
 
 > **Purpose**: Land the cross-backend verification gates, Cabal test stanzas,
@@ -16,7 +17,8 @@
 
 ## Phase Status
 
-✅ **Done** for the metric-suite report-card refactor. The Phase 7 correctness
+✅ **Done** for the current Q1-Q7 metric-suite report-card refactor, including
+Sprint `7.11` Q7 semantic parity. The Phase 7 correctness
 surface remains live: Q3 verifies `(ii)..(v)`, Q6 verifies the `(i)..(v)` legacy
 envelope, the report-card machinery measures Q1a terminal playout throughput,
 Q1b search-iteration throughput, Q2 played-game self-play throughput, and split
@@ -48,8 +50,10 @@ strengthened backend (ii), and Phase `8` Sprint `8.12` refreshed the parity
 evidence while this phase remains closed for report-card structure. Sprint `7.10`
 keeps that structure closed by making the text renderer define its terms, align
 columns, render raw performance metrics for every backend ahead of the question
-summary and divergence matrix, end with observed-metric answers for Q1a-Q6, and
-expose the raw rows in JSON.
+summary and divergence matrix, end with observed-metric answers for Q1a-Q7, and
+expose the raw rows in JSON. Sprint `7.11` adds Q7 semantic parity for `(ii)..(v)`,
+removes empirical divergence thresholds from report-card wording, and replaces the
+divergence headline with a single normalized score derived from the matrix.
 
 ## Sprint 7.1: Cabal Test Organization ✅
 
@@ -361,7 +365,8 @@ only played-game throughput unit.
 ### Objective
 
 Remove the external `MCTS_legacy` reproduction headline question and make the
-legacy-envelope liveness/overflow gate the sixth and final report-card question.
+legacy-envelope liveness/overflow gate the sixth report-card question for Sprint
+`7.9` closure.
 
 ### Deliverables
 
@@ -370,7 +375,8 @@ legacy-envelope liveness/overflow gate the sixth and final report-card question.
 - `mcts build legacy-fixtures` is described as an optional external audit-fixture
   generator, not as numbered report-card evidence.
 - README, governed engineering docs, and the development plan use the Q1-Q6
-  mapping consistently, with no seventh headline question.
+  mapping consistently for the Sprint `7.9` surface. Sprint `7.11` later adds Q7
+  semantic parity without restoring the removed external reproduction row.
 - `legacy-tracking-for-deletion.md` records the removed headline question as
   completed cleanup.
 
@@ -442,20 +448,91 @@ gate outcomes.
 
 None.
 
+## Sprint 7.11: Q7 Semantic Parity and Divergence Score ✅
+
+**Status**: Done
+**Implementation**: `src/MCTS/Verify/Semantic.hs`, `test/semantic-parity`,
+`mcts.cabal`, `docker/Dockerfile`, `src/MCTS/CLI/Test.hs`,
+`src/MCTS/Prerequisite.hs`, `src/MCTS/ReportCard.hs`, `test/unit/Main.hs`
+**Docs to update**: `README.md`, `documents/engineering/semantic_parity_contract.md`,
+`documents/engineering/unit_testing_policy.md`,
+`documents/engineering/determinism_contract.md`,
+`documents/engineering/backend_ffi_contract.md`,
+`documents/engineering/benchmark_metrics.md`,
+`documents/engineering/cli_command_surface.md`, `DEVELOPMENT_PLAN/README.md`,
+`DEVELOPMENT_PLAN/00-overview.md`, `DEVELOPMENT_PLAN/system-components.md`,
+`DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md`
+
+### Objective
+
+Promote semantic parity to Q7 without weakening Q3. Q7 proves that steelman
+backends `(ii)..(v)` implement the same game-rule and MCTS semantics through
+rule-state parity, replay compatibility, search-invariant, and terminal-rejection
+checks, even when bit-for-bit play is not the claim.
+
+### Deliverables
+
+- `mcts-semantic-parity` Cabal stanza with its own `tasty` runner.
+- `MCTS.Verify.Semantic` helper layer for generated reachable histories, replay
+  compatibility checks, search-invariant checks, and terminal-board rejection.
+- Reuse of the existing C ABI (`new_board`, `free_board`, `is_terminal`,
+  `apply_action`, `search_move`) without adding a direct legal-action ABI in this
+  sprint.
+- `mcts test all` includes the prebuilt `mcts-semantic-parity` executable after the
+  image installs it.
+- Report-card question summary and final answers include Q7.
+- Report-card divergence output removes empirical threshold text and reports
+  `normalized_divergence_score`, defined as the maximum visit or move disagreement
+  rate across every matrix cell.
+- `mcts-unit` adds an explanatory renderer test with a constructed non-zero
+  divergence matrix proving the normalized score is derived from the matrix, not
+  from a hard-coded zero path.
+- `legacy-tracking-for-deletion.md` records the old threshold constants and renderer
+  wording as completed cleanup after the code and generated comments were corrected.
+
+### Validation
+
+- `docker compose run --rm --build mcts mcts test mcts-semantic-parity`
+- `docker compose run --rm mcts mcts test mcts-unit`
+- `docker compose run --rm mcts mcts test all`
+- `docker compose run --rm mcts mcts docs check`
+- `docker compose run --rm mcts mcts check-code`
+- `git diff --check`
+
+### Current Validation State
+
+Sprint `7.11` closed on 2026-05-28. Focused validation passed:
+
+- `mcts-semantic-parity` with the Q7 steelman semantic-parity case;
+- `mcts-unit`, including report-card renderer coverage for Q7 and a constructed
+  non-zero normalized divergence score.
+
+The aggregate docs/code/final-test gates are shared with Sprint `6.8` closure
+because both reopened surfaces landed in the same worktree update.
+
+### Remaining Work
+
+None.
+
 ## Documentation Requirements
 
 **Engineering docs to create/update:**
 
 - `documents/engineering/cli_command_surface.md` — verify/test/play command surfaces plus
   Sprint `7.6` replay/divergence evidence labels and Sprint `7.8` report-card
-  metric units.
-- `documents/engineering/benchmark_metrics.md` — benchmark unit taxonomy and Q1-Q6 metric
-  mapping for Sprint `7.8`, plus Sprint `7.10` report-card term definitions and raw
-  backend metric table semantics.
+  metric units, plus Sprint `7.11` Q7 stanza routing and normalized divergence-score
+  wording.
+- `documents/engineering/benchmark_metrics.md` — benchmark unit taxonomy and
+  Q1-Q7 evidence mapping, including Sprint `7.8` metric units, Sprint `7.10`
+  report-card term definitions and raw backend metric table semantics, and Sprint
+  `7.11` semantic-parity implementation.
 - `documents/engineering/determinism_contract.md` — Q3/Q6 semantics, RNG split, and
-  Sprint `7.6` originator/foreign-view replay semantics.
+  Sprint `7.6` originator/foreign-view replay semantics, plus Sprint `7.11`
+  normalized divergence-score wording.
+- `documents/engineering/semantic_parity_contract.md` — Q7 semantic parity SSoT.
 - `documents/engineering/unit_testing_policy.md` — test stanza ownership and no generated
-  validation data, plus the Sprint `7.10` report-card table layout.
+  validation data, plus the Sprint `7.10` report-card table layout and Sprint `7.11`
+  semantic-parity stanza.
 
 **Product docs to create/update:**
 
@@ -467,7 +544,9 @@ None.
   aligned with live C++ verification and report-card measurement.
 - `legacy-tracking-for-deletion.md` records Sprint `7.6` replay/divergence residue as
   completed after output labels and live recompute row coverage were reclosed, and
-  records Sprint `7.10` report-card text-layout residue as completed.
+  records Sprint `7.10` report-card text-layout residue as completed; Sprint `7.11`
+  records divergence-threshold renderer/comment residue as completed after the
+  normalized-score renderer and Q7 semantic-parity stanza landed.
 
 ## Related Documents
 

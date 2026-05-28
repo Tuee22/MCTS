@@ -2,7 +2,7 @@
 // game per Sprint 6.3. The MCTS algorithm is a flat-children arena
 // search with first-unvisited-child expansion and UCB1 selection.
 
-use crate::board::MctsRustBoard;
+use crate::board::{ActionBuffer, MAX_LEGAL_ACTIONS, MctsRustBoard};
 use crate::board::flip_action_id;
 use crate::rollout::smoke_rollout_action;
 use crate::tree::Tree;
@@ -29,13 +29,13 @@ pub fn select_uct_move(board: &mut MctsRustBoard, seed: u64, sims: u32) -> u8 {
     if board.is_terminal(DEFAULT_MAX_PLIES) {
         return 0;
     }
-    let mut scratch: Vec<u8> = Vec::with_capacity(160);
+    let mut scratch = ActionBuffer::new();
     board.legal_actions(&mut scratch, DEFAULT_MAX_PLIES);
     if scratch.is_empty() {
         return 0;
     }
     let pick = (smoke_rollout_action(seed, sims) as usize) % scratch.len();
-    let action = scratch[pick];
+    let action = scratch.get(pick);
     let _ = board.apply_action_flip(action);
     action
 }
@@ -58,18 +58,27 @@ pub fn run_search(
     }
     let search_max_plies = max_plies.min(ROLLOUT_CAP);
     if start.ply >= search_max_plies {
-        let mut buffer: Vec<u8> = Vec::with_capacity(160);
+        let mut buffer = ActionBuffer::new();
         start.legal_actions(&mut buffer, max_plies);
         if buffer.is_empty() {
             out.ok = false;
             return out;
         }
-        out.visits = buffer.into_iter().map(|aid| (aid, 0)).collect();
+        out.visits = buffer.as_slice().iter().map(|aid| (*aid, 0)).collect();
         out.chosen_action_id = out.visits[0].0;
         out.chosen_equity = 0.0;
         return out;
     }
-    let cap = (sims as usize).saturating_mul(2).max(256);
+    let mut root_actions = ActionBuffer::new();
+    start.legal_actions(&mut root_actions, search_max_plies);
+    if root_actions.is_empty() {
+        out.ok = false;
+        return out;
+    }
+    let cap = (1usize)
+        .saturating_add(root_actions.len())
+        .saturating_add((sims as usize).saturating_mul(MAX_LEGAL_ACTIONS))
+        .max(32);
     let mut tree: Tree<MctsRustBoard> = Tree::with_capacity_state(cap, start.clone());
     let root_idx = tree.root();
     {
@@ -166,7 +175,7 @@ fn expand(tree: &mut Tree<MctsRustBoard>, node_idx: u32, max_plies: u16) {
         n.terminal = 1;
         return;
     }
-    let mut buffer: Vec<u8> = Vec::with_capacity(160);
+    let mut buffer = ActionBuffer::new();
     current_state.legal_actions(&mut buffer, max_plies);
     if buffer.is_empty() {
         let n = tree.node_mut(node_idx);
@@ -176,9 +185,8 @@ fn expand(tree: &mut Tree<MctsRustBoard>, node_idx: u32, max_plies: u16) {
     }
     let n_moves = buffer.len();
     let first = tree.reserve_children_with(n_moves, node_idx, |child_index| {
-        let action_id = buffer[child_index];
-        let mut child_state = current_state.clone();
-        let _ = child_state.apply_action_flip(action_id);
+        let action_id = buffer.get(child_index);
+        let child_state = current_state.child_after_action(action_id);
         (action_id, child_state)
     });
     let parent = tree.node_mut(node_idx);
@@ -262,7 +270,7 @@ fn select_best_ucb_offset(
 fn rollout_haskell(start: &MctsRustBoard, seed: u64, max_plies: u16) -> f64 {
     let mut board = start.clone();
     let mut current_seed = seed;
-    let mut buffer: Vec<u8> = Vec::with_capacity(160);
+    let mut buffer = ActionBuffer::new();
     for step in 0..max_plies {
         if let Some(outcome) = terminal_outcome(&board, max_plies) {
             return outcome;
@@ -277,7 +285,7 @@ fn rollout_haskell(start: &MctsRustBoard, seed: u64, max_plies: u16) -> f64 {
         if pick < 0 {
             pick += n;
         }
-        let action = buffer[pick as usize];
+        let action = buffer.get(pick as usize);
         let _ = board.apply_action_flip(action);
         current_seed = mix(current_seed, step as u64);
     }

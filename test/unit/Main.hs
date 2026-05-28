@@ -131,10 +131,12 @@ import MCTS.Prerequisite
     )
 import MCTS.ReportCard
     ( ReportCard (..)
+    , ReportDivergenceCell (..)
     , ReportDivergenceRow (..)
     , Verdict (..)
     , defaultReportCard
     , divergenceRowsFromTranscripts
+    , normalizedDivergenceScore
     , renderReportCard
     , renderReportCardJson
     , reportCardPassed
@@ -2376,11 +2378,14 @@ exerciseReportCardRenderer = do
         "report card text states Q3"
         ("Do live backends (ii)..(v) produce identical cpp-RNG determinism payloads?" `contains` renderedText)
     assert
-        "report card text renders visit/move thresholds in matrix order"
-        ("thresholds native 0.050/0.005, cross-build 0.010/0.001" `contains` renderedText)
+        "report card text removes visit/move threshold wording"
+        (not ("thresholds native" `contains` renderedText))
     assert
-        "report card text renders the six-question legacy-envelope row"
+        "report card text renders the Q6 legacy-envelope row"
         ("Do all five backend slots pass the legacy-envelope liveness/overflow gate?" `contains` renderedText)
+    assert
+        "report card text renders the Q7 semantic-parity row"
+        ("Do steelman backends (ii)..(v) pass semantic parity without weakening Q3?" `contains` renderedText)
     assert
         "report card text renders aligned raw table columns"
         ( any
@@ -2393,9 +2398,9 @@ exerciseReportCardRenderer = do
             == ["Raw performance metrics", "Question summary", "Divergence matrix", "Question answers"]
         )
     assert
-        "report card text ends with explicit Q6 answer"
-        ( "Q6" `prefixOf` lastNonEmptyLine renderedText
-            && "legacy-envelope gate completed all five backend slots" `contains` lastNonEmptyLine renderedText
+        "report card text ends with explicit Q7 answer"
+        ( "Q7" `prefixOf` lastNonEmptyLine renderedText
+            && "semantic-parity stanza passed" `contains` lastNonEmptyLine renderedText
         )
     assert
         "report card text no longer renders an external legacy reproduction question"
@@ -2420,10 +2425,26 @@ exerciseReportCardRenderer = do
             , "q5_cpp_imperative_search_iters_scaling"
             , "q5_cpp_imperative_selfplay_games_scaling"
             , "raw_performance_metrics"
+            , "normalized_divergence_score"
             , "divergence_matrix"
             , "verdict"
             ]
         )
+    let divergentCard =
+            defaultReportCard
+                { reportDivergenceRows =
+                    [ ReportDivergenceRow
+                        "rust"
+                        [ReportDivergenceCell "haskell" 0.125 0.25]
+                    ]
+                }
+        divergentText = renderReportCard divergentCard
+    assert
+        "report card derives normalized divergence score from matrix cells"
+        (normalizedDivergenceScore divergentCard == 0.25)
+    assert
+        "report card text renders non-zero normalized divergence score"
+        ("normalized divergence score 0.2500" `contains` divergentText)
     let rows = divergenceRowsFromTranscripts [asBackend Rust, asBackend Haskell]
     assert
         "report card derives one matrix row per transcript"

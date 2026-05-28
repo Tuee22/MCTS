@@ -9,6 +9,7 @@ module MCTS.ReportCard
     , Verdict (..)
     , defaultReportCard
     , divergenceRowsFromTranscripts
+    , normalizedDivergenceScore
     , reportCardPassed
     , reportCardParityTolerance
     , renderReportCard
@@ -148,6 +149,7 @@ renderReportCard card =
         , "  Q2: complete self-play game throughput, measured in games/s."
         , "  Q5: MT8/ST scaling ratio for the named backend and metric."
         , "  visit/move: visit-table and chosen-move disagreement rates."
+        , "  normalized divergence score: maximum visit or move disagreement rate across the matrix."
         , ""
         , "Raw performance metrics"
         ]
@@ -157,11 +159,13 @@ renderReportCard card =
                ]
             <> questionSummaryTable card
             <> [ ""
-               , "Divergence matrix (visit/move, cpp RNG; thresholds native 0.050/0.005, cross-build 0.010/0.001)"
+               , "Divergence matrix (visit/move, cpp RNG; normalized divergence score "
+                    <> fixed4 (normalizedDivergenceScore card)
+                    <> ")"
                ]
             <> divergenceTable (reportDivergenceRows card)
             <> [ ""
-               , "test stanzas                                   PASS    (mcts-unit, mcts-integration, mcts-cross-backend, mcts-legacy-parity, mcts-haskell-style)"
+               , "test stanzas                                   PASS    (mcts-unit, mcts-integration, mcts-cross-backend, mcts-legacy-parity, mcts-semantic-parity, mcts-haskell-style)"
                , ""
                , "Verdict: " <> renderVerdict (reportVerdict card)
                , ""
@@ -200,6 +204,8 @@ renderReportCardJson card =
         <> ",\"raw_performance_metrics\":["
         <> joinWith "," (map renderRawPerformanceRowJson (reportRawPerformanceRows card))
         <> "]"
+        <> ",\"normalized_divergence_score\":"
+        <> fixed4 (normalizedDivergenceScore card)
         <> ",\"divergence_matrix\":["
         <> joinWith "," (map renderDivergenceRowJson (reportDivergenceRows card))
         <> "]}"
@@ -313,6 +319,13 @@ questionSummaryTable card =
             , "Do all five backend slots pass the legacy-envelope liveness/overflow gate?"
             , "PASS (all five backend slots live)"
             ]
+        ,
+            [ "Q7"
+            , "Do steelman backends (ii)..(v) pass semantic parity without weakening Q3?"
+            , "PASS (mcts-semantic-parity; normalized_divergence_score="
+                <> fixed4 (normalizedDivergenceScore card)
+                <> ")"
+            ]
         ]
 
 questionAnswersTable :: ReportCard -> [String]
@@ -355,6 +368,12 @@ questionAnswersTable card =
         ,
             [ "Q6"
             , "Yes: the observed legacy-envelope gate completed all five backend slots before report-card rendering."
+            ]
+        ,
+            [ "Q7"
+            , "Yes: the semantic-parity stanza passed and normalized_divergence_score is "
+                <> fixed4 (normalizedDivergenceScore card)
+                <> "."
             ]
         ]
 
@@ -440,6 +459,11 @@ maxDivergenceRates rows =
     )
   where
     allDivergenceCells = concatMap reportDivergenceCells rows
+
+normalizedDivergenceScore :: ReportCard -> Double
+normalizedDivergenceScore card =
+    let (visit, move) = maxDivergenceRates (reportDivergenceRows card)
+     in max visit move
 
 scalingAnswer :: ReportCard -> String
 scalingAnswer card

@@ -176,6 +176,7 @@ testAllPlan =
             , testStep "mcts-integration"
             , testStep "mcts-cross-backend"
             , testStep "mcts-legacy-parity"
+            , testStep "mcts-semantic-parity"
             , mctsStep
                 [ "verify"
                 , "rollouts"
@@ -251,6 +252,7 @@ testStanzaNames =
     , "mcts-integration"
     , "mcts-cross-backend"
     , "mcts-legacy-parity"
+    , "mcts-semantic-parity"
     ]
 
 runStanzaPlan :: OutputOptions -> Plan Subprocess -> Env.App ExitCode

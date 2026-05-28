@@ -1,5 +1,5 @@
-// Backend (iv) Corridors board state with bitfield walls and BFS
-// escapability per Sprint 6.3.
+// Backend (iv) Corridors board state with bitfield walls and bit-parallel
+// escapability per Sprint 6.8.
 //
 // Action ID encoding (canonical, matches Haskell engine
 // `MCTS.Types.actionId` exactly):
@@ -15,6 +15,11 @@
 
 pub const BOARD_SIZE: u8 = 9;
 pub const STARTING_WALLS: u8 = 10;
+pub const MAX_LEGAL_ACTIONS: usize = 16;
+const NO_ACTION: u8 = 255;
+const VALID_CELLS: u128 = (1u128 << 81) - 1;
+const RIGHT_SOURCE_MASK: u128 = source_mask_right();
+const LEFT_SOURCE_MASK: u128 = source_mask_left();
 
 #[derive(Clone, Copy)]
 pub enum Side {
@@ -52,6 +57,59 @@ fn wall_test(bits: u64, x: u8, y: u8) -> bool {
 }
 
 #[derive(Clone)]
+pub struct ActionBuffer {
+    items: [u8; MAX_LEGAL_ACTIONS],
+    len: usize,
+}
+
+impl ActionBuffer {
+    #[inline(always)]
+    pub fn new() -> Self {
+        Self {
+            items: [0; MAX_LEGAL_ACTIONS],
+            len: 0,
+        }
+    }
+
+    #[inline(always)]
+    pub fn clear(&mut self) {
+        self.len = 0;
+    }
+
+    #[inline(always)]
+    pub fn push(&mut self, action_id: u8) {
+        if self.len < MAX_LEGAL_ACTIONS {
+            self.items[self.len] = action_id;
+            self.len += 1;
+        }
+    }
+
+    #[inline(always)]
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    #[inline(always)]
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    #[inline(always)]
+    pub fn get(&self, idx: usize) -> u8 {
+        self.items[idx]
+    }
+
+    #[inline(always)]
+    pub fn as_slice(&self) -> &[u8] {
+        &self.items[..self.len]
+    }
+
+    #[inline(always)]
+    fn as_mut_slice(&mut self) -> &mut [u8] {
+        &mut self.items[..self.len]
+    }
+}
+
 #[repr(C)]
 pub struct MctsRustBoard {
     pub hero_x: u8,
@@ -64,6 +122,30 @@ pub struct MctsRustBoard {
     pub walls_v: u64,
     pub ply: u16,
     pub last_action: u8,
+    last_visit_len: u8,
+    last_visit_actions: [u8; MAX_LEGAL_ACTIONS],
+    last_visit_counts: [u32; MAX_LEGAL_ACTIONS],
+}
+
+impl Clone for MctsRustBoard {
+    #[inline(always)]
+    fn clone(&self) -> Self {
+        Self {
+            hero_x: self.hero_x,
+            hero_y: self.hero_y,
+            villain_x: self.villain_x,
+            villain_y: self.villain_y,
+            hero_walls_remaining: self.hero_walls_remaining,
+            villain_walls_remaining: self.villain_walls_remaining,
+            walls_h: self.walls_h,
+            walls_v: self.walls_v,
+            ply: self.ply,
+            last_action: self.last_action,
+            last_visit_len: 0,
+            last_visit_actions: [0; MAX_LEGAL_ACTIONS],
+            last_visit_counts: [0; MAX_LEGAL_ACTIONS],
+        }
+    }
 }
 
 impl MctsRustBoard {
@@ -79,7 +161,10 @@ impl MctsRustBoard {
             walls_h: 0,
             walls_v: 0,
             ply: 0,
-            last_action: 255,
+            last_action: NO_ACTION,
+            last_visit_len: 0,
+            last_visit_actions: [0; MAX_LEGAL_ACTIONS],
+            last_visit_counts: [0; MAX_LEGAL_ACTIONS],
         }
     }
 
@@ -118,11 +203,14 @@ impl MctsRustBoard {
             walls_h: self.walls_h.reverse_bits(),
             walls_v: self.walls_v.reverse_bits(),
             ply: self.ply,
-            last_action: if self.last_action == 255 {
-                255
+            last_action: if self.last_action == NO_ACTION {
+                NO_ACTION
             } else {
                 flip_action_id(self.last_action)
             },
+            last_visit_len: 0,
+            last_visit_actions: [0; MAX_LEGAL_ACTIONS],
+            last_visit_counts: [0; MAX_LEGAL_ACTIONS],
         }
     }
 
@@ -154,8 +242,8 @@ impl MctsRustBoard {
     }
 
     /// True if `side`'s pawn can reach its goal row through unblocked
-    /// edges. BFS over the 81-cell grid using a 128-bit visited
-    /// bitmap.
+    /// edges. Uses the same 81-cell wavefront bitmap shape as the
+    /// functional C++ and Haskell engines.
     pub fn path_exists(&self, side: Side) -> bool {
         let (start_x, start_y, goal_y) = match side {
             Side::Hero => (self.hero_x, self.hero_y, BOARD_SIZE - 1),
@@ -164,45 +252,44 @@ impl MctsRustBoard {
         if start_y == goal_y {
             return true;
         }
-        let mut visited: u128 = 0;
-        let mut queue: [u8; 81] = [0; 81];
-        let mut head: usize = 0;
-        let mut tail: usize = 0;
-        let start_idx = start_y * BOARD_SIZE + start_x;
-        queue[tail] = start_idx;
-        tail += 1;
-        visited |= 1u128 << start_idx;
-        while head < tail {
-            let cell = queue[head];
-            head += 1;
-            let x = cell % BOARD_SIZE;
-            let y = cell / BOARD_SIZE;
-            for &(dx, dy) in &[(0i8, 1i8), (1, 0), (-1, 0), (0, -1)] {
-                let nx_i = x as i8 + dx;
-                let ny_i = y as i8 + dy;
-                if nx_i < 0
-                    || ny_i < 0
-                    || nx_i >= BOARD_SIZE as i8
-                    || ny_i >= BOARD_SIZE as i8
-                {
-                    continue;
-                }
-                let nx = nx_i as u8;
-                let ny = ny_i as u8;
-                let n_idx = ny * BOARD_SIZE + nx;
-                if (visited >> n_idx) & 1 != 0 {
-                    continue;
-                }
-                if self.edge_blocked(x, y, nx, ny) {
-                    continue;
-                }
-                if ny == goal_y {
-                    return true;
-                }
-                visited |= 1u128 << n_idx;
-                queue[tail] = n_idx;
-                tail += 1;
+        let mut up_blocked = 0u128;
+        let mut down_blocked = 0u128;
+        let mut walls_h = self.walls_h;
+        while walls_h != 0 {
+            let idx = walls_h.trailing_zeros() as u8;
+            walls_h &= walls_h - 1;
+            let x = idx % 8;
+            let y = idx / 8;
+            up_blocked |= cell_bit(x, y) | cell_bit(x + 1, y);
+            down_blocked |= cell_bit(x, y + 1) | cell_bit(x + 1, y + 1);
+        }
+
+        let mut right_blocked = 0u128;
+        let mut left_blocked = 0u128;
+        let mut walls_v = self.walls_v;
+        while walls_v != 0 {
+            let idx = walls_v.trailing_zeros() as u8;
+            walls_v &= walls_v - 1;
+            let x = idx % 8;
+            let y = idx / 8;
+            right_blocked |= cell_bit(x, y) | cell_bit(x, y + 1);
+            left_blocked |= cell_bit(x + 1, y) | cell_bit(x + 1, y + 1);
+        }
+
+        let goal = row_mask(goal_y);
+        let mut frontier = cell_bit(start_x, start_y);
+        let mut visited = frontier;
+        while frontier != 0 {
+            let up = ((frontier & !up_blocked) << 9) & VALID_CELLS;
+            let down = (frontier & !down_blocked) >> 9;
+            let right = ((frontier & RIGHT_SOURCE_MASK & !right_blocked) << 1) & VALID_CELLS;
+            let left = (frontier & LEFT_SOURCE_MASK & !left_blocked) >> 1;
+            let next = (up | down | right | left) & !visited;
+            if (next & goal) != 0 {
+                return true;
             }
+            visited |= next;
+            frontier = next;
         }
         false
     }
@@ -215,7 +302,7 @@ impl MctsRustBoard {
     ///
     /// Wall moves are capped at 12 to match `MCTS.Engine.legalMoves`
     /// `take 12 (wallMoves board)`.
-    pub fn legal_actions(&self, out: &mut Vec<u8>, max_plies: u16) {
+    pub fn legal_actions(&self, out: &mut ActionBuffer, max_plies: u16) {
         out.clear();
         if self.is_terminal(max_plies) {
             return;
@@ -240,7 +327,7 @@ impl MctsRustBoard {
         }
     }
 
-    fn append_pawn_actions(&self, out: &mut Vec<u8>) {
+    fn append_pawn_actions(&self, out: &mut ActionBuffer) {
         let start = out.len();
         let candidates: [(i8, i8); 4] = [(0, 1), (1, 0), (-1, 0), (0, -1)];
         for &(dx, dy) in &candidates {
@@ -260,7 +347,7 @@ impl MctsRustBoard {
             out.push(ny_u * 9 + nx_u);
         }
         let odd_ply = self.ply % 2 != 0;
-        out[start..].sort_by_key(|aid| {
+        out.as_mut_slice()[start..].sort_by_key(|aid| {
             if odd_ply {
                 flip_action_id(*aid)
             } else {
@@ -326,6 +413,37 @@ impl MctsRustBoard {
         trial.path_exists(Side::Hero) && trial.path_exists(Side::Villain)
     }
 
+    #[inline(always)]
+    pub fn child_after_action(&self, action_id: u8) -> Self {
+        let mut child = self.clone();
+        let _ = child.apply_action_flip(action_id);
+        child
+    }
+
+    #[inline(always)]
+    pub fn store_last_visits(&mut self, visits: &[(u8, u32)]) {
+        self.last_visit_len = visits.len().min(MAX_LEGAL_ACTIONS) as u8;
+        for (idx, (action, count)) in visits.iter().take(MAX_LEGAL_ACTIONS).enumerate() {
+            self.last_visit_actions[idx] = *action;
+            self.last_visit_counts[idx] = *count;
+        }
+    }
+
+    #[inline(always)]
+    pub fn clear_last_visits(&mut self) {
+        self.last_visit_len = 0;
+    }
+
+    #[inline(always)]
+    pub fn read_last_visits(&self, action_id: u8) -> u32 {
+        for idx in 0..self.last_visit_len as usize {
+            if self.last_visit_actions[idx] == action_id {
+                return self.last_visit_counts[idx];
+            }
+        }
+        0
+    }
+
     /// Apply a canonical action id from current-hero perspective, then
     /// flip the board so the next side to move becomes hero. Caller
     /// must have validated the action against `legal_actions`.
@@ -358,6 +476,45 @@ impl MctsRustBoard {
         let flipped = self.flipped();
         *self = flipped;
         self.advance_ply();
+        self.clear_last_visits();
         true
     }
+}
+
+#[inline(always)]
+fn cell_bit(x: u8, y: u8) -> u128 {
+    1u128 << (y * BOARD_SIZE + x)
+}
+
+#[inline(always)]
+fn row_mask(y: u8) -> u128 {
+    ((1u128 << 9) - 1) << (y * BOARD_SIZE)
+}
+
+const fn source_mask_right() -> u128 {
+    let mut mask = 0u128;
+    let mut y = 0u8;
+    while y < BOARD_SIZE {
+        let mut x = 0u8;
+        while x < BOARD_SIZE - 1 {
+            mask |= 1u128 << (y * BOARD_SIZE + x);
+            x += 1;
+        }
+        y += 1;
+    }
+    mask
+}
+
+const fn source_mask_left() -> u128 {
+    let mut mask = 0u128;
+    let mut y = 0u8;
+    while y < BOARD_SIZE {
+        let mut x = 1u8;
+        while x < BOARD_SIZE {
+            mask |= 1u128 << (y * BOARD_SIZE + x);
+            x += 1;
+        }
+        y += 1;
+    }
+    mask
 }

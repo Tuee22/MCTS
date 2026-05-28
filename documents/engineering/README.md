@@ -27,8 +27,9 @@ The canonical CLI doctrine for this project lives at
 (`cli_command_surface.md`, `code_quality.md`, `unit_testing_policy.md`,
 `haskell_code_guide.md`) defer to the doctrine for the patterns it owns and retain
 only project-specific elaborations. The project-specific docs
-(`determinism_contract.md`, `transcript_format.md`, `backend_ffi_contract.md`,
-`backend_style_contract.md`, `benchmark_metrics.md`, `compiler_runtime_tuning.md`)
+(`determinism_contract.md`, `semantic_parity_contract.md`,
+`transcript_format.md`, `backend_ffi_contract.md`, `backend_style_contract.md`,
+`benchmark_metrics.md`, `compiler_runtime_tuning.md`)
 own their content outright.
 
 ## Documents
@@ -37,14 +38,15 @@ own their content outright.
 |----------|---------|
 | [cli_command_surface.md](./cli_command_surface.md) | Canonical `mcts` operator command matrix; defers to the doctrine on Command Topology, `CommandSpec`, and Progressive Introspection |
 | [code_quality.md](./code_quality.md) | The `mcts check-code` gate and the lint stack; build/warning-clean compilation is Dockerfile-owned; defers to the doctrine on Lint, Format, Code-Quality Stack, Generated Artifacts, and Forbidden Surfaces |
-| [unit_testing_policy.md](./unit_testing_policy.md) | The five live Cabal test stanzas (`mcts-unit`, `mcts-integration`, `mcts-cross-backend`, `mcts-legacy-parity`, `mcts-haskell-style`), the `mcts test all` Plan/Apply command, the report-card workload/output layout, the Dockerfile-built steelman artefact and prebuilt-test-executable prerequisite, and the no-generated-validation-data rule; defers to the doctrine on Test Organization |
+| [unit_testing_policy.md](./unit_testing_policy.md) | The six current live Cabal test stanzas, including `mcts-semantic-parity` for Q7, the `mcts test all` Plan/Apply command, the report-card workload/output layout, the Dockerfile-built steelman artefact and prebuilt-test-executable prerequisite, and the no-generated-validation-data rule; defers to the doctrine on Test Organization |
 | [haskell_code_guide.md](./haskell_code_guide.md) | How the project uses `Subprocess`, `Plan / Apply`, `prerequisiteRegistry`, `Env`, `AppError`, and GADT state machines; defers to the doctrine on each pattern |
-| [benchmark_metrics.md](./benchmark_metrics.md) | Terminal playout, search-iteration, and played-game throughput semantics, including report-card term definitions, Q1-Q6 evidence mapping, raw backend metrics, final observed answers, and the current `bench rollouts` legacy-name caveat |
+| [benchmark_metrics.md](./benchmark_metrics.md) | Terminal playout, search-iteration, and played-game throughput semantics, including report-card term definitions, Q1-Q7 evidence mapping, raw backend metrics, final observed answers, and the current `bench rollouts` legacy-name caveat |
 | [determinism_contract.md](./determinism_contract.md) | RNG split, per-game `splitmix64(master_seed, game_index)` seed derivation, ply-cap draw rule, visit-count vs equity asymmetry, legacy parity envelope |
+| [semantic_parity_contract.md](./semantic_parity_contract.md) | Q7 semantic parity for `(ii)..(v)`, including rule-state/replay/search-invariant checks, terminal rejection, and the normalized divergence-score contract |
 | [transcript_format.md](./transcript_format.md) | Little-endian binary wire format, single-byte action enumeration, content addressing, git-style hash-prefix lookup |
 | [backend_ffi_contract.md](./backend_ffi_contract.md) | C ABI shape across the live C-ABI backends, `unsafe`/`safe` import policy, `--rng cpp` plumbing, canonical FFI load names, and the one-bolted-library-per-backend runtime contract |
-| [backend_style_contract.md](./backend_style_contract.md) | Functional-core style contract for backends (iii), (iv), and (v): compact value state, typed action transitions, deterministic legal-action order, and permitted local mutation |
-| [compiler_runtime_tuning.md](./compiler_runtime_tuning.md) | Per-backend tuning stack: legacy (i) exemption, (ii)/(iii) doctrine flag set, mandatory Dockerfile-time bounded PGO/BOLT success for steelman foreign backends, (iv) Rust `[profile.release]`, (v) Haskell GHC/LLVM/RTS tuning, Haskell PGO asymmetry note |
+| [backend_style_contract.md](./backend_style_contract.md) | Functional-core style contract for backends (iii), (iv), and (v): compact value state, typed action transitions, deterministic legal-action order, permitted local mutation, and completed Rust hot-path alignment |
+| [compiler_runtime_tuning.md](./compiler_runtime_tuning.md) | Per-backend tuning stack: legacy (i) exemption, (ii)/(iii) doctrine flag set, mandatory Dockerfile-time bounded PGO/BOLT success for steelman foreign backends, (iv) Rust `[profile.release]` and hot-path refactor, (v) Haskell GHC/LLVM/RTS tuning, Haskell PGO asymmetry note |
 
 ## Quick Navigation
 
@@ -62,6 +64,8 @@ own their content outright.
 - [Ply-Cap Draw Rule](./determinism_contract.md#ply-cap-draw-rule)
 - [Visit-Count vs Equity Asymmetry](./determinism_contract.md#visit-count-vs-equity)
 - [Legacy Parity Envelope](./determinism_contract.md#legacy-parity-envelope)
+- [Q7 Semantic Parity](./semantic_parity_contract.md#scope)
+- [Normalized Divergence Score](./semantic_parity_contract.md#divergence-score)
 
 ### Transcript Format
 
@@ -81,6 +85,7 @@ own their content outright.
 - [Functional-Core Rule](./backend_style_contract.md#functional-core-rule)
 - [Backend (iii) C++ Target](./backend_style_contract.md#backend-iii-c-target)
 - [Backend (iv) Rust Target](./backend_style_contract.md#backend-iv-rust-target)
+- [Rust Hot-Path Refactor](./compiler_runtime_tuning.md#sprint-68-rust-hot-path-refactor-target)
 - [Backend (v) Haskell Target](./backend_style_contract.md#backend-v-haskell-target)
 
 ### Tuning
@@ -93,9 +98,9 @@ own their content outright.
 
 ### Testing
 
-- [Five Live Cabal Stanzas](./unit_testing_policy.md#test-stanzas)
+- [Current Cabal Stanzas](./unit_testing_policy.md#test-stanzas)
 - [Benchmark Metric Taxonomy](./benchmark_metrics.md#metric-taxonomy)
-- [Q1-Q6 Metric Mapping](./benchmark_metrics.md#q1-q6-mapping)
+- [Q1-Q7 Mapping](./benchmark_metrics.md#q1-q7-mapping)
 - [Test Organization](../../HASKELL_CLI_TOOL.md) — doctrine
 - [Repository Data Doctrine](./unit_testing_policy.md#repository-data-doctrine)
 - [Property Invariants](./unit_testing_policy.md#property-invariants)

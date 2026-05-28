@@ -62,9 +62,10 @@ through the single `renderError :: AppError -> Text` boundary.
 Warning-clean compilation is owned by `docker/Dockerfile`, not by runtime
 `check-code`. The image build compiles the library and executable with tests and
 benchmarks enabled, installs the `mcts-criterion` benchmark executable, and installs
-all five Cabal test-suite executables before publishing the image; `check-code` then
-runs only lint/docs/style gates against that image-local toolchain. Runtime
-`check-code` output should not include Cabal compile/link work.
+all current Cabal test-suite executables, including `mcts-semantic-parity`, before
+publishing the image. `check-code` then runs only lint/docs/style gates against that
+image-local toolchain. Runtime `check-code` output should not include Cabal
+compile/link work.
 
 ## Lint Stack
 

@@ -2,13 +2,12 @@
 
 **Status**: Authoritative source
 **Supersedes**: N/A
-**Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/00-overview.md, ../../DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, ../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md, ../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, ../documentation_standards.md, ./README.md, ./benchmark_metrics.md, ./code_quality.md
+**Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/00-overview.md, ../../DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, ../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md, ../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, ../documentation_standards.md, ./README.md, ./benchmark_metrics.md, ./code_quality.md, ./semantic_parity_contract.md
 **Generated sections**: none
 
-> **Purpose**: Describe the five live Cabal test stanzas (`mcts-unit`,
-> `mcts-integration`, `mcts-cross-backend`, `mcts-legacy-parity`,
-> `mcts-haskell-style`), the
-> `mcts test all` Plan/Apply command, and the pinned POC report-card workload.
+> **Purpose**: Describe the six current live Cabal test stanzas, including
+> `mcts-semantic-parity` for Q7, the `mcts test all` Plan/Apply command, and
+> the pinned POC report-card workload.
 > Defers to [../../HASKELL_CLI_TOOL.md](../../HASKELL_CLI_TOOL.md) for Testing
 > Doctrine, Test Categories, and Test Organization.
 
@@ -33,7 +32,7 @@
 This project applies a stricter rule than the generic CLI testing doctrine:
 normal validation must not require generated data checked into git. A clean clone
 must be able to run `mcts-unit`, `mcts-integration`, `mcts-cross-backend`,
-`mcts-legacy-parity`, and `mcts test all` without pre-existing transcripts, byte
+`mcts-legacy-parity`, `mcts-semantic-parity`, and `mcts test all` without pre-existing transcripts, byte
 snapshots, generated JSON schemas, throughput anchors, or other generated validation
 files.
 
@@ -59,6 +58,7 @@ Stanzas](../../DEVELOPMENT_PLAN/system-components.md):
 | `mcts-integration` | Subprocess | Same-backend determinism (Q4) at 3 seeds per backend through `MCTS.Driver`; real `mcts` binary determinism for Haskell and Rust when the Rust cdylib is present; bounded report-card divergence plus cached recompute-sidecar `inspect divergence` coverage; Rust FFI smoke-driver, live-envelope stamping, and backend-slot stale hard-fail/`--allow-stale` warning coverage; synthetic C++ and legacy-envelope coverage generated in temporary roots |
 | `mcts-cross-backend` | Round-robin verify | real `mcts verify` subprocess coverage for the live FFI-capable Q3 `--rng cpp` cohort covering `(ii)..(v)`; runs serially around the process-pinned dynamic-library and C++ RNG bridge path |
 | `mcts-legacy-parity` | Legacy-envelope verify | Q6 liveness/overflow coverage across all five backend slots under the legacy envelope |
+| `mcts-semantic-parity` | Semantic parity | Sprint `7.11` Q7 rule-state parity, replay compatibility, search-invariant, and terminal-rejection checks for `(ii)..(v)` using generated in-memory or temporary histories |
 | `mcts-haskell-style` | Lint | `cabal format` temp-file round-trip byte-equality, pinned style-tool `fourmolu --mode check` and `hlint`, plus the source-walker guard for tabs and the conservative forbidden-symbol subset |
 
 Each stanza declares `type: exitcode-stdio-1.0`, the `tasty` dependencies, and a
@@ -93,7 +93,9 @@ focused Q3 smoke cohorts. Its `tasty` tree uses `NumThreads 1` so the Q3
 subprocess cases do not concurrently exercise the same process-pinned shared
 libraries or C++ RNG bridge.
 Q6 runs through `mcts-legacy-parity` and remains independent of
-checked-in generated-data dependencies. The single-tree-across-stanzas
+checked-in generated-data dependencies. Sprint `7.11` adds the
+`mcts-semantic-parity` stanza for Q7 without changing Q3/Q6 meanings. The
+single-tree-across-stanzas
 pattern is forbidden.
 
 ## Property Invariants
@@ -133,10 +135,9 @@ The doctrine-mandatory canonical test command. Phase 7 Sprint 7.3 owns the
 implementation. From the host, run it as
 `docker compose run --rm mcts mcts test all`; the first run builds the image when
 needed. Image construction compiles the `mcts` executable with tests and benchmarks
-enabled, installs the `mcts-criterion` benchmark executable, installs all five Cabal
-test-suite executables, and produces the Dockerfile-owned foreign backend artefacts
-before publishing the image. Before
-applying the plan,
+enabled, installs the `mcts-criterion` benchmark executable, installs all six Cabal
+current test-suite executables, and produces the Dockerfile-owned foreign backend
+artefacts before publishing the image. Before applying the plan,
 `checkPrerequisites prerequisitesForTest` checks the pinned Haskell toolchain,
 the installed image-local `mcts` binary, installed test-suite executables, the
 installed `mcts-criterion` benchmark executable, logical backend coverage, and the
@@ -161,15 +162,17 @@ is a typed `[Subprocess]` sequence run via `Plan / Apply`:
 5. Inside the container, run the installed `mcts-integration` executable.
 6. Inside the container, run the installed `mcts-cross-backend` executable.
 7. Inside the container, run the installed `mcts-legacy-parity` executable.
-8. Pinned report-card workload — Q1/Q2/Q5 are measured inside the report-card
+8. Inside the container, run the installed `mcts-semantic-parity` executable.
+9. Pinned Q3/Q6 verify gates and report-card workload — Q1/Q2/Q5 are measured inside the report-card
    builder through the no-write batch runner, while Q3/Q6 are rendered as
    explicit checks through the installed image-local `mcts` binary. Q3 is the live
    visit-vector equality gate for `(ii)..(v)`; Q6 is the all-five legacy-envelope
    liveness/overflow gate. Q1/Q2 measure Haskell against backend (ii) without
    relying on a checked-in throughput file.
-9. Render the tidy summary block from the collected `ReportCard` value,
-   including the `visit/move` divergence matrix populated from the measured
-   `G_V` verify transcripts on the live `mcts test all` path.
+10. Render the tidy summary block from the collected `ReportCard` value,
+   including the `visit/move` divergence matrix and normalized divergence score
+   populated from the measured `G_V` verify transcripts on the live `mcts test all`
+   path.
 
 The stanza commands are execution gates over Dockerfile-prebuilt test executables
 installed on the image `PATH`. A runtime `mcts test all` run should not invoke Cabal
@@ -183,11 +186,11 @@ rendered plan for out-of-band review. `--format json` emits the JSON form of the
 `ReportCard` value for CI consumption, including explicit
 `q1a_terminal_playouts_*`, `q1b_search_iters_*`, `q2_selfplay_games_*`,
 unit-specific Q5 scaling fields, `raw_performance_metrics`, and
-`divergence_matrix` rows.
+`divergence_matrix` rows and the normalized divergence score.
 
 ## POC Headline Questions
 
-The report card is required to answer six headline project questions owned by this
+The target report card is required to answer seven headline project questions owned by this
 policy, with Q1 rendered as Q1a/Q1b metric subquestions, using the metric units defined in
 [benchmark_metrics.md](./benchmark_metrics.md). Q1/Q2 compare against the live backend
 (ii) artefact that `mcts test all` consumes from the Dockerfile-built C++ PGO/BOLT
@@ -219,6 +222,11 @@ compact-board correction.
    scaling and played-game scaling must be reported separately; terminal playout
    scaling is diagnostic for Q1a.
 7. **Q6.** Do all five backend slots pass the legacy-envelope liveness/overflow gate?
+8. **Q7.** Do steelman backends `(ii)..(v)` satisfy semantic MCTS parity under
+   weaker-than-bit-equality checks? Sprint `7.11` owns this row; Q7
+   passes only on rule-state parity, replay compatibility, search invariants, and
+   terminal-rejection checks. The normalized divergence score is supporting
+   evidence, not a tolerance that can rescue a failed invariant.
 
 **Backend (i) basis caveat.** Backend (i) `cpp-legacy` is a verbatim port and
 inherits the legacy's lack of a game-level ply cap (see
@@ -239,7 +247,8 @@ throughput.
 
 ## Report Card
 
-The current Q1-Q6 results come from the pinned report-card workload. Live executable
+The current Q1-Q7 results come from the pinned report-card workload and the
+`mcts-semantic-parity` stanza. Live executable
 constants are implemented in `MCTS.CLI.Test` and mirrored in `cabal.project`
 comments per
 [../../DEVELOPMENT_PLAN/system-components.md → POC Report-Card
@@ -258,17 +267,20 @@ measures raw Q1a/Q1b/Q2 rates for every backend slot, compares the Haskell rows
 against live backend (ii) where available, and renders `Evidence pending` only in
 deterministic semantic unit values, not in a live full run. Q6 is the all-five
 legacy-envelope gate, while Q3 carries the visit-count equality assertion for
-`(ii)..(v)`.
+`(ii)..(v)`. Rust raw-performance rows are context rather than Q1/Q2 verdict
+inputs after Phase `6` Sprint `6.8` aligns its hot path with `(iii)` and `(v)`.
+The Q7 row is governed by
+[semantic_parity_contract.md](./semantic_parity_contract.md).
 
 The text renderer is an aligned-table contract:
 
 1. Brief term definitions (`ST`, `MT8`, `Q1a`, `Q1b`, `Q2`, `Q5`,
-   `visit/move`).
+   `visit/move`, and normalized divergence score).
 2. Raw performance metrics for each backend slot and metric family.
 3. The question summary table, with every Q1a/Q1b/Q2/Q3/Q4/Q5/Q6 question stated.
 4. The divergence matrix table.
-5. A final question-answer table that explicitly answers Q1a-Q6 from the observed
-   ratios, scaling values, divergence rates, and gate outcomes.
+5. A final question-answer table that explicitly answers Q1a-Q7 from the observed
+   ratios, scaling values, normalized divergence score, and gate outcomes.
 
 The JSON renderer exposes the same observed rates under
 `raw_performance_metrics` and keeps the existing unit-specific Q1/Q2/Q5 fields.
@@ -302,11 +314,15 @@ dependent wrapping.
 
 `mcts-unit` asserts the rendered tidy summary block semantically with sentinel
 placeholders substituted for live wall-clock numbers and host arch. The tests
-cover table order, labels, ratio fields, raw metric fields, Q1–Q6 question
-presence, the final observed-metric Q1a-Q6 answer table, and the `visit/move`
-divergence matrix without reading a snapshot.
+cover table order, labels, ratio fields, raw metric fields, Q1–Q7 question
+presence, the final observed-metric Q1a-Q7 answer table, and the `visit/move`
+divergence matrix without reading a snapshot. Sprint `7.11` adds a constructed
+non-zero divergence matrix test proving that the normalized divergence score is
+derived from the maximum visit or move disagreement cell and that threshold text is
+absent.
 Paired JSON tests assert the evidence-pending Q1/Q2/Q5 fields,
-`raw_performance_metrics`, `divergence_matrix`, and required keys directly so
+`raw_performance_metrics`, `divergence_matrix`, the normalized divergence
+score, and required keys directly so
 schema drift fails in `mcts-unit`. The report-card text renderer remains the
 user-facing rendering reference, but it is not copied into a checked-in generated fixture.
 
@@ -314,10 +330,11 @@ user-facing rendering reference, but it is not copied into a checked-in generate
 
 - [HASKELL_CLI_TOOL.md](../../HASKELL_CLI_TOOL.md) — canonical CLI doctrine
 - [code_quality.md](./code_quality.md) — `mcts-haskell-style` and lint discipline
-- [benchmark_metrics.md](./benchmark_metrics.md) — benchmark unit taxonomy and Q1-Q6
+- [benchmark_metrics.md](./benchmark_metrics.md) — benchmark unit taxonomy and Q1-Q7
   metric mapping
 - [determinism_contract.md](./determinism_contract.md) — same-backend and
   cross-backend determinism contracts
+- [semantic_parity_contract.md](./semantic_parity_contract.md) — Q7 semantic-parity contract
 - [cli_command_surface.md](./cli_command_surface.md) — `mcts test` subcommand
   surface
 - [Development Plan](../../DEVELOPMENT_PLAN/README.md)

@@ -290,8 +290,8 @@ rule L.
     `cross-backend equity tolerance`.
   - **Byte-consumption and backprop traversal contracts**: `byte-consumption order`,
     `backprop traversal order`.
-  - **Q1–Q6 mapping**: each of `Q1`, `Q2`, `Q3`, `Q4`, `Q5`, and `Q6` appears in
-    the `ReportCard` deliverable list (Sprint 7.3).
+  - **Q1–Q7 mapping**: each of `Q1`, `Q2`, `Q3`, `Q4`, `Q5`, `Q6`, and `Q7`
+    appears in the `ReportCard` deliverable list (Sprint 7.3 and Sprint 7.11).
   - **Report-card pinned values**: each of `G_R`, `G_S`, `G_V`, `G_LP`, `S_BENCH`,
     `S_VERIFY`, `S_LP_SIMS`, `S_LP` appears in `cabal.project` comments (Sprint
     1.1) and in `system-components.md`; live executable values are implemented in

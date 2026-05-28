@@ -2,7 +2,7 @@
 
 **Status**: Authoritative source
 **Supersedes**: N/A
-**Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/00-overview.md, ../../DEVELOPMENT_PLAN/phase-2-transcript-codec-and-determinism.md, ../../DEVELOPMENT_PLAN/phase-3-haskell-engine.md, ../../DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md, ../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md, ../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, ../documentation_standards.md, ./README.md, ./backend_ffi_contract.md, ./backend_style_contract.md, ./benchmark_metrics.md, ./transcript_format.md, ./unit_testing_policy.md
+**Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/00-overview.md, ../../DEVELOPMENT_PLAN/phase-2-transcript-codec-and-determinism.md, ../../DEVELOPMENT_PLAN/phase-3-haskell-engine.md, ../../DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md, ../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md, ../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, ../documentation_standards.md, ./README.md, ./backend_ffi_contract.md, ./backend_style_contract.md, ./benchmark_metrics.md, ./semantic_parity_contract.md, ./transcript_format.md, ./unit_testing_policy.md
 **Generated sections**: none
 
 > **Purpose**: Authoritative spec of the MCTS determinism contract — the RNG source
@@ -183,6 +183,11 @@ self-play cohorts; a `VerifyMismatch` is a failing outcome for Q3. The
 `mcts-legacy-parity` stanza uses the same dispatch and envelope-checking path as a Q6
 liveness/overflow gate rather than comparing backend (i)'s visit vectors or chosen moves
 against the steelman engines.
+
+Q7 semantic parity is a separate surface for `(ii)..(v)` that checks
+rule-state compatibility, replay compatibility, and MCTS search invariants without
+claiming bit-for-bit transcript identity. It does not relax Q3. See
+[semantic_parity_contract.md](./semantic_parity_contract.md).
 
 The `verify rollouts` name is a legacy command-surface name. It verifies the
 one-search-iteration-per-move played-game workload; it is not a terminal-playout
@@ -730,14 +735,14 @@ cached or recomputed chosen-action `EqStream`, including `equity_l2_drift`.
 `MCTS.ReportCard`
 renders the report-card divergence matrix in both table and JSON
 form from typed rows after the raw-performance and question-summary tables, then
-ends text output with explicit observed-metric answers for Q1a-Q6;
+ends text output with explicit observed-metric answers;
 `mcts test all` populates those rows from the measured `G_V = 4` self-play
 verify cohort after the Plan/Apply subprocess sequence succeeds.
 `mcts-integration` exercises the same measured builder at smoke scale and
 validates cached recompute-sidecar consumption through `mcts inspect divergence`.
 The 2026-05-19 canonical report-card run recorded a zero
 `visit/move` divergence matrix across the `(ii)..(v)` cohort under `--rng cpp`; the
-same zero-divergence threshold remains the live Q3 gate.
+same zero-divergence requirement remains the live Q3 gate.
 
 ### Metrics
 
@@ -749,43 +754,47 @@ For a pair `(backend_A, backend_B)` against the same transcript
   within the live cohort by contract.
 - **`move_disagreement_rate(A, B)`** = `count(argmax_action(visits_A[m,
   ·]) ≠ argmax_action(visits_B[m, ·]))` / `count(moves)`. Zero under
-  `--rng cpp` within the live cohort by contract; small (<0.1%) expected under
-  `--rng native` or cross-build comparisons.
+  `--rng cpp` within the live cohort by contract; non-zero native-RNG or
+  cross-build values are reported as evidence, not compared to an empirical
+  threshold.
 - **`equity_l2_drift(A, B)`** = root-mean-square drift over the sidecar's
   per-move chosen-action equity series. Transcript wire data excludes equities,
   so the current sidecar metric compares recomputed chosen-action values against
   the transcript baseline rather than full per-action vectors.
 
-### Thresholds
+### Normalized Score
 
-| Comparison context | `visit_disagreement_rate` | `move_disagreement_rate` | Action on breach |
-|--------------------|---------------------------|--------------------------|-----------------|
-| Same backend, same envelope | 0 (contract) | 0 (contract) | Hard fail in `mcts-integration` Q4 |
-| Cross-backend live cohort, `--rng cpp`, envelope-uniform cohort | 0 (contract) | 0 (contract) | Hard fail in `mcts-cross-backend` Q3 |
-| Cross-backend live cohort, `--rng native` | ≤ 5% | ≤ 0.5% | Warn in report card if exceeded; not a test failure |
-| Cross-build same backend | ≤ 1% | ≤ 0.1% | Warn in REPL; not a test failure |
+The report-card headline divergence statistic is the normalized divergence score
+owned by [semantic_parity_contract.md](./semantic_parity_contract.md#divergence-score):
 
-The non-contract thresholds (the bottom two rows) are empirically pinned in
-`cabal.project`: `VISIT_DELTA_NATIVE_MAX = 0.05`,
-`MOVE_DELTA_NATIVE_MAX = 0.005`, `VISIT_DELTA_CROSS_BUILD_MAX = 0.01`, and
-`MOVE_DELTA_CROSS_BUILD_MAX = 0.001`. The text report card renders threshold
-pairs in the same order as matrix cells: visit/move.
+```text
+normalized_divergence_score =
+  max(all visit_disagreement_rate cells,
+      all move_disagreement_rate cells)
+```
+
+The score is a unitless value in `[0, 1]`. It is not a tolerance. Same-backend
+same-envelope comparisons and cross-backend `--rng cpp` Q3 comparisons remain
+binary contracts: any non-zero visit or move disagreement fails their gate before
+the report card can claim success. Native-RNG and cross-build comparisons may
+surface non-zero scores as diagnostic evidence without implying a pass/fail
+threshold.
 
 ### Surface
 
 - **REPL** (`mcts inspect replay`): cached non-originator columns load at startup,
   and the `r` key recomputes/writes the next missing backend column on demand.
   The final divergence annotation (`move-Δ: x.x%  visit-Δ: y.y%` against the
-  originator, colour-coded against thresholds) belongs to the Sprint 7.5
-  divergence-matrix surface.
+  originator) belongs to the Sprint 7.5 divergence-matrix surface.
 - **Report card** (`mcts test all`): the headline output includes a
   per-backend-pair divergence matrix after the raw performance and question
-  summary tables, followed by a final Q1a-Q6 answer table derived from observed
-  metrics and gate outcomes. Under `--rng cpp` every off-diagonal element reads
-  `0.0% / 0.0%`; anything else is a smell to investigate. The default renderer
-  and JSON payload are checked by semantic unit assertions with a constructed
-  zero matrix, while the live `mcts test all` report-card path derives its
-  matrix from the measured `G_V` workload.
+  summary tables, plus a normalized divergence score that summarizes every visit
+  and move disagreement cell. Under `--rng cpp` every off-diagonal element reads
+  `0.0000/0.0000` and the normalized score is `0.0000`; anything else is a Q3
+  failure for the live cohort. The Sprint `7.11` renderer test constructs a
+  non-zero matrix to prove the score is derived from the matrix rather than
+  hard-coded, while the live `mcts test all` report-card path derives its matrix
+  from the measured `G_V` workload.
 - **`mcts inspect divergence <hash>`**: emits the divergence matrix for
   a single transcript across all available cached backend columns.
   Forensic use only. Owned by

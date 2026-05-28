@@ -3,34 +3,10 @@ use crate::envelope::{MctsRustEnvelope, envelope_ptr};
 use crate::search::{
     benchmark_search_iters, benchmark_terminal_playouts, run_search, select_uct_move,
 };
-use std::collections::HashMap;
-use std::sync::{Mutex, OnceLock};
 
 const DEFAULT_MAX_PLIES: u16 = 200;
 
 type VisitVector = Vec<(u8, u32)>;
-
-static LAST_VISITS: OnceLock<Mutex<HashMap<usize, VisitVector>>> = OnceLock::new();
-
-fn last_visits_cache() -> &'static Mutex<HashMap<usize, VisitVector>> {
-    LAST_VISITS.get_or_init(|| Mutex::new(HashMap::new()))
-}
-
-fn board_key(board: *const MctsRustBoard) -> usize {
-    board as usize
-}
-
-fn store_last_visits(board: *const MctsRustBoard, visits: VisitVector) {
-    if let Ok(mut cache) = last_visits_cache().lock() {
-        cache.insert(board_key(board), visits);
-    }
-}
-
-fn clear_last_visits(board: *const MctsRustBoard) {
-    if let Ok(mut cache) = last_visits_cache().lock() {
-        cache.remove(&board_key(board));
-    }
-}
 
 fn encode_search_visits(visits: &[(u8, u32)]) -> VisitVector {
     let mut encoded: VisitVector = visits
@@ -49,7 +25,6 @@ pub extern "C" fn mcts_rust_new_board() -> *mut MctsRustBoard {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn mcts_rust_free_board(board: *mut MctsRustBoard) {
     if !board.is_null() {
-        clear_last_visits(board as *const MctsRustBoard);
         drop(unsafe { Box::from_raw(board) });
     }
 }
@@ -72,7 +47,6 @@ pub unsafe extern "C" fn mcts_rust_apply_action(
     }
     let board_ref = unsafe { &mut *board };
     if board_ref.apply_action_flip(flip_action_id(action_id)) {
-        clear_last_visits(board);
         0
     } else {
         -1
@@ -121,7 +95,7 @@ pub unsafe extern "C" fn mcts_rust_search_move(
     // child ids in current-hero perspective, so the FFI boundary
     // performs the same flip as the C++ board child constructor.
     let flipped = encode_search_visits(&result.visits);
-    store_last_visits(board_ref as *const MctsRustBoard, flipped.clone());
+    board_ref.store_last_visits(&flipped);
     let count = flipped.len();
     for (i, (aid, visits)) in flipped.iter().enumerate() {
         unsafe {
@@ -168,7 +142,7 @@ pub unsafe extern "C" fn mcts_rust_recompute_move(
     }
     let _ = board_ref.apply_action_flip(result.chosen_action_id);
     let flipped = encode_search_visits(&result.visits);
-    store_last_visits(board_ref as *const MctsRustBoard, flipped.clone());
+    board_ref.store_last_visits(&flipped);
     let count = flipped.len();
     for (i, (aid, visits)) in flipped.iter().enumerate() {
         unsafe {
@@ -221,16 +195,7 @@ pub unsafe extern "C" fn mcts_rust_read_visits(
     if board.is_null() {
         return 0;
     }
-    if let Ok(cache) = last_visits_cache().lock() {
-        if let Some(visits) = cache.get(&board_key(board)) {
-            for (aid, n) in visits {
-                if *aid == action_id {
-                    return *n;
-                }
-            }
-        }
-    }
-    0
+    unsafe { (*board).read_last_visits(action_id) }
 }
 
 #[unsafe(no_mangle)]

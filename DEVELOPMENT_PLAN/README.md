@@ -18,7 +18,8 @@
 [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md),
 [../documents/documentation_standards.md](../documents/documentation_standards.md),
 [../documents/engineering/backend_style_contract.md](../documents/engineering/backend_style_contract.md),
-[../documents/engineering/benchmark_metrics.md](../documents/engineering/benchmark_metrics.md)
+[../documents/engineering/benchmark_metrics.md](../documents/engineering/benchmark_metrics.md),
+[../documents/engineering/semantic_parity_contract.md](../documents/engineering/semantic_parity_contract.md)
 **Generated sections**: none
 
 > **Purpose**: Provide the single execution-ordered development plan for the MCTS
@@ -65,8 +66,10 @@ topology, lint `--write`, transcript envelope gates, rollout byte consumption, F
 domain-conversion wording, and divergence metric language were aligned with the
 current implementation. Phase `5` remains `Done`; Phase `6` remains `Done` for
 fail-closed PGO/BOLT mechanics, ABI contracts, canonical artefact installation,
-and the Sprint `6.7` backend (iii)/(iv) compact functional-core source-style
-surface.
+the Sprint `6.7` backend (iii) compact functional-core source-style surface, and
+Sprint `6.8` backend (iv) Rust hot-path structural alignment: bit-parallel path
+checks, fixed-capacity action buffers, full child-bound arena reservation, reduced
+clone churn, and board-handle-local visit caching.
 
 The 2026-05-24 benchmark-metric audit reopened the metric suite without changing
 the five-backend hypothesis. Phase `3` Sprint `3.8` closed on 2026-05-24 after
@@ -90,10 +93,12 @@ liveness/overflow gate. The aggregate revalidation kept the report-card verdict
 Phase `7` Sprint `7.10` keeps the report-card renderer closed by defining each
 display term, aligning text-table columns, rendering raw Q1a/Q1b/Q2 performance
 metrics for every backend slot ahead of the question summary and divergence
-matrix, ending the text report with explicit Q1a-Q6 answers based on observed
+matrix, ending the text report with explicit Q1a-Q7 answers based on observed
 ratios, scaling values, divergence rates, and gate outcomes, and adding the same
 observed-rate rows to JSON as `raw_performance_metrics`. This changes the output
-shape, not the Q1/Q2/Q5 verdict semantics.
+shape, not the Q1/Q2/Q5 verdict semantics. Sprint `7.11` adds Q7 semantic parity
+for `(ii)..(v)`, removes empirical divergence-threshold wording, and reports a
+single normalized divergence score derived from the `visit/move` matrix.
 
 Phase `5` Sprint `5.6` closed on 2026-05-25 after backend (ii)'s hot path was
 redesigned around a compact bitfield board, direct capped legal-move generation,
@@ -114,7 +119,8 @@ same functional-core style that backend (iv) Rust and backend (v) Haskell can
 follow. Phase `8` Sprint `8.13` closed on 2026-05-26 by keeping Haskell's public
 pure API while moving the hot search path to packed numeric `ActionIds`,
 `legalActionSet`, and `applyActionId`, matching the shared `(iii)/(iv)/(v)`
-functional-core style. Phase `8` Sprint `8.14` closed on 2026-05-27 by making
+functional-core target while leaving Rust's deeper hot-path cleanup to Sprint
+`6.8`. Phase `8` Sprint `8.14` closed on 2026-05-27 by making
 the report-card verdict an exit-code gate and raising `N_PRIM` to `20_000` for
 stable MT8 primitive evidence.
 Phase `0` Sprint `0.4` reclosed the README-authority citation cleanup on
@@ -125,9 +131,24 @@ on the same date by updating `CommandSpec`, the generated command-matrix rendere
 and semantic unit coverage so generated docs call the command a legacy played-game
 benchmark. Phases `2`–`8` remain closed on their owned behavior surfaces.
 
+Phase `6` Sprint `6.8` closed on 2026-05-28 while keeping Rust's existing
+correctness, C ABI, and PGO/BOLT build contract intact. It replaced the Rust
+queue-BFS path check, heap legal-action buffers, under-reserved arena, avoidable
+board clones, and global visit-cache map without reopening Phase `8` Haskell
+performance parity or the Sprint `6.7` backend (iii) closure.
+
+Phase `7` Sprint `7.11` closed on 2026-05-28 by promoting semantic parity to Q7
+for steelman backends `(ii)..(v)`, removing empirical divergence-threshold wording
+from the report-card surface, and replacing it with a single normalized divergence
+score derived from the `visit/move` matrix. This does not reopen Q3, Q4, Q6, or
+Phase `8` performance parity on their already closed surfaces.
+
 This audit does not change the project hypothesis: one Haskell CLI keeps
 all five backend slots live, Q3 proves visit-count equivalence for `(ii)..(v)`
-under `--rng cpp`, Q6 covers all five slots under the legacy envelope, and the
+under `--rng cpp`, Q6 covers all five slots under the legacy envelope, Q7 proves
+semantic MCTS parity for `(ii)..(v)` under weaker-than-bit-equality checks,
+backend (iv) Rust remains the cross-language systems baseline after Sprint `6.8`
+hot-path alignment, and the
 refactored Q1/Q2 suite measures backend (v) Haskell against backend (ii)
 `cpp-imperative` using the explicit metric units in
 [../documents/engineering/benchmark_metrics.md](../documents/engineering/benchmark_metrics.md).
@@ -353,7 +374,7 @@ loaders for each live foreign backend. Backend (iii)'s C++23 engine, envelope C 
 Makefile-level C++ PGO/BOLT targets remain part of the first-class source tree
 under `cpp-functional/`, and supported CLI wiring for those targets is closed by
 Sprint `5.3`;
-backend (iv) Rust split into the planned module topology with a local
+backend (iv) Rust split into the module topology with a local
 `SystemMiMalloc` wrapper over the container `libmimalloc` as the global allocator,
 a real Corridors gameplay port, the search/recompute/read-visits
 C ABI, real `--backend rust` dispatch through
@@ -469,8 +490,8 @@ A sprint can move to `Done` only when all of the following are true:
 | 3 | Backend (v) Haskell Engine | ✅ Done (Sprint `3.8` benchmark metric primitives closed 2026-05-24) | [phase-3-haskell-engine.md](phase-3-haskell-engine.md) |
 | 4 | Backend (i) C++ Legacy Port and FFI Bridge | ✅ Done (Sprint `4.5` FFI domain-conversion contract realignment closed 2026-05-24) | [phase-4-cpp-legacy-port-and-ffi-bridge.md](phase-4-cpp-legacy-port-and-ffi-bridge.md) |
 | 5 | Backend (ii) C++ Imperative Steelman with PGO+BOLT | ✅ Done (Sprint `5.3` fail-closed C++ PGO/BOLT, Sprint `5.5` compact C ABI, and Sprint `5.6` compact-board hot path reclosures are complete) | [phase-5-cpp-imperative-steelman.md](phase-5-cpp-imperative-steelman.md) |
-| 6 | Backends (iii) C++ Functional-Core and (iv) Rust | ✅ Done (Sprint `6.7` compact functional-core state alignment closed 2026-05-26; Sprints `6.4` and `6.6` remain closed on build/ABI surfaces) | [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md) |
-| 7 | Cross-Backend Verify, Test Stanzas, POC Report Card | ✅ Done (Sprint `7.10` report-card table/raw-metric/final-answer renderer closed) | [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md) |
+| 6 | Backends (iii) C++ Functional-Core and (iv) Rust | ✅ Done for build/ABI, backend (iii) compact functional-core state alignment, and Sprint `6.8` Rust hot-path structural alignment | [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md) |
+| 7 | Cross-Backend Verify, Test Stanzas, POC Report Card | ✅ Done (Sprint `7.11` Q7 semantic parity and normalized divergence score closed) | [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md) |
 | 8 | Haskell Performance Parity Closure and Five-Backend Restoration | ✅ Done (Sprint `8.14` report-card verdict/sample-stability gate closed 2026-05-27) | [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md) |
 
 ## Current Plan Status
@@ -598,8 +619,9 @@ Implemented in the worktree:
   `AppError -> Text` shape; `MCTS.CLI.Output.renderError` is the current
   `String` adapter for command runners. Global output parsing now defaults to
   `table` on a TTY and `plain` otherwise.
-- Five currently live Cabal test stanzas: `mcts-unit`, `mcts-integration`,
-  `mcts-cross-backend`, `mcts-legacy-parity`, and `mcts-haskell-style`.
+- Six currently live Cabal test stanzas: `mcts-unit`, `mcts-integration`,
+  `mcts-cross-backend`, `mcts-legacy-parity`, `mcts-semantic-parity`, and
+  `mcts-haskell-style`.
   `mcts-cross-backend` runs real `mcts verify` subprocesses for Q3 and
   serializes its Tasty tree around the process-pinned dynamic-library and shared
   C++ RNG bridge path. The
@@ -616,7 +638,7 @@ Implemented in the worktree:
   runs the lint/docs/style gates through the dedicated `MCTS.CheckCode` module.
   Warning-clean compilation is Dockerfile-owned.
 - `docker/Dockerfile` prebuilds the `mcts` executable with tests and benchmarks
-  enabled, installs all five Cabal test-suite executables plus the
+  enabled, installs all six current Cabal test-suite executables plus the
   `mcts-criterion` benchmark executable, and builds all four foreign backend shared
   libraries before publishing the image. `mcts test all` routes recursive CLI invocations
   through the installed image-local `mcts` binary, `mcts test parity-anchor
@@ -634,9 +656,11 @@ Implemented in the worktree:
   `cpp-functional/` now uses the compact functional-core value-state style
   documented in
   [../documents/engineering/backend_style_contract.md](../documents/engineering/backend_style_contract.md).
-  Backend (iv) Rust is split into the planned module
+  Backend (iv) Rust is split into the module
   topology and uses a local `SystemMiMalloc` wrapper over the container
-  `libmimalloc` as its global allocator. The Haskell
+  `libmimalloc` as its global allocator. Sprint `6.8` replaces Rust's
+  queue-BFS/action-buffer/arena/cache hot-path residue with the same structure
+  used by `(iii)` and `(v)`. The Haskell
   FFI layer has bounded Rust smoke coverage, live envelope loaders for all live
   foreign shared libraries, and verify-time conversion of those envelopes into
   transcript headers when a cdylib is present.
@@ -698,8 +722,8 @@ cross-language second opinion. Phase `7` joins the five backend slots in the
 cross-backend evidence surface and emits the POC report card. Phase `8` closes the
 Haskell tuning loop once backend (v) matches backend (ii) within tolerance on the
 refactored Q1a/Q1b/Q2 metrics against successful Dockerfile-time PGO/BOLT artefacts,
-then keeps backend (v) aligned with the `(iii)/(iv)/(v)` functional-core style after
-Sprint `6.7`.
+then keeps backend (v) aligned with backend (iii)'s compact functional-core style
+and the Sprint `6.8` Rust target.
 Sprint `8.9` revalidated the historical handoff
 after the evidence-surface alignment sprints closed, Sprint `8.3` reclosed the
 report-card evidence against fail-closed build artefacts on 2026-05-23, and Sprint
@@ -708,7 +732,8 @@ audit reopened Sprint `8.11`; Sprint `8.11` reclosed on 2026-05-24 with the
 refactored metric-suite report-card evidence. Sprint `5.6` and the backend-style
 audit reopened Sprints `6.7`, `8.12`, and `8.13`; all three reclosed by
 2026-05-26. Sprint `8.14` reclosed the report-card verdict/sample-stability gate
-on 2026-05-27.
+on 2026-05-27. Sprint `6.8` completed backend (iv) Rust's hot-path alignment
+without changing the closed Haskell parity verdict.
 
 ## Exit Definition
 
@@ -722,7 +747,8 @@ This plan is complete only when all of the following are true:
    value-state style in
    [../documents/engineering/backend_style_contract.md](../documents/engineering/backend_style_contract.md):
    compact board snapshots, typed action transitions, deterministic legal-action
-   order, and local mutation confined to arenas or scratch buffers.
+   order, bit-parallel path checks, fixed-capacity action buffers where applicable,
+   and local arena/scratch mutation behind pure or value-style boundaries.
 2. The benchmark suite reports terminal playout throughput (`playouts/s`),
    search-iteration throughput (`search-iters/s`), and played-game throughput
    (`games/s`) with explicit units across the supported backend cohort from a single
@@ -736,8 +762,9 @@ This plan is complete only when all of the following are true:
 5. `mcts test all` runs the canonical Plan/Apply sequence owned by
    [../documents/engineering/unit_testing_policy.md](../documents/engineering/unit_testing_policy.md),
    including every live Cabal test-suite stanza (`mcts-unit`, `mcts-integration`,
-   `mcts-cross-backend`, `mcts-legacy-parity`, `mcts-haskell-style`) and the tidy
-   report-card summary block answering Q1–Q6. The live workload constants are
+   `mcts-cross-backend`, `mcts-legacy-parity`, `mcts-semantic-parity`, and
+   `mcts-haskell-style`) and the tidy report-card summary block
+   answering Q1–Q7. The live workload constants are
    implemented in `MCTS.CLI.Test` and mirrored in `cabal.project` comments:
    `N_PRIM=20_000`, `P_MAX=60`, `G_R=1_000`, `G_S=4`, `G_V=4`, `G_LP=2`,
    `S_BENCH=500`, `S_VERIFY=500`, `S_LP_SIMS=4`, and `S_LP=42`.
@@ -752,17 +779,23 @@ This plan is complete only when all of the following are true:
 7. Same-backend determinism (Q4) holds for every backend across 3 seeds: same backend,
    same master seed, same RNG source, and same logical game inputs produce identical
    determinism payloads under the `mcts-integration` stanza.
-8. Backend (i)'s external `MCTS_legacy` reproduction fixtures are optional
+8. Semantic parity (Q7) holds for steelman backends `(ii)..(v)` through the
+   `mcts-semantic-parity` stanza: rule-state parity, replay compatibility, search
+   invariants, and terminal-rejection checks pass without relying on bit-for-bit
+   native-RNG play. The report card renders one normalized divergence score derived
+   from all visit and move disagreement cells and does not render empirical
+   divergence thresholds.
+9. Backend (i)'s external `MCTS_legacy` reproduction fixtures are optional
    external/local audit data, not a headline report-card question.
    Normal clean-clone validation checks the legacy-envelope decoder and invariants using
    synthetic transcripts generated during the test run; it does not require checked-in
    `MCTS_legacy` transcript fixtures.
-9. All five backend roles close as live project surfaces. Backend (iv) Rust remains the
+10. All five backend roles close as live project surfaces. Backend (iv) Rust remains the
    cross-language second opinion, and generated evidence lives in memory, temporary
    directories, or explicit external/ignored artifacts rather than in git.
-10. The toolchain is pinned at GHC `9.14.1` and Cabal `3.16.1.0`. `mcts.cabal` declares
+11. The toolchain is pinned at GHC `9.14.1` and Cabal `3.16.1.0`. `mcts.cabal` declares
     `tested-with: ghc ==9.14.1` and `cabal.project` declares `with-compiler: ghc-9.14.1`.
-11. The Haskell stack uses `optparse-applicative`, `text`, `bytestring`, `aeson`,
+12. The Haskell stack uses `optparse-applicative`, `text`, `bytestring`, `aeson`,
     `prettyprinter`, `prettyprinter-ansi-terminal`, `ansi-terminal`, `path`, `path-io`,
     `typed-process`, `safe-exceptions`, `tasty`, `tasty-hunit`, `tasty-quickcheck`,
     and `temporary` per the doctrine's standardized stack. The project-specific test
@@ -770,10 +803,11 @@ This plan is complete only when all of the following are true:
     longer depends on `tasty-golden`. The two
     deviations are `brick` + `vty` for the `play` and `inspect replay` TUIs only, and
     `dhall` is unused because daemon configuration is out of scope.
-12. Library-first layout: `app/Main.hs` is thin and logic lives under `src/MCTS/`.
-13. `mcts.cabal` declares the five live test-suite stanzas with
+13. Library-first layout: `app/Main.hs` is thin and logic lives under `src/MCTS/`.
+14. `mcts.cabal` declares the current six live test-suite stanzas, including
+    `mcts-semantic-parity`, with
     `type: exitcode-stdio-1.0` and `tasty` as the in-stanza runner.
-14. `CommandSpec` is the source of truth for command topology, command tree
+15. `CommandSpec` is the source of truth for command topology, command tree
     (`mcts commands --tree`), JSON schema (`mcts commands --json`), markdown command
     reference, manpage command list, shell completion metadata, and examples.
     `Parser.hs` renders topology from the spec while retaining explicit semantic leaf

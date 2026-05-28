@@ -2,7 +2,7 @@
 
 **Status**: Authoritative source
 **Supersedes**: N/A
-**Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, ../../DEVELOPMENT_PLAN/phase-2-transcript-codec-and-determinism.md, ../../DEVELOPMENT_PLAN/phase-3-haskell-engine.md, ../../DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md, ../../DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md, ../../DEVELOPMENT_PLAN/phase-6-cpp-functional-and-rust.md, ../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md, ../documentation_standards.md, ./README.md, ./benchmark_metrics.md
+**Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, ../../DEVELOPMENT_PLAN/phase-2-transcript-codec-and-determinism.md, ../../DEVELOPMENT_PLAN/phase-3-haskell-engine.md, ../../DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md, ../../DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md, ../../DEVELOPMENT_PLAN/phase-6-cpp-functional-and-rust.md, ../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md, ../documentation_standards.md, ./README.md, ./benchmark_metrics.md, ./semantic_parity_contract.md
 **Generated sections**: command-matrix
 
 > **Purpose**: Operator-facing `mcts` command matrix. Defers to
@@ -122,6 +122,12 @@ JSON exposes the observed backend rates under `raw_performance_metrics`. The liv
 Dockerfile-prebuilt Cabal test executables. Runtime test/report-card commands
 consume those image-local artefacts and populate divergence rows from the measured
 live `G_V` verify cohort over backends (ii)..(v).
+Sprint `7.11` adds [Q7 semantic parity](./semantic_parity_contract.md) as a
+prebuilt test stanza reachable through the existing generic `mcts test <stanza>`
+surface; no new `mcts verify semantic-parity` leaf is part of the first Q7
+implementation. The same sprint removes threshold wording from report-card
+divergence output and reports a single normalized divergence score beside the
+explanatory `visit/move` matrix.
 `mcts build legacy-fixtures` remains an explicit external audit-fixture path; it
 builds `cpp-legacy/build/legacy-to-wire` and passes
 output root, seed, game count, and simulation count as explicit flags. Its output

@@ -52,8 +52,9 @@ forbidden-primitives list.
 
 The MCTS commands that consume the `Plan / Apply` pattern are:
 
-- `mcts test all` — Plan/Apply over the five live Cabal stanzas plus the report-card
-  workload, consuming Dockerfile-built backend artefacts (Phase 7 Sprint 7.3).
+- `mcts test all` — Plan/Apply over the current live Cabal stanzas plus the
+  report-card workload, consuming Dockerfile-built backend artefacts (Phase 7
+  Sprint 7.3). Sprint `7.11` adds the `mcts-semantic-parity` stanza for Q7.
 - `mcts test parity-anchor` — focused Plan/Apply over explicit backend-pair Q1/Q2
   parity-anchor measurement.
 - `mcts build cpp-legacy`, `mcts build cpp-imperative`, and

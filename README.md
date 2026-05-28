@@ -30,10 +30,10 @@ The Docker image build compiles the `mcts` executable with tests and benchmarks 
 | (i) | C++ legacy port | `cpp-legacy` | Verbatim compatibility port of `MCTS_legacy`; Q6 legacy-envelope evidence only, not the performance ceiling. |
 | (ii) | C++ imperative steelman | `cpp-imperative` | Maximally optimised C++ performance ceiling: PGO+BOLT, `mimalloc`, arena search, compact bitfield board, direct capped move generation. |
 | (iii) | C++ functional-core | `cpp-functional` | Functional-core C++23 steelman under the same optimisation stack as (ii), using compact value-state search, numeric actions, direct capped legal generation, and the shared style followed by (iv) and (v). |
-| (iv) | Rust | `rust` | Cross-language systems baseline using the same functional-core value-state/search style and FFI/search/recompute contract. |
+| (iv) | Rust | `rust` | Cross-language systems baseline using a compatible functional-core value-state and FFI/search/recompute contract; Sprint `6.8` aligns its hot path with `(iii)`/`(v)` using bit-parallel path checks, stack action buffers, child-bound arena sizing, and board-local visit caching. |
 | (v) | Haskell | `haskell` | Native in-process target backend; pure API surface, compact value board, and `ST`-arena internals. |
 
-Backends (i)..(iv) are loaded through stable C ABIs from canonical shared libraries produced during the Dockerfile build. Backend (v) runs in-process. The authoritative backend, style, and FFI details live in [backend_style_contract.md](documents/engineering/backend_style_contract.md), [backend_ffi_contract.md](documents/engineering/backend_ffi_contract.md), and [compiler_runtime_tuning.md](documents/engineering/compiler_runtime_tuning.md).
+Backends (i)..(iv) are loaded through stable C ABIs from canonical shared libraries produced during the Dockerfile build. Backend (v) runs in-process. Rust now uses the same functional-core hot-path shape as `(iii)` and `(v)` while remaining a raw-performance context row rather than the Q1/Q2 verdict target. The authoritative backend, style, and FFI details live in [backend_style_contract.md](documents/engineering/backend_style_contract.md), [backend_ffi_contract.md](documents/engineering/backend_ffi_contract.md), and [compiler_runtime_tuning.md](documents/engineering/compiler_runtime_tuning.md).
 
 ## Benchmark Metrics
 
@@ -47,7 +47,7 @@ The project uses three distinct performance units:
 
 Current `mcts bench rollouts` is a legacy command name: it measures played-game
 throughput with one search iteration per move, not terminal `playouts/s`.
-Played-game benchmark output uses `games/s` only. The metric taxonomy and Q1-Q6 mapping live in
+Played-game benchmark output uses `games/s` only. The metric taxonomy and Q1-Q7 mapping live in
 [benchmark_metrics.md](documents/engineering/benchmark_metrics.md).
 
 The Phase 8 report-card gate is closed against the corrected backend (ii)
@@ -57,13 +57,19 @@ Q2, with Q3/Q4/Q6 also passing. The same command fails non-zero for `Evidence
 pending` or `Shortfall` verdicts; the canonical primitive sample is
 `N_PRIM=20_000`.
 
+Phase 7 Sprint `7.11` adds Q7 semantic parity for `(ii)..(v)`: a
+weaker-than-bit-equality gate for game-rule replay compatibility, search
+invariants, terminal-board rejection, and a single normalized divergence score.
+Q7 does not relax Q3, and it does not include backend `(i)`.
+
 The text report card defines its terms before the evidence block, then renders
 three aligned evidence tables in this order: raw backend performance metrics for
-every backend slot, the Q1a/Q1b/Q2/Q3/Q4/Q5/Q6 question summary, and the
-`visit/move` divergence matrix. It ends with an explicit question-answer summary
-derived from the observed ratios, scaling values, divergence rates, and gate
-outcomes. JSON output includes the same raw metric fields under
-`raw_performance_metrics`.
+every backend slot, the question summary, and the `visit/move` divergence matrix.
+The divergence headline reports a single normalized divergence score instead of
+empirical threshold pairs. The report ends with an explicit question-answer
+summary derived from the observed ratios, scaling values, divergence score, and
+gate outcomes. JSON output includes the same raw metric fields under
+`raw_performance_metrics` and the score under `normalized_divergence_score`.
 
 ## Command Surface
 
@@ -95,10 +101,14 @@ The project separates performance runs from logical-equivalence verification:
 - `--rng native` is for benchmarks and play. Each backend uses its own deterministic native RNG path; cross-backend bit equality is not asserted.
 - `--rng cpp` is for verification. The Q3 cohort `(ii)..(v)` consumes the shared C++ verification seed contract and compares canonical visit payloads.
 - Backend `(i)` keeps legacy terminal/search semantics and is covered by the dedicated `verify legacy-parity` envelope instead of the Q3 equality cohort.
+- Q7 semantic parity is a separate `(ii)..(v)` gate for rule-state replay
+  compatibility, search invariants, and terminal-board rejection when
+  bit-for-bit play is not the right claim.
 
 Transcripts are local operator cache files under `.mcts-cache/` by default. They are content-addressed per backend/game and carry an engine envelope so verify/replay can detect stale binary, compiler, FP, libm, CPU, and architecture drift. The authoritative contracts are:
 
 - [determinism_contract.md](documents/engineering/determinism_contract.md)
+- [semantic_parity_contract.md](documents/engineering/semantic_parity_contract.md)
 - [transcript_format.md](documents/engineering/transcript_format.md)
 - [unit_testing_policy.md](documents/engineering/unit_testing_policy.md)
 
@@ -129,4 +139,5 @@ evidence snapshots live in the authoritative documents below.
 - [documents/documentation_standards.md](documents/documentation_standards.md) — documentation topology rules.
 - [documents/engineering/backend_style_contract.md](documents/engineering/backend_style_contract.md) — functional-core style contract for backends (iii), (iv), and (v).
 - [documents/engineering/benchmark_metrics.md](documents/engineering/benchmark_metrics.md) — terminal playout, search-iteration, and played-game metric semantics.
+- [documents/engineering/semantic_parity_contract.md](documents/engineering/semantic_parity_contract.md) — Q7 semantic parity and normalized divergence-score contract.
 - [documents/engineering/README.md](documents/engineering/README.md) — engineering-document index.

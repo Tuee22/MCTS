@@ -2,7 +2,7 @@
 
 **Status**: Authoritative source
 **Supersedes**: N/A
-**Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md, ../../DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md, ../../DEVELOPMENT_PLAN/phase-6-cpp-functional-and-rust.md, ../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, ../documentation_standards.md, ./README.md, ./backend_style_contract.md, ./determinism_contract.md, ./compiler_runtime_tuning.md
+**Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md, ../../DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md, ../../DEVELOPMENT_PLAN/phase-6-cpp-functional-and-rust.md, ../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, ../documentation_standards.md, ./README.md, ./backend_style_contract.md, ./determinism_contract.md, ./semantic_parity_contract.md, ./compiler_runtime_tuning.md
 **Generated sections**: none
 
 > **Purpose**: Authoritative spec of the compact C ABI shape exposed by the live
@@ -49,6 +49,13 @@ legacy envelope. Q3 uses the live cdylib when the matching
 library is present and the requested batch can use the fixed 60-ply foreign
 search horizon; otherwise it falls back to the in-process runner so Cabal
 stanzas stay self-contained.
+
+The Q7 semantic-parity stanza consumes the same compact ABI surface:
+`new_board`, `free_board`, `is_terminal`, `apply_action`, and `search_move`.
+Sprint `7.11` does not require a new direct legal-action enumeration symbol; it
+derives rule-state parity by replaying generated histories and probing canonical
+action IDs through `apply_action`. See
+[semantic_parity_contract.md](./semantic_parity_contract.md).
 
 The **FFI load name** is the canonical install path named by
 [DEVELOPMENT_PLAN/system-components.md → Artefact Locations](../../DEVELOPMENT_PLAN/system-components.md);
@@ -108,6 +115,10 @@ returns the same canonical one-byte action IDs, applies moves through the
 backend's legal-move surface, and exposes no board internals to Haskell. The
 functional-core style requirements are owned by
 [backend_style_contract.md](./backend_style_contract.md).
+Sprint `6.8` performs a Rust-only internal handle cleanup: the optional last-visit
+cache moves from a global synchronized map into the opaque Rust board handle. This
+does not add or remove C ABI symbols; it only makes backend (iv)'s implementation
+match the C++ handle-local cache discipline.
 
 ### Engine Operations
 
@@ -541,6 +552,8 @@ one shared boundary instead of being spread through engine or CLI modules.
   through which the build harness invokes the C/Rust compilers
 - [determinism_contract.md](./determinism_contract.md) — `--rng cpp` semantics
   and the verification cohort
+- [semantic_parity_contract.md](./semantic_parity_contract.md) — Q7
+  semantic-parity checks over the existing ABI
 - [transcript_format.md](./transcript_format.md) — wire format consumed by
   transcript and recompute evidence
 - [backend_style_contract.md](./backend_style_contract.md) — functional-core

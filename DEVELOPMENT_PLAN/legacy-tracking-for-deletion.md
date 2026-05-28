@@ -88,10 +88,13 @@ rerun, so no metric-suite cleanup row remains pending.
 The 2026-05-25 backend-style audit added backend (iii)'s legacy-board/text-action
 hot path to Pending Removal. Sprint `6.7` closed that cleanup on 2026-05-26 by
 replacing it with compact functional-core value-state C++ while keeping Rust's
-already compact boundary aligned with `(iii)`. Sprints `8.12`, `8.13`, and
-`8.14` then closed the Haskell parity, style follow-up, and report-card verdict
-gate against the corrected backend (ii) target, so no Phase `8` style, parity, or
-verdict-gating cleanup row remains pending.
+already compact value-state boundary in the live cohort. Later raw-performance
+review found separate Rust hot-path residue: queue-BFS path checks, heap legal-action
+buffers, under-reserved arena growth, avoidable board clones, and a global visit-cache
+map. Sprint `6.8` closed that residue without reopening Sprint `6.7`'s backend
+(iii) closure. Sprints `8.12`, `8.13`, and `8.14` then closed the Haskell parity,
+style follow-up, and report-card verdict gate against the corrected backend (ii)
+target, so no Phase `8` style, parity, or verdict-gating cleanup row remains pending.
 
 Sprint `7.10` closed the stale report-card presentation shape: text output now
 aligns columns, states the report-card terms and questions, and includes raw
@@ -104,6 +107,10 @@ became reference-only. Sprint `1.12` closed generated command-summary drift wher
 `mcts bench rollouts` was still described as a random-rollout benchmark even though
 the implemented surface is a legacy played-game workload. No pending SSoT or generated
 `bench rollouts` cleanup row remains.
+
+Sprint `7.11` closed the narrow report-card presentation cleanup: empirical
+divergence-threshold constants and renderer text were replaced by a single
+normalized divergence score plus Q7 semantic-parity evidence.
 
 Two classes of entries populate this ledger over time:
 
@@ -120,9 +127,7 @@ repository.
 
 ## Pending Removal
 
-| Item | Location | Owning Sprint | Notes |
-|------|----------|---------------|-------|
-| None. | n/a | n/a | No pending cleanup rows. |
+No pending rows.
 
 ## Pending Removal Notes
 
@@ -137,13 +142,15 @@ data instead of publishing a fallback shared library.
 
 | Item | Removed In | Notes |
 |------|------------|-------|
+| Rust hot-path structural residue | Sprint 6.8, 2026-05-28 | `rust/src/board.rs` uses bit-parallel `u128` wavefront path checks and fixed-capacity action buffers; `rust/src/search.rs` reserves the child-bound arena shape and reduces expansion clone churn; `rust/src/c_abi.rs` reads visit vectors from board-handle-local cache state instead of a global synchronized map. Focused terminal-playout/search-iteration benchmarks and Q3/Q6 verification gates passed through Compose. |
+| Divergence threshold renderer/comment residue | Sprint 7.11, 2026-05-28 | `src/MCTS/ReportCard.hs` renders a normalized divergence score derived from the `visit/move` matrix, JSON exposes `normalized_divergence_score`, `test/unit/Main.hs` constructs a non-zero matrix to prove the score is not hard-coded, and `mcts-semantic-parity` supplies the Q7 semantic-parity gate. |
 | Stale README authority citations | Sprint 0.4, 2026-05-27 | README remains operator-facing and reference-only. Doctrine scope now points to `DEVELOPMENT_PLAN/00-overview.md`; transcript wire-format width, report-card rendering, FFI, determinism, and tuning citations point to governed engineering docs or local implementation contracts instead of treating README as the source of truth. |
 | Generated `bench rollouts` random-rollout summary | Sprint 1.12, 2026-05-27 | `src/MCTS/CLI/Spec.hs` and `src/MCTS/Generated/Sections.hs` describe `mcts bench rollouts` as a legacy played-game benchmark. Generated command docs and the command matrix are regenerated from those sources, and `mcts-unit` asserts the stale random-rollout wording does not return. |
 | Missing root CLI doctrine target | Sprint 0.3, 2026-05-27 | Restored `HASKELL_CLI_TOOL.md` as the root authoritative CLI doctrine, kept root guidance docs, `DEVELOPMENT_PLAN/`, governed docs, and source comments on the existing doctrine topology, and made every `HASKELL_CLI_TOOL.md` markdown link resolve again. |
 | Print-only report-card shortfalls | Sprint 8.14, 2026-05-27 | `mcts test all` now returns a non-zero exit code for report-card verdicts `Evidence pending` and `Shortfall`, and only exits 0 for `Within tolerance`. Unit coverage exercises `ReportCard.reportCardPassed`; the accepted aggregate run uses `N_PRIM=20_000`, passed Q3/Q4/Q6 and every Cabal stanza, and recorded `Verdict: Within tolerance`. |
 | Report-card unaligned text and missing raw backend metrics | Sprint 7.10 | `src/MCTS/ReportCard.hs` now renders fixed-width raw-performance, question-summary, divergence-matrix, and final question-answer tables; `src/MCTS/CLI/Test.hs` measures raw Q1a/Q1b/Q2 rates for every backend slot while retaining Haskell-vs-backend-(ii) verdict semantics; JSON exposes the rows under `raw_performance_metrics`; docs state every report-card term and question. |
 | Corrected-backend Haskell parity shortfall | Sprint 8.12, 2026-05-26 | `src/MCTS/Engine.hs`, `src/MCTS/Search/UCT.hs`, `src/MCTS/CLI/Bench.hs`, and `src/MCTS/Driver.hs` now use packed numeric action IDs, direct `legalActionSet`/`applyActionId` hot paths, reusable wall-block masks, strict rollout/terminal loops, and RTS capability pinning for multi-worker benchmark paths. `docker compose run --rm mcts mcts test all` recorded Q1a/Q1b/Q2 within tolerance against corrected backend (ii), Q3/Q4/Q6 PASS, zero live-cohort divergence, and `Verdict: Within tolerance`. |
-| Backend (v) Haskell functional-core style follow-up | Sprint 8.13, 2026-05-26 | Haskell keeps the public `legalMoves`/`applyMove` pure boundary while the search hot path uses packed `ActionIds` and numeric transitions aligned with the compact `(iii)/(iv)` style. The `ST` arena remains local to search, and transcript action IDs, canonical action ordering, the 12-wall cap, and ply-cap draw semantics are preserved. |
+| Backend (v) Haskell functional-core style follow-up | Sprint 8.13, 2026-05-26 | Haskell keeps the public `legalMoves`/`applyMove` pure boundary while the search hot path uses packed `ActionIds` and numeric transitions aligned with backend (iii)'s compact style and the Sprint `6.8` Rust target. The `ST` arena remains local to search, and transcript action IDs, canonical action ordering, the 12-wall cap, and ply-cap draw semantics are preserved. |
 | Runtime Cabal builds in normal validation | Dockerfile Cabal prebuild, 2026-05-27 | `docker/Dockerfile` now prebuilds the `mcts` executable with tests and benchmarks enabled, installs all five Cabal test-suite executables plus the `mcts-criterion` benchmark executable, and builds foreign backends before image publication. `mcts test all` no longer runs a runtime `cabal build all` gate or routes recursive CLI steps through `cabal exec mcts`; `mcts check-code` runs lint/docs/style only, with warning-clean compilation owned by image construction. |
 | Backend (iii) legacy-board/text-action hot path | Sprint 6.7, 2026-05-26 | `cpp-functional/engine/state.hpp` now stores compact value-state fields and generates capped numeric legal successors directly; `cpp-functional/engine/search.cpp` uses `std::vector<State>` successor buffers; `cpp-functional/c-abi/mcts_cpp_functional.cc` applies C ABI actions through `try_advance`; `cpp-functional/Makefile` no longer builds the legacy board translation unit; the backend-local legacy `cpp-functional/engine/board.cpp`, `cpp-functional/engine/board.h`, and `cpp-functional/engine/mcts.hpp` copies were removed. Validation passed `mcts-cross-backend`, `mcts-legacy-parity`, `mcts-unit`, and focused `(ii)`/`(iii)` native-RNG performance checks through Compose. |
 | Derived played-game simulation-rate column | Sprint 7.8 follow-up, 2026-05-25 | `src/MCTS/CLI/Bench.hs` now renders played-game benchmarks with only `games/s` in text output and `games_per_second` in JSON. Governed metric docs identify terminal playout, search-iteration, and played-game throughput as the only supported benchmark units. |

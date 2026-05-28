@@ -95,16 +95,25 @@ Rust should stay close to the same functional-core model:
   wall maps;
 - methods that make transition intent explicit, such as `legal_actions`,
   `apply_action_flip`, and path-check helpers;
-- `Vec<Node>` / `Vec<State>` or equivalent contiguous arenas for search internals;
+- bit-parallel `u128` path-existence checks over precomputed wall-block masks, matching
+  the wavefront shape used by `(ii)`, `(iii)`, and `(v)`;
+- stack or packed small action buffers for the at-most-16 legal action IDs, rather
+  than per-rollout heap allocation;
+- `Vec<Node>` / `Vec<State>` or equivalent contiguous arenas for search internals,
+  reserved to the same child-bound shape as `(iii)` and `(v)` so search does not
+  reallocate during ordinary simulation budgets;
 - local mutation of trial states and move buffers only inside the implementation
   of value-style operations;
+- board-handle-local visit caches for optional `read_visits`, not global
+  synchronization structures in the hot or replay path;
 - no `Rc`, `Arc`, trait objects, heap-owned board graph, or text action codec in
   the search hot path.
 
 Rust may use Rust-specific idioms for ownership and borrowing, but naming,
-action-order semantics, ply-cap handling, and boundary shape should remain close
+action-order semantics, ply-cap handling, and boundary shape remain close
 enough that `(iii)` and `(v)` can be reviewed against the same state-transition
-story.
+story. Sprint `6.8` closes the gap between Rust's compact value-state boundary
+and this full hot-path structure.
 
 ## Backend (v) Haskell Target
 
@@ -133,7 +142,10 @@ explainable by C++ functional-core API/data-flow choices, not by a different boa
 representation, string decoding, full-wall generation, or legacy escapability
 algorithm. Sprint `6.7` closed that backend (iii) cleanup, and Sprint `8.13`
 closed the backend (v) Haskell alignment by keeping Haskell's pure boundary while
-using the compact numeric action-set transition shape in the hot path.
+using the compact numeric action-set transition shape in the hot path. Sprint
+`6.8` closes backend (iv) Rust alignment by replacing queue-BFS, heap
+action-buffer, under-reserved arena, extra clone, and global visit-cache residue
+with the same hot-path shape.
 
 Validation for style-alignment work must include:
 
@@ -141,4 +153,7 @@ Validation for style-alignment work must include:
 - Q6 legacy-envelope liveness across `(i)..(v)`;
 - focused native-RNG benchmarks comparing `(ii)` and `(iii)` on terminal playout,
   search-iteration, and played-game throughput;
+- focused native-RNG benchmarks comparing `(iv)` against `(iii)` and `(v)`, so
+  Rust is measured against the functional-core cohort rather than only against the
+  imperative ceiling;
 - the aggregate documentation and code-quality gates required by the owning sprint.

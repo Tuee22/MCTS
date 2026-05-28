@@ -154,6 +154,12 @@ prerequisiteRegistry =
         []
         "mcts-legacy-parity"
     , executableNode
+        "mcts-semantic-parity-installed"
+        "installed mcts-semantic-parity test executable"
+        "rebuild the Compose image so Dockerfile installs /usr/local/bin/mcts-semantic-parity"
+        []
+        "mcts-semantic-parity"
+    , executableNode
         "mcts-criterion-installed"
         "installed mcts-criterion benchmark executable"
         "rebuild the Compose image so Dockerfile installs /usr/local/bin/mcts-criterion"
@@ -211,6 +217,7 @@ prerequisitesForTest =
         , "mcts-integration-installed"
         , "mcts-cross-backend-installed"
         , "mcts-legacy-parity-installed"
+        , "mcts-semantic-parity-installed"
         , "mcts-criterion-installed"
         , "libmcts-cpp-legacy-built"
         , "libmcts-cpp-imperative-built"
