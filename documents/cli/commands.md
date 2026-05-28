@@ -7,7 +7,7 @@
 
 > **Purpose**: Generated reference list for the current `mcts` command registry.
 
-- `mcts bench rollouts` - Random-rollout benchmark
+- `mcts bench rollouts` - Legacy played-game benchmark
 - `mcts bench selfplay` - Self-play benchmark
 - `mcts bench terminal-playouts` - Terminal playout throughput
 - `mcts bench search-iters` - Search-iteration throughput

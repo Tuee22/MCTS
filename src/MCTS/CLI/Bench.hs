@@ -477,8 +477,7 @@ joinWith _ [] = ""
 joinWith _ [x] = x
 joinWith separator (x : xs) = x <> separator <> joinWith separator xs
 
--- | Pinned monotonic clock per
--- [../../README.md → Benchmarks](../../README.md) (line 177) and
+-- | Pinned monotonic clock per the benchmark-metric contract and
 -- [phase-3-haskell-engine.md → Sprint 3.5](../../DEVELOPMENT_PLAN/phase-3-haskell-engine.md).
 -- Returns nanoseconds since some unspecified monotonic epoch; the same
 -- clock is used by every backend so cross-backend numbers are directly

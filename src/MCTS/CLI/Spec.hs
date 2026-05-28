@@ -50,7 +50,7 @@ commandSpec =
             "Benchmark backends"
             [ leaf
                 "rollouts"
-                "Random-rollout benchmark"
+                "Legacy played-game benchmark"
                 "mcts bench rollouts --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell --threading single --rng native --games 100000 --seed 42"
             , leaf
                 "selfplay"

@@ -77,8 +77,8 @@ decodeTranscript bytes =
                         Left err -> Left (TranscriptFormatUnsupported err)
                         Right games ->
                             -- Backend (i) cpp-legacy has no draw rule per
-                            -- README §"Draw rule"; reject draw winners on
-                            -- decode.
+                            -- The legacy-envelope contract rejects draw winners
+                            -- for backend (i) transcripts on decode.
                             if runBackend config == CppLegacy && any ((== Draw) . gameWinner) games
                                 then Left (TranscriptFormatUnsupported "cpp-legacy transcripts must not record draw winners")
                                 else

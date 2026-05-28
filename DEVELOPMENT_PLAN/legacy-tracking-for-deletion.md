@@ -99,6 +99,12 @@ Q1a/Q1b/Q2 metrics for every backend slot before the question summary and
 divergence matrix, followed by explicit Q1a-Q6 answers based on observed metrics
 and gate outcomes. No pending report-card presentation cleanup remains.
 
+Sprint `0.4` closed the remaining README-as-authority citation drift after README
+became reference-only. Sprint `1.12` closed generated command-summary drift where
+`mcts bench rollouts` was still described as a random-rollout benchmark even though
+the implemented surface is a legacy played-game workload. No pending SSoT or generated
+`bench rollouts` cleanup row remains.
+
 Two classes of entries populate this ledger over time:
 
 1. **Doctrine-deviation residue.** Any worktree behavior that the implemented code
@@ -131,6 +137,8 @@ data instead of publishing a fallback shared library.
 
 | Item | Removed In | Notes |
 |------|------------|-------|
+| Stale README authority citations | Sprint 0.4, 2026-05-27 | README remains operator-facing and reference-only. Doctrine scope now points to `DEVELOPMENT_PLAN/00-overview.md`; transcript wire-format width, report-card rendering, FFI, determinism, and tuning citations point to governed engineering docs or local implementation contracts instead of treating README as the source of truth. |
+| Generated `bench rollouts` random-rollout summary | Sprint 1.12, 2026-05-27 | `src/MCTS/CLI/Spec.hs` and `src/MCTS/Generated/Sections.hs` describe `mcts bench rollouts` as a legacy played-game benchmark. Generated command docs and the command matrix are regenerated from those sources, and `mcts-unit` asserts the stale random-rollout wording does not return. |
 | Missing root CLI doctrine target | Sprint 0.3, 2026-05-27 | Restored `HASKELL_CLI_TOOL.md` as the root authoritative CLI doctrine, kept root guidance docs, `DEVELOPMENT_PLAN/`, governed docs, and source comments on the existing doctrine topology, and made every `HASKELL_CLI_TOOL.md` markdown link resolve again. |
 | Print-only report-card shortfalls | Sprint 8.14, 2026-05-27 | `mcts test all` now returns a non-zero exit code for report-card verdicts `Evidence pending` and `Shortfall`, and only exits 0 for `Within tolerance`. Unit coverage exercises `ReportCard.reportCardPassed`; the accepted aggregate run uses `N_PRIM=20_000`, passed Q3/Q4/Q6 and every Cabal stanza, and recorded `Verdict: Within tolerance`. |
 | Report-card unaligned text and missing raw backend metrics | Sprint 7.10 | `src/MCTS/ReportCard.hs` now renders fixed-width raw-performance, question-summary, divergence-matrix, and final question-answer tables; `src/MCTS/CLI/Test.hs` measures raw Q1a/Q1b/Q2 rates for every backend slot while retaining Haskell-vs-backend-(ii) verdict semantics; JSON exposes the rows under `raw_performance_metrics`; docs state every report-card term and question. |

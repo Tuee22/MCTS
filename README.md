@@ -47,12 +47,11 @@ The project uses three distinct performance units:
 
 Current `mcts bench rollouts` is a legacy command name: it measures played-game
 throughput with one search iteration per move, not terminal `playouts/s`.
-Played-game benchmark output uses `games/s` only. The report-card metric refactor
-is tracked in the development plan; the metric taxonomy and Q1-Q6 mapping live in
+Played-game benchmark output uses `games/s` only. The metric taxonomy and Q1-Q6 mapping live in
 [benchmark_metrics.md](documents/engineering/benchmark_metrics.md).
 
-The current Phase 8 report card is closed against the corrected backend (ii)
-target: `docker compose run --rm mcts mcts test all` reports
+The Phase 8 report-card gate is closed against the corrected backend (ii)
+target and remains enforced by `docker compose run --rm mcts mcts test all`: it reports
 `Verdict: Within tolerance` for Haskell vs `cpp-imperative` across Q1a, Q1b, and
 Q2, with Q3/Q4/Q6 also passing. The same command fails non-zero for `Evidence
 pending` or `Shortfall` verdicts; the canonical primitive sample is
@@ -119,6 +118,9 @@ docker compose run --rm --build mcts mcts test all
 Normal tests do not depend on checked-in generated transcripts, throughput anchors, renderer snapshots, or report-card fixtures. Generated documentation files are the tracked exception and are governed by [documentation_standards.md](documents/documentation_standards.md).
 
 ## Authoritative Documents
+
+This README is intentionally reference-only. Exact rules, ownership boundaries, and
+evidence snapshots live in the authoritative documents below.
 
 - [DEVELOPMENT_PLAN/README.md](DEVELOPMENT_PLAN/README.md) — phase order, sprint status, blockers, validation closure, and cleanup ownership.
 - [DEVELOPMENT_PLAN/system-components.md](DEVELOPMENT_PLAN/system-components.md) — component inventory.

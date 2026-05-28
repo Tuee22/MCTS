@@ -47,9 +47,10 @@ functional-core style alignment against that corrected target. Sprint `8.14`
 then reclosed the fail-closed report-card verdict gate and primitive sample
 stability with `N_PRIM=20_000`.
 Phase `0` Sprint `0.3` restored `HASKELL_CLI_TOOL.md` as the root authoritative CLI
-doctrine on 2026-05-27, so the plan and governed docs remain on the existing
-doctrine topology; implementation surfaces in later phases remain closed on their
-owned code.
+doctrine on 2026-05-27, and Sprint `0.4` reclosed stale README-as-authority citations.
+Phase `1` Sprint `1.12` reclosed the generated `bench rollouts` summary wording.
+The plan and governed docs remain on the existing doctrine topology; implementation
+surfaces in later phases remain closed on their owned code.
 [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md) tracks stale surfaces
 and cleanup ownership separately.
 
@@ -259,7 +260,7 @@ reviewed the Dockerfile-time profile suite against these units per
 | Docker development environment | `docker/Dockerfile`, root `compose.yaml`, `.dockerignore` | `ubuntu:24.04` base with pinned GCC, LLVM, GHC, Cabal, Rust, a separate formatter-tools GHC for Fourmolu/HLint, copied project sources, an installed `mcts`, installed Cabal test-suite executables, an installed `mcts-criterion` benchmark executable, and all four foreign backend shared libraries produced during image construction; all supported runtime host work uses `docker compose run --rm mcts mcts <command>`. The image build owns successful PGO/BOLT for backends (ii), (iii), and (iv), uses LLVM objcopy for post-BOLT envelope patching, smokes installed bolted artefacts, trains on the bounded metric-suite profile suite, and must fail instead of publishing PGO-only or unoptimized fallback artefacts. `.dockerignore` keeps generated profile roots and backend build outputs out of the Docker context so each image build regenerates fresh profile data. Repository `.sh` wrappers and `bootstrap/` helpers are forbidden workflow surfaces. The 2026-05-18 Compose-only doctrine update passed `mcts-unit`, `lint files`, `lint all`, and `check-code` through the root Compose service |
 | Development plan | `DEVELOPMENT_PLAN/` | This plan suite |
 | Doctrine topology | `HASKELL_CLI_TOOL.md` | Authoritative CLI doctrine at repo root, restored by Sprint `0.3` |
-| Project README | `README.md` | Project intent, command surface, doctrine scope, build instructions |
+| Project README | `README.md` | Reference-only project intent, supported workflow, backend cohort, short command examples, validation entrypoints, and links to authoritative contracts |
 | Agent guardrails | `AGENTS.md`, `CLAUDE.md` | Git-command restrictions and doctrine pointers for LLM agents |
 
 ## Related Documents

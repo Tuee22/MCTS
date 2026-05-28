@@ -79,6 +79,12 @@ Documentation topology is closed again: Phase `0` Sprint `0.3` restored
 keeping the existing root guidance, plan-suite, governed engineering-doc, and
 source-comment citations link-complete. This did not reopen backend
 implementation phases on their owned surfaces.
+Sprint `0.4` then reclosed the remaining README-authority citation drift: README is
+reference-only, this overview owns the doctrine-scope split, and governed engineering docs
+own transcript wire-format, report-card rendering, FFI, determinism, and tuning details.
+Sprint `1.12` reclosed generated command-summary wording so `mcts bench rollouts` is
+described as the legacy played-game benchmark implemented by the code, not as terminal
+random-rollout throughput.
 
 The 2026-05-19 report card remains useful smoke-baseline audit evidence, and the
 2026-05-21 optimized-C++ report-card refresh remains historical evidence against
@@ -151,6 +157,9 @@ style as `(iii)` and `(iv)`.
 Phase `8` Sprint `8.14` is also closed: `mcts test all` now exits non-zero for
 `Evidence pending` or `Shortfall` report-card verdicts and exits successfully
 only for `Within tolerance`.
+Phase `0` Sprint `0.4` and Phase `1` Sprint `1.12` closed documentation-topology and
+generated-text drift after that verdict-gate work; Phases `2`–`8` remain closed on their
+owned behavior surfaces.
 
 ## Target Outcome
 
@@ -296,9 +305,9 @@ temporary or operator-provided roots.
 
 ## Doctrine Scope
 
-[../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md) is the authoritative CLI doctrine. The
-project README declares which sections are binding and which are informational; this plan
-inherits that split verbatim. No sprint may schedule adoption of an out-of-scope section.
+[../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md) is the authoritative CLI doctrine. This
+section declares which doctrine sections are binding and which are informational. No
+sprint may schedule adoption of an out-of-scope section.
 
 **In scope (binding, every phase that touches the named surface):**
 

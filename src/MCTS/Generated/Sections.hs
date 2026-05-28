@@ -78,7 +78,7 @@ renderCommandCell path =
 renderPurpose :: String -> CommandSpec -> String
 renderPurpose path spec =
     case path of
-        "mcts bench rollouts" -> "Random-rollouts benchmark across the requested backend cohort"
+        "mcts bench rollouts" -> "Legacy played-game benchmark across the requested backend cohort"
         "mcts bench selfplay" -> "Self-play benchmark across the requested backend cohort"
         "mcts bench terminal-playouts" -> "Direct terminal playout throughput in `playouts/s`"
         "mcts bench search-iters" -> "Direct UCT search-iteration throughput in `search-iters/s`"

@@ -20,6 +20,9 @@
 `0.3` restored `HASKELL_CLI_TOOL.md` as the root authoritative CLI doctrine on
 2026-05-27, so the plan, governed engineering docs, `README.md`, `AGENTS.md`,
 `CLAUDE.md`, and source comments resolve their existing doctrine citations again.
+Sprint `0.4` reclosed the README-as-authority cleanup on the same date by keeping
+README reference-only and retargeting doctrine scope, wire-format, report-card, and
+tuning citations to their owning plan or governed engineering docs.
 Later implementation phases remain `Done` on their owned code surfaces.
 
 ## Phase Summary
@@ -27,14 +30,15 @@ Later implementation phases remain `Done` on their owned code surfaces.
 This phase establishes the development plan as the canonical execution-ordered record for
 the MCTS repository, the governed `documents/` doctrine suite, the root-file pointers
 that name [../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md) as the authoritative CLI
-doctrine, and the in-scope vs out-of-scope doctrine envelope inherited verbatim from the
-project README. It owns the phase model, the top-level control documents, the cleanup
-ledger that later phases populate, and the standards-rule-L doctrine-citation contract
-that every doctrine-adoption sprint must follow.
+doctrine, and the in-scope vs out-of-scope doctrine envelope declared in
+[00-overview.md](00-overview.md). It owns the phase model, the top-level control
+documents, the cleanup ledger that later phases populate, and the standards-rule-L
+doctrine-citation contract that every doctrine-adoption sprint must follow.
 
-The phase does not write Haskell, C++, or Rust source. Every implementation surface —
-the CLI, the engine, the FFI bridge, the backends, the test stanzas, the report card —
-is scheduled by this phase but executed by Phases `1`–`8`.
+The phase does not change Haskell, C++, or Rust runtime behavior. Every implementation
+surface — the CLI, the engine, the FFI bridge, the backends, the test stanzas, the report
+card — is scheduled by this phase but executed by Phases `1`–`8`. Phase `0` may retarget
+source comments when they are documentation-topology citations rather than behavior.
 
 The root doctrine topology is link-complete: Sprint `0.3` restored the
 `HASKELL_CLI_TOOL.md` target without reopening backend implementation work already
@@ -95,8 +99,8 @@ where the source of truth lives.
   including the CLI Doctrine Alignment rule L that requires phase docs to cite
   [../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md) sections by name on
   doctrine-adoption deliverables.
-- [00-overview.md](00-overview.md) inherits the project README's `Doctrine scope`
-  in-scope and out-of-scope splits verbatim, plus the two recorded stack deviations
+- [00-overview.md](00-overview.md) declares the project's `Doctrine Scope`
+  in-scope and out-of-scope splits, plus the two recorded stack deviations
   (`brick` + `vty` for TUIs only; `dhall` unused because daemon configuration is
   out of scope).
 - [system-components.md](system-components.md) lists the planned backends, transcript
@@ -145,8 +149,8 @@ where the source of truth lives.
 4. The Phase Overview table in `README.md` names exactly nine phases (0–8) with names
    matching the `phase-N-*.md` titles letter-for-letter.
 5. The doctrine-scope subsection in `00-overview.md` covers every in-scope and
-   out-of-scope item declared by the project README's `Doctrine scope` section, plus
-   the two recorded stack deviations.
+   out-of-scope item adopted from the CLI doctrine, plus the two recorded stack
+   deviations.
 6. The Sprint Dependencies Mermaid flowchart in `README.md` renders without error in a
    standalone Mermaid renderer (e.g. `npx @mermaid-js/mermaid-cli@latest -i
    DEVELOPMENT_PLAN/README.md -o /tmp/r.svg`) per standards rule K.
@@ -251,9 +255,9 @@ rule L.
     `SubprocessFailed`, `FFIFailure`, `DocsCheckDrift`, `UnknownCommand`,
     `InvalidMove`, `ParseError`, `IOErrorText`. `TranscriptFormatUnsupported`,
     `ArchEnvelopeMismatch`, and
-    `EngineEnvelopeMismatch` are doctrine-required because the project README
-    pins them; the rest mirror the README's current enumeration and the
-    implemented parser/IO catchall surfaces.
+    `EngineEnvelopeMismatch` are required by the doctrine-scope Error Handling
+    bullet in [00-overview.md](00-overview.md); the rest mirror the implemented
+    parser/IO catchall surfaces.
   - **GADT-Indexed State Machines**: phantom-type indices, singleton witnesses, the
     forbidden runtime-status-enum-with-manual-validation pattern.
   - **Project-level documentation standards**: the six elements
@@ -263,9 +267,9 @@ rule L.
 - Every identifier above is found at least once across the phase docs as an owned
   deliverable. Identifiers without a current owner enqueue an extension to the closest
   natural sprint.
-- A second project-README identifier audit (separate from the doctrine audit above)
-  confirms every normative term in the project [../README.md](../README.md) has an
-  owning sprint. The classes of identifier and the required hits in
+- A second operator-surface identifier audit (separate from the doctrine audit above)
+  confirms every normative term in the root [../README.md](../README.md) has an
+  owning authoritative document and sprint. The classes of identifier and the required hits in
   `DEVELOPMENT_PLAN/*.md` and `documents/engineering/*.md`:
   - **Transcript wire format**: `MCTR`, `c_param`, `flags u32`, `initial_sims`,
     `TranscriptFormatUnsupported`, `0xFF` (terminator), `game_id`, the
@@ -273,7 +277,8 @@ rule L.
     `MCTS magic`, `sim_budget_kind`, `ramped_per_move_sims`, `action_enum_version`
     — must produce **zero** hits.
   - **RNG FFI contract**: `cpp_rng_new`, `cpp_rng_next_u64`, `cpp_rng_split`,
-    `cpp_rng_fill_u64`, `cpp_rng_free` (all five functions present per README §6.10).
+    `cpp_rng_fill_u64`, `cpp_rng_free` (all five functions present per
+    [../documents/engineering/backend_ffi_contract.md](../documents/engineering/backend_ffi_contract.md)).
   - **Foreign observability/build targets**: concrete bench/recompute/instrumentation
     artefact names must be owned by the backend phase that builds them. C++ steelman
     backends own the paired-target wording where concrete artefacts exist; Sprint `6.6`
@@ -440,6 +445,50 @@ doctrine.
 
 None.
 
+## Sprint 0.4: README Authority and Citation Realignment ✅
+
+**Status**: Done
+**Implementation**: `README.md`, `DEVELOPMENT_PLAN/README.md`,
+`DEVELOPMENT_PLAN/00-overview.md`, `DEVELOPMENT_PLAN/system-components.md`,
+`DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md`,
+`documents/engineering/backend_ffi_contract.md`,
+`documents/engineering/transcript_format.md`,
+`documents/engineering/unit_testing_policy.md`, source comments in `src/MCTS/`
+**Docs to update**: `README.md`, `DEVELOPMENT_PLAN/README.md`,
+`DEVELOPMENT_PLAN/00-overview.md`, `DEVELOPMENT_PLAN/system-components.md`,
+`DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md`,
+`documents/engineering/backend_ffi_contract.md`,
+`documents/engineering/transcript_format.md`,
+`documents/engineering/unit_testing_policy.md`
+
+### Objective
+
+Keep README in its operator-facing, reference-only role and remove remaining claims that
+README owns doctrine scope, transcript wire details, report-card evidence snapshots, or
+tuning doctrine.
+
+### Deliverables
+
+- README states only project intent, supported workflow, the backend cohort, short command
+  examples, validation entrypoints, and links to authoritative contracts.
+- [00-overview.md](00-overview.md) is the owner of the MCTS doctrine-scope split.
+- Governed engineering docs own transcript wire-format width, report-card rendering,
+  determinism, FFI, and tuning statements without citing README as the source of truth.
+- Source comments that formerly pointed at README for governed behavior now point at the
+  implementation contract or describe the local invariant directly.
+- The cleanup ledger records the stale README-authority citation class as completed.
+
+### Validation
+
+- `docker compose run --rm mcts mcts docs check`
+- `docker compose run --rm mcts mcts test mcts-unit`
+- `docker compose run --rm mcts mcts check-code`
+- `git diff --check`
+
+### Remaining Work
+
+None.
+
 ## Doctrine Sections Cited
 
 Sprint `0.1` is structural rather than doctrine-adopting; it instantiates the plan
@@ -497,15 +546,15 @@ doctrine — are:
   `--rng cpp` plumbing through the FFI, and the concrete bench/recompute/instrumentation
   artefact contract for each foreign backend.
 - `documents/engineering/compiler_runtime_tuning.md` — project-specific: the
-  per-backend tuning stacks from the project README, with doctrine pointers for the
-  toolchain pin and the `Subprocess` boundary the build harness uses.
+  per-backend tuning stacks, with doctrine pointers for the toolchain pin and the
+  `Subprocess` boundary the build harness uses.
 - Sprint `0.3` restored the root doctrine file, so doctrine-overlap governed docs keep
   their existing root-doctrine citations.
 
 **Product docs to create/update:**
 
-- `README.md`, `AGENTS.md`, `CLAUDE.md` — keep root plan/doctrine pointers accurate
-  after Sprint `0.3` restores the CLI doctrine source.
+- Root CLI-doctrine links and plan pointers in `README.md`, `AGENTS.md`, and
+  `CLAUDE.md` stay accurate after Sprint `0.3` restores the CLI doctrine source.
 
 **Cross-references to add:**
 

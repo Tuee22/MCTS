@@ -64,6 +64,7 @@ import MCTS.CLI.Spec
     , leafSpecs
     , renderCommandJson
     , renderCommandList
+    , renderCommandMarkdown
     , renderCommandTree
     )
 import MCTS.CLI.Test (testAllPlan)
@@ -2284,6 +2285,12 @@ exerciseCommandRenderers = do
             (decodeJsonValue "commands json" renderCommandJson)
             ["name", "summary", "children"]
         )
+    assert
+        "generated command docs describe rollouts as legacy played-game"
+        ("mcts bench rollouts` - Legacy played-game benchmark" `contains` renderCommandMarkdown)
+    assert
+        "generated command docs do not call rollouts random-rollout"
+        (not ("Random-rollout benchmark" `contains` renderCommandMarkdown))
     assert "commands --tree is deterministic" (renderCommandTree == renderCommandTree)
     assert "commands --json is deterministic" (renderCommandJson == renderCommandJson)
 

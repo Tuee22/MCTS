@@ -403,7 +403,7 @@ worker-to-game assignment never affects a game's output.
 
 **`game_index` width at the FFI boundary.** The C ABI takes `uint64_t
 game_index`. The Haskell wire-format discriminator `runConfigGameIndex` is
-`Word32` (matching the README's `game_id u32` wire-format pin); the Haskell
+`Word32` (matching the transcript `game_id u32` wire-format pin); the Haskell
 caller widens it to `Word64` with `fromIntegral` at the FFI call site. The
 Haskell `mix :: Word64 -> Word64 -> Word64` mixer must agree byte-for-byte
 with `cpp_rng_split_seed` for any widened pair in the fixture code.

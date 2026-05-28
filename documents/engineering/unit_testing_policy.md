@@ -307,9 +307,8 @@ presence, the final observed-metric Q1a-Q6 answer table, and the `visit/move`
 divergence matrix without reading a snapshot.
 Paired JSON tests assert the evidence-pending Q1/Q2/Q5 fields,
 `raw_performance_metrics`, `divergence_matrix`, and required keys directly so
-schema drift fails in `mcts-unit`. The README's tidy summary remains the
-user-facing rendering reference, but it is not copied into a checked-in generated
-fixture.
+schema drift fails in `mcts-unit`. The report-card text renderer remains the
+user-facing rendering reference, but it is not copied into a checked-in generated fixture.
 
 ## Cross-References
 

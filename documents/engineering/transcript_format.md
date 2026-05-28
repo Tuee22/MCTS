@@ -209,7 +209,7 @@ data RunConfig = RunConfig
   , runConfigPerMoveSims  :: Word32      -- SimBudget high half
   , runConfigMaxPlies     :: Word16
   , runConfigGameIndex    :: Word32      -- per-game index; wire width matches
-                                          -- the README's `game_id u32`, widened
+                                          -- the transcript `game_id u32`, widened
                                           -- to Word64 with `fromIntegral` at
                                           -- the splitmix and FFI call sites
                                           -- (see determinism_contract.md and

@@ -45,7 +45,7 @@ From the host, run any listed logical command as
 <!-- mcts:command-matrix:start -->
 | Command | Purpose |
 |---------|---------|
-| `mcts bench rollouts [opts]` | Random-rollouts benchmark across the requested backend cohort |
+| `mcts bench rollouts [opts]` | Legacy played-game benchmark across the requested backend cohort |
 | `mcts bench selfplay [opts]` | Self-play benchmark across the requested backend cohort |
 | `mcts bench terminal-playouts [opts]` | Direct terminal playout throughput in `playouts/s` |
 | `mcts bench search-iters [opts]` | Direct UCT search-iteration throughput in `search-iters/s` |

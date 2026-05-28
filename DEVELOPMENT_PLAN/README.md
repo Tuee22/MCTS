@@ -117,6 +117,13 @@ pure API while moving the hot search path to packed numeric `ActionIds`,
 functional-core style. Phase `8` Sprint `8.14` closed on 2026-05-27 by making
 the report-card verdict an exit-code gate and raising `N_PRIM` to `20_000` for
 stable MT8 primitive evidence.
+Phase `0` Sprint `0.4` reclosed the README-authority citation cleanup on
+2026-05-27 by keeping README reference-only and retargeting doctrine scope,
+wire-format, report-card, and tuning citations to the plan or governed engineering
+docs. Phase `1` Sprint `1.12` reclosed the generated `bench rollouts` summary drift
+on the same date by updating `CommandSpec`, the generated command-matrix renderer,
+and semantic unit coverage so generated docs call the command a legacy played-game
+benchmark. Phases `2`–`8` remain closed on their owned behavior surfaces.
 
 This audit does not change the project hypothesis: one Haskell CLI keeps
 all five backend slots live, Q3 proves visit-count equivalence for `(ii)..(v)`
@@ -230,6 +237,11 @@ scaling 7.32x, Haskell self-play scaling 3.42x, C++ (ii) self-play scaling
 `Verdict: Within tolerance`.
 Sprint `0.3` was validated on 2026-05-27 with
 `docker compose run --rm mcts mcts docs check`,
+`docker compose run --rm mcts mcts check-code`, and `git diff --check`.
+Sprints `0.4` and `1.12` were validated on 2026-05-27 with
+`docker compose run --rm mcts mcts docs generate`,
+`docker compose run --rm mcts mcts docs check`,
+`docker compose run --rm mcts mcts test mcts-unit`,
 `docker compose run --rm mcts mcts check-code`, and `git diff --check`.
 
 The 2026-05-19 report-card evidence remains useful smoke-baseline audit context.
@@ -451,8 +463,8 @@ A sprint can move to `Done` only when all of the following are true:
 
 | Phase | Name | Status | Document |
 |-------|------|--------|----------|
-| 0 | Planning and Documentation Topology | ✅ Done (Sprint `0.3` root doctrine topology reconciliation closed 2026-05-27) | [phase-0-planning-documentation.md](phase-0-planning-documentation.md) |
-| 1 | Haskell CLI Surface, `CommandSpec`, Lint Stack | ✅ Done (Sprint `1.11` README/lint-write realignment closed 2026-05-24) | [phase-1-haskell-cli-surface.md](phase-1-haskell-cli-surface.md) |
+| 0 | Planning and Documentation Topology | ✅ Done (Sprint `0.4` README-authority citation cleanup closed 2026-05-27) | [phase-0-planning-documentation.md](phase-0-planning-documentation.md) |
+| 1 | Haskell CLI Surface, `CommandSpec`, Lint Stack | ✅ Done (Sprint `1.12` generated `bench rollouts` summary realignment closed 2026-05-27) | [phase-1-haskell-cli-surface.md](phase-1-haskell-cli-surface.md) |
 | 2 | Transcript Codec, RNG, and Determinism Contract | ✅ Done (Sprint `2.9` transcript/envelope doctrine realignment closed 2026-05-24) | [phase-2-transcript-codec-and-determinism.md](phase-2-transcript-codec-and-determinism.md) |
 | 3 | Backend (v) Haskell Engine | ✅ Done (Sprint `3.8` benchmark metric primitives closed 2026-05-24) | [phase-3-haskell-engine.md](phase-3-haskell-engine.md) |
 | 4 | Backend (i) C++ Legacy Port and FFI Bridge | ✅ Done (Sprint `4.5` FFI domain-conversion contract realignment closed 2026-05-24) | [phase-4-cpp-legacy-port-and-ffi-bridge.md](phase-4-cpp-legacy-port-and-ffi-bridge.md) |
@@ -487,7 +499,12 @@ functional-core rewrite, and Sprints `8.12`, `8.13`, and `8.14` closed Haskell
 parity, style alignment, and report-card verdict gating against that corrected
 target.
 Phase `0` Sprint `0.3` restored the root CLI doctrine file cited by the plan and
-governed docs. That topology repair did not reopen Phases `1`–`8` on their
+governed docs. Sprint `0.4` then removed remaining README-as-authority citation drift:
+README is reference-only, `00-overview.md` owns the doctrine-scope split, and governed
+engineering docs own wire-format, report-card, FFI, determinism, and tuning details.
+Phase `1` Sprint `1.12` removed the generated `bench rollouts` summary drift so the
+command registry and generated docs match the implemented played-game workload. These
+topology and generated-text repairs did not reopen Phases `2`–`8` on their
 implementation-owned surfaces.
 Implemented in the worktree:
 

@@ -25,10 +25,13 @@ wrapper, Plan/Apply helpers, prerequisite skeleton, lint/docs commands, and
 the baseline host validation gate under the pinned toolchain. Phase `1`
 reopened on 2026-05-21 for Sprint `1.10` and reclosed the same day after
 generated-document metadata enforcement, `check-code` dispatch ordering, and
-style-policy wording matched the implemented lint stack exactly. Backend logic
-and transcript semantics remain owned by later phases; this closure owns only the
-generated artefact machinery, container-owned lint stack, and code-quality
-doctrine surface.
+style-policy wording matched the implemented lint stack exactly. Sprint `1.11`
+reclosed README/lint-write contract alignment on 2026-05-24, and Sprint `1.12`
+reclosed generated `bench rollouts` summary wording on 2026-05-27 so generated
+command docs match the implemented legacy played-game workload. Backend logic and
+transcript semantics remain owned by later phases; this closure owns only the
+generated artefact machinery, container-owned lint stack, and code-quality doctrine
+surface.
 
 ## Phase Summary
 
@@ -422,7 +425,7 @@ keeping leaf option parsing explicit in `Parser.hs`.
   `cpp-legacy` only at the default Q3 `verify` boundary; it remains valid for
   bench, build, play, inspect, and legacy-parity surfaces. The Phase 1
   registry/parser surface remains closed.
-- The README's full concrete invocation set wraps the same leaf `Example` entries in
+- The root README concrete invocation examples wrap the same leaf `Example` entries in
   the Compose entrypoint. Validated on 2026-05-15 through the root Compose entrypoint
   with `docker compose run --rm mcts mcts test mcts-unit`,
   `docker compose run --rm mcts mcts commands --tree`,
@@ -1125,6 +1128,46 @@ None.
 Closed on 2026-05-24 after the root README, generated-document standards, lint
 documentation, and command implementation were aligned with the documented
 single-entrypoint workflow.
+
+## Sprint 1.12: Generated Rollouts Command Summary Realignment ✅
+
+**Status**: Done
+**Implementation**: `src/MCTS/CLI/Spec.hs`, `src/MCTS/Generated/Sections.hs`,
+`documents/cli/commands.md`, `documents/engineering/cli_command_surface.md`,
+`test/unit/Main.hs`
+**Docs to update**: `documents/cli/commands.md`,
+`documents/engineering/cli_command_surface.md`,
+`DEVELOPMENT_PLAN/README.md`, `DEVELOPMENT_PLAN/00-overview.md`,
+`DEVELOPMENT_PLAN/system-components.md`,
+`DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md`
+
+### Objective
+
+Make generated command summaries agree with the implemented benchmark metric taxonomy:
+`mcts bench rollouts` is a legacy played-game workload, while terminal playout
+throughput lives at `mcts bench terminal-playouts`.
+
+### Deliverables
+
+- `CommandSpec` and generated-section renderers describe `mcts bench rollouts` as a
+  legacy played-game benchmark, not a random-rollout or terminal-playout primitive.
+- Fully generated command docs and marker-delimited command-matrix docs are regenerated
+  through the `mcts docs generate` surface.
+- `mcts-unit` carries a focused semantic assertion that generated command docs preserve
+  the legacy played-game wording and do not regress to the stale random-rollout label.
+- The cleanup ledger records the generated `bench rollouts` summary drift as completed.
+
+### Validation
+
+- `docker compose run --rm mcts mcts docs generate`
+- `docker compose run --rm mcts mcts docs check`
+- `docker compose run --rm mcts mcts test mcts-unit`
+- `docker compose run --rm mcts mcts check-code`
+- `git diff --check`
+
+### Remaining Work
+
+None.
 
 ## Documentation Requirements
 
