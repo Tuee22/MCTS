@@ -2,11 +2,15 @@
 
 **Status**: Authoritative source
 **Supersedes**: N/A
-**Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/00-overview.md, ../../DEVELOPMENT_PLAN/system-components.md, ../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md, ../documentation_standards.md, ./README.md, ./backend_ffi_contract.md, ./benchmark_metrics.md, ./cli_command_surface.md, ./determinism_contract.md, ./unit_testing_policy.md
+**Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/00-overview.md, ../../DEVELOPMENT_PLAN/system-components.md, ../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md, ../documentation_standards.md, ./README.md, ./backend_ffi_contract.md, ./benchmark_metrics.md, ./cli_command_surface.md, ./compiler_runtime_tuning.md, ./determinism_contract.md, ./unit_testing_policy.md
 **Generated sections**: none
 
 > **Purpose**: Define Q7 semantic MCTS parity for steelman backends `(ii)..(v)`
-> as a weaker-than-bit-equality correctness gate.
+> as a weaker-than-bit-equality correctness gate. Q7 is one of the
+> apples-to-apples invariants that gate `mcts test all` closure per
+> [compiler_runtime_tuning.md → Performance Measurement Doctrine](./compiler_runtime_tuning.md#performance-measurement-doctrine);
+> a Q7 failure means the comparison itself is broken, which is distinct from
+> a Q1/Q2 measurement saying Haskell trails C++ on throughput.
 
 ## Scope
 
@@ -87,5 +91,8 @@ the `mcts-semantic-parity` stanza.
 - [backend_ffi_contract.md](./backend_ffi_contract.md) — C ABI consumed by the Q7
   semantic checks.
 - [benchmark_metrics.md](./benchmark_metrics.md) — Q1-Q7 report-card mapping.
+- [compiler_runtime_tuning.md](./compiler_runtime_tuning.md) — Performance
+  Measurement Doctrine (Q-classification, closure gate, verdict-line labelling
+  threshold).
 - [../../DEVELOPMENT_PLAN/README.md](../../DEVELOPMENT_PLAN/README.md) — sprint
   status and closure ownership.

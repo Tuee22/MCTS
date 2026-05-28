@@ -185,8 +185,10 @@ with `--build`.
 rendered plan for out-of-band review. `--format json` emits the JSON form of the
 `ReportCard` value for CI consumption, including explicit
 `q1a_terminal_playouts_*`, `q1b_search_iters_*`, `q2_selfplay_games_*`,
-unit-specific Q5 scaling fields, `raw_performance_metrics`, and
-`divergence_matrix` rows and the normalized divergence score.
+unit-specific Q5 scaling fields, `raw_performance_metrics`,
+`divergence_matrix` rows and the normalized divergence score, the
+`apples_to_apples` block carrying the Q3/Q4/Q6/Q7 closure booleans plus the
+derived `all_pass` value, and the labelled `verdict` line.
 
 ## POC Headline Questions
 
@@ -203,13 +205,15 @@ Sprint `7.8` split the report-card rows into terminal playout throughput,
 search-iteration throughput, and played-game throughput. Sprint `8.11` closed the
 profile-suite review and historical parity rerun against that refactored metric
 surface; Sprint `8.12` closed the active parity refresh after backend (ii)'s
-compact-board correction. Sprint `8.14` made that verdict an exit-code gate for
-the current artefact. Phase `5` Sprint `5.7` has since closed backend `(ii)`'s
-full imperative-kernel steelman, so Phase `8` Sprint `8.15` is active after
-focused Haskell hot-path tuning, including direct packed-slot path starts, the
-no-wall legal-action fast path, and single-constructor action transitions, until
-the fresh report-card rebaseline against the fully steelmanned `(ii)` target
-closes within tolerance or records an accepted non-parity outcome.
+compact-board correction. Sprint `8.14` made the apples-to-apples invariants
+plus the non-pending measurement an exit-code gate. Phase `5` Sprint `5.7` has
+since closed backend `(ii)`'s full imperative-kernel steelman, so Phase `8`
+Sprint `8.15` is active after focused Haskell hot-path tuning, including direct
+packed-slot path starts, the no-wall legal-action fast path, and
+single-constructor action transitions, until the fresh report-card rebaseline
+against the fully steelmanned `(ii)` target is recorded honestly with the
+apples-to-apples invariants Q3/Q4/Q6/Q7 holding per
+[compiler_runtime_tuning.md → Performance Measurement Doctrine](./compiler_runtime_tuning.md#performance-measurement-doctrine).
 
 1. **Q1a.** Does pure Haskell match backend (ii) on terminal playout throughput
    (`playouts/s`), single-threaded and on 8-worker batches where batching applies?
@@ -291,24 +295,28 @@ The text renderer is an aligned-table contract:
 The JSON renderer exposes the same observed rates under
 `raw_performance_metrics` and keeps the existing unit-specific Q1/Q2/Q5 fields.
 
-The 2026-05-27 Sprint `8.14` aggregate run closed the current corrected-backend
-parity surface with `Verdict: Within tolerance`: Q1a terminal playout ST `0.72x`,
-Q1a MT8 `0.85x`, Q1b search-iteration ST `0.67x`, Q1b MT8 `0.67x`, Q2
-played-game ST `0.59x`, Q2 MT8 `0.68x`, Haskell search-iteration scaling `7.32x`,
-C++ (ii) search-iteration scaling `7.32x`, Haskell self-play scaling `3.42x`,
-C++ (ii) self-play scaling `3.92x`, Q3/Q4/Q6 PASS, all Cabal stanzas PASS, and
-zero live-cohort divergence. Same-day `N_PRIM=10_000` evidence rendered
-`Shortfall` and now exits non-zero through `mcts test all`; only `Within tolerance`
-is a successful aggregate verdict.
-This evidence remains valid for the Sprint `5.6` backend `(ii)` artefact. It is not
-final handoff evidence after Phase `5` Sprint `5.7` because the backend `(ii)`
-kernel and PGO/BOLT profile suite have changed; accepted Sprint `8.15` focused
-Haskell changes narrow local hot-path overhead, but the sprint must still close or
-record the shortfall shown by the rerun against that new target. The latest
-accepted aggregate rerun still exits non-zero with
-`Verdict: Shortfall 0.2678864950323545`: Q1a backend `(ii)`/Haskell ratios
-`1.06x` ST and `1.27x` MT8, Q1b `1.05x` ST and `1.11x` MT8, and Q2 `0.98x` ST
-and `1.11x` MT8.
+The 2026-05-27 Sprint `8.14` aggregate run measured the corrected-backend
+parity surface with `Verdict: Within parity band` (legacy label
+`Within tolerance`): Q1a terminal playout ST `0.72x`, Q1a MT8 `0.85x`, Q1b
+search-iteration ST `0.67x`, Q1b MT8 `0.67x`, Q2 played-game ST `0.59x`, Q2 MT8
+`0.68x`, Haskell search-iteration scaling `7.32x`, C++ (ii) search-iteration
+scaling `7.32x`, Haskell self-play scaling `3.42x`, C++ (ii) self-play scaling
+`3.92x`, Q3/Q4/Q6/Q7 PASS, all Cabal stanzas PASS, and zero live-cohort
+divergence. Under the reframed
+[compiler_runtime_tuning.md → Performance Measurement Doctrine](./compiler_runtime_tuning.md#performance-measurement-doctrine),
+the verdict line is informational and `mcts test all` closure is gated by the
+apples-to-apples invariants Q3/Q4/Q6/Q7 plus a non-pending measurement.
+
+This evidence remains valid for the Sprint `5.6` backend `(ii)` artefact. It is
+not final handoff evidence after Phase `5` Sprint `5.7` because the backend
+`(ii)` kernel and PGO/BOLT profile suite have changed; accepted Sprint `8.15`
+focused Haskell changes narrow local hot-path overhead, but the sprint stays
+active until the rebaselined measurement and apples-to-apples invariants are
+recorded honestly against that new target. The latest accepted aggregate rerun
+records `Verdict: Trails parity band by 26.8%` (legacy label
+`Shortfall 0.2678864950323545`): Q1a backend `(ii)`/Haskell ratios `1.06x` ST
+and `1.27x` MT8, Q1b `1.05x` ST and `1.11x` MT8, and Q2 `0.98x` ST and
+`1.11x` MT8.
 The 2026-05-24 Sprint `8.11` aggregate run remains historical refactored-metric
 evidence for the older backend (ii) artefact: Q1a terminal playout ST `0.07x`,
 Q1a MT8 `0.39x`, Q1b search-iteration ST `0.06x`, Q1b MT8 `0.40x`, Q2

@@ -10,6 +10,16 @@ with-compiler: ghc-9.14.1
 allow-newer: config-ini:containers, config-ini:base
 
 -- Cabal 3.16.1.0 is the pinned project tool.
+--
+-- Report-card knobs below mirror the constants in `src/MCTS/CLI/Test.hs`
+-- (`reportCardPrimitiveCount`, `reportCardSelfplayGames`, etc.). The
+-- `reportCardParityTolerance = 0.05` constant in `src/MCTS/ReportCard.hs`
+-- labels the verdict line ("Within parity band" vs "Trails parity band by
+-- N%") but does **not** gate `mcts test all` closure. Closure is gated by
+-- the Q3/Q4/Q6/Q7 apples-to-apples invariants plus a non-pending verdict
+-- per `documents/engineering/compiler_runtime_tuning.md` § Performance
+-- Measurement Doctrine.
+--
 -- Report-card knobs:
 -- N_PRIM=20000
 -- P_MAX=60

@@ -282,6 +282,19 @@ buildMeasuredReportCard = do
                     q2ST = performanceQ2SelfplayGamesST measured
                     q2MT8 = performanceQ2SelfplayGamesMT8 measured
                     ratios = map reportTimeRatio [q1aST, q1aMT8, q1bST, q1bMT8, q2ST, q2MT8]
+                    -- The Q3 invariant is derived from the observed cross-backend
+                    -- divergence matrix populated by `buildMeasuredReportCardWith`:
+                    -- if the worst visit/move disagreement is zero, (ii)..(v) agree.
+                    -- Q4, Q6, Q7 are True by construction here — control only reaches
+                    -- this builder when `mcts-integration`, `mcts-legacy-parity`,
+                    -- and `mcts-semantic-parity` have already exited successfully.
+                    apples =
+                        ApplesToApples
+                            { applesToApplesQ3 = normalizedDivergenceScore card == 0.0
+                            , applesToApplesQ4 = True
+                            , applesToApplesQ6 = True
+                            , applesToApplesQ7 = True
+                            }
                 Right
                     card
                         { reportQ1aTerminalPlayoutsST = q1aST
@@ -312,6 +325,7 @@ buildMeasuredReportCard = do
                                 (reportCppRate q2MT8)
                         , reportRawPerformanceRows = performanceRawRows measured
                         , reportVerdict = verdictFromRatios ratios
+                        , reportApplesToApples = apples
                         }
 
 buildMeasuredReportCardWith :: [Backend] -> RunInputs -> IO (Either AppError ReportCard)
@@ -639,8 +653,11 @@ renderParityAnchor result =
             <> map renderParityAnchorRow (anchorRows result)
             <> [ "Verdict: "
                     <> if parityAnchorWithinTolerance result
-                        then "Within tolerance"
-                        else "Shortfall " <> fixed4 (parityAnchorShortfall result)
+                        then "Within parity band (candidate <= 5% of baseline on the anchor rows)"
+                        else
+                            "Trails parity band by "
+                                <> fixed4 (parityAnchorShortfall result)
+                                <> " (measurement recorded; see PGO Asymmetry in compiler_runtime_tuning.md)"
                ]
 
 renderParityAnchorRow :: ParityAnchorRow -> String

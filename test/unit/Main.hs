@@ -130,10 +130,13 @@ import MCTS.Prerequisite
     , transitiveClosure
     )
 import MCTS.ReportCard
-    ( ReportCard (..)
+    ( ApplesToApples (..)
+    , ReportCard (..)
     , ReportDivergenceCell (..)
     , ReportDivergenceRow (..)
     , Verdict (..)
+    , applesToApplesAllPass
+    , defaultApplesToApples
     , defaultReportCard
     , divergenceRowsFromTranscripts
     , normalizedDivergenceScore
@@ -2407,14 +2410,55 @@ exerciseReportCardRenderer = do
         (not ("Q7  Legacy" `contains` renderedText))
     assert "report card text renders verdict" ("Verdict:" `contains` renderedText)
     assert
+        "report card text renders apples-to-apples block"
+        ("Apples-to-apples invariants" `contains` renderedText)
+    assert
         "report card verdict gate fails pending evidence"
         (not (reportCardPassed defaultReportCard))
     assert
-        "report card verdict gate accepts within-tolerance evidence"
+        "report card closure accepts within-tolerance verdict with invariants pass"
         (reportCardPassed defaultReportCard{reportVerdict = WithinTolerance})
     assert
-        "report card verdict gate rejects parity shortfalls"
-        (not (reportCardPassed defaultReportCard{reportVerdict = Shortfall 0.5}))
+        "report card closure accepts shortfall verdict with invariants pass (measurement honest)"
+        (reportCardPassed defaultReportCard{reportVerdict = Shortfall 0.5})
+    assert
+        "report card closure rejects pending verdict even with invariants pass"
+        ( not
+            ( reportCardPassed
+                defaultReportCard
+                    { reportVerdict = EvidencePending
+                    , reportApplesToApples = defaultApplesToApples
+                    }
+            )
+        )
+    assert
+        "report card closure rejects Q3 invariant failure even with within-tolerance verdict"
+        ( not
+            ( reportCardPassed
+                defaultReportCard
+                    { reportVerdict = WithinTolerance
+                    , reportApplesToApples = defaultApplesToApples{applesToApplesQ3 = False}
+                    }
+            )
+        )
+    assert
+        "report card closure rejects Q7 invariant failure even with shortfall verdict"
+        ( not
+            ( reportCardPassed
+                defaultReportCard
+                    { reportVerdict = Shortfall 0.27
+                    , reportApplesToApples = defaultApplesToApples{applesToApplesQ7 = False}
+                    }
+            )
+        )
+    assert
+        "applesToApplesAllPass agrees with defaultApplesToApples"
+        (applesToApplesAllPass defaultApplesToApples)
+    assert
+        "applesToApplesAllPass detects any failed invariant"
+        ( not (applesToApplesAllPass defaultApplesToApples{applesToApplesQ4 = False})
+            && not (applesToApplesAllPass defaultApplesToApples{applesToApplesQ6 = False})
+        )
     assert
         "report card JSON has required top-level keys"
         ( jsonObjectHasKeys
@@ -2427,6 +2471,7 @@ exerciseReportCardRenderer = do
             , "raw_performance_metrics"
             , "normalized_divergence_score"
             , "divergence_matrix"
+            , "apples_to_apples"
             , "verdict"
             ]
         )

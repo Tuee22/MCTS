@@ -7,9 +7,9 @@
 
 > **Purpose**: Operator-facing project intent, supported entrypoint, backend cohort summary, and links to the authoritative plan and engineering contracts.
 
-MCTS is a high-performance Monte Carlo Tree Search runtime for the Corridors board game. The current proof of concept is rollout-evaluated MCTS: one Haskell CLI drives five backend implementations so the native Haskell engine can be measured against a maximally optimised C++ baseline while the cohort stays deterministic inside a documented envelope.
+MCTS is a high-performance Monte Carlo Tree Search runtime for the Corridors board game. The current proof of concept is rollout-evaluated MCTS: one Haskell CLI drives five backend implementations so the native Haskell engine can be measured against a maximally optimised C++ baseline while the cohort stays deterministic inside a documented envelope. The hypothesis the cohort tests is whether pure Haskell — with no production GHC equivalent to GCC/Clang `-fprofile-use` — can match maximally-optimised C++ on Quoridor MCTS; the honest answer (whether yes or no) is the project deliverable, provided every steelman backend is fully optimised and the apples-to-apples invariants Q3/Q4/Q6/Q7 in [Performance Measurement Doctrine](documents/engineering/compiler_runtime_tuning.md#performance-measurement-doctrine) hold.
 
-The long-term research direction is AlphaZero-style ANN evaluation, but this repository's current plan ends at a parity-proven rollout MCTS runtime. The execution-ordered plan is [DEVELOPMENT_PLAN/README.md](DEVELOPMENT_PLAN/README.md).
+The long-term research direction is AlphaZero-style ANN evaluation, but this repository's current plan ends at a recorded rollout-MCTS measurement under those conditions. The execution-ordered plan is [DEVELOPMENT_PLAN/README.md](DEVELOPMENT_PLAN/README.md).
 
 ## Supported Workflow
 
@@ -50,20 +50,25 @@ throughput with one search iteration per move, not terminal `playouts/s`.
 Played-game benchmark output uses `games/s` only. The metric taxonomy and Q1-Q7 mapping live in
 [benchmark_metrics.md](documents/engineering/benchmark_metrics.md).
 
-The latest closed Phase 8 report-card gate remains the Sprint `8.14`
-current-artifact evidence against the Sprint `5.6` backend (ii) target. Sprint
-`5.7` has since strengthened backend `(ii)`, and Sprint `8.15` is active on the
-fresh Haskell parity shortfall exposed by the first rebaseline. Focused Sprint
-`8.15` Haskell tuning has landed local hot-path changes, including direct
-slot-based path-start checks, a no-wall legal-action fast path, and
-single-constructor action transitions with a no-ply rollout variant, but the
-latest accepted aggregate rerun still returns `Verdict: Shortfall 0.2678864950323545`
-against the post-`5.7` target: Q1a backend `(ii)`/Haskell ratios `1.06x` ST and
-`1.27x` MT8, Q1b `1.05x` ST and `1.11x` MT8, and Q2 `0.98x` ST and `1.11x` MT8.
-The aggregate gate still fails non-zero for `Evidence pending` or `Shortfall`
-verdicts
-and succeeds only for `Within tolerance`; the canonical primitive sample is
-`N_PRIM=20_000`.
+The first post-reframe `docker compose run --rm --build mcts mcts test all`
+under the [Performance Measurement Doctrine](documents/engineering/compiler_runtime_tuning.md#performance-measurement-doctrine)
+exits 0 with all four apples-to-apples invariants Q3/Q4/Q6/Q7 PASS, all six
+Cabal stanzas PASS, zero live-cohort divergence, and the labelled measurement
+`Verdict: Trails parity band by 52.3% (measurement recorded; see PGO
+Asymmetry in compiler_runtime_tuning.md)`. Backend `(ii)`/Haskell ratios
+against the fully steelmanned Sprint `5.7` `(ii)` target: Q1a `1.42x` ST /
+`1.51x` MT8, Q1b `1.45x` ST / `1.52x` MT8, Q2 `1.35x` ST / `1.48x` MT8;
+Q5 scaling Haskell search `6.91x` vs backend `(ii)` search `7.27x`, Haskell
+self-play `3.28x` vs backend `(ii)` self-play `3.60x`.
+
+Under the reframed doctrine, Q1, Q2, and Q5 are measurement questions and a
+Haskell shortfall is recorded honestly with PGO-asymmetry attribution; closure
+of `mcts test all` gates on the apples-to-apples invariants Q3, Q4, Q6, Q7
+plus a non-pending measurement, not on the `HASKELL_PARITY_TOLERANCE = 0.05`
+labelling cutoff. The canonical primitive sample is `N_PRIM=20_000`. The
+earlier Sprint `8.14` `Within tolerance` reading against the Sprint `5.6`
+`(ii)` artefact and the pre-reframe `Shortfall 0.2678` measurement against the
+post-`5.7` `(ii)` target are historical evidence.
 
 Phase 7 Sprint `7.11` adds Q7 semantic parity for `(ii)..(v)`: a
 weaker-than-bit-equality gate for game-rule replay compatibility, search

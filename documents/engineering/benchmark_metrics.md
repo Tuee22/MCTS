@@ -67,27 +67,33 @@ The text report card defines these terms before rendering evidence:
 Raw backend performance metrics are observed rates, not ratios. The text report
 card renders one raw table row per backend and metric family before the question
 summary and divergence-matrix tables, then ends with an explicit answer summary
-derived from the observed ratios, scaling values, divergence score, and gate
-outcomes. Q1/Q2 verdict logic still uses backend (v) Haskell against backend (ii)
-`cpp-imperative`; the extra raw rows are context for all five backend slots, not
-additional pass/fail gates. Backend (iv) Rust raw rows remain context rather than
-Q1/Q2 verdict inputs after Phase `6` Sprint `6.8` aligns its hot path with the
-functional-core cohort.
+derived from the observed ratios, scaling values, divergence score, and
+apples-to-apples invariant booleans. Q1/Q2 are measurement questions per
+[compiler_runtime_tuning.md → Performance Measurement Doctrine](./compiler_runtime_tuning.md#performance-measurement-doctrine):
+the labelled verdict line uses backend (v) Haskell against backend (ii)
+`cpp-imperative`, and the extra raw rows are context for all five backend
+slots. None of Q1/Q2/Q5 is a closure gate; closure is gated by the
+apples-to-apples invariants Q3/Q4/Q6/Q7. Backend (iv) Rust raw rows remain
+diagnostic context.
 
-The Sprint `8.14` `Within tolerance` verdict is current-artifact evidence for the
-Sprint `5.6` backend `(ii)` implementation. Phase `5` Sprint `5.7` has since
-closed the full imperative C++ kernel steelman, so Phase `8` Sprint `8.15` owns
-the active Haskell shortfall exposed by rerunning these Q1a, Q1b, Q2, and Q5
-metric rows against the fully steelmanned `(ii)` target.
-Focused accepted Sprint `8.15` Haskell changes improve the local hot path but
-still leave the aggregate handoff open after backend `(ii)`'s Sprint `5.7`
-steelman. The latest accepted aggregate rerun still fails closed with `Verdict: Shortfall`:
-Q1a backend `(ii)`/Haskell ratios `1.06x` ST and `1.27x` MT8, Q1b
-`1.05x` ST and `1.11x` MT8, and Q2 `0.98x` ST and `1.11x` MT8
-(`Shortfall 0.2678864950323545`). The accepted Haskell changes now include
-single-constructor action transitions with the no-ply rollout variant, in
-addition to the earlier compact pawn slots, direct non-terminal action sets,
-packed-slot path starts, and no-wall legal-action fast path.
+The Sprint `8.14` measurement read `Within parity band` against the Sprint
+`5.6` backend `(ii)` implementation. Phase `5` Sprint `5.7` has since closed
+the full imperative C++ kernel steelman, so Phase `8` Sprint `8.15` owns the
+rebaselined Q1a/Q1b/Q2/Q5 rows against the fully steelmanned `(ii)` target. The
+Q-classification in
+[compiler_runtime_tuning.md → Performance Measurement Doctrine](./compiler_runtime_tuning.md#performance-measurement-doctrine)
+records Q1/Q2/Q5 as **measurement** questions: shortfalls are honestly recorded
+with PGO-asymmetry attribution and do not gate closure. Closure is gated by the
+apples-to-apples invariants Q3/Q4/Q6/Q7 in the same doctrine.
+
+The latest accepted aggregate rerun records `Verdict: Trails parity band by
+26.8%` (legacy label `Shortfall 0.2678864950323545`): Q1a backend
+`(ii)`/Haskell ratios `1.06x` ST and `1.27x` MT8, Q1b `1.05x` ST and
+`1.11x` MT8, and Q2 `0.98x` ST and `1.11x` MT8. The accepted Haskell hot-path
+changes now include single-constructor action transitions with the no-ply
+rollout variant, in addition to the earlier compact pawn slots, direct
+non-terminal action sets, packed-slot path starts, and no-wall legal-action
+fast path.
 
 ## Benchmark Leaves
 
@@ -118,11 +124,12 @@ compare different units as if they were interchangeable.
 
 The historical Q1/Q2/Q5 rows emitted before this taxonomy are legacy
 **played-game** evidence. They are useful for audit and integration diagnostics,
-but current Q1/Q5 closure uses the explicit `playouts/s`, `search-iters/s`, and
-`games/s` report-card rows instead of treating those historical rows as final.
-After Sprint `5.7` changed backend `(ii)`, the Sprint `8.14` rows joined the audit
-history. Sprint `8.15` remains active until the new-target metric evidence either
-closes within tolerance or records an accepted non-parity outcome.
+but the current Q1/Q5 rows use the explicit `playouts/s`, `search-iters/s`, and
+`games/s` units. After Sprint `5.7` changed backend `(ii)`, the Sprint `8.14`
+rows joined the audit history. Sprint `8.15` remains active until the
+rebaselined measurement against the new `(ii)` target is recorded honestly and
+the apples-to-apples invariants Q3/Q4/Q6/Q7 hold per
+[compiler_runtime_tuning.md → Performance Measurement Doctrine](./compiler_runtime_tuning.md#performance-measurement-doctrine).
 
 ## Legacy C++ Basis
 
@@ -143,7 +150,7 @@ legacy-envelope question is Q6.
 ## Cross-References
 
 - [unit_testing_policy.md](./unit_testing_policy.md) — report-card gate and Q1-Q7 ownership.
-- [compiler_runtime_tuning.md](./compiler_runtime_tuning.md) — backend tuning and parity tolerance.
+- [compiler_runtime_tuning.md](./compiler_runtime_tuning.md) — backend tuning and the Performance Measurement Doctrine (Q-classification, closure gate, verdict-line labelling threshold).
 - [determinism_contract.md](./determinism_contract.md) — Q3/Q4/Q6 correctness envelopes.
 - [semantic_parity_contract.md](./semantic_parity_contract.md) — Q7 semantic-parity evidence and normalized divergence score.
 - [../../DEVELOPMENT_PLAN/README.md](../../DEVELOPMENT_PLAN/README.md) — phase status, metric-suite history, and active parity work.

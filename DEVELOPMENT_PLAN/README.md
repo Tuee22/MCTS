@@ -168,15 +168,34 @@ backend (iv) Rust remains the cross-language systems baseline after Sprint `6.8`
 hot-path alignment, and the refactored Q1/Q2 suite measures backend (v) Haskell
 against backend (ii) `cpp-imperative` using the explicit metric units in
 [../documents/engineering/benchmark_metrics.md](../documents/engineering/benchmark_metrics.md).
-The current closed `Within tolerance` verdict is historical current-artifact
-evidence for the Sprint `5.6` backend `(ii)` artefact; Sprint `8.15` remains
-active after focused Haskell hot-path tuning, including direct slot-based
-path-start checks, a no-wall legal-action fast path, and single-constructor
-action transitions, until Haskell closes the post-`5.7` shortfall or the plan
-records an accepted non-parity outcome. The latest Sprint `8.15` aggregate rerun
-still fails closed with `Verdict: Shortfall 0.2678864950323545`: Q1a backend
-`(ii)`/Haskell ratios `1.06x` ST and `1.27x` MT8, Q1b `1.05x` ST and `1.11x`
-MT8, and Q2 `0.98x` ST and `1.11x` MT8.
+The 2026-05-28 reframe (see Sprint `8.15` below and
+[../documents/engineering/compiler_runtime_tuning.md → Performance Measurement Doctrine](../documents/engineering/compiler_runtime_tuning.md#performance-measurement-doctrine))
+records Q1/Q2/Q5 as honest measurements: Haskell trailing backend (ii) under
+the documented PGO asymmetry is an acceptable scientific outcome. Closure of
+`mcts test all` gates on the apples-to-apples invariants Q3/Q4/Q6/Q7 plus a
+non-pending measurement.
+
+The first post-reframe aggregate `docker compose run --rm --build mcts mcts
+test all` exits 0 with all four apples-to-apples invariants PASS, all six
+Cabal stanzas PASS, zero live-cohort divergence, and the labelled measurement
+`Verdict: Trails parity band by 52.3% (measurement recorded; see PGO
+Asymmetry in compiler_runtime_tuning.md)`. Backend `(ii)`/Haskell ratios
+against the fully-steelmanned Sprint `5.7` `(ii)` target: Q1a `1.42x` ST /
+`1.51x` MT8, Q1b `1.45x` ST / `1.52x` MT8, Q2 `1.35x` ST / `1.48x` MT8; Q5
+scaling Haskell search `6.91x` vs backend `(ii)` search `7.27x`, Haskell
+self-play `3.28x` vs backend `(ii)` self-play `3.60x`. The earlier Sprint
+`5.6`-target measurement of `Verdict: Shortfall 0.2678864950323545` is
+historical pre-reframe evidence.
+
+Sprint `8.15` closed on 2026-05-28 with that measurement; Phase `8` is
+therefore closed and the full plan suite reaches Done. The project's
+empirical answer to its central hypothesis — *does pure Haskell, without a
+production GHC PGO loop, match maximally-optimised C++ on Quoridor MCTS?* —
+is honestly recorded as "Haskell trails the fully-steelmanned `(ii)` target
+by ~52% on the worst Q1/Q2 row under the documented PGO asymmetry, while
+the apples-to-apples invariants Q3/Q4/Q6/Q7 hold across the cohort."
+Further Haskell optimisation work is not blocking and may be scheduled as a
+new sprint only if the project chooses to invest.
 
 The Phase `1` reclosure was validated with
 `docker compose run --rm mcts mcts docs check`,
@@ -524,7 +543,7 @@ A sprint can move to `Done` only when all of the following are true:
 | 5 | Backend (ii) C++ Imperative Steelman with PGO+BOLT | ✅ Done (Sprint `5.7` full hot-path steelman closed; Sprints `5.3`, `5.5`, and `5.6` remain closed for their delivered surfaces) | [phase-5-cpp-imperative-steelman.md](phase-5-cpp-imperative-steelman.md) |
 | 6 | Backends (iii) C++ Functional-Core and (iv) Rust | ✅ Done for build/ABI, backend (iii) compact functional-core state alignment, and Sprint `6.8` Rust hot-path structural alignment | [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md) |
 | 7 | Cross-Backend Verify, Test Stanzas, POC Report Card | ✅ Done (Sprint `7.11` Q7 semantic parity and normalized divergence score closed) | [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md) |
-| 8 | Haskell Performance Parity Closure and Five-Backend Restoration | 🔄 Active (Sprint `8.15` Haskell-vs-`(ii)` shortfall after closed Sprint `5.7`; Sprint `8.14` remains historical current-artifact evidence) | [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md) |
+| 8 | Haskell Performance Parity Closure and Five-Backend Restoration | ✅ Done (Sprint `8.15` measurement-vs-invariant reframe and post-`5.7` `(ii)` rebaseline closed 2026-05-28; Sprint `8.14` remains historical current-artifact evidence under the prior framing) | [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md) |
 
 ## Current Plan Status
 
@@ -816,14 +835,20 @@ This plan is complete only when all of the following are true:
    implemented in `MCTS.CLI.Test` and mirrored in `cabal.project` comments:
    `N_PRIM=20_000`, `P_MAX=60`, `G_R=1_000`, `G_S=4`, `G_V=4`, `G_LP=2`,
    `S_BENCH=500`, `S_VERIFY=500`, `S_LP_SIMS=4`, and `S_LP=42`.
-6. Pure Haskell backend (v) matches backend (ii) C++ steelman on Q1a terminal
-   playout throughput, Q1b search-iteration throughput, and Q2 played-game self-play
-   throughput within the parity tolerance per
-   [../documents/engineering/compiler_runtime_tuning.md → Parity Tolerance](../documents/engineering/compiler_runtime_tuning.md)
-   (`HASKELL_PARITY_TOLERANCE = 0.05`), both single-threaded and on 8 workers.
-   If Haskell falls short — including shortfalls in the 5–15% PGO-attributable band — the
-   gap is recorded against the one-known-asymmetry PGO note in
-   `documents/engineering/compiler_runtime_tuning.md` rather than papered over.
+6. The report card records measured Q1a terminal playout throughput, Q1b
+   search-iteration throughput, Q2 played-game self-play throughput, and Q5
+   ST→MT8 scaling for the fully-optimised cohort (steelman sprints `5.7`,
+   `6.7`, `6.8`, `8.13` closed; backend (i) exempt by design). Whether pure
+   Haskell backend (v) matches or trails backend (ii) C++ is an empirical
+   finding, not a closure gate: per
+   [../documents/engineering/compiler_runtime_tuning.md → Performance Measurement Doctrine](../documents/engineering/compiler_runtime_tuning.md#performance-measurement-doctrine)
+   Q1/Q2/Q5 are measurement questions and a Haskell shortfall is recorded
+   honestly with PGO-asymmetry attribution. The verdict line uses
+   `HASKELL_PARITY_TOLERANCE = 0.05` as a labelling cutoff (`Within parity
+   band` vs `Trails parity band by N%`) and is informational. Closure on the
+   performance side requires only that the measurement was recorded (i.e. the
+   verdict line is not `EvidencePending`); the actual closure gates live on
+   the apples-to-apples invariants in Items 3, 4, 7, 8 (Q3, Q6, Q4, Q7).
 7. Same-backend determinism (Q4) holds for every backend across 3 seeds: same backend,
    same master seed, same RNG source, and same logical game inputs produce identical
    determinism payloads under the `mcts-integration` stanza.

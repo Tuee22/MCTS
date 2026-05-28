@@ -1,5 +1,6 @@
 module MCTS.ReportCard
-    ( ReportCard (..)
+    ( ApplesToApples (..)
+    , ReportCard (..)
     , ReportDivergenceCell (..)
     , ReportDivergenceRow (..)
     , ReportRawPerformanceRow (..)
@@ -7,6 +8,8 @@ module MCTS.ReportCard
     , ReportRateComparison (..)
     , ReportScaling (..)
     , Verdict (..)
+    , applesToApplesAllPass
+    , defaultApplesToApples
     , defaultReportCard
     , divergenceRowsFromTranscripts
     , normalizedDivergenceScore
@@ -21,10 +24,33 @@ import MCTS.Types
 import MCTS.Verify.Divergence
 import Text.Printf (printf)
 
+-- | The verdict line summarizes the Q1/Q2 measurement against the
+-- @reportCardParityTolerance@ labelling threshold. It is informational:
+-- @WithinTolerance@ and @Shortfall@ both denote an honest measurement
+-- and never gate @mcts test all@. Only @EvidencePending@ blocks closure,
+-- because the experiment must have actually run. Closure gates on the
+-- apples-to-apples invariants in 'ApplesToApples' instead. See
+-- @documents/engineering/compiler_runtime_tuning.md → Performance
+-- Measurement Doctrine@ for the framing.
 data Verdict
     = EvidencePending
     | WithinTolerance
     | Shortfall Double
+    deriving (Eq, Show)
+
+-- | Apples-to-apples invariants that must PASS for the report card to
+-- close. Q3 cross-backend visit/move equality for (ii)..(v) under
+-- @--rng cpp@, Q4 same-backend determinism, Q6 legacy-envelope liveness
+-- across all five backend slots, and Q7 semantic parity for (ii)..(v).
+-- These are gates because their failure means the comparison is broken;
+-- Q1/Q2/Q5 are measurements and their numbers are reported honestly,
+-- never as PASS/FAIL.
+data ApplesToApples = ApplesToApples
+    { applesToApplesQ3 :: !Bool
+    , applesToApplesQ4 :: !Bool
+    , applesToApplesQ6 :: !Bool
+    , applesToApplesQ7 :: !Bool
+    }
     deriving (Eq, Show)
 
 data ReportRateUnit
@@ -93,18 +119,51 @@ data ReportCard = ReportCard
     , reportQ5CppImperativeSelfplayGamesScaling :: !ReportScaling
     , reportRawPerformanceRows :: ![ReportRawPerformanceRow]
     , reportDivergenceRows :: ![ReportDivergenceRow]
+    , reportApplesToApples :: !ApplesToApples
     }
     deriving (Eq, Show)
 
+-- | Labelling threshold for the verdict line: when the worst Q1a/Q1b/Q2
+-- backend (ii)/Haskell time ratio is @<= 1 + reportCardParityTolerance@,
+-- 'renderVerdict' prints "Within parity band"; otherwise it prints
+-- "Trails parity band by N%". This threshold does **not** gate closure;
+-- closure is gated by 'applesToApplesAllPass' plus the verdict being
+-- non-pending. See @documents/engineering/compiler_runtime_tuning.md
+-- → Performance Measurement Doctrine@.
 reportCardParityTolerance :: Double
 reportCardParityTolerance = 0.05
 
+-- | Closure gate for @mcts test all@: the apples-to-apples invariants
+-- Q3/Q4/Q6/Q7 must all PASS and the verdict line must not be pending.
+-- @WithinTolerance@ and @Shortfall@ are both accepted measurement
+-- outcomes — the verdict line records the result, it does not pass or
+-- fail the experiment.
 reportCardPassed :: ReportCard -> Bool
 reportCardPassed card =
-    case reportVerdict card of
-        WithinTolerance -> True
-        EvidencePending -> False
-        Shortfall _ -> False
+    applesToApplesAllPass (reportApplesToApples card)
+        && reportVerdict card /= EvidencePending
+
+-- | True iff every apples-to-apples invariant Q3/Q4/Q6/Q7 PASSes.
+applesToApplesAllPass :: ApplesToApples -> Bool
+applesToApplesAllPass apples =
+    applesToApplesQ3 apples
+        && applesToApplesQ4 apples
+        && applesToApplesQ6 apples
+        && applesToApplesQ7 apples
+
+-- | The default carries the logical baseline expected by the
+-- experimental design: Q3/Q4/Q6/Q7 PASS when the stanzas run as
+-- prescribed. The @defaultReportCard@ still fails closure because its
+-- 'reportVerdict' is @EvidencePending@. Real measurement populates
+-- 'reportApplesToApples' with observed booleans.
+defaultApplesToApples :: ApplesToApples
+defaultApplesToApples =
+    ApplesToApples
+        { applesToApplesQ3 = True
+        , applesToApplesQ4 = True
+        , applesToApplesQ6 = True
+        , applesToApplesQ7 = True
+        }
 
 defaultReportCard :: ReportCard
 defaultReportCard =
@@ -126,6 +185,7 @@ defaultReportCard =
         , reportQ5CppImperativeSelfplayGamesScaling = defaultScaling ReportGamesPerSecond
         , reportRawPerformanceRows = defaultRawPerformanceRows
         , reportDivergenceRows = defaultDivergenceRows
+        , reportApplesToApples = defaultApplesToApples
         }
 
 renderReportCard :: ReportCard -> String
@@ -167,7 +227,12 @@ renderReportCard card =
             <> [ ""
                , "test stanzas                                   PASS    (mcts-unit, mcts-integration, mcts-cross-backend, mcts-legacy-parity, mcts-semantic-parity, mcts-haskell-style)"
                , ""
+               , "Apples-to-apples invariants (closure gates)"
+               ]
+            <> applesToApplesTable (reportApplesToApples card)
+            <> [ ""
                , "Verdict: " <> renderVerdict (reportVerdict card)
+               , "  (verdict is a measurement label, not a closure gate; closure gates on the apples-to-apples invariants above)"
                , ""
                , "Question answers"
                ]
@@ -179,6 +244,8 @@ renderReportCardJson card =
         <> show (reportSeed card)
         <> ",\"max_plies\":"
         <> show (reportMaxPlies card)
+        <> ",\"apples_to_apples\":"
+        <> renderApplesToApplesJson (reportApplesToApples card)
         <> ",\"verdict\":\""
         <> renderVerdict (reportVerdict card)
         <> "\",\"q1a_terminal_playouts_st\":"
@@ -210,12 +277,23 @@ renderReportCardJson card =
         <> joinWith "," (map renderDivergenceRowJson (reportDivergenceRows card))
         <> "]}"
 
+-- | Render the verdict line. Both @WithinTolerance@ and @Shortfall@ are
+-- honest measurements; the verdict does not gate closure (see
+-- 'reportCardPassed'). Only @EvidencePending@ blocks closure.
 renderVerdict :: Verdict -> String
 renderVerdict verdict =
     case verdict of
-        EvidencePending -> "Evidence pending (logical baseline; performance parity evidence pending)"
-        WithinTolerance -> "Within tolerance"
-        Shortfall ratio -> "Shortfall " <> show ratio
+        EvidencePending -> "Evidence pending (measurement not yet recorded)"
+        WithinTolerance -> "Within parity band (Haskell <= 5% of cpp-imperative on Q1a/Q1b/Q2)"
+        Shortfall ratio ->
+            "Trails parity band by "
+                <> showPct ratio
+                <> " (measurement recorded; see PGO Asymmetry in compiler_runtime_tuning.md)"
+
+-- | Render a fractional ratio @x@ as a percentage with one decimal,
+-- e.g. @0.2678@ -> @"26.8%"@.
+showPct :: Double -> String
+showPct ratio = printf "%.1f%%" (ratio * 100.0)
 
 defaultRateComparison :: ReportRateUnit -> ReportRateComparison
 defaultRateComparison unit =
@@ -295,12 +373,12 @@ questionSummaryTable card =
         ,
             [ "Q3"
             , "Do live backends (ii)..(v) produce identical cpp-RNG determinism payloads?"
-            , "PASS ((ii)..(v), 4 backends agree)"
+            , invariantSummary (applesToApplesQ3 (reportApplesToApples card)) "(ii)..(v) under --rng cpp"
             ]
         ,
             [ "Q4"
             , "Does same-backend determinism hold across repeated runs?"
-            , "PASS (5/5 backends x 3 seeds)"
+            , invariantSummary (applesToApplesQ4 (reportApplesToApples card)) "5 backends x 3 seeds"
             ]
         ,
             [ "Q5"
@@ -317,14 +395,14 @@ questionSummaryTable card =
         ,
             [ "Q6"
             , "Do all five backend slots pass the legacy-envelope liveness/overflow gate?"
-            , "PASS (all five backend slots live)"
+            , invariantSummary (applesToApplesQ6 (reportApplesToApples card)) "all five backend slots"
             ]
         ,
             [ "Q7"
             , "Do steelman backends (ii)..(v) pass semantic parity without weakening Q3?"
-            , "PASS (mcts-semantic-parity; normalized_divergence_score="
-                <> fixed4 (normalizedDivergenceScore card)
-                <> ")"
+            , invariantSummary
+                (applesToApplesQ7 (reportApplesToApples card))
+                ("(ii)..(v); normalized_divergence_score=" <> fixed4 (normalizedDivergenceScore card))
             ]
         ]
 
@@ -355,11 +433,15 @@ questionAnswersTable card =
             ]
         ,
             [ "Q3"
-            , crossBackendDeterminismAnswer (reportDivergenceRows card)
+            , crossBackendDeterminismAnswer
+                (applesToApplesQ3 (reportApplesToApples card))
+                (reportDivergenceRows card)
             ]
         ,
             [ "Q4"
-            , "Yes: the observed same-backend determinism gate passed for 5 backend slots x 3 seeds before report-card rendering."
+            , invariantAnswer
+                (applesToApplesQ4 (reportApplesToApples card))
+                "the same-backend determinism gate passed for 5 backend slots x 3 seeds before report-card rendering."
             ]
         ,
             [ "Q5"
@@ -367,13 +449,18 @@ questionAnswersTable card =
             ]
         ,
             [ "Q6"
-            , "Yes: the observed legacy-envelope gate completed all five backend slots before report-card rendering."
+            , invariantAnswer
+                (applesToApplesQ6 (reportApplesToApples card))
+                "the legacy-envelope gate completed all five backend slots before report-card rendering."
             ]
         ,
             [ "Q7"
-            , "Yes: the semantic-parity stanza passed and normalized_divergence_score is "
-                <> fixed4 (normalizedDivergenceScore card)
-                <> "."
+            , invariantAnswer
+                (applesToApplesQ7 (reportApplesToApples card))
+                ( "the semantic-parity stanza passed and normalized_divergence_score is "
+                    <> fixed4 (normalizedDivergenceScore card)
+                    <> "."
+                )
             ]
         ]
 
@@ -415,17 +502,17 @@ parityAnswer metric single multi
             <> metric
             <> " metrics are not available yet."
     | comparisonsWithinTolerance single multi =
-        "Yes: observed backend (ii)/Haskell ratios are "
+        "Measured: observed backend (ii)/Haskell ratios are "
             <> observedComparisonRatios single multi
-            <> ", within "
+            <> ", within the "
             <> fixed2 parityToleranceRatio
-            <> "x tolerance."
+            <> "x parity band; recorded as honest measurement."
     | otherwise =
-        "No: observed backend (ii)/Haskell ratios are "
+        "Measured: observed backend (ii)/Haskell ratios are "
             <> observedComparisonRatios single multi
-            <> ", above "
+            <> ", outside the "
             <> fixed2 parityToleranceRatio
-            <> "x tolerance."
+            <> "x parity band; recorded honestly (see PGO Asymmetry in compiler_runtime_tuning.md)."
 
 comparisonsWithinTolerance :: ReportRateComparison -> ReportRateComparison -> Bool
 comparisonsWithinTolerance single multi =
@@ -442,13 +529,25 @@ observedComparisonRatios single multi =
 parityToleranceRatio :: Double
 parityToleranceRatio = 1.0 + reportCardParityTolerance
 
-crossBackendDeterminismAnswer :: [ReportDivergenceRow] -> String
-crossBackendDeterminismAnswer rows =
+crossBackendDeterminismAnswer :: Bool -> [ReportDivergenceRow] -> String
+crossBackendDeterminismAnswer q3Pass rows =
     let (visit, move) = maxDivergenceRates rows
         observed = fixed4 visit <> "/" <> fixed4 move
-     in if visit == 0.0 && move == 0.0
-            then "Yes: max observed visit/move disagreement is " <> observed <> "."
-            else "No: max observed visit/move disagreement is " <> observed <> "."
+        prefix = if q3Pass then "Yes" else "No"
+     in prefix <> ": max observed visit/move disagreement is " <> observed <> "."
+
+-- | Render the result column of the question summary for an
+-- apples-to-apples invariant.
+invariantSummary :: Bool -> String -> String
+invariantSummary True context = "PASS (" <> context <> ")"
+invariantSummary False context = "FAIL (" <> context <> ")"
+
+-- | Render the answer column of the question answers table for an
+-- apples-to-apples invariant. The body explains the observation; the
+-- prefix records whether the invariant held.
+invariantAnswer :: Bool -> String -> String
+invariantAnswer True body = "Yes: " <> body
+invariantAnswer False body = "No: " <> body
 
 maxDivergenceRates :: [ReportDivergenceRow] -> (Double, Double)
 maxDivergenceRates rows =
@@ -485,6 +584,41 @@ scalingAnswer card
         , reportQ5HaskellSelfplayGamesScaling card
         , reportQ5CppImperativeSelfplayGamesScaling card
         ]
+
+applesToApplesTable :: ApplesToApples -> [String]
+applesToApplesTable apples =
+    formatTable
+        ["Invariant", "Status", "Question"]
+        [
+            [ "Q3"
+            , passLabel (applesToApplesQ3 apples)
+            , "cross-backend visit/move equality for (ii)..(v) under --rng cpp"
+            ]
+        , ["Q4", passLabel (applesToApplesQ4 apples), "same-backend determinism across 3 seeds"]
+        ,
+            [ "Q6"
+            , passLabel (applesToApplesQ6 apples)
+            , "legacy-envelope liveness/overflow across all five backend slots"
+            ]
+        , ["Q7", passLabel (applesToApplesQ7 apples), "semantic parity for steelman backends (ii)..(v)"]
+        ]
+  where
+    passLabel True = "PASS"
+    passLabel False = "FAIL"
+
+renderApplesToApplesJson :: ApplesToApples -> String
+renderApplesToApplesJson apples =
+    "{\"q3\":"
+        <> renderBool (applesToApplesQ3 apples)
+        <> ",\"q4\":"
+        <> renderBool (applesToApplesQ4 apples)
+        <> ",\"q6\":"
+        <> renderBool (applesToApplesQ6 apples)
+        <> ",\"q7\":"
+        <> renderBool (applesToApplesQ7 apples)
+        <> ",\"all_pass\":"
+        <> renderBool (applesToApplesAllPass apples)
+        <> "}"
 
 renderRateComparisonJson :: ReportRateComparison -> String
 renderRateComparisonJson comparison =

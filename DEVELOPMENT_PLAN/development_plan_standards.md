@@ -21,7 +21,7 @@
 > **Purpose**: Define the maintenance rules for the MCTS development plan so the repository
 > keeps one coherent, execution-ordered plan and one explicit ledger of cleanup work
 > across the bootstrap, five-backend buildout, cross-backend equivalence proof, and
-> Haskell performance parity proof.
+> the Haskell performance measurement against fully-optimised C++.
 
 ## Core Principles
 
@@ -29,7 +29,12 @@
 
 The plan must read as one sequential buildout from an empty checkout to the intended
 repository end state — one Haskell CLI driving five backends, bit-for-bit cross-backend
-verification, and pure Haskell matching maximally-optimised C++ on both POC workloads.
+verification, and pure Haskell **measured against** maximally-optimised C++ on the POC
+workloads with the apples-to-apples invariants Q3/Q4/Q6/Q7 holding per
+[../documents/engineering/compiler_runtime_tuning.md → Performance Measurement Doctrine](../documents/engineering/compiler_runtime_tuning.md#performance-measurement-doctrine).
+Whether Haskell matches C++ or trails it on Q1/Q2/Q5 is an empirical outcome of the
+proof, not a precondition; the proof requires only that the measurement is recorded
+honestly and the invariants hold.
 
 - Every phase assumes the previous phase has already closed.
 - The plan flows from documentation topology to CLI scaffolding to engine to all five FFI
