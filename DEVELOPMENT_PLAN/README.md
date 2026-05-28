@@ -592,8 +592,8 @@ Implemented in the worktree:
   byte-level transcript and CLI golden-provider residue with semantic/property
   assertions and temporary generated data.
 - A real ST-arena MCTS engine: `MCTS.Search.Arena` (SoA `STUArray` arena
-  with `parentIdx`, `firstChildIdx`, `nChildren`, `actionId`, `visits`,
-  `valueSum`) and `MCTS.Search.UCT.uctSearch` (UCT selection +
+  with `arenaParent`, `arenaFirstChild`, `arenaNumChildren`, `arenaActionId`,
+  `arenaVisits`, `arenaValueSum`) and `MCTS.Search.UCT.uctSearch` (UCT selection +
   random-rollout + backpropagation). The driver dispatches every per-move
   search through it. Cross-backend visit-count equality holds under
   `--rng cpp`; per-backend salt under `--rng native` keeps bench
@@ -704,7 +704,7 @@ Implemented in the worktree:
   [../documents/engineering/backend_style_contract.md](../documents/engineering/backend_style_contract.md).
   Backend (iv) Rust is split into the module
   topology and uses a local `SystemMiMalloc` wrapper over the container
-  `libmimalloc` as its global allocator. Sprint `6.8` replaces Rust's
+  `libmimalloc` as its global allocator. Sprint `6.8` replaced Rust's
   queue-BFS/action-buffer/arena/cache hot-path residue with the same structure
   used by `(iii)` and `(v)`. The Haskell
   FFI layer has bounded Rust smoke coverage, live envelope loaders for all live
@@ -728,8 +728,8 @@ The PGO/BOLT build doctrine is now fail-closed for the steelman foreign backends
 PGO and BOLT complete inside the Dockerfile build, missing profile data crashes the
 image build, and the installed bolted C++/Rust libraries are smoked before runtime
 validation starts. Sprint `8.10` closed the fail-closed played-game profile-workload
-gate. Sprint `8.11` extends the profile suite with terminal-playout and
-search-iteration primitive workloads and closes the final aggregate rerun.
+gate. Sprint `8.11` extended the profile suite with terminal-playout and
+search-iteration primitive workloads and closed the final aggregate rerun.
 
 ## Sprint Dependencies
 
@@ -779,7 +779,9 @@ refactored metric-suite report-card evidence. Sprint `5.6` and the backend-style
 audit reopened Sprints `6.7`, `8.12`, and `8.13`; all three reclosed by
 2026-05-26. Sprint `8.14` reclosed the report-card verdict/sample-stability gate
 on 2026-05-27. Sprint `6.8` completed backend (iv) Rust's hot-path alignment
-without changing the closed Haskell parity verdict.
+without changing Q3/Q6/Q7 correctness claims. Sprint `5.7` then strengthened
+backend `(ii)`, and Sprint `8.15` is active on the resulting Haskell parity
+shortfall.
 
 ## Exit Definition
 
@@ -858,21 +860,21 @@ This plan is complete only when all of the following are true:
     reference, manpage command list, shell completion metadata, and examples.
     `Parser.hs` renders topology from the spec while retaining explicit semantic leaf
     option parsers.
-15. `Subprocess` is the only IO boundary for subprocess execution. `callProcess`,
+16. `Subprocess` is the only IO boundary for subprocess execution. `callProcess`,
     `readCreateProcess`, `System.Process` constructors, and `typed-process` smart
     constructors are hlint-forbidden outside the `runStreaming` / `capture` interpreter.
-16. Every Plan/Apply command supports `--dry-run` and `--plan-file <path>` (`mcts test
+17. Every Plan/Apply command supports `--dry-run` and `--plan-file <path>` (`mcts test
     all`, `mcts test parity-anchor`, `mcts docs generate`, `mcts inspect cache prune`,
     `mcts build <backend>`, and `mcts build legacy-fixtures`).
-17. One `prerequisiteRegistry` spans the active build/test prerequisite surface and emits
+18. One `prerequisiteRegistry` spans the active build/test prerequisite surface and emits
     `AppError PrerequisiteUnmet` carrying the failing `nodeId`, description, and remedy
     hint. Current coverage includes exact GHC/Cabal, C++ compiler, LLVM/BOLT, Rust
     `1.95.0`, LLD, `mimalloc`, Rust profile directories, and the Rust cdylib smoke
     probe plus C++ PGO/BOLT profile and artefact prerequisites.
-18. Single `AppError` ADT with `renderError :: AppError -> Text` as the only Text
+19. Single `AppError` ADT with `renderError :: AppError -> Text` as the only Text
     rendering at the CLI boundary; `print`, `exitFailure`, and direct terminal formatting
     are hlint-forbidden outside `src/MCTS/CLI/Output.hs`.
-19. `fourmolu.yaml` at repo root pins the twelve doctrine-mandated settings
+20. `fourmolu.yaml` at repo root pins the twelve doctrine-mandated settings
     (`indentation`, `column-limit`, `function-arrows`, `comma-style`,
     `import-export-style`, `indent-wheres`, `record-brace-space`,
     `newlines-between-decls`, `haddock-style`, `let-style`, `in-style`, `unicode`); the
@@ -881,24 +883,24 @@ This plan is complete only when all of the following are true:
     install (`ghc-9.12.4`, `fourmolu-0.19.0.1`, `hlint-3.10`) under
     `/opt/mcts-style-tools/bin/` inside the container. Host-level fallback is
     not allowed.
-20. The transcript wire format is little-endian binary with no schema-library
+21. The transcript wire format is little-endian binary with no schema-library
     dependency: one-game files, header carrying the backend-specific run config,
     per-move records of `(action_id, visits)` sorted ascending by action ID, equity
     excluded. The canonical single-byte action enumeration in
     [system-components.md](system-components.md) is authoritative.
-21. The transcript cache root resolves `--cache-dir <path>` → `./.mcts-cache/`
+22. The transcript cache root resolves `--cache-dir <path>` → `./.mcts-cache/`
     inside the container. The `mcts` binary does not read cache-root environment
     variables. Hash-prefix lookup is git-style: shortest unique prefix ≥ 4 hex chars; `AppError
     TranscriptNotFound` and `AppError TranscriptAmbiguous` cover the miss and ambiguous
     cases.
-22. Equity overlays are cached out-of-band. `inspect show --with-equity` and
+23. Equity overlays are cached out-of-band. `inspect show --with-equity` and
     `inspect replay` read envelope-matched originator sidecars first. Originator
     cache misses are written only by the matching backend/build slot; fallback or
     cross-backend recompute is foreign-view evidence and must be labelled as such.
     Same-backend originator recompute checks chosen actions and visits under
     `--rng cpp` before writing a sidecar. Cross-backend equity equality is not
     asserted, only Q3 cross-backend visit-count equality for `(ii)..(v)`.
-23. The Docker development environment provides a single LLVM pinned in
+24. The Docker development environment provides a single LLVM pinned in
     `docker/Dockerfile` shared by GHC `-fllvm` and BOLT; the canonical host
     entrypoint is `docker compose run --rm mcts mcts <command>`. There is no
     long-running daemon container, no bind-mounted workspace, no Compose-level
@@ -909,7 +911,7 @@ This plan is complete only when all of the following are true:
     container entrypoint and consumes those Dockerfile-built artefacts without
     rebuilding them. Host-level `.build/` artefacts, repository `.sh` scripts, and
     `bootstrap/` helpers are unsupported.
-24. [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md) tracks the
+25. [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md) tracks the
     stale tooling residue; stale two-backend wording and two-backend code paths are
     corrected or explicitly tracked until corrected.
 

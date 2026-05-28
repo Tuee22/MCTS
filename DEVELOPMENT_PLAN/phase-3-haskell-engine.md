@@ -19,32 +19,34 @@
 
 ✅ **Done**. The Haskell backend correctness surface remains closed: it has a
 deterministic logical Corridors driver,
-strict `Word64` board slots/bitsets with path-preserving wall checks, recursive UCT
-search in `ST s` over a structure-of-arrays `STUArray` arena, transcript writing,
+compact `Word8` pawn slots plus strict `Word64` wall bitsets with path-preserving
+wall checks, recursive UCT search in `ST s` over a structure-of-arrays `STUArray`
+arena, transcript writing,
 monotonic bench timing, logical envelope stamping through `MCTS.Engine.Envelope`,
 `non_terminal_rank` implemented and pinned to the imported legacy source for
 inspection/tests, current verifier-cohort UCT tie-breaking by action ID/highest
 visit count per Sprint `7.2`, in-process equity recompute, and explicit
 terminal-playout/search-iteration benchmark primitives. Across-move tree persistence
 and per-rollout scratch boards remain profile-driven future work outside the current
-closed baseline; post-link build-id stamping and performance parity are closed in
-Phase `8`; foreign backend dispatch and foreign recompute coverage remain owned by
-Phases `4` through `7`. Sprint `3.8` supplies the primitive benchmark leaves that
+closed baseline; Haskell-vs-`(ii)` performance parity is active again in Phase `8`
+Sprint `8.15`; foreign backend dispatch, live envelope capture, and foreign recompute
+coverage remain owned by Phases `4` through `7`. Sprint `3.8` supplies the primitive
+benchmark leaves that
 Phase `7` uses to refactor Q1/Q5 without overloading the legacy `bench rollouts`
 played-game workload.
 
 ## Phase Summary
 
 Phase `3` writes the native Haskell engine correctness baseline: Corridors game state
-as strict `Word64` pawn slots and wall bitsets manipulated with `Data.Bits`, a
-`Word16` ply counter living in the same board record, MCTS tree state as a
+as compact `Word8` pawn slots and strict `Word64` wall bitsets manipulated with
+`Data.Bits`; a `Word16` ply counter living in the same board record; MCTS tree state as a
 structure-of-arrays `STUArray` arena of unboxed fields, UCT child selection and
 random-rollout leaf evaluation in the `ST s` monad, and a pure search API at the
 boundary. The current driver allocates a fresh arena for each per-move search; the
 `treeReroot` arena primitive is tested but is not an across-move persistence path in the
-closed baseline. The optimization stack and performance proof land in Phase `8` once
-the cross-backend `verify`
-baseline pins what `correct` means. `mcts bench rollouts --backend haskell`,
+closed baseline. The optimization stack and Haskell-vs-`(ii)` performance proof are
+owned by Phase `8`; Sprint `8.15` is active on the current parity shortfall.
+`mcts bench rollouts --backend haskell`,
 `mcts bench selfplay --backend haskell`, `mcts bench terminal-playouts --backend
 haskell`, and `mcts bench search-iters --backend haskell` run end-to-end; the
 primitive metric leaves follow
@@ -70,56 +72,54 @@ the ply-cap draw rule for backends (ii)–(v)), and legal-move enumeration.
 
   ```haskell
   data Board = Board
-    { boardHero       :: {-# UNPACK #-} !Word64  -- hero pawn position
-    , boardVillain    :: {-# UNPACK #-} !Word64  -- villain pawn position
-    , boardWallsH     :: {-# UNPACK #-} !Word64  -- horizontal-wall bitboard
-    , boardWallsV     :: {-# UNPACK #-} !Word64  -- vertical-wall bitboard
-    , boardHeroWalls  :: {-# UNPACK #-} !Word8   -- remaining hero wall count
-    , boardVillWalls  :: {-# UNPACK #-} !Word8
-    , boardSideToMove :: {-# UNPACK #-} !Side
-    , boardPly        :: {-# UNPACK #-} !Word16  -- ply counter
+    { boardHero       :: !Word8   -- hero pawn slot, y * 9 + x
+    , boardVillain    :: !Word8   -- villain pawn slot, y * 9 + x
+    , boardWallsH     :: !Word64  -- horizontal-wall bitboard
+    , boardWallsV     :: !Word64  -- vertical-wall bitboard
+    , boardHeroWalls  :: !Word8   -- remaining hero wall count
+    , boardVillainWalls :: !Word8
+    , boardSideToMove :: !Side
+    , boardPly        :: !Word16  -- ply counter
     }
   ```
 
 - `boardPly` initialises to `0` and is incremented by `applyMove` **after** the
   move is applied. `plyCount == max_plies` therefore corresponds to a draw if no
   positional win has been recorded; `isTerminal` is checked next, before the next
-  move is selected. The counter is restored to its start-of-rollout value as part of
-  the per-rollout scratch snapshot/undo path (wired in Phase 8).
-- `src/MCTS/Engine.hs` exposes `applyMove :: Action -> Board -> Board` plus the
-  unapply path for the per-rollout scratch board reuse (the scratch path is wired
-  in Phase 8; this sprint provides the pure version).
+  move is selected. The rollout hot path uses `applyActionIdNoPly` with local ply
+  tracking instead of an unapply/scratch-board path.
+- `src/MCTS/Engine.hs` exposes `applyMove :: Action -> Board -> Board`,
+  `applyActionId :: Word8 -> Board -> Board`, and
+  `applyActionIdNoPly :: Word8 -> Board -> Board`; no unapply API is part of the
+  current supported surface.
 - `src/MCTS/Engine.hs` exposes
   `isTerminal :: Word16 -> Board -> Bool` honouring the ply cap:
   `hero_wins || villain_wins || ply_count >= max_plies` per
   [00-overview.md → Hard Constraints item 9](00-overview.md). On ply-cap
-  termination, `terminalEval` returns `0.0`. `isTerminal` is called after each
+  termination, `terminalOutcome` returns `0.0`. `isTerminal` is called after each
   `applyMove` inside the rollout loop and immediately before each selection step
   inside the UCT descent; a terminal node is never expanded.
-- `src/MCTS/Engine.hs` exposes `legalMoves :: Board -> [Action]`; a
-  caller-provided-buffer variant is deferred to Phase `8` profiling work if the
-  current list boundary remains hot.
+- `src/MCTS/Engine.hs` exposes `legalMoves :: Board -> [Action]` for the public pure
+  API and `legalActionSet` / `legalActionSetNonTerminal` for the packed numeric
+  hot path used by search and rollout.
 - The legal-move generator must enforce the Corridors path-existence invariant:
   walls cannot fully enclose either player. A wall placement is legal only if
   both pawns retain at least one
   path to their respective goal rows after the placement. The invariant is
-  checked by a flood-fill (BFS) on the wall-bitboard-derived graph against each
-  candidate wall placement; pawn moves do not need this check. The brute-force
-  property test in Validation step 1 below covers this rule on the random sample.
+  checked by a wavefront bitmap BFS over `Bits128` masks derived from the wall
+  bitboards and the candidate trial mask; pawn moves do not need this check.
 - Bitboard primitives go through `Data.Bits` under the active `-fllvm` backend;
   the extra native LLVM CPU flags remain deferred by Phase `8` on the current
   aarch64 container.
 
 ### Validation
 
-1. Property tests: legal-move enumeration matches a brute-force reference
-   implementation on 10k random board states.
-2. Property tests: `applyMove` then `legalMoves` produces only legal successor
-   states.
-3. Property test: terminal-state detection agrees with the brute-force reference on
-   10k random states.
-4. Golden test: a known starting position plus a pinned move sequence produces a
-   pinned terminal state.
+- `docker compose run --rm mcts mcts test mcts-unit`
+- Unit coverage walks 10 splitmix-derived pawn-walk seeds, capped at 200 reachable
+  boards, and checks that legal moves produce legal or terminal successors, action IDs
+  are unique, and terminal boards expose no legal moves.
+- Unit coverage also checks the action enumeration and notation round-trips, a pinned
+  known-position semantic renderer, and fixed-input `runGame` determinism.
 
 ### Closure Notes
 
@@ -130,18 +130,17 @@ the ply-cap draw rule for backends (ii)–(v)), and legal-move enumeration.
   was actually legal on the matching reconstructed board (successor-state legality),
   that chosen moves are always represented in their visit list, and that `runGame`
   is reproducible for fixed inputs (Q4 same-backend determinism on a small fixture).
-- Tuple/list board storage has been replaced with strict `Word64` pawn slots and
-  horizontal/vertical wall bitsets in `MCTS.Engine`. The single-module engine baseline
-  remains the Phase `3` ownership boundary; Phase `8` owns further representation changes
-  driven by profiling.
+- Tuple/list board storage has been replaced with compact `Word8` pawn slots and
+  horizontal/vertical `Word64` wall bitsets in `MCTS.Engine`. The single-module engine
+  baseline remains the Phase `3` ownership boundary; Phase `8` owns further
+  representation changes driven by profiling.
 - Baseline landed: the `mcts-unit` stanza now walks 10 splitmix-derived
   random pawn-walk seeds × 30 steps each (capped at 200 reachable boards)
   and asserts three invariants across the resulting random sample: (a)
   every legal move applied to a board produces a successor that is either
   legal or terminal; (b) `legalMoves` returns no action-id duplicates;
-  (c) every terminal board has an empty legal-move set. The full 10k
-  brute-force reference comparison lands with Sprint 7.1 property-based
-  coverage.
+  (c) every terminal board has an empty legal-move set. No checked-in brute-force
+  fixture or generated golden provider is part of the current validation shape.
 - The known-position coverage over a pinned legal move sequence is a semantic
   unit assertion; Sprint `8.8` removes any remaining checked-in generated
   baseline dependency.
@@ -159,17 +158,20 @@ None.
 
 ### Objective
 
-Land the mutable tree arena: one structure-of-arrays `STUArray` arena per game,
-freed in bulk at game end, with `Int32` child indices and unboxed `Float`
-value-backup fields.
+Land the mutable tree arena: one structure-of-arrays `STUArray` arena per per-move
+search in the current driver, reusable through `freeArena`, with `Int32` node indices
+and unboxed visit/value fields.
 
 ### Deliverables
 
 - `src/MCTS/Search/Arena.hs` declares the arena layout per
   [00-overview.md → Hard Constraints item 20](00-overview.md): structure-of-arrays
-  with parallel arrays for `parentIdx :: Int32`, `firstChildIdx :: Int32`,
-  `nChildren :: Word16`, `actionId :: Word8`, `visits :: Int32`,
-  `valueSum :: Float`.
+  with parallel arrays for `arenaParent :: STUArray s NodeId NodeId`,
+  `arenaFirstChild :: STUArray s NodeId NodeId`,
+  `arenaNumChildren :: STUArray s NodeId Int32`,
+  `arenaActionId :: STUArray s NodeId Word8`,
+  `arenaVisits :: STUArray s NodeId Int32`, and
+  `arenaValueSum :: STUArray s NodeId Float`, plus an `STRef` allocation cursor.
 - `src/MCTS/Search/Arena.hs` exposes the strict per-node accessors and mutators in
   `ST s`, plus `newArena`, `freeArena`, `treeRoot`, and `treeReroot`. Full tree
   persistence across played moves is deferred to Phase `8`; the current correctness
@@ -178,19 +180,19 @@ value-backup fields.
 
 ### Validation
 
-1. Property test: `treeReroot` returns the selected node and preserves that node's
-   visit count and value sum inside the arena.
-2. Property test: arena bounds checks are correct on 10k random
-   expand/select/backup sequences.
-3. Unit test: tree memory is released on `freeTree`.
+- `docker compose run --rm mcts mcts test mcts-unit`
+- Unit coverage allocates root and child nodes, links flat child ranges, accumulates
+  visits and values, verifies `treeReroot` preserves the selected node's inherited
+  visits/value sum, checks `bulkVisits`, and proves `freeArena` resets the cursor so
+  the next allocation starts at slot `0`.
 
 ### Closure Notes
 
 - Baseline landed: `src/MCTS/Search/Arena.hs` provides the SoA arena
-  (`parentIdx`, `firstChildIdx`, `nChildren`, `actionId`, `visits`,
-  `valueSum`) as parallel `STUArray` arrays with a `STRef` cursor.
+  (`arenaParent`, `arenaFirstChild`, `arenaNumChildren`, `arenaActionId`,
+  `arenaVisits`, `arenaValueSum`) as parallel `STUArray` arrays with a `STRef` cursor.
   Operations exposed: `newArena`, `freeArena`, `allocNode`, `readVisits`,
-  `addVisits`, `readValueSum`, `addValueSum`, `readActionId`,
+  `addVisits`, `readValueSum`, `addValueSum`, `addVisitValue`, `readActionId`,
   `readParent`, `readFirstChild`, `readNumChildren`, `setChildren`,
   `treeRoot`, `treeReroot`, `bulkVisits`. The `array` package is now a
   declared dependency. The `mcts-unit` stanza covers (a) `treeReroot`

@@ -67,7 +67,7 @@ inherit without reconstructing C++ or Rust comparison evidence; the current
 optimized-C++ parity evidence is refreshed against the Dockerfile build that
 fails closed on mandatory PGO+BOLT profile data instead of accepting fallback
 artifacts. The historical Sprint `8.10` closure used profile data from the bounded
-played-game profile suite in `MCTS.CLI.Build`; Sprint `8.11` extends that suite
+played-game profile suite in `MCTS.CLI.Build`; Sprint `8.11` extended that suite
 with primitive terminal-playout and search-iteration profile runs. Sprint `5.6`
 later reopened parity evidence against the corrected backend (ii), making Sprint
 `8.11` historical metric-suite evidence; Sprint `8.12` supplied the corrected-target
@@ -154,7 +154,7 @@ legacy-board/text-action path is gone from the hot path and no longer explains
 the `(ii)` vs `(iii)` performance gap. Backend (iii) now uses compact
 functional-core C++ value state, direct capped numeric legal generation, and the
 compact value-state boundary that backend (iv) Rust already had at the API and
-FFI level. Sprint `6.8` finishes Rust's hot-path structural alignment by replacing
+FFI level. Sprint `6.8` closed Rust's hot-path structural alignment by replacing
 queue-BFS path checks, heap action buffers, under-reserved arena growth, avoidable
 board clones, and global visit-cache state with the same shape used by `(iii)` and
 `(v)`. Phase `8` Sprint `8.13` is closed after Sprint
@@ -195,7 +195,7 @@ masks, trusted internal apply/cache paths, and representative Dockerfile-time
 PGO/BOLT training.
 Backend (iii) `cpp-functional/` uses the same PGO+BOLT+`mimalloc` optimisation
 stack while adopting the functional-core value-state style shared with backend
-(iv) `rust/` and backend (v) `haskell`; Sprint `6.8` brings Rust's implementation
+(iv) `rust/` and backend (v) `haskell`; Sprint `6.8` has brought Rust's implementation
 hot path up to that same structural target. Backends
 (ii), (iii), and (iv) publish one
 canonical bolted shared library each; the Dockerfile currently trains PGO/BOLT once
@@ -222,7 +222,7 @@ provided historical closure evidence for those rows, and Sprint `8.12` refreshed
 the verdict against the corrected backend (ii). Live
 workload constants are implemented in `MCTS.CLI.Test` and mirrored in
 `cabal.project` comments. Legacy-envelope knobs remain live report-card metadata.
-Sprint `7.11` extends the report card to Q1-Q7 by adding Q7 semantic parity for
+Sprint `7.11` extended the report card to Q1-Q7 by adding Q7 semantic parity for
 `(ii)..(v)` and a normalized divergence score that summarizes the measured matrix
 without empirical threshold text.
 Normal validation never depends on checked-in generated transcripts, throughput
@@ -300,7 +300,7 @@ temporary or operator-provided roots.
   Sprint `6.7` closed its compact value-state C++ hot path without legacy
   `corridors::board` or action-text parsing. Backend (iv) Rust follows the
   same compact value-state and C ABI boundary with Rust ownership idioms. Sprint
-  `6.8` replaces its queue-BFS, heap action-buffer, arena-reservation, clone, and
+  `6.8` has replaced its queue-BFS, heap action-buffer, arena-reservation, clone, and
   global visit-cache hot-path residue. Rust runs on
   the latest stable compiler with the
   pinned `[profile.release]` (`opt-level = 3`, `lto = "fat"`, `codegen-units = 1`,
@@ -556,7 +556,7 @@ referenceability.
     image is published. `g++` only — Clang is not supported on the C++ side. Sprint
     `5.3` owns the fail-closed C++ PGO/BOLT CLI wiring; Sprint `8.10` replaced
     the earlier narrow training run with a bounded profile suite and Sprint
-    `8.11` adds and validates the primitive benchmark workloads. Sprint `5.7`
+    `8.11` added and validated the primitive benchmark workloads. Sprint `5.7`
     closed backend `(ii)`'s lower-level imperative kernel work: action-id legal
     generation, absolute side-to-move state, action-only tree layout, reusable
     wall masks, trusted internal buffers, and profile retuning.
@@ -570,7 +570,7 @@ referenceability.
     training, BOLT optimization, or the final installed-library smoke cannot produce
     the required optimized cdylib. Sprint `8.10` aligned that PGO/BOLT path with
     the same bounded profile suite as the C++ steelman backends, and Sprint `8.11`
-    adds and validates the primitive benchmark workloads. Sprint `6.8` closes the
+    added and validated the primitive benchmark workloads. Sprint `6.8` closed the
     Rust implementation-shape cleanup: bit-parallel path checks, fixed-capacity
     action buffers, child-bound arena reservation, reduced board cloning, and
     board-handle-local visit caching align Rust with `(iii)` and `(v)`.
@@ -579,7 +579,8 @@ referenceability.
     `-fworker-wrapper`, `-fstatic-argument-transformation`. RTS `-A64m -n4m -qg1 -qb
     -T` is baked into the executable. Engine hot path lives in `ST s`; tree is a
     structure-of-arrays `STUArray` arena of unboxed `Int32` / `Float` fields; board
-    state is `Word64` bitboards manipulated with `Data.Bits`. Pure API at the
+    state is compact `Word8` pawn slots plus `Word64` wall bitboards manipulated
+    with `Data.Bits`. Pure API at the
     boundary; no `Maybe` / `Either` in the rollout inner loop. LLVM
     `-optlo-mcpu=native` / `-optlc-mcpu=native` is deferred on aarch64 until
     the assembler target accepts the emitted LSE instructions.
@@ -745,10 +746,10 @@ bounded played-game profile-training gate. The 2026-05-24 metric audit reopened
 Sprint `3.8`, Sprint `7.8`, and Sprint `8.11`; all three have reclosed. Sprint
 `5.6` then reopened Sprint `8.12` for parity against the corrected backend (ii).
 Sprint `6.7` has reclosed backend (iii)'s compact functional-core style
-alignment, and Sprints `8.12`, `8.13`, and `8.14` have reclosed Haskell parity,
-style follow-up, and report-card verdict gating. Sprint `6.8` has closed Rust
-hot-path structural alignment without changing current Q3/Q6 correctness or Phase
-`8` parity claims. Sprint `7.10` has reclosed report-card table layout and raw
+alignment, and Sprints `8.12`, `8.13`, and `8.14` have reclosed historical Haskell
+parity, style follow-up, and report-card verdict gating. Sprint `6.8` has closed Rust
+hot-path structural alignment without changing current Q3/Q6/Q7 correctness claims.
+Sprint `7.10` has reclosed report-card table layout and raw
 backend metric rendering. Sprint `7.11` has closed Q7 semantic parity and
 normalized divergence-score reporting. Phase `4`
 remains closed on its owned surface. Phase `0` Sprint `0.3` has restored the root
@@ -769,7 +770,7 @@ final handoff evidence against the stronger Sprint `5.7` kernel.
 | Build artefacts | `mcts.cabal` declares the `mcts` binary, live Haskell test stanzas, benchmark stanza, and the doctrine-standard dependency envelope; host validation enters through `docker compose run --rm mcts mcts check-code` under the pinned toolchain. The foreign backend tree is live for `cpp-legacy/`, `cpp-imperative`, `cpp-functional`, and `rust`; Dockerfile invokes the C++ and Rust PGO/BOLT Plan/Apply build recipes during image construction, and those recipes fail closed on missing profile data, missing `.fdata`, failed BOLT output, or a crashing installed bolted library. PGO/BOLT training uses the bounded metric-suite profile suite owned by Sprints `8.10` and `8.11`, including terminal playout, search-iteration, legacy played-game rollout, and self-play workloads; Sprint `5.7` retuned backend `(ii)` training after the action-only/SoA kernel rewrite. | Container-image `mcts` binary, installed Cabal test-suite executables, installed `mcts-criterion` benchmark executable, and image-local shared libraries for `cpp-legacy`, optimized `cpp-imperative`, optimized `cpp-functional`, and `rust` produced by `docker/Dockerfile`; runtime validation consumes those artefacts without rebuilding them, and steelman shared libraries exist only after successful Dockerfile-time PGO+BOLT trained on an accepted profile suite |
 | CLI surface | The complete command family is wired: `bench`, `verify`, `verify legacy-parity`, `inspect`, `test`, `lint`, `docs`, `commands`, `help`, `check-code`, `build`, and `play`. Generated command docs are checked against the renderer, tracked generated-file drift fails `mcts lint files`, generated path/section registries live under `src/MCTS/Generated/`, parser topology is rendered from `CommandSpec` with explicit leaf option parsers, and `mcts test all` routes recursive CLI calls through the installed image-local `mcts` binary. | Same surface backed by real C++/Rust/Haskell engines: bench/play/inspect dispatch through selected foreign backends when their shared libraries are present and the relevant ABI path can represent the run, Q3 covers `(ii)..(v)`, Q6 covers all five, Dockerfile-invoked build recipes exist for `cpp-legacy`, `cpp-imperative`, `cpp-functional`, and `rust`, and `legacy-fixtures` remains explicit external audit-fixture generation |
 | Test stanzas | Six live Cabal stanzas currently exist: `mcts-unit`, `mcts-integration`, `mcts-cross-backend`, `mcts-legacy-parity`, `mcts-semantic-parity`, and `mcts-haskell-style`. Each stanza has its own `tasty` runner, Dockerfile prebuilds every test executable, `mcts-cross-backend` invokes real `mcts verify` subprocesses serially around the process-pinned dynamic-library and shared C++ RNG bridge path, and `docker compose run --rm mcts mcts test all` is the host validation gate under the pinned container toolchain. `mcts-unit` uses semantic/property/temp-dir checks instead of `tasty-golden`. | Keep all validation data generated in memory or temporary directories during the run, so clean-clone validation has no `test/golden/` prerequisite and no runtime test-stanza compilation |
-| Toolchain | `mcts.cabal` pins `tested-with: ghc ==9.14.1`; `cabal.project` pins `with-compiler: ghc-9.14.1` and mirrors the report-card constants as comments. The style-tool policy pins GHC `9.12.4` only for Fourmolu/HLint installation inside the container. | GHC `9.14.1`, Cabal `3.16.1.0`, style GHC `9.12.4` for `fourmolu-0.19.0.1` / `hlint-3.10`, GCC latest stable on `ubuntu:24.04`, Rust latest stable with pinned minor, LLVM pinned in the Dockerfile |
+| Toolchain | `mcts.cabal` pins `tested-with: ghc ==9.14.1`; `cabal.project` pins `with-compiler: ghc-9.14.1` and mirrors the report-card constants as comments. The style-tool policy pins GHC `9.12.4` only for Fourmolu/HLint installation inside the container. | GHC `9.14.1`, Cabal `3.16.1.0`, style GHC `9.12.4` for `fourmolu-0.19.0.1` / `hlint-3.10`, GCC latest stable on `ubuntu:24.04`, Rust `1.95.0`, LLVM pinned in the Dockerfile |
 | Determinism contract | Live C++ and Rust foreign backends dispatch through real FFI engines under `bench`, `play`, `inspect divergence`, Q3 `verify` when shared libraries are present and the fixed search-horizon ABI can represent the run, and Q6 `verify legacy-parity`; the integration stanza's direct live-FFI smoke cases are Rust-specific, with C++ live coverage carried by Q3/Q6/report-card surfaces. Transcript codec, full v1 envelope, process-pinned envelope and C++ RNG dynamic handles, SHA-256 content addressing, cache root resolution, prefix lookup, binary `MEQ1` equity sidecars, layered envelope checks, `divergenceVsEqStream`, compact foreign recompute/read-visits evidence surfaces, canonical search-side 12-wall child caps across the current live cohort, decoded real-binary transcript determinism, and hard-fail `VerifyMismatch` rollout/self-play cohorts in `mcts-cross-backend` are implemented. Sprints `2.8` and `7.6` tighten version handling and sidecar/recompute labeling. | Enforced by live-FFI-capable cross-backend `mcts verify {rollouts,selfplay}` over `(ii)..(v)`, decoded same-backend transcript checks, Rust live FFI-envelope cases under `mcts-integration`, and Q6 legacy-envelope checks across all five |
 | Performance parity | The 2026-05-27 Sprint `8.14` `docker compose run --rm mcts mcts test all` run recorded corrected-backend rows with `N_PRIM=20_000`: Q1a ST 0.72×, Q1a MT8 0.85×, Q1b ST 0.67×, Q1b MT8 0.67×, Q2 ST 0.59×, Q2 MT8 0.68×, Q5 Haskell search-iteration scaling 7.32×, Q5 C++ (ii) search-iteration scaling 7.32×, Q5 Haskell self-play scaling 3.42×, Q5 C++ (ii) self-play scaling 3.92×, Q6 liveness PASS, all Cabal stanzas PASS, zero live-cohort divergence, and `Verdict: Within tolerance`. This remains historical current-artifact evidence against the Sprint `5.6` backend `(ii)` artefact. Sprint `5.7` then fully steelmanned `(ii)`, and the first Sprint `8.15` rebaseline failed closed with `Verdict: Shortfall`: Q1a backend `(ii)`/Haskell ratios `1.13x` ST and `1.49x` MT8, Q1b `1.14x` ST and `1.15x` MT8, and Q2 `1.01x` ST and `1.19x` MT8 while Q3/Q4/Q6/Q7 and zero-divergence gates passed. Focused Sprint `8.15` Haskell tuning has accepted compact pawn slots, non-terminal/no-ply rollout paths, fused arena updates, worker pinning, direct packed-slot path starts, a no-wall legal-action fast path, and single-constructor action transitions; the latest accepted aggregate rerun still fails closed with `Verdict: Shortfall 0.2678864950323545`: Q1a backend `(ii)`/Haskell ratios `1.06x` ST and `1.27x` MT8, Q1b `1.05x` ST and `1.11x` MT8, and Q2 `0.98x` ST and `1.11x` MT8. Sprints `7.10` and `7.11` keep the same verdict semantics while adding aligned raw Q1a/Q1b/Q2 performance rows for every backend before the question summary and divergence matrix, a final observed-metric answer table for Q1a-Q7, Q7 semantic parity, and a normalized divergence score. Rust raw rows are context after Sprint `6.8` removes the known hot-path structural residue. The 2026-05-26 Sprint `8.12`, 2026-05-24 Sprint `8.11`, 2026-05-21 fallback-backed optimized-C++ run, and 2026-05-23 Sprint `8.10` played-game rows remain historical audit evidence against older artefact, sample, or metric shapes. | Haskell (v) within tolerance of optimized live C++ (ii) on Q1a terminal playout throughput, Q1b search-iteration throughput, and Q2 played-game self-play throughput, single-threaded and on 8 workers where applicable, without checked-in generated throughput anchors, or an accepted Sprint `8.15` non-parity record |
 

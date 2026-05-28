@@ -51,7 +51,7 @@ fixed-capacity action buffers, arena sizing, and board-local visit cache
 discipline as the aligned functional-core cohort.
 Phase `8` Sprint `8.10` has since broadened the Dockerfile-time PGO/BOLT training
 workload from the earlier narrow self-play smoke into a bounded profile suite.
-Phase `8` Sprint `8.11` extends and validates that suite with primitive
+Phase `8` Sprint `8.11` extended and validated that suite with primitive
 terminal-playout and search-iteration profile runs after the metric refactor.
 
 ## Sprint 6.1: C++ Functional-Core Engine Baseline ✅
@@ -345,7 +345,7 @@ search-iteration ST is `20694.1` vs `20051.8` search-iters/s
 (`cpp-functional` vs `cpp-imperative`, seed `42`, count `1000`, max plies `60`).
 Rust already had the compact value-state boundary, so no Rust source changes
 were needed for Sprint `6.7`'s backend (iii) closure. Later raw-performance review
-showed that this was not enough for Rust: Sprint `6.8` replaces the remaining Rust
+showed that this was not enough for Rust: Sprint `6.8` later replaced the remaining Rust
 hot-path residue without changing the Sprint `6.7` C++ functional closure claim.
 
 ### Remaining Work
