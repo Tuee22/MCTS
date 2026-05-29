@@ -36,6 +36,16 @@ does not reopen the closed functional implementations in `(iii)`, `(iv)`, or
 state, action-only or split hot/cold tree storage, reusable wall masks, trusted
 internal apply/cache paths, and retuned PGO/BOLT training for `(ii)`.
 
+Phase `5` Sprint `5.8` extends backend `(ii)`'s budget with the residual
+hot-path squeeze: bidirectional bit-parallel BFS in `path_exists_with_masks`,
+`UctNode` `alignas(64)` removed, additive `-fno-stack-protector -fno-rtti
+-fipa-pta` C++ flags, and extended BOLT `-split-functions
+-split-strategy=cdsplit -reorder-functions=cdsort -icf=1`. None of these
+deliverables change the visit-payload contract, the C ABI, or the
+functional-core boundary that `(iii)`, `(iv)`, and `(v)` follow; they only
+tighten backend `(ii)`'s imperative kernel and toolchain. Functional-core
+backends do not need a matching change.
+
 ## Functional-Core Rule
 
 Functional style in this repository means value-state game logic at the boundary:

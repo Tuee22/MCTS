@@ -204,6 +204,28 @@ The Sprint `8.14` `Within tolerance` reading against the pre-`5.7` artefact and
 the pre-reframe `Shortfall 0.2678` reading against the post-`5.7` target remain
 historical evidence under the prior framing.
 
+The 2026-05-29 backend `(ii)` residual-squeeze audit reopened Phase `5` for
+Sprint `5.8` and Phase `8` for Sprint `8.16`; both closed on the same date.
+Sprint `5.8` landed bidirectional bit-parallel BFS in
+`path_exists_with_masks`, `UctNode` `alignas(kCacheLine)` removed, additive
+`-fno-stack-protector -fno-rtti -fipa-pta` on the C++ steelman flag set, and
+extended BOLT `-split-functions -split-strategy=cdsplit
+-reorder-functions=cdsort -icf=1` (flag names corrected from
+`hfsort+`/`safe` mid-validation after LLVM 19's BOLT rejected the legacy
+syntax). The D2 reserve-formula tighten was reviewed and rejected because
+the existing `1 + root + sims * kMaxLegalActions` upper bound is correct;
+the D1 two-player bitsliced wavefront and `unsigned __int128` codegen audit
+remain deferred follow-ons not scheduled. Sprint `8.16` recorded the
+post-`5.8` Haskell-vs-`(ii)` rebaseline: Q1a `1.51x` ST / `1.50x` MT8, Q1b
+`1.53x` ST / `1.56x` MT8, Q2 `1.41x` ST / `1.57x` MT8, Q5 scaling Haskell
+search `7.16x` vs C++ `(ii)` search `7.31x`, Haskell self-play `3.28x` vs
+C++ `(ii)` self-play `3.66x`; `Verdict: Trails parity band by 57.1%`;
+Q3/Q4/Q6/Q7 PASS and `normalized_divergence_score=0.0000`. The increase
+from 52.3% to 57.1% is the (ii)-ceiling raise from the ~2–6% Sprint `5.8`
+improvement, not a Haskell regression. Sprints `5.1`–`5.7` and `8.1`–`8.15`
+remain closed for their delivered surfaces. See
+[README.md](README.md) → Closure Status for the full closure narrative.
+
 ## Target Outcome
 
 One `mcts` Haskell CLI binary, built by Cabal under GHC `9.14.1` and Cabal

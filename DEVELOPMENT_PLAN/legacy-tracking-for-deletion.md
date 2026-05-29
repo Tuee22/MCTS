@@ -118,6 +118,24 @@ residue in backend `(ii)`. The remaining pending row tracks the active Haskell
 parity shortfall exposed by the fail-closed report-card rebaseline against that
 stronger `(ii)` target.
 
+The 2026-05-29 backend `(ii)` residual-squeeze audit reopened Phase `5` for
+Sprint `5.8` and Phase `8` for Sprint `8.16`. Sprint `5.8` closed three
+doctrine-deviation rows on the same date: the wall-legality path-existence
+leaf is now a bidirectional bit-parallel BFS; `UctNode`'s `alignas(kCacheLine)`
+is removed; and the C++ steelman flag block now carries
+`-fno-stack-protector -fno-rtti -fipa-pta` plus extended BOLT
+`-split-functions -split-strategy=cdsplit -reorder-functions=cdsort -icf=1`
+on top of `-reorder-blocks=ext-tsp`. The flag-name correction from
+`hfsort+`/`safe` to `cdsort`/`1` was applied mid-validation after LLVM 19's
+BOLT rejected the legacy syntax. Sprint `8.16` recorded the post-`5.8`
+Haskell-vs-`(ii)` measurement on the same date: Q1a `1.51x` ST / `1.50x`
+MT8, Q1b `1.53x` ST / `1.56x` MT8, Q2 `1.41x` ST / `1.57x` MT8, Q5 scaling
+Haskell search `7.16x` vs C++ search `7.31x`, Haskell self-play `3.28x`
+vs C++ self-play `3.66x`; `Verdict: Trails parity band by 57.1%`;
+Q3/Q4/Q6/Q7 PASS and normalized_divergence_score `0.0000`. The Sprint
+`8.15` post-`5.7` measurement is now historical against the pre-`5.8`
+`(ii)` artefact.
+
 Two classes of entries populate this ledger over time:
 
 1. **Doctrine-deviation residue.** Any worktree behavior that the implemented code
@@ -149,6 +167,9 @@ data instead of publishing a fallback shared library.
 
 | Item | Removed In | Notes |
 |------|------------|-------|
+| Backend `(ii)` wall-legality path-check residue | Sprint 5.8, 2026-05-29 | `cpp-imperative/engine/fast_board.hpp::path_exists_with_masks` now runs a bidirectional bit-parallel BFS — expanding outward from the pawn cell and inward from the goal row, returning true on intersection — instead of the prior unidirectional 128-bit BFS. The `bool` return contract is preserved (the post-`5.8` `mcts test all` run recorded `normalized_divergence_score=0.0000` and Q3/Q4/Q6/Q7 PASS, confirming bit-identical visit payloads). The two-player bitsliced wavefront and the `unsigned __int128` codegen audit named in the residual-squeeze review remain deferred follow-ons not scheduled into Sprint `5.8`. |
+| Backend `(ii)` `UctNode` cache-line padding residue | Sprint 5.8, 2026-05-29 | `cpp-imperative/engine/arena.hpp::UctNode` no longer carries `alignas(kCacheLine)`. The constant remains documented for any future multi-thread introduction. The arena `reserve_nodes` formula at `search.cpp:247` was reviewed under the same deliverable and kept unchanged: `1 + root_actions.size + sims * kMaxLegalActions` is the correct upper bound because each `descend_iterative` triggers at most one `expand` call which adds up to `kMaxLegalActions = 16` children in one shot, and the `vector::reserve` capacity does not fault pages until `reserve_children` actually writes. The `arena.hpp:42` docblock describes the bound honestly. |
+| Backend `(ii)` compiler/linker flag scrub residue | Sprint 5.8, 2026-05-29 | `cpp-imperative/Makefile` now appends `-fno-stack-protector -fno-rtti -fipa-pta` to the C++ steelman flag set and extends the BOLT optimize invocations with `-split-functions -split-strategy=cdsplit -reorder-functions=cdsort -icf=1` on top of the existing `-reorder-blocks=ext-tsp`. The flag-name correction from `hfsort+`/`safe` to `cdsort`/`1` was applied during validation when LLVM 19's BOLT rejected the legacy syntax with `'safe' is invalid value for boolean argument! Try 0 or 1`; the doctrine doc and source comments record the reason. `documents/engineering/compiler_runtime_tuning.md` C++ steelman flag block and BOLT subsection are updated to match. |
 | Verdict-as-closure-gate doctrine residue | Sprint 8.15, 2026-05-28 | The prior doctrine required Haskell to beat `HASKELL_PARITY_TOLERANCE = 0.05` against backend `(ii)` for `mcts test all` to exit 0, treating a measured `Shortfall` as a project failure even when every backend was fully optimised. Sprint `8.15` landed the measurement-vs-invariant reframe across `src/MCTS/ReportCard.hs`, `src/MCTS/CLI/Test.hs`, `test/unit/Main.hs`, `documents/engineering/compiler_runtime_tuning.md` (renamed § Parity Tolerance → § Performance Measurement Doctrine), `documents/engineering/{benchmark_metrics.md,unit_testing_policy.md,semantic_parity_contract.md}`, `DEVELOPMENT_PLAN/{README.md,00-overview.md,phase-8-haskell-performance-parity-closure.md,development_plan_standards.md,system-components.md}`, `README.md`, and `cabal.project`. Q1/Q2/Q5 are now honest measurements (`Within parity band` / `Trails parity band by N%`); the closure gate is the apples-to-apples invariants Q3/Q4/Q6/Q7 plus a non-`EvidencePending` measurement. Validated 2026-05-28 with `mcts test mcts-unit` (29/29 PASS), `mcts check-code` (PASS), `mcts test all` (exit 0, `Verdict: Trails parity band by 52.3%`, Q3/Q4/Q6/Q7 PASS), `mcts docs check` (PASS), and `git diff --check` (clean). |
 | Backend `(ii)` child-board and full-state tree hot-path residue | Sprint 5.7, 2026-05-28 | `cpp-imperative/engine/fast_board.hpp`, `state.hpp`, `arena.hpp`, and `search.cpp` now use fixed-capacity action-id generation, absolute side-to-move board state, action-only tree nodes, and per-generation wall block masks instead of child-board generation, full-board flips, full-state tree snapshots, and repeated wall/path reconstruction. |
 | Backend `(ii)` C ABI trusted-search allocation/replay residue | Sprint 5.7, 2026-05-28 | `cpp-imperative/c-abi/mcts_cpp_imperative.cc` keeps external `apply_action` validating while `search_move`, `recompute_move`, and `select_uct_move` apply trusted chosen moves through internal unchecked transitions and fixed visit buffers. |

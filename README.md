@@ -28,7 +28,7 @@ The Docker image build compiles the `mcts` executable with tests and benchmarks 
 | # | Backend | Identifier | Role |
 |---|---------|------------|------|
 | (i) | C++ legacy port | `cpp-legacy` | Verbatim compatibility port of `MCTS_legacy`; Q6 legacy-envelope evidence only, not the performance ceiling. |
-| (ii) | C++ imperative steelman | `cpp-imperative` | Maximally optimised C++ performance ceiling. Sprint `5.7` closed the remaining hot-path steelman work: action-id successor generation, absolute side-to-move board state, action-only/SoA tree storage, reusable wall-block masks, internal trusted apply/cache paths, and representative PGO+BOLT training. |
+| (ii) | C++ imperative steelman | `cpp-imperative` | Maximally optimised C++ performance ceiling. Sprint `5.7` closed the remaining hot-path steelman work: action-id successor generation, absolute side-to-move board state, action-only/SoA tree storage, reusable wall-block masks, internal trusted apply/cache paths, and representative PGO+BOLT training. Sprint `5.8` closed the residual squeeze: bidirectional wall-legality BFS, `UctNode` cache-line-padding removed, additive `-fno-stack-protector -fno-rtti -fipa-pta`, and extended BOLT `-split-functions -split-strategy=cdsplit -reorder-functions=cdsort -icf=1`. Visit-payload contract and C ABI unchanged (`normalized_divergence_score=0.0000` in the Sprint `8.16` rebaseline). |
 | (iii) | C++ functional-core | `cpp-functional` | Functional-core C++23 steelman under the same optimisation stack as (ii), using compact value-state search, numeric actions, direct capped legal generation, and the shared style followed by (iv) and (v). |
 | (iv) | Rust | `rust` | Cross-language systems baseline using a compatible functional-core value-state and FFI/search/recompute contract; Sprint `6.8` aligns its hot path with `(iii)`/`(v)` using bit-parallel path checks, stack action buffers, child-bound arena sizing, and board-local visit caching. |
 | (v) | Haskell | `haskell` | Native in-process target backend; pure API surface, compact value board, direct slot-based path checks, and `ST`-arena internals. |
@@ -50,16 +50,22 @@ throughput with one search iteration per move, not terminal `playouts/s`.
 Played-game benchmark output uses `games/s` only. The metric taxonomy and Q1-Q7 mapping live in
 [benchmark_metrics.md](documents/engineering/benchmark_metrics.md).
 
-The first post-reframe `docker compose run --rm --build mcts mcts test all`
+The post-Sprint-`5.8` `docker compose run --rm --build mcts mcts test all`
 under the [Performance Measurement Doctrine](documents/engineering/compiler_runtime_tuning.md#performance-measurement-doctrine)
 exits 0 with all four apples-to-apples invariants Q3/Q4/Q6/Q7 PASS, all six
-Cabal stanzas PASS, zero live-cohort divergence, and the labelled measurement
-`Verdict: Trails parity band by 52.3% (measurement recorded; see PGO
+Cabal stanzas PASS, zero live-cohort divergence
+(`normalized_divergence_score=0.0000`), and the labelled measurement
+`Verdict: Trails parity band by 57.1% (measurement recorded; see PGO
 Asymmetry in compiler_runtime_tuning.md)`. Backend `(ii)`/Haskell ratios
-against the fully steelmanned Sprint `5.7` `(ii)` target: Q1a `1.42x` ST /
-`1.51x` MT8, Q1b `1.45x` ST / `1.52x` MT8, Q2 `1.35x` ST / `1.48x` MT8;
-Q5 scaling Haskell search `6.91x` vs backend `(ii)` search `7.27x`, Haskell
-self-play `3.28x` vs backend `(ii)` self-play `3.60x`.
+against the fully steelmanned-and-residual-squeezed Sprint `5.8` `(ii)`
+target: Q1a `1.51x` ST / `1.50x` MT8, Q1b `1.53x` ST / `1.56x` MT8, Q2
+`1.41x` ST / `1.57x` MT8; Q5 scaling Haskell search `7.16x` vs backend
+`(ii)` search `7.31x`, Haskell self-play `3.28x` vs backend `(ii)`
+self-play `3.66x`. The earlier Sprint `8.15` post-`5.7` measurement
+(Q1a `1.42x`/`1.51x`, Q1b `1.45x`/`1.52x`, Q2 `1.35x`/`1.48x`, verdict
+`52.3%`) is historical against the pre-`5.8` `(ii)` artefact; the
+~5-percentage-point widening reflects the ~2–6% Sprint `5.8`
+improvement on backend `(ii)`, not a Haskell regression.
 
 Under the reframed doctrine, Q1, Q2, and Q5 are measurement questions and a
 Haskell shortfall is recorded honestly with PGO-asymmetry attribution; closure
@@ -67,8 +73,10 @@ of `mcts test all` gates on the apples-to-apples invariants Q3, Q4, Q6, Q7
 plus a non-pending measurement, not on the `HASKELL_PARITY_TOLERANCE = 0.05`
 labelling cutoff. The canonical primitive sample is `N_PRIM=20_000`. The
 earlier Sprint `8.14` `Within tolerance` reading against the Sprint `5.6`
-`(ii)` artefact and the pre-reframe `Shortfall 0.2678` measurement against the
-post-`5.7` `(ii)` target are historical evidence.
+`(ii)` artefact, the pre-reframe `Shortfall 0.2678` reading against the
+post-`5.7` `(ii)` target, and the Sprint `8.15` `52.3%` reading against the
+post-`5.7` `(ii)` target are historical evidence against the pre-`5.8`
+artefacts.
 
 Phase 7 Sprint `7.11` adds Q7 semantic parity for `(ii)..(v)`: a
 weaker-than-bit-equality gate for game-rule replay compatibility, search

@@ -293,6 +293,14 @@ private:
         return masks;
     }
 
+    // Sprint 5.8: bidirectional bit-parallel BFS. Expands one frontier
+    // outward from the pawn cell and another inward from the goal row,
+    // returning true as soon as the two visited sets intersect. Walls
+    // are bidirectional in Corridors (a wall blocks both directions
+    // equally), so the start-side and goal-side expansions use the
+    // identical four-direction shift+mask kernel against the same
+    // `BlockMasks`. The bool return contract is unchanged versus the
+    // prior unidirectional implementation.
     [[gnu::hot]] inline bool path_exists_with_masks(
         bool hero_side,
         const BlockMasks &masks) const noexcept {
@@ -304,19 +312,34 @@ private:
         const unsigned __int128 valid = valid_cells();
         const unsigned __int128 right_sources = right_source_mask();
         const unsigned __int128 left_sources = left_source_mask();
-        const unsigned __int128 goal = row_mask(goal_y);
 
-        unsigned __int128 frontier = cell_bit(start_x, start_y);
-        unsigned __int128 visited = frontier;
-        while (frontier != 0) {
-            const unsigned __int128 up = ((frontier & ~masks.up) << 9) & valid;
-            const unsigned __int128 down = (frontier & ~masks.down) >> 9;
-            const unsigned __int128 right = ((frontier & right_sources & ~masks.right) << 1) & valid;
-            const unsigned __int128 left = (frontier & left_sources & ~masks.left) >> 1;
-            const unsigned __int128 next = (up | down | right | left) & ~visited;
-            if ((next & goal) != 0) return true;
-            visited |= next;
-            frontier = next;
+        unsigned __int128 start_front = cell_bit(start_x, start_y);
+        unsigned __int128 start_visit = start_front;
+        unsigned __int128 goal_front = row_mask(goal_y);
+        unsigned __int128 goal_visit = goal_front;
+        if ((start_front & goal_visit) != 0) return true;
+
+        while (start_front != 0 && goal_front != 0) {
+            {
+                const unsigned __int128 up    = ((start_front & ~masks.up)                       << 9) & valid;
+                const unsigned __int128 down  =  (start_front & ~masks.down)                     >> 9;
+                const unsigned __int128 right = ((start_front & right_sources & ~masks.right)    << 1) & valid;
+                const unsigned __int128 left  =  (start_front & left_sources  & ~masks.left)     >> 1;
+                const unsigned __int128 next  = (up | down | right | left) & ~start_visit;
+                if ((next & goal_visit) != 0) return true;
+                start_visit |= next;
+                start_front  = next;
+            }
+            {
+                const unsigned __int128 up    = ((goal_front & ~masks.up)                        << 9) & valid;
+                const unsigned __int128 down  =  (goal_front & ~masks.down)                      >> 9;
+                const unsigned __int128 right = ((goal_front & right_sources & ~masks.right)     << 1) & valid;
+                const unsigned __int128 left  =  (goal_front & left_sources  & ~masks.left)      >> 1;
+                const unsigned __int128 next  = (up | down | right | left) & ~goal_visit;
+                if ((next & start_visit) != 0) return true;
+                goal_visit |= next;
+                goal_front  = next;
+            }
         }
         return false;
     }

@@ -187,13 +187,55 @@ self-play `3.28x` vs backend `(ii)` self-play `3.60x`. The earlier Sprint
 `5.6`-target measurement of `Verdict: Shortfall 0.2678864950323545` is
 historical pre-reframe evidence.
 
-Sprint `8.15` closed on 2026-05-28 with that measurement; Phase `8` is
-therefore closed and the full plan suite reaches Done. The project's
+Sprint `8.15` closed on 2026-05-28 with that measurement; Phase `8` reached
+its first closure and the full plan suite reached Done. The project's
 empirical answer to its central hypothesis — *does pure Haskell, without a
 production GHC PGO loop, match maximally-optimised C++ on Quoridor MCTS?* —
-is honestly recorded as "Haskell trails the fully-steelmanned `(ii)` target
+was honestly recorded as "Haskell trails the fully-steelmanned `(ii)` target
 by ~52% on the worst Q1/Q2 row under the documented PGO asymmetry, while
 the apples-to-apples invariants Q3/Q4/Q6/Q7 hold across the cohort."
+
+The 2026-05-29 backend `(ii)` residual-squeeze audit reopened Phase `5` for
+Sprint `5.8` and Phase `8` for Sprint `8.16`. Sprint `5.8` closed three
+pockets of bounded visit-preserving residue the Sprint `5.7` audit had
+deferred: the wall-legality path-existence leaf became a bidirectional
+bit-parallel BFS, `UctNode`'s `alignas(kCacheLine)` was removed, and the
+C++ steelman flag block gained `-fno-stack-protector -fno-rtti -fipa-pta`
+plus extended BOLT `-split-functions -split-strategy=cdsplit
+-reorder-functions=cdsort -icf=1` (flag names corrected from
+`hfsort+`/`safe` mid-validation after LLVM 19's BOLT rejected the legacy
+syntax). The proposed reserve-formula tighten in D2 was reviewed and
+rejected because the existing `1 + root + sims * kMaxLegalActions` bound
+is the correct upper bound; the two-player bitsliced wavefront and the
+`unsigned __int128` codegen audit in D1 remain deferred follow-ons not
+scheduled. None of the closed deliverables touched the visit-payload
+contract or the C ABI: the post-`5.8` `mcts test all` run recorded
+`normalized_divergence_score=0.0000` and Q3/Q4/Q6/Q7 PASS.
+
+Sprint `8.16` recorded the post-`5.8` Haskell-vs-`(ii)` measurement on
+the same date: Q1a `1.51x` ST / `1.50x` MT8, Q1b `1.53x` ST / `1.56x`
+MT8, Q2 `1.41x` ST / `1.57x` MT8, Q5 scaling Haskell search `7.16x` vs
+C++ search `7.31x`, Haskell self-play `3.28x` vs C++ self-play
+`3.66x`; `Verdict: Trails parity band by 57.1%`. Backend `(ii)`
+delivered ~2–6% improvement on the focused ST rows vs the Sprint `8.15`
+post-`5.7` measurement, consistent with the bidirectional BFS not being
+the dominant driver on 9x9 Quoridor where unidirectional BFS already
+converges in ≤9 steps; the layout pack and compiler-flag scrub plausibly
+contributed most of the gain. Haskell raw rates stayed within
+measurement noise of Sprint `8.15`. The increase in `Trails parity
+band` from 52.3% to 57.1% is a (ii)-ceiling raise, not a Haskell
+regression, recorded honestly under the Sprint `8.15`
+measurement-vs-invariant reframe.
+
+The project's empirical answer to its central hypothesis — *does pure
+Haskell, without a production GHC PGO loop, match maximally-optimised
+C++ on Quoridor MCTS?* — is honestly recorded as "Haskell trails the
+fully-steelmanned-and-residual-squeezed `(ii)` target by 57.1% on the
+worst Q1/Q2 row under the documented PGO asymmetry, while the
+apples-to-apples invariants Q3/Q4/Q6/Q7 hold across the cohort with
+`normalized_divergence_score=0.0000`." All phases reach Done again on
+2026-05-29.
+
 Further Haskell optimisation work is not blocking and may be scheduled as a
 new sprint only if the project chooses to invest.
 
@@ -540,10 +582,10 @@ A sprint can move to `Done` only when all of the following are true:
 | 2 | Transcript Codec, RNG, and Determinism Contract | ✅ Done (Sprint `2.9` transcript/envelope doctrine realignment closed 2026-05-24) | [phase-2-transcript-codec-and-determinism.md](phase-2-transcript-codec-and-determinism.md) |
 | 3 | Backend (v) Haskell Engine | ✅ Done (Sprint `3.8` benchmark metric primitives closed 2026-05-24) | [phase-3-haskell-engine.md](phase-3-haskell-engine.md) |
 | 4 | Backend (i) C++ Legacy Port and FFI Bridge | ✅ Done (Sprint `4.5` FFI domain-conversion contract realignment closed 2026-05-24) | [phase-4-cpp-legacy-port-and-ffi-bridge.md](phase-4-cpp-legacy-port-and-ffi-bridge.md) |
-| 5 | Backend (ii) C++ Imperative Steelman with PGO+BOLT | ✅ Done (Sprint `5.7` full hot-path steelman closed; Sprints `5.3`, `5.5`, and `5.6` remain closed for their delivered surfaces) | [phase-5-cpp-imperative-steelman.md](phase-5-cpp-imperative-steelman.md) |
+| 5 | Backend (ii) C++ Imperative Steelman with PGO+BOLT | ✅ Done (Sprint `5.8` residual hot-path squeeze closed 2026-05-29: bidirectional wall-legality BFS, `UctNode` layout pack, `-fno-stack-protector -fno-rtti -fipa-pta`, extended BOLT `-split-functions -split-strategy=cdsplit -reorder-functions=cdsort -icf=1`; Sprints `5.1`–`5.7` remain closed for their delivered surfaces) | [phase-5-cpp-imperative-steelman.md](phase-5-cpp-imperative-steelman.md) |
 | 6 | Backends (iii) C++ Functional-Core and (iv) Rust | ✅ Done for build/ABI, backend (iii) compact functional-core state alignment, and Sprint `6.8` Rust hot-path structural alignment | [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md) |
 | 7 | Cross-Backend Verify, Test Stanzas, POC Report Card | ✅ Done (Sprint `7.11` Q7 semantic parity and normalized divergence score closed) | [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md) |
-| 8 | Haskell Performance Parity Closure and Five-Backend Restoration | ✅ Done (Sprint `8.15` measurement-vs-invariant reframe and post-`5.7` `(ii)` rebaseline closed 2026-05-28; Sprint `8.14` remains historical current-artifact evidence under the prior framing) | [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md) |
+| 8 | Haskell Performance Parity Closure and Five-Backend Restoration | ✅ Done (Sprint `8.16` post-`5.8` Haskell-vs-`(ii)` rebaseline closed 2026-05-29: Q1a `1.51x`/`1.50x`, Q1b `1.53x`/`1.56x`, Q2 `1.41x`/`1.57x`, verdict `57.1%`, Q3/Q4/Q6/Q7 PASS, divergence score `0.0000`. Sprint `8.15` and `8.14` historical against pre-`5.8` artefacts) | [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md) |
 
 ## Current Plan Status
 

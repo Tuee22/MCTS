@@ -23,10 +23,15 @@ inline constexpr uint32_t kNoIndex = std::numeric_limits<uint32_t>::max();
 // `-Winterference-size` warns about cross-version drift in
 // `std::hardware_destructive_interference_size`, and the steelman
 // envelope ships across hosts. 64 bytes matches the dominant
-// architecture's L1 cache line.
+// architecture's L1 cache line. Sprint 5.8 keeps the constant as a
+// reference but no longer forces `alignas(kCacheLine)` on `UctNode`:
+// the (ii) hot path is single-threaded, so the prior alignment buried
+// ~28 bytes of padding per node without preventing any false-sharing
+// risk. Any future multi-thread introduction must re-evaluate node
+// alignment against the new sharing surface before re-enabling it.
 inline constexpr size_t kCacheLine = 64;
 
-struct alignas(kCacheLine) UctNode {
+struct UctNode {
     uint32_t parent_idx = kNoIndex; // index in arena; kNoIndex for root
     uint32_t first_child_idx = kNoIndex;
     uint32_t visit_count = 0;
@@ -38,8 +43,14 @@ struct alignas(kCacheLine) UctNode {
 };
 
 // Arena owns every UctNode in the current search. The vector is reserved
-// up-front to the worst-case node budget (sims + 1) so realloc-during-
-// search does not invalidate child indices.
+// up-front to the worst-case node budget `1 + root_actions + sims *
+// kMaxLegalActions` so realloc-during-search does not invalidate child
+// indices. Each `descend_iterative` triggers at most one `expand` call,
+// which calls `reserve_children(actions.size)` with `actions.size <=
+// kMaxLegalActions`; the `sims * kMaxLegalActions` term is the worst case
+// where every simulation expands a max-branching node. Capacity is
+// pre-reserved (no page faults until `reserve_children` actually writes),
+// so the over-bound consumes address space rather than physical RAM.
 class Arena {
 public:
     explicit Arena(uint32_t reserve_nodes) {

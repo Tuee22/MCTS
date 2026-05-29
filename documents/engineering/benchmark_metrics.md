@@ -77,10 +77,18 @@ apples-to-apples invariants Q3/Q4/Q6/Q7. Backend (iv) Rust raw rows remain
 diagnostic context.
 
 The Sprint `8.14` measurement read `Within parity band` against the Sprint
-`5.6` backend `(ii)` implementation. Phase `5` Sprint `5.7` has since closed
-the full imperative C++ kernel steelman, so Phase `8` Sprint `8.15` owns the
-rebaselined Q1a/Q1b/Q2/Q5 rows against the fully steelmanned `(ii)` target. The
-Q-classification in
+`5.6` backend `(ii)` implementation. Phase `5` Sprint `5.7` then closed
+the full imperative C++ kernel steelman, and Phase `8` Sprint `8.15`
+recorded the post-`5.7` rebaseline. Phase `5` Sprint `5.8` further extended
+the backend `(ii)` ceiling with a bidirectional path-existence BFS, the
+`UctNode` cache-line padding drop, and additive C++/BOLT flag scrub. Phase
+`8` Sprint `8.16` closed on 2026-05-29 with the post-`5.8` rebaseline: Q1a
+`1.51x` ST / `1.50x` MT8, Q1b `1.53x` ST / `1.56x` MT8, Q2 `1.41x` ST /
+`1.57x` MT8, Q5 scaling Haskell search `7.16x` vs C++ `(ii)` search
+`7.31x`, Haskell self-play `3.28x` vs C++ `(ii)` self-play `3.66x`;
+`Verdict: Trails parity band by 57.1%`; Q3/Q4/Q6/Q7 PASS and
+`normalized_divergence_score=0.0000`. Sprints `8.14` and `8.15` are now
+historical evidence against the pre-`5.8` artefact. The Q-classification in
 [compiler_runtime_tuning.md → Performance Measurement Doctrine](./compiler_runtime_tuning.md#performance-measurement-doctrine)
 records Q1/Q2/Q5 as **measurement** questions: shortfalls are honestly recorded
 with PGO-asymmetry attribution and do not gate closure. Closure is gated by the
@@ -126,9 +134,11 @@ The historical Q1/Q2/Q5 rows emitted before this taxonomy are legacy
 **played-game** evidence. They are useful for audit and integration diagnostics,
 but the current Q1/Q5 rows use the explicit `playouts/s`, `search-iters/s`, and
 `games/s` units. After Sprint `5.7` changed backend `(ii)`, the Sprint `8.14`
-rows joined the audit history. Sprint `8.15` remains active until the
-rebaselined measurement against the new `(ii)` target is recorded honestly and
-the apples-to-apples invariants Q3/Q4/Q6/Q7 hold per
+rows joined the audit history; Sprint `8.15` recorded the post-`5.7` honest
+rebaseline. After Sprint `5.8` further strengthened backend `(ii)`, Sprint
+`8.16` recorded the post-`5.8` rebaseline as the current-artifact evidence;
+the Sprint `8.14`/`8.15` rows are historical against the pre-`5.8` artefact.
+The apples-to-apples invariants Q3/Q4/Q6/Q7 hold per
 [compiler_runtime_tuning.md → Performance Measurement Doctrine](./compiler_runtime_tuning.md#performance-measurement-doctrine).
 
 ## Legacy C++ Basis

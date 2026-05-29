@@ -112,11 +112,20 @@ Compiler flags per
 # Example: mandatory C++ compile flags for backends (ii) and (iii)
 -std=c++23 -O3 -march=native -mtune=native -flto -fno-plt
 -fno-semantic-interposition -fvisibility=hidden -fvisibility-inlines-hidden
--fno-exceptions
+-fno-exceptions -fno-stack-protector -fno-rtti -fipa-pta
 ```
 
 `-fno-exceptions` is mandatory for the C++ steelman backends: the engine core
-does not throw, so landing-pad cost is unconditional dead weight.
+does not throw, so landing-pad cost is unconditional dead weight. Sprint `5.8`
+added three additional scrub flags to backend `(ii)`'s `cpp-imperative/Makefile`
+under per-flag focused-benchmark gating: `-fno-stack-protector` removes the SSP
+cookie write because no untrusted input crosses the hot path,
+`-fno-rtti` removes unreachable RTTI metadata because `dynamic_cast` and
+`typeid` are not used on the search hot path, and `-fipa-pta` opts in to
+inter-procedural points-to analysis to tighten LTO devirtualization and alias
+resolution across the engine TU and the C-ABI shim. Each flag was reverted if
+the focused (ii) row regressed; the residue is tracked in
+[../../DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md](../../DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md).
 
 **Excluded deliberately:** `-ffast-math`, `-Ofast`. Equity backprop is
 summation-order-sensitive and we want backend-internal determinism even though
@@ -152,12 +161,22 @@ checked-in generated data.
 2. **BOLT post-link.** `llvm-bolt -instrument` produces `_bench.inst.so` /
    `_instrumented.inst.so` build intermediates for a shorter bounded
    played-game training suite. `llvm-bolt -reorder-blocks=ext-tsp` consumes
-   the resulting `.fdata`. The `.fdata` files are mandatory Dockerfile build
-   outputs; a missing file, failed BOLT invocation, or attempt to copy a
-   PGO-only/unoptimized artefact to a `.bolted.so` or canonical load name must
-   fail the image build. LLVM objcopy patches the `engine_build_id` section on
-   BOLT-produced shared objects, and the installed bolted libraries must pass a
-   smoke run before the image is published.
+   the resulting `.fdata`. Sprint `5.8` extends backend `(ii)`'s BOLT optimize
+   step with `-split-functions -split-strategy=cdsplit` (cache-driven hot/cold
+   split), `-reorder-functions=cdsort` (cache-directed function ordering;
+   the modern replacement for the deprecated `hfsort+`), and `-icf=1`
+   (identical-code folding; LLVM 19's BOLT takes a boolean here, not the
+   legacy `safe` value) on top of the existing `-reorder-blocks=ext-tsp`.
+   The flag-name correction from `hfsort+`/`safe` to `cdsort`/`1` was made
+   on the first Sprint `5.8` validation rebuild when the image build failed
+   on `'safe' is invalid value for boolean argument! Try 0 or 1`. The
+   extended set is gated by focused (ii) benchmarks and reverted on
+   focused-row regression. The `.fdata` files are
+   mandatory Dockerfile build outputs; a missing file, failed BOLT invocation,
+   or attempt to copy a PGO-only/unoptimized artefact to a `.bolted.so` or
+   canonical load name must fail the image build. LLVM objcopy patches the
+   `engine_build_id` section on BOLT-produced shared objects, and the installed
+   bolted libraries must pass a smoke run before the image is published.
 3. **`mimalloc` link.** The current C++ Makefiles link the system `libmimalloc`
    library supplied by the container. Static linking is not required by the current
    build surface.

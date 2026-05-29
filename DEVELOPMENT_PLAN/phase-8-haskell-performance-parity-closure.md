@@ -23,9 +23,20 @@
 
 ## Phase Status
 
-🔄 **Active.** Sprint `8.15` reopens this phase for the Haskell-vs-`(ii)`
-rebaseline after Phase `5` Sprint `5.7` landed the full backend `(ii)` hot-path
-steelman. The Haskell tuning work, no-generated-validation-data cleanup,
+✅ **Done.** Sprint `8.16` closed on 2026-05-29 with the post-`5.8`
+Haskell-vs-`(ii)` rebaseline against the further-strengthened backend
+`(ii)` artefact: Q1a `1.51x` ST / `1.50x` MT8, Q1b `1.53x` ST / `1.56x`
+MT8, Q2 `1.41x` ST / `1.57x` MT8, Q5 scaling Haskell search `7.16x` vs
+C++ `(ii)` search `7.31x`, Haskell self-play `3.28x` vs C++ `(ii)`
+self-play `3.66x`; `Verdict: Trails parity band by 57.1%`; Q3/Q4/Q6/Q7
+PASS; `normalized_divergence_score=0.0000`. Sprint `8.15`'s post-`5.7`
+rebaseline and measurement-vs-invariant reframe remain closed for their
+delivered surfaces; Sprint `8.15`'s recorded ratios are now historical
+against the pre-`5.8` `(ii)` artefact. The 2026-05-28 rebaseline after
+Sprint `5.7` (active during the Sprint `8.15` reopen) and the 2026-05-29
+rebaseline after Sprint `5.8` (Sprint `8.16` itself) both closed without
+Haskell engine or Cabal changes; the moving target was the C++ steelman
+ceiling. The Haskell tuning work, no-generated-validation-data cleanup,
 five-backend restoration, optimized-C++ report-card refresh, refactored
 Q1a/Q1b/Q2/Q5 evidence, Sprint `5.6` corrected backend (ii) target, Sprint `6.7`
 backend (iii) compact functional-core style surface, Sprint `8.12` Haskell parity
@@ -117,8 +128,18 @@ backend (ii) `cpp-imperative`.
 
 The 2026-05-28 backend `(ii)` steelman audit reopened this phase, and Sprint `5.7`
 has now removed the remaining `(ii)` search-kernel and profile-training residue.
-Sprint `8.15` owns the active Haskell parity shortfall exposed by the fresh
-Q1a/Q1b/Q2/Q5 rebaseline.
+Sprint `8.15` owns the closed Haskell parity rebaseline exposed by the fresh
+Q1a/Q1b/Q2/Q5 measurement.
+
+The 2026-05-29 backend `(ii)` residual-squeeze audit then reopened this phase
+again for Sprint `8.16`. Phase `5` Sprint `5.8` lands a further-tightened
+`(ii)` ceiling (bidirectional path-existence BFS, `UctNode` cache-line padding
+removed, `-fno-stack-protector -fno-rtti -fipa-pta` plus extended BOLT
+invocation). Sprint `8.16` is the downstream measurement: re-run
+`docker compose run --rm --build mcts mcts test all` against the post-`5.8`
+`(ii)` artefact, record the new Q1a/Q1b/Q2/Q5 ratios, and keep the
+apples-to-apples invariants Q3/Q4/Q6/Q7 as the closure gate. No Haskell code
+changes are in scope.
 
 The restored end state is:
 
@@ -1053,6 +1074,92 @@ None. Closed on 2026-05-28 against the validated post-reframe aggregate
 measurement recorded in the [Post-reframe Measurement](#post-reframe-measurement-2026-05-28)
 block below. Further Haskell optimisation work is not blocking and may be
 scheduled as a new sprint only if the project chooses to invest.
+
+## Sprint 8.16: Haskell Parity Rebaseline vs Post-5.8 Backend (ii) ✅
+
+**Status**: Done
+**Implementation**: No Haskell code changes; measurement closure only.
+**Blocked by**: Sprint `5.8` (backend `(ii)` residual hot-path squeeze).
+**Docs to update**: `README.md`, `00-overview.md`,
+`legacy-tracking-for-deletion.md`,
+`../documents/engineering/benchmark_metrics.md`,
+`../documents/engineering/unit_testing_policy.md`,
+`../documents/engineering/compiler_runtime_tuning.md`
+
+### Objective
+
+Rebaseline the Haskell-vs-`(ii)` measurement against the post-Sprint-`5.8`
+backend `(ii)` artefact. Sprint `5.8` tightens the C++ steelman ceiling
+through visit-preserving changes (bidirectional wall-legality BFS,
+`UctNode` cache-line padding removed, `-fno-stack-protector -fno-rtti
+-fipa-pta` plus extended BOLT `-split-functions -split-strategy=cdsplit
+-reorder-functions=cdsort -icf=1`); the Q3/Q4/Q6/Q7 invariants are
+preserved by construction. Sprint `8.16` records the resulting
+Q1a/Q1b/Q2/Q5 measurement under the Sprint `8.15` measurement-vs-invariant
+reframe and updates the historical-evidence labels on prior rows.
+
+### Deliverables
+
+- Run `docker compose run --rm --build mcts mcts test all` against the
+  Dockerfile-built post-`5.8` `(ii)` library; the run must exit 0 with
+  Q3/Q4/Q6/Q7 PASS and a non-`Evidence pending` `Verdict:` line.
+- Record the new Q1a terminal-playout, Q1b search-iter, Q2 self-play, and
+  Q5 scaling ratios in the post-`5.8` measurement block of this phase doc
+  and in [README.md](../README.md).
+- Mark the Sprint `8.14` and Sprint `8.15` rows in
+  [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md) as
+  historical against the pre-`5.8` `(ii)` artefact; add a new closure row
+  for Sprint `8.16` recording the post-`5.8` evidence.
+- Update `documents/engineering/benchmark_metrics.md` and
+  `documents/engineering/unit_testing_policy.md` historical-evidence
+  pointers to name the Sprint `8.16` post-`5.8` measurement as the active
+  current-artifact evidence.
+- No Haskell engine or Cabal changes are in scope. If the focused Haskell
+  rows shift outside measurement noise after the `(ii)` rebaseline, that
+  shift is reported honestly but does not block sprint closure.
+
+### Validation
+
+- `docker compose run --rm --build mcts mcts test all`
+- `docker compose run --rm mcts mcts docs check`
+- `docker compose run --rm mcts mcts check-code`
+- `git diff --check`
+
+### Remaining Work
+
+None.
+
+### Closure Notes
+
+Closed on 2026-05-29. After Sprint `5.8` landed the residual hot-path
+squeeze and `cpp-imperative/build/libmcts_cpp_imperative.so` was
+re-bolted through the corrected `-reorder-functions=cdsort -icf=1` BOLT
+invocation, `docker compose run --rm --build mcts mcts test all` exited
+0 with all Cabal stanzas PASS, all apples-to-apples invariants Q3/Q4/Q6/Q7
+PASS, `normalized_divergence_score=0.0000`, and `Verdict: Trails parity
+band by 57.1% (measurement recorded; see PGO Asymmetry in
+compiler_runtime_tuning.md)`.
+
+Backend `(ii)` post-`5.8` raw rates: Q1a `37490.9` ST / `248935.5` MT8
+`playouts/s`, Q1b `40502.5` ST / `296135.4` MT8 `search-iters/s`, Q2
+`1.9` ST / `7.1` MT8 `games/s`. Haskell raw rates: Q1a `24842.8` ST /
+`165640.3` MT8 `playouts/s`, Q1b `26457.4` ST / `189527.9` MT8
+`search-iters/s`, Q2 `1.4` ST / `4.5` MT8 `games/s`. Backend
+`(ii)`/Haskell ratios: Q1a `1.51x` ST / `1.50x` MT8, Q1b `1.53x` ST /
+`1.56x` MT8, Q2 `1.41x` ST / `1.57x` MT8; Q5 scaling Haskell search
+`7.16x` vs C++ `(ii)` search `7.31x`, Haskell self-play `3.28x` vs C++
+`(ii)` self-play `3.66x`. The Sprint `8.15` post-`5.7` measurement (Q1a
+`1.42x` / `1.51x`, Q1b `1.45x` / `1.52x`, Q2 `1.35x` / `1.48x`, verdict
+`52.3%`) is now historical against the pre-`5.8` `(ii)` artefact.
+
+The increase in `Trails parity band` from 52.3% to 57.1% reflects the
+~2–6% improvement in backend `(ii)` from Sprint `5.8`, not a Haskell
+regression: Haskell raw rates are within measurement noise of the
+Sprint `8.15` post-`5.7` values. Under the Sprint `8.15`
+measurement-vs-invariant reframe, this is recorded honestly with
+PGO-asymmetry attribution and does not gate closure; the closure gate
+is the apples-to-apples invariants Q3/Q4/Q6/Q7 plus a non-pending
+measurement, all of which PASS.
 
 ## Documentation Requirements
 

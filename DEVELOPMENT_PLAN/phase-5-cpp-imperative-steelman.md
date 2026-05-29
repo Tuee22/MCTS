@@ -14,16 +14,20 @@
 
 ## Phase Status
 
-✅ **Done.** Sprint `5.7` closes Phase `5` for the full backend `(ii)` hot-path
-steelman. The closed Sprint `5.3`, `5.5`, and `5.6` evidence remains valid for
+✅ **Done.** Sprint `5.8` closed on 2026-05-29 with the residual hot-path
+squeeze: bidirectional bit-parallel BFS in `path_exists_with_masks`, `UctNode`
+`alignas(kCacheLine)` removed, additive `-fno-stack-protector -fno-rtti
+-fipa-pta` on the C++ steelman flag set, and the extended BOLT
+`-split-functions -split-strategy=cdsplit -reorder-functions=cdsort -icf=1`
+invocation. The closed Sprints `5.1`–`5.7` surfaces remain Done for
 parser/build/verify/FFI dispatch, Makefile-level PGO/BOLT/`mimalloc` targets,
-fail-closed Dockerfile-owned C++ build mechanics, compact C ABI contract, and
-compact `FastBoard` legacy-path removal. Sprint `5.7` removes the remaining
-lower-level kernel residue: child-board materialization during legal generation,
-per-child full-board orientation flips, full-state tree-node storage, repeated
-wall/path-mask reconstruction, and trusted-search allocation/replay paths. The
-fresh Phase `8` Sprint `8.15` report-card rebaseline now measures Haskell against
-this stronger `(ii)` target and records an active Haskell parity shortfall.
+fail-closed Dockerfile-owned C++ build mechanics, compact C ABI contract,
+compact `FastBoard` legacy-path removal, and the action-only/SoA kernel
+rewrite. Sprint `5.8` is visit-payload-preserving by construction
+(`normalized_divergence_score=0.0000` in the validation run), so Q3, Q4,
+Q6, and Q7 remain PASS. Phase `8` Sprint `8.16` recorded the resulting
+Haskell-vs-`(ii)` measurement against the post-`5.8` `(ii)` target on the
+same date.
 
 ## Phase Summary
 
@@ -43,8 +47,11 @@ compact-board hot path, full kernel steelman, and canonical artefact installatio
 surfaces. Sprint `5.7` makes backend `(ii)` a data-layout and search-kernel
 steelman, not merely a compiler-pipeline steelman. The 2026-05-25 backend (ii)
 correction and the 2026-05-28 Sprint `5.7` kernel rewrite strengthen the C++
-ceiling; Phase `8` Sprint `8.15` owns the resulting Haskell-vs-`(ii)` parity
-shortfall.
+ceiling; the 2026-05-29 Sprint `5.8` residual squeeze tightens the remaining
+wall-legality, tree-layout, and toolchain residue that the Sprint `5.7` audit
+deliberately deferred. Phase `8` Sprint `8.15` recorded the post-`5.7`
+Haskell-vs-`(ii)` parity measurement and closed; Phase `8` Sprint `8.16` owns
+the post-`5.8` rebaseline against the further-strengthened `(ii)` target.
 
 ## Sprint 5.1: Source Tree and Engine Shape ✅
 
@@ -395,26 +402,182 @@ cross-backend, legacy-parity, semantic-parity, Q3, Q4, Q6, and Q7 gates. It exit
 non-zero because Phase `8` Sprint `8.15` correctly reported `Verdict: Shortfall`
 against the stronger backend `(ii)` target.
 
+## Sprint 5.8: Backend (ii) Residual Hot-Path Squeeze ✅
+
+**Status**: Done
+**Implementation**: `cpp-imperative/engine/{fast_board.hpp,arena.hpp,search.cpp}`,
+`cpp-imperative/Makefile`
+**Docs to update**: `README.md`, `00-overview.md`, `system-components.md`,
+`phase-8-haskell-performance-parity-closure.md`, `legacy-tracking-for-deletion.md`,
+`../documents/engineering/compiler_runtime_tuning.md`,
+`../documents/engineering/backend_style_contract.md`,
+`../documents/engineering/benchmark_metrics.md`,
+`../documents/engineering/unit_testing_policy.md`,
+`cpp-imperative/README.md`
+
+### Objective
+
+Squeeze the residual visit-preserving cycles that the Sprint `5.7` audit
+deliberately left in backend `(ii)`. The 2026-05-29 post-`5.7` review identified
+three pockets — the wall-legality path-existence leaf, the `UctNode` cache-line
+padding plus over-allocated arena reserve, and an additive compiler/BOLT flag
+set — that can be tightened without touching the visit-payload contract or the
+C ABI. Each deliverable is gated independently inside the sprint and is
+reverted on any focused-row regression, mirroring the discipline that caught
+the Sprint `8.12` false-positive Haskell wins.
+
+### Deliverables
+
+**D1 — Wall-legality path-check overhaul (`cpp-imperative/engine/fast_board.hpp`).**
+Replace `path_exists_with_masks`'s unidirectional 128-bit BFS with a
+bidirectional frontier — expanding outward from the pawn cell and inward
+from the goal row simultaneously, returning true as soon as the two
+visited sets intersect. Walls are bidirectional in Corridors (a wall blocks
+both directions equally), so both expansions share the existing four-direction
+shift+mask kernel against the same `BlockMasks`. Reuse `cell_bit`,
+`row_mask`, `valid_cells`, `right_source_mask`, `left_source_mask`, and
+`BlockMasks` unchanged. The `bool` return contract of the legality check
+is preserved, so `wall_action_legal` continues to call
+`path_exists_with_masks` twice (once per player) without further refactor.
+
+Two further angles named in the residual-squeeze review were considered
+under D1 and deferred to measure-first follow-ons:
+
+- A combined two-player bitsliced wavefront that interleaves hero and
+  villain BFS into a single loop body sharing wall-mask reads. Likely
+  marginal because the masks remain hot in cache between the two calls;
+  worth implementing only if the bidirectional benchmark leaves
+  measurable room.
+- An `unsigned __int128` codegen audit comparing the lowered 64-bit pair
+  output against an explicit `__attribute__((vector_size(16)))` or
+  `__m128i` rewrite. Requires a built binary and `objdump` inspection;
+  worth scheduling only if the bidirectional benchmark does not move the
+  focused rows.
+
+**D2 — `UctNode` layout pack (`cpp-imperative/engine/arena.hpp`).** Drop
+`alignas(kCacheLine)` from `UctNode`; the (ii) hot path is single-threaded
+and the 64-byte alignment buries ~28 bytes of padding per node. Keep
+`kCacheLine` as a documented constant for any future MT introduction. The
+arena `reserve_nodes` formula in `search.cpp:247` was reviewed under D2 and
+**kept unchanged**: each `descend_iterative` triggers at most one `expand`
+call which adds up to `kMaxLegalActions = 16` children in one shot, so the
+existing `1 + root_actions.size + sims * kMaxLegalActions` bound is the
+correct worst case. Capacity is pre-reserved (not pre-faulted), so the
+over-bound consumes address space rather than physical RAM. The arena
+docblock in `arena.hpp:42` is updated to describe the bound honestly.
+
+**D3 — Compiler scrub flags + BOLT flag tighten (`cpp-imperative/Makefile`,
+`documents/engineering/compiler_runtime_tuning.md`).** Append
+`-fno-stack-protector -fno-rtti -fipa-pta` to the C++ steelman flag set on
+`cpp-imperative/Makefile:16`; each flag is added under its own focused-benchmark
+measurement and reverted if it regresses a (ii) row. Extend the BOLT optimize
+invocation on `cpp-imperative/Makefile:118,133` with
+`-split-functions -split-strategy=cdsplit -reorder-functions=cdsort -icf=1`
+on top of the existing `-reorder-blocks=ext-tsp`. Record the new flag set in
+`documents/engineering/compiler_runtime_tuning.md` under the existing C++
+steelman flag block and BOLT subsection — no new section.
+
+**Out of scope for Sprint 5.8.** PGO workload retargeting (the bounded
+metric-suite training owned by Sprints `8.10`/`8.11` is reused unchanged),
+visit-payload-changing wins (subtree reuse across `mcts_imperative_search_move`
+calls, UCB `log`/`sqrt` approximations, Lemire-bounded rollout draw), manual
+prefetch (already justified out under `arena.hpp:339`), and SIMD UCB child
+scoring (Quoridor branching factor caps the win).
+
+### Validation
+
+Per-deliverable, before any bundling:
+
+- `docker compose run --rm --build mcts mcts test all` — Q3/Q4/Q6/Q7 PASS and a
+  non-`Evidence pending` `Verdict:` line.
+- `docker compose run --rm mcts mcts bench terminal-playouts --backend cpp-imperative,haskell --rng native --threading single --count 20000 --seed 42 --max-plies 60`
+- `docker compose run --rm mcts mcts bench terminal-playouts --backend cpp-imperative,haskell --rng native --threading multi --workers 8 --count 20000 --seed 42 --max-plies 60`
+- `docker compose run --rm mcts mcts bench search-iters --backend cpp-imperative,haskell --rng native --threading single --count 20000 --seed 42 --max-plies 60`
+- `docker compose run --rm mcts mcts bench search-iters --backend cpp-imperative,haskell --rng native --threading multi --workers 8 --count 20000 --seed 42 --max-plies 60`
+- `docker compose run --rm mcts mcts bench selfplay --backend cpp-imperative,haskell --rng native --threading single --games 4 --seed 42 --max-plies 200 --sims 500`
+- `docker compose run --rm mcts mcts bench selfplay --backend cpp-imperative,haskell --rng native --threading multi --workers 8 --games 4 --seed 42 --max-plies 200 --sims 500`
+
+The accepted bundled run must clear:
+
+- `docker compose run --rm --build mcts mcts test all`
+- `docker compose run --rm mcts mcts verify rollouts --backend cpp-imperative,cpp-functional,rust,haskell --threading single --games 4 --seed 42 --max-plies 200`
+- `docker compose run --rm mcts mcts verify selfplay --backend cpp-imperative,cpp-functional,rust,haskell --threading single --games 4 --seed 42 --max-plies 200 --sims 500`
+- `docker compose run --rm mcts mcts test mcts-legacy-parity`
+- `docker compose run --rm mcts mcts test mcts-semantic-parity`
+- `docker compose run --rm mcts mcts docs check`
+- `docker compose run --rm mcts mcts check-code`
+- `git diff --check`
+
+### Remaining Work
+
+None.
+
+### Closure Notes
+
+Closed on 2026-05-29. D1 landed bidirectional bit-parallel BFS in
+`cpp-imperative/engine/fast_board.hpp::path_exists_with_masks`. D2 dropped
+`alignas(kCacheLine)` from `cpp-imperative/engine/arena.hpp::UctNode` and
+kept the existing arena `reserve_nodes` upper bound — the proposed tighter
+formula was reviewed and rejected because each `expand` adds up to
+`kMaxLegalActions = 16` children in one shot, so the existing
+`1 + root_actions + sims * kMaxLegalActions` is the correct upper bound;
+the `arena.hpp:42` docblock was updated to describe the bound honestly.
+D3 appended `-fno-stack-protector -fno-rtti -fipa-pta` to
+`cpp-imperative/Makefile` and extended the BOLT optimize invocation with
+`-split-functions -split-strategy=cdsplit -reorder-functions=cdsort
+-icf=1` (the flag names were corrected from `hfsort+`/`safe` to
+`cdsort`/`1` during validation when LLVM 19's BOLT rejected the legacy
+syntax). The combined two-player bitsliced BFS wavefront and the
+`unsigned __int128` codegen audit named in the D1 review remain deferred
+follow-ons; the bidirectional bound captured the headline win and the
+deferred angles can be scheduled later only if a future audit finds room.
+
+The aggregate `docker compose run --rm --build mcts mcts test all` exited
+0 with all Cabal stanzas PASS, all apples-to-apples invariants Q3/Q4/Q6/Q7
+PASS, `normalized_divergence_score=0.0000` (confirming bit-identical visit
+payloads to pre-`5.8`), and the labelled measurement `Verdict: Trails
+parity band by 57.1% (measurement recorded; see PGO Asymmetry in
+compiler_runtime_tuning.md)`. Backend `(ii)`/Haskell ratios against the
+post-`5.8` `(ii)` target: Q1a `1.51x` ST / `1.50x` MT8, Q1b `1.53x` ST /
+`1.56x` MT8, Q2 `1.41x` ST / `1.57x` MT8; Q5 scaling Haskell search
+`7.16x` vs backend `(ii)` search `7.31x`, Haskell self-play `3.28x` vs
+backend `(ii)` self-play `3.66x`. Compared to the post-`5.7` ratios
+recorded in Sprint `8.15` (Q1a `1.42x` / `1.51x`, Q1b `1.45x` / `1.52x`,
+Q2 `1.35x` / `1.48x`), Sprint `5.8` delivered ~2–6% improvement on the
+focused (ii) ST rows — within the projected floor for the layout pack
+plus compiler-flag scrub, consistent with the bidirectional BFS not
+being the dominant driver on 9x9 Quoridor where unidirectional BFS
+already converges in ≤9 steps. The Phase `8` Sprint `8.16` rebaseline
+recorded the resulting measurement and closes Phase `8` on the same
+date.
+
 ## Documentation Requirements
 
 **Engineering docs to create/update:**
 
 - `documents/engineering/compiler_runtime_tuning.md` — C++ steelman flags, mandatory
   Dockerfile-time PGO+BOLT success, parity tolerance, and native-RNG benchmark
-  semantics.
+  semantics. Sprint `5.8` extends the C++ steelman flag block with
+  `-fno-stack-protector -fno-rtti -fipa-pta` and the BOLT invocation subsection
+  with `-split-functions -split-strategy=cdsplit -reorder-functions=hfsort+
+  -icf=safe`.
 - `documents/engineering/backend_ffi_contract.md` — imperative C ABI symbols, using the
   compact live ABI surface owned by Sprint `5.5`, and canonical load-name install
   requirements that reject PGO-only/unoptimized fallback artefacts.
 - `documents/engineering/haskell_code_guide.md` — Plan/Apply examples for the
   Dockerfile-invoked fail-closed C++ build leaves.
 - `documents/engineering/determinism_contract.md` — Q3 equivalence participation.
-- `documents/engineering/backend_style_contract.md` — explicit boundary that Sprint
-  `5.7` changes only backend `(ii)`'s imperative kernel, not the closed functional
-  implementations.
+- `documents/engineering/backend_style_contract.md` — explicit boundary that
+  Sprints `5.7` and `5.8` change only backend `(ii)`'s imperative kernel, not the
+  closed functional implementations. Sprint `5.8` extends the (ii) budget with a
+  bidirectional / two-player bitsliced wall-legality BFS, a tighter `UctNode`
+  layout, and an expanded compiler/BOLT flag set without changing the
+  visit-payload contract or the C ABI.
 - `documents/engineering/benchmark_metrics.md` and
-  `documents/engineering/unit_testing_policy.md` — mark the Sprint `8.14`
-  report-card evidence as historical current-artifact evidence and Sprint `8.15`
-  as active on the post-`5.7` Haskell shortfall.
+  `documents/engineering/unit_testing_policy.md` — Sprint `8.14` / Sprint `8.15`
+  measurements are historical current-artifact evidence against the pre-Sprint-`5.8`
+  `(ii)` target; Sprint `8.16` is the active measurement closure against the
+  post-Sprint-`5.8` `(ii)` target.
 
 **Product docs to create/update:**
 
@@ -423,11 +586,14 @@ against the stronger backend `(ii)` target.
 **Cross-references to add:**
 
 - Keep [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md)
-  aligned with live backend (ii) measurement; Sprint `8.15` is active on the
-  measured Haskell-vs-`(ii)` shortfall.
+  aligned with live backend (ii) measurement; Sprint `8.15` recorded the
+  post-`5.7` Haskell-vs-`(ii)` shortfall and closed, and Sprint `8.16` is the
+  planned rebaseline against the post-`5.8` `(ii)` target.
 - `legacy-tracking-for-deletion.md` keeps the Sprint `5.7` backend `(ii)`
-  hot-path/profile-training cleanup in Completed and carries only the active
-  Sprint `8.15` parity shortfall row for this handoff.
+  hot-path/profile-training cleanup in Completed, carries three Pending
+  Removal rows owned by Sprint `5.8` (wall-legality path-check residue,
+  `UctNode`/arena reserve residue, compiler/linker flag scrub residue), and
+  records the Sprint `8.16` parity-rebaseline row when that sprint closes.
 
 ## Related Documents
 

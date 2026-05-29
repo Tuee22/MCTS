@@ -206,13 +206,14 @@ search-iteration throughput, and played-game throughput. Sprint `8.11` closed th
 profile-suite review and historical parity rerun against that refactored metric
 surface; Sprint `8.12` closed the active parity refresh after backend (ii)'s
 compact-board correction. Sprint `8.14` made the apples-to-apples invariants
-plus the non-pending measurement an exit-code gate. Phase `5` Sprint `5.7` has
-since closed backend `(ii)`'s full imperative-kernel steelman, so Phase `8`
-Sprint `8.15` is active after focused Haskell hot-path tuning, including direct
-packed-slot path starts, the no-wall legal-action fast path, and
-single-constructor action transitions, until the fresh report-card rebaseline
-against the fully steelmanned `(ii)` target is recorded honestly with the
-apples-to-apples invariants Q3/Q4/Q6/Q7 holding per
+plus the non-pending measurement an exit-code gate. Phase `5` Sprint `5.7` then
+closed backend `(ii)`'s full imperative-kernel steelman, and Phase `8` Sprint
+`8.15` recorded the post-`5.7` Haskell-vs-`(ii)` rebaseline. Phase `5` Sprint
+`5.8` further extended backend `(ii)` with bidirectional path-existence BFS,
+`UctNode` cache-line padding removed, and additive C++/BOLT flag scrub; Phase
+`8` Sprint `8.16` closed on 2026-05-29 with the post-`5.8` rebaseline as the
+current-artifact evidence. The apples-to-apples invariants Q3/Q4/Q6/Q7 remain
+the closure gate per
 [compiler_runtime_tuning.md → Performance Measurement Doctrine](./compiler_runtime_tuning.md#performance-measurement-doctrine).
 
 1. **Q1a.** Does pure Haskell match backend (ii) on terminal playout throughput
@@ -308,15 +309,21 @@ the verdict line is informational and `mcts test all` closure is gated by the
 apples-to-apples invariants Q3/Q4/Q6/Q7 plus a non-pending measurement.
 
 This evidence remains valid for the Sprint `5.6` backend `(ii)` artefact. It is
-not final handoff evidence after Phase `5` Sprint `5.7` because the backend
-`(ii)` kernel and PGO/BOLT profile suite have changed; accepted Sprint `8.15`
-focused Haskell changes narrow local hot-path overhead, but the sprint stays
-active until the rebaselined measurement and apples-to-apples invariants are
-recorded honestly against that new target. The latest accepted aggregate rerun
-records `Verdict: Trails parity band by 26.8%` (legacy label
+historical after Phase `5` Sprint `5.7` because the backend `(ii)` kernel and
+PGO/BOLT profile suite changed; the accepted Sprint `8.15` aggregate rerun
+recorded `Verdict: Trails parity band by 26.8%` (legacy label
 `Shortfall 0.2678864950323545`): Q1a backend `(ii)`/Haskell ratios `1.06x` ST
 and `1.27x` MT8, Q1b `1.05x` ST and `1.11x` MT8, and Q2 `0.98x` ST and
-`1.11x` MT8.
+`1.11x` MT8. That measurement is itself historical against the pre-Sprint
+`5.8` `(ii)` artefact, because Sprint `5.8` landed the bidirectional
+path-existence BFS, the `UctNode` cache-line padding drop, and the additive
+C++/BOLT flag scrub. Phase `8` Sprint `8.16` closed on 2026-05-29 with the
+post-`5.8` measurement as the current-artifact evidence: Q1a backend
+`(ii)`/Haskell ratios `1.51x` ST / `1.50x` MT8, Q1b `1.53x` ST / `1.56x`
+MT8, Q2 `1.41x` ST / `1.57x` MT8, Q5 scaling Haskell search `7.16x` vs
+C++ `(ii)` search `7.31x`, Haskell self-play `3.28x` vs C++ `(ii)`
+self-play `3.66x`; `Verdict: Trails parity band by 57.1%`; Q3/Q4/Q6/Q7
+PASS and `normalized_divergence_score=0.0000`.
 The 2026-05-24 Sprint `8.11` aggregate run remains historical refactored-metric
 evidence for the older backend (ii) artefact: Q1a terminal playout ST `0.07x`,
 Q1a MT8 `0.39x`, Q1b search-iteration ST `0.06x`, Q1b MT8 `0.40x`, Q2

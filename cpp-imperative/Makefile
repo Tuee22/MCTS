@@ -13,7 +13,17 @@ CXX ?= g++
 # the imperative engine never exercises those failure paths. The C ABI
 # shim's defensive `try`/`catch (...)` wrappers were also removed
 # because no exception can propagate from the engine TU.
-CXXFLAGS ?= -std=c++23 -O3 -march=native -mtune=native -flto -fno-plt -fno-semantic-interposition -fvisibility=hidden -fvisibility-inlines-hidden -fno-exceptions -fPIC -Wno-pessimizing-move -Iengine
+# Sprint 5.8 scrub flags:
+#   -fno-stack-protector — the engine has no untrusted input crossing the
+#     hot path; the SSP cookie writes are unconditional dead weight.
+#   -fno-rtti — no `dynamic_cast` or `typeid` is reachable from the
+#     search kernel (no virtual base anywhere on the hot path), so
+#     emitted RTTI metadata is pure code/data bloat.
+#   -fipa-pta — opt-in inter-procedural points-to analysis. Improves
+#     LTO devirtualization and alias resolution across the engine TU
+#     and the C-ABI shim. Each flag is gated by its own focused (ii)
+#     benchmark measurement under the Sprint 5.8 rollback discipline.
+CXXFLAGS ?= -std=c++23 -O3 -march=native -mtune=native -flto -fno-plt -fno-semantic-interposition -fvisibility=hidden -fvisibility-inlines-hidden -fno-exceptions -fno-stack-protector -fno-rtti -fipa-pta -fPIC -Wno-pessimizing-move -Iengine
 LDFLAGS ?= -shared -flto -Wl,--emit-relocs
 LDLIBS ?= -lmimalloc
 
@@ -103,7 +113,16 @@ bolt-instr-instrument:
 
 # Stage 4: BOLT optimize. Read the BOLT profile and produce the
 # post-link reordered `.bolted.so`. The doctrine reorder choice is
-# `ext-tsp` (the cache-aware extension to TSP block layout).
+# `ext-tsp` (the cache-aware extension to TSP block layout). Sprint 5.8
+# extends the invocation with `-split-functions -split-strategy=cdsplit`
+# (hot/cold cache-driven split), `-reorder-functions=cdsort` (cache-directed
+# function ordering; the modern replacement for the deprecated `hfsort+`),
+# and `-icf=1` (identical-code folding; LLVM 19's BOLT takes a boolean
+# here, not the legacy `safe` value). Flag names were corrected from
+# `hfsort+`/`safe` to `cdsort`/`1` on the first Sprint 5.8 validation
+# rebuild after LLVM 19's BOLT rejected the legacy syntax. Each addition
+# is gated by its own focused (ii) benchmark; the bundle is reverted on
+# any focused-row regression.
 bolt-bench-optimize:
 	@fdata=""; \
 	for candidate in $$(ls -t $(BOLT_DIR)/bench.fdata* 2>/dev/null); do \
@@ -115,7 +134,11 @@ bolt-bench-optimize:
 	fi; \
 	llvm-bolt build/libmcts_cpp_imperative_bench.so \
 	    -o build/libmcts_cpp_imperative_bench.bolted.so \
-	    -data $$fdata -reorder-blocks=ext-tsp; \
+	    -data $$fdata \
+	    -reorder-blocks=ext-tsp \
+	    -split-functions -split-strategy=cdsplit \
+	    -reorder-functions=cdsort \
+	    -icf=1; \
 	test -s build/libmcts_cpp_imperative_bench.bolted.so
 	$(MAKE) envelope-build-id LIB=build/libmcts_cpp_imperative_bench.bolted.so
 
@@ -130,7 +153,11 @@ bolt-instr-optimize:
 	fi; \
 	llvm-bolt build/libmcts_cpp_imperative_instrumented.so \
 	    -o build/libmcts_cpp_imperative_instrumented.bolted.so \
-	    -data $$fdata -reorder-blocks=ext-tsp; \
+	    -data $$fdata \
+	    -reorder-blocks=ext-tsp \
+	    -split-functions -split-strategy=cdsplit \
+	    -reorder-functions=cdsort \
+	    -icf=1; \
 	test -s build/libmcts_cpp_imperative_instrumented.bolted.so
 	$(MAKE) envelope-build-id LIB=build/libmcts_cpp_imperative_instrumented.bolted.so
 
