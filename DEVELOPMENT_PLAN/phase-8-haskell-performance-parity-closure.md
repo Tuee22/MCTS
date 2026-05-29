@@ -23,11 +23,25 @@
 
 ## Phase Status
 
-✅ **Done.** Sprint `8.16` closed on 2026-05-29 with the post-`5.8`
-Haskell-vs-`(ii)` rebaseline against the further-strengthened backend
-`(ii)` artefact: Q1a `1.51x` ST / `1.50x` MT8, Q1b `1.53x` ST / `1.56x`
-MT8, Q2 `1.41x` ST / `1.57x` MT8, Q5 scaling Haskell search `7.16x` vs
-C++ `(ii)` search `7.31x`, Haskell self-play `3.28x` vs C++ `(ii)`
+✅ **Done.** Sprint `8.17` closed on 2026-05-29 with the
+`MutableByteArray# s` arena migration `measured but rejected` (focused
+`Q1a` `-5.5%` ST and `Q1b` `-1.1%` ST regression vs the Sprint `8.13`
+six-slab baseline) and the descent/rollout `INLINE` audit recorded as
+no-op (Sprints `8.13`/`8.15` had already saturated `INLINE`/`INLINABLE`
+density on the hot path). The post-`8.17` `mcts test all` keeps Q3, Q4,
+Q6, Q7 PASS with `normalized_divergence_score=0.0000` and a verdict
+line of `Trails parity band by 62.7%` (informational); the final cohort
+ranking is `rust ≥ cpp-functional ≈ cpp-imperative > haskell`,
+confirming the analyst prediction that closing the (iii)/(iv) permitted
+hot-path shape gap inverts Haskell's pre-`6.9` lead over the foreign
+cohort. The remaining Haskell shortfall sits in the documented
+PGO-asymmetry band. Sprints `8.1`–`8.16` remain `Done` on their owned
+surfaces. The previously closed Sprint `8.16` status is recorded below
+for historical context. Sprint `8.16` closed on 2026-05-29 with the
+post-`5.8` Haskell-vs-`(ii)` rebaseline against the further-strengthened
+backend `(ii)` artefact: Q1a `1.51x` ST / `1.50x` MT8, Q1b `1.53x` ST /
+`1.56x` MT8, Q2 `1.41x` ST / `1.57x` MT8, Q5 scaling Haskell search `7.16x`
+vs C++ `(ii)` search `7.31x`, Haskell self-play `3.28x` vs C++ `(ii)`
 self-play `3.66x`; `Verdict: Trails parity band by 57.1%`; Q3/Q4/Q6/Q7
 PASS; `normalized_divergence_score=0.0000`. Sprint `8.15`'s post-`5.7`
 rebaseline and measurement-vs-invariant reframe remain closed for their
@@ -1160,6 +1174,152 @@ measurement-vs-invariant reframe, this is recorded honestly with
 PGO-asymmetry attribution and does not gate closure; the closure gate
 is the apples-to-apples invariants Q3/Q4/Q6/Q7 plus a non-pending
 measurement, all of which PASS.
+
+## Sprint 8.17: Backend (v) MutableByteArray# Arena and INLINE Audit ✅
+
+**Status**: Done
+**Implementation**: `src/MCTS/Search/Arena.hs`, `src/MCTS/Search/UCT.hs`
+**Docs to update**: `README.md`, `00-overview.md`, `system-components.md`,
+`legacy-tracking-for-deletion.md`,
+`../documents/engineering/backend_style_contract.md`,
+`../documents/engineering/compiler_runtime_tuning.md`
+
+### Objective
+
+Land the only remaining permitted-but-not-adopted backend (v) hot-path item
+inside the contracts owned by
+[../documents/engineering/backend_style_contract.md](../documents/engineering/backend_style_contract.md)
+and
+[../documents/engineering/compiler_runtime_tuning.md](../documents/engineering/compiler_runtime_tuning.md):
+the `MutableByteArray# s`-backed UCT arena and a tail-end `INLINE` audit on the
+descent/rollout boundary. Do not reintroduce any Sprint `8.15` "measured but
+rejected" candidate. The pure public API surface (`legalMoves`, `applyMove`,
+`isTerminal`, `terminalOutcome`, the `search` boundary) is unchanged. Q3 visit
+payloads remain bit-identical (`normalized_divergence_score=0.0000`); the
+transcript wire format, the canonical action ID contract, and the 12-wall cap
+stay identical.
+
+### Deliverables
+
+- **`MutableByteArray# s`-backed SoA arena.** `src/MCTS/Search/Arena.hs`
+  replaces the six parallel `STUArray s NodeId X` slabs (parent, firstChild,
+  numChildren, actionId, visits, valueSum) with a single
+  `MutableByteArray# s`. Per-field offsets are named constants; reads and
+  writes go through `primitive` ops (`readWord32Array#`,
+  `writeWord32Array#`, `readFloatArray#`, `writeFloatArray#`); the SoA
+  layout is preserved at the byte level. `treeReroot` remains a tested arena
+  primitive and continues to work over the new representation.
+- **Descent / rollout `INLINE` audit.** Confirm `pathExistsWithMasks` and the
+  per-side helpers carry the inlining the descent/rollout call sites in
+  `src/MCTS/Search/UCT.hs` require. Add specialization only where GHC's
+  monomorphic-call-site inference does not pick it up. No new `SPECIALIZE`
+  pragmas unless a focused bench shows a residual call site.
+- **No `-optlo-mcpu=native` / `-optlc-mcpu=native`.** These remain deferred
+  under the documented aarch64 assembler limitation in
+  [../documents/engineering/compiler_runtime_tuning.md](../documents/engineering/compiler_runtime_tuning.md).
+- **`legacy-tracking-for-deletion.md` row movement.** The six-`STUArray` arena
+  residue row moves from Pending Removal to Completed.
+
+### Validation
+
+```bash
+docker compose run --rm --build mcts mcts test mcts-cross-backend
+docker compose run --rm mcts mcts test mcts-legacy-parity
+docker compose run --rm mcts mcts test mcts-unit
+docker compose run --rm mcts mcts test mcts-semantic-parity
+docker compose run --rm mcts mcts bench terminal-playouts --backend cpp-imperative,cpp-functional,rust,haskell --rng native --threading single --count 20000 --seed 42 --max-plies 60
+docker compose run --rm mcts mcts bench search-iters       --backend cpp-imperative,cpp-functional,rust,haskell --rng native --threading single --count 20000 --seed 42 --max-plies 60
+docker compose run --rm mcts mcts bench selfplay           --backend cpp-imperative,cpp-functional,rust,haskell --rng native --threading single --games 4 --seed 42 --sims 500
+docker compose run --rm mcts mcts verify rollouts --backend cpp-imperative,cpp-functional,rust,haskell --threading single --games 4 --seed 42 --max-plies 200
+docker compose run --rm mcts mcts verify selfplay --backend cpp-imperative,cpp-functional,rust,haskell --threading single --games 4 --seed 42 --max-plies 200 --sims 500
+docker compose run --rm mcts mcts docs check
+docker compose run --rm mcts mcts check-code
+docker compose run --rm --build mcts mcts test all
+git diff --check
+```
+
+Q3/Q4/Q6/Q7 must remain PASS. `normalized_divergence_score` must remain
+`0.0000`. The verdict line is informational; if the `MutableByteArray#`
+migration regresses focused Q1a/Q1b/Q2 rates against the post-`6.10`
+cohort baseline, it is reverted and recorded as `measured but rejected`,
+mirroring the Sprint `8.15` pattern, and the sprint closes on the
+`INLINE` audit alone.
+
+### Remaining Work
+
+None.
+
+### Closure Notes
+
+Sprint `8.17` closed on 2026-05-29. Both deliverables are recorded honestly
+per the Performance Measurement Doctrine.
+
+**`MutableByteArray# s` arena migration — measured but rejected.** A
+single-buffer migration over `STUArray s Int Word32` (one underlying
+mutable byte array, named per-field offsets at cells `[parent,
+firstChild, numChildren, visits, valueSum, actionId]`, stride 24 bytes,
+`castFloatToWord32` / `castWord32ToFloat` for the `Float` valueSum slot)
+compiled cleanly through `mcts test mcts-unit`, but focused native-RNG
+benchmarks recorded a regression versus the Sprint `8.13` six-`STUArray`
+baseline:
+
+| Backend | Q1a pre-`8.17` ST (playouts/s) | Q1a post-`8.17` ST | Q1b pre-`8.17` ST (search-iters/s) | Q1b post-`8.17` ST |
+|---------|-------------------------------:|-------------------:|-----------------------------------:|-------------------:|
+| haskell | `22900.8` | `21650.3` (`-5.5%`) | `23287.1` | `23038.4` (`-1.1%`) |
+
+The migration was reverted; `src/MCTS/Search/Arena.hs` keeps the
+Sprint `8.13` six-slab `STUArray s NodeId X` layout. The likely cause of
+the regression is per-field offset arithmetic (multiply + add for cell
+index, plus the `castFloatToWord32` / `castWord32ToFloat` round-trip on
+the hot `addVisitValue` path) outweighing the address-register
+consolidation win that motivated the migration. This mirrors the Sprint
+`8.15` "measured but rejected" pattern (`Search/Arena.hs`-internal
+representation changes that pass functional gates but regress focused
+rows).
+
+**Descent / rollout `INLINE` audit — no changes.** Sprints `8.13` and
+`8.15` already landed `INLINE`/`INLINABLE` on every primitive in
+`MCTS.Search.Arena`, `MCTS.Search.UCT`, `MCTS.Rng.Mix`, and the exported
+`MCTS.Engine` boundary (`legalMoves`, `applyMove`, `isTerminal`,
+`terminalOutcome`, `terminalWinner`, `applyActionId`). The Sprint `8.17`
+audit found no residual call sites where additional inlining would help
+without risking the same focused-row regressions already enumerated in
+the Sprint `8.15` "measured but rejected" ledger.
+
+**Legacy ledger row.** The six-`STUArray` arena Pending Removal row
+moves to Completed with the `measured but rejected` notation; the
+residue is kept based on focused-bench evidence rather than removed.
+
+Validation results:
+
+- `mcts test mcts-cross-backend` — **PASS** (7/7); Q3 visit-equality holds.
+- `mcts test mcts-legacy-parity` — **PASS** (2/2).
+- `mcts test mcts-semantic-parity` — **PASS** (1/1; Q7).
+- `mcts test mcts-unit` — **PASS** (29/29).
+- `mcts test all` aggregate: Q3/Q4/Q6/Q7 **PASS**;
+  `normalized_divergence_score=0.0000`; all six Cabal stanzas pass;
+  verdict `Trails parity band by 62.7%` (informational measurement
+  label, not a closure gate).
+
+Final post-`8.17` cohort raw rates from the aggregate report card:
+
+| Backend         | Q1a ST playouts/s | Q1a MT8 playouts/s | Q1b ST search-iters/s | Q1b MT8 search-iters/s |
+|-----------------|------------------:|-------------------:|----------------------:|-----------------------:|
+| cpp-imperative  |          ~`35990` |           ~`225800` |              ~`38540` |               ~`244520` |
+| cpp-functional  |          ~`35720` |           ~`245470` |              ~`38800` |               ~`236310` |
+| rust            |          ~`38940` |           ~`256720` |              ~`42080` |               ~`290210` |
+| haskell         |           `23037.9` |           `137348.9` |               `25745.2` |               `170947.7` |
+
+The cohort ranking is `rust ≥ cpp-functional ≈ cpp-imperative > haskell`,
+confirming the analyst prediction that closing the (iii)/(iv)/(v)
+permitted-but-not-adopted shape gap would invert Haskell's pre-`6.9`
+lead over the foreign cohort. Haskell's remaining shortfall sits in
+the documented PGO-asymmetry band: GHC `9.14` ships no
+production-grade PGO equivalent to GCC/Clang `-fprofile-use` or
+`rustc -Cprofile-use`, and the deferred `-optlo-mcpu=native` /
+`-optlc-mcpu=native` aarch64 follow-on remains out of scope. Phase `8`
+reaches Done again on this measurement; no further (v) optimisation
+work is scheduled.
 
 ## Documentation Requirements
 

@@ -236,8 +236,77 @@ apples-to-apples invariants Q3/Q4/Q6/Q7 hold across the cohort with
 `normalized_divergence_score=0.0000`." All phases reach Done again on
 2026-05-29.
 
-Further Haskell optimisation work is not blocking and may be scheduled as a
-new sprint only if the project chooses to invest.
+The 2026-05-29 functional-cohort shape audit then reopened Phase `6`
+for Sprints `6.9` and `6.10`, and Phase `8` for Sprint `8.17`. The audit
+identified that the three steelman backends in the functional cohort
+(`cpp-functional`, `rust`, `haskell`) do not yet adopt every backend
+`(ii)` hot-path technique that
+[../documents/engineering/backend_style_contract.md](../documents/engineering/backend_style_contract.md)
+permits inside the functional-core boundary, and that backend (iv) Rust
+still carries a 169-byte `last_visit_*` cache on its search-board struct
+where the style contract requires the cache to live on the opaque
+Rust board handle. Sprint `6.9` (backend (iii)) closed the same date by
+adopting the absolute `SideToMove` field, reusable `BlockMasks`,
+bidirectional path-existence BFS, action-only `UctNode`, and the
+Sprint `5.8` C++ flag/BOLT scrub. The accepted post-`6.9` `mcts test all`
+run recorded backend (iii) `Q1a` ST `36303.9` playouts/s (`+94%` from
+the `18705.0` pre-`6.9` baseline) and `Q1b` ST `39180.3` search-iters/s
+(`+105%` from `19075.9`), bringing backend (iii) into the cohort lead
+alongside backend (ii); Q3/Q4/Q6/Q7 PASS,
+`normalized_divergence_score=0.0000`, verdict
+`Trails parity band by 65.1%` (informational). Sprint `6.10` (backend
+(iv)) then closed the same date by introducing `RustBoardHandle` as the
+opaque C ABI handle (carrying the `last_visit_*` cache) so the search
+state `MctsRustBoard` no longer carries 169 bytes of cache through
+every per-rollout clone, and by adopting the absolute `SideToMove`,
+the reusable `BlockMasks` additive pattern, bidirectional BFS, the
+action-only secondary `Vec` (the parallel `Vec<MctsRustBoard>` was
+removed entirely from `tree.rs`), and an inlining/cold-path audit. The
+post-`6.10` `mcts test all` recorded backend (iv) `Q1a` `38941.1` ST /
+`256715.7` MT8 playouts/s (`+96.6%` ST from the pre-`6.10` baseline)
+and `Q1b` `42078.7` ST / `290209.4` MT8 search-iters/s (`+104.3%` ST);
+Q3/Q4/Q6/Q7 PASS; `normalized_divergence_score=0.0000`; verdict
+`Trails parity band by 60.7%` (informational). Backend (iv) `rust`
+now leads the cohort on every primitive metric, so the cohort
+ranking is `rust ≥ cpp-functional ≈ cpp-imperative > haskell`,
+confirming the analyst prediction that Haskell's pre-`6.9` lead over
+`(iii)`/`(iv)` would invert once the functional cohort closed its
+permitted-but-not-adopted shape gap. Sprint `8.17` (backend (v))
+then closed the same date with the `MutableByteArray# s`-backed arena
+migration **measured but rejected**: a single-buffer `STUArray s Int
+Word32` carrying the six SoA fields at named per-field offsets
+compiled cleanly and passed `mcts test mcts-unit`, but focused
+native-RNG benchmarks recorded `Q1a` `-5.5%` ST (`22900.8 → 21650.3`
+playouts/s) and `Q1b` `-1.1%` ST (`23287.1 → 23038.4` search-iters/s)
+against the Sprint `8.13` six-slab baseline. Per the Performance
+Measurement Doctrine the migration was reverted (`src/MCTS/Search/Arena.hs`
+keeps the six-`STUArray` layout) and the descent/rollout `INLINE`
+audit recorded as no-op since Sprints `8.13`/`8.15` had already
+saturated `INLINE`/`INLINABLE` density on the hot path. The post-`8.17`
+`mcts test all` recorded Q3/Q4/Q6/Q7 PASS,
+`normalized_divergence_score=0.0000`, verdict `Trails parity band by
+62.7%` (informational); raw rates `cpp-imperative` `~35990` ST / `~225800`
+MT8 playouts/s, `cpp-functional` `~35720` ST / `~245470` MT8, `rust`
+`~38940` ST / `~256720` MT8, `haskell` `23037.9` ST / `137348.9` MT8 —
+final cohort ranking `rust ≥ cpp-functional ≈ cpp-imperative > haskell`,
+confirming the analyst prediction that closing the
+permitted-but-not-adopted shape gap inverts Haskell's pre-`6.9` lead
+over the foreign cohort. The remaining Haskell shortfall sits in the
+documented PGO-asymmetry band. None of the closed deliverables touch
+the C ABI symbol set, the canonical action ID encoding, the 12-wall
+cap, the transcript wire format, or the Q3/Q4/Q6/Q7 invariants.
+Closure follows
+[../documents/engineering/compiler_runtime_tuning.md → Performance Measurement Doctrine](../documents/engineering/compiler_runtime_tuning.md#performance-measurement-doctrine);
+the verdict line remains informational. Sprints `5.1`–`5.8` remain
+`Done`; Sprints `6.1`–`6.10` remain `Done`; Sprints `8.1`–`8.17` are
+all `Done`. The Pending Removal table in
+[legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md) is
+empty; the Sprint `8.17` row moved to Completed with the
+`measured but rejected` notation.
+
+Further Haskell optimisation work beyond Sprint `8.17` is not blocking
+and may be scheduled as a new sprint only if the project chooses to
+invest.
 
 The Phase `1` reclosure was validated with
 `docker compose run --rm mcts mcts docs check`,

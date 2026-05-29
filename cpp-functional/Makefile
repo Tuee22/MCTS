@@ -8,7 +8,15 @@ CXX ?= g++
 # comparison isolates source style as the variable. Backend (iii)'s
 # compact functional-core state is header-only; the old legacy
 # `corridors::board` translation unit is no longer part of this build.
-CXXFLAGS ?= -std=c++23 -O3 -march=native -mtune=native -flto -fno-plt -fno-semantic-interposition -fvisibility=hidden -fvisibility-inlines-hidden -fno-exceptions -fPIC -Wno-pessimizing-move -Iengine
+# Sprint 6.9 adopts the Sprint 5.8 backend (ii) flag scrub:
+#   -fno-stack-protector — engine core takes no untrusted input on the
+#                          hot path; SSP cookie is dead weight.
+#   -fno-rtti           — no `dynamic_cast` or `typeid` on the hot path.
+#   -fipa-pta           — opts in to inter-procedural points-to analysis;
+#                         tightens LTO devirtualization and alias
+#                         resolution across the engine TU and the C ABI
+#                         shim.
+CXXFLAGS ?= -std=c++23 -O3 -march=native -mtune=native -flto -fno-plt -fno-semantic-interposition -fvisibility=hidden -fvisibility-inlines-hidden -fno-exceptions -fno-stack-protector -fno-rtti -fipa-pta -fPIC -Wno-pessimizing-move -Iengine
 LDFLAGS ?= -shared -flto -Wl,--emit-relocs
 LDLIBS ?= -lmimalloc
 
@@ -90,7 +98,11 @@ bolt-bench-optimize:
 	fi; \
 	llvm-bolt build/libmcts_cpp_functional_bench.so \
 	    -o build/libmcts_cpp_functional_bench.bolted.so \
-	    -data $$fdata -reorder-blocks=ext-tsp; \
+	    -data $$fdata \
+	    -reorder-blocks=ext-tsp \
+	    -split-functions -split-strategy=cdsplit \
+	    -reorder-functions=cdsort \
+	    -icf=1; \
 	test -s build/libmcts_cpp_functional_bench.bolted.so
 	$(MAKE) envelope-build-id LIB=build/libmcts_cpp_functional_bench.bolted.so
 
@@ -105,7 +117,11 @@ bolt-instr-optimize:
 	fi; \
 	llvm-bolt build/libmcts_cpp_functional_instrumented.so \
 	    -o build/libmcts_cpp_functional_instrumented.bolted.so \
-	    -data $$fdata -reorder-blocks=ext-tsp; \
+	    -data $$fdata \
+	    -reorder-blocks=ext-tsp \
+	    -split-functions -split-strategy=cdsplit \
+	    -reorder-functions=cdsort \
+	    -icf=1; \
 	test -s build/libmcts_cpp_functional_instrumented.bolted.so
 	$(MAKE) envelope-build-id LIB=build/libmcts_cpp_functional_instrumented.bolted.so
 

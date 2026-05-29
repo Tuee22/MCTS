@@ -292,6 +292,46 @@ isolates style: Sprint `6.7` removed backend (iii)'s legacy-board and
 action-text hot-path residue and moved the cleanup ledger entry to completed in
 [../../DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md](../../DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md).
 
+#### Sprint 6.9 Backend (iii) Hot-Path Shape Alignment
+
+Sprint `6.9` adopts the remaining permitted backend (ii) techniques inside the
+backend (iii) functional-core boundary:
+
+- **Absolute `SideToMove` field on `State`.** The per-transition full-state
+  flip in `flipped_after_move()` is dropped; transitions toggle `SideToMove`
+  and leave coordinates / wall bitfields untouched. Canonical action ID
+  semantics, Q3 visit payload bit-equality, and transcript wire format are
+  preserved. Mirrors `cpp-imperative/engine/fast_board.hpp` Sprint `5.7`.
+- **Reusable `BlockMasks` precomputed once per `legal_actions`.** Wall
+  candidates run against `add_wall_to_masks(trial_masks, candidate)` plus two
+  `path_exists_with_masks(side)` calls. No per-candidate 56-byte `State` copy
+  and no inline mask recomputation. Mirrors
+  `cpp-imperative/engine/fast_board.hpp::block_masks` /
+  `add_wall_to_masks` Sprint `5.7`.
+- **Bidirectional bit-parallel BFS in `path_exists_with_masks`.** Two
+  simultaneous `unsigned __int128` frontiers (from start cell and from goal
+  row) with intersect-or-extinct termination. Mirrors Sprint `5.8`. The
+  bidirectional improvement is small on 9x9 Quoridor (≤9 BFS steps) but keeps
+  the three steelman backends symmetric so cohort comparisons stay clean.
+- **Action-only `UctNode`; `State` materialized on the descent stack.** The
+  node footprint drops to `parent_idx`, `first_child_idx`, `n_children`,
+  `action_id`, `visit_count`, `q_sum`, `expanded`, `terminal`. Search keeps a
+  `State current` and a fixed-capacity `path` buffer through descent. Backprop
+  walks the recorded path. Mirrors backend (ii) `arena.hpp` Sprint `5.7`.
+- **`cpp-functional/Makefile` flag and BOLT scrub parity with Sprint `5.8`.**
+  Add `-fno-stack-protector -fno-rtti -fipa-pta` to the C++ functional flag
+  block. Extend BOLT invocation with `-split-functions -split-strategy=cdsplit
+  -reorder-functions=cdsort -icf=1` on top of the existing
+  `-reorder-blocks=ext-tsp`. The shared `cppPgoBoltPlan` in
+  `src/MCTS/CLI/Build.hs` already drives both C++ backends with the same flag
+  set, so no harness change is required.
+
+The expected evidence is not a new parity question. Q3/Q4/Q6/Q7 continue to own
+correctness. The new evidence is focused native-RNG Q1a/Q1b/Q2 raw performance
+for `cpp-functional` against `cpp-imperative`, `rust`, and `haskell`, plus the
+aggregate gates required by Phase `6`. Sprint `6.9` does not change the
+visit-payload contract, the C ABI, or the functional-core boundary.
+
 ## Backend (iv) — Rust
 
 `Cargo.toml` `[profile.release]` per
@@ -367,7 +407,10 @@ shape gap against `(iii)` and `(v)` without changing the build envelope.
   target Rust hot path.
 - The optional `read_visits` cache belongs inside the Rust board handle, mirroring
   the C++ handle-local cache shape; the old global synchronized map is historical
-  Sprint `6.8` cleanup residue.
+  Sprint `6.8` cleanup residue, and **Sprint `6.10` finishes the relocation** by
+  removing the `last_visit_len`, `last_visit_actions`, and `last_visit_counts`
+  fields from `MctsRustBoard` and moving them onto the opaque handle declared in
+  `rust/src/c_abi.rs`.
 - `#[inline(always)]` on hot leaf operations, `#[cold]` on error and terminal
   paths.
 - `core::hint::unreachable_unchecked` where a precondition genuinely guarantees
@@ -375,6 +418,15 @@ shape gap against `(iii)` and `(v)` without changing the build envelope.
 - Bit ops via `u64::count_ones` / `u64::trailing_zeros` (lower to the same
   `popcnt` / `tzcnt` as the C++ builtins).
 - No `Rc` / `Arc` in the hot path. No `Box<dyn Trait>` in the search.
+- **Absolute `SideToMove` field on `MctsRustBoard`.** The per-transition
+  `*self = self.flipped()` reassignment is dropped; transitions toggle
+  `SideToMove`. Mirrors Sprint `6.9` backend (iii) and Sprint `5.7` backend (ii).
+- **Reusable `BlockMasks` precomputed once per `legal_actions`.** Wall-candidate
+  legality runs against an additively-extended `BlockMasks` value, eliminating
+  the 196-byte `MctsRustBoard` clone in `wall_placement_legal`. Mirrors Haskell
+  `src/MCTS/Engine.hs::blockMasks` / `addWallIdToMasks`.
+- **Bidirectional bit-parallel BFS in `path_exists_with_masks`.** Mirrors
+  Sprint `6.9` backend (iii) and Sprint `5.8` backend (ii).
 
 ### Sprint 6.8 Rust Hot-Path Refactor
 
@@ -394,6 +446,44 @@ already-aligned `(iii)` and `(v)` implementations:
 The expected evidence is not a new parity question: Q3/Q6 continue to own correctness.
 The new evidence is focused native-RNG Q1a/Q1b/Q2 raw performance for `rust` against
 `cpp-functional` and `haskell`, plus the aggregate gates required by Phase `6`.
+
+### Sprint 6.10 Rust Hot-Path Shape Alignment
+
+Sprint `6.10` extends the Sprint `6.8` cleanup with the remaining permitted
+backend (ii)/(iii) shape items that still apply to backend (iv):
+
+- **Visit-cache relocation onto the opaque handle.** Remove `last_visit_len`,
+  `last_visit_actions: [u8; 16]`, and `last_visit_counts: [u32; 16]` (169 bytes)
+  from `MctsRustBoard` in `rust/src/board.rs`. Add the same triple to the opaque
+  handle struct in `rust/src/c_abi.rs`. `apply_action` no longer clears a
+  search-board cache; the per-rollout and per-wall-candidate copy paths shed the
+  169-byte tail. This closes the style-contract violation noted in
+  [./backend_style_contract.md → Backend (iv) Rust Target](./backend_style_contract.md).
+  The C ABI symbol set, including `mcts_rust_read_visits`, is unchanged.
+- **Absolute `SideToMove` enum on `MctsRustBoard`.** Drop `flipped()` and
+  `*self = self.flipped()` from `apply_action_flip`; toggle the new field. Pawn
+  coordinates and wall bitfields stay in absolute hero-frame storage; canonical
+  action ID semantics are preserved by the same `flip_action_id` helper.
+- **Reusable `BlockMasks` in `legal_actions`.** Port the additive mask pattern
+  used by backend (v) Haskell and the Sprint `6.9` backend (iii) target.
+  `wall_placement_legal` no longer clones `MctsRustBoard`.
+- **Bidirectional bit-parallel BFS over `u128`.** Mirrors Sprint `5.8` backend
+  (ii) and Sprint `6.9` backend (iii).
+- **Action-only secondary `Vec` in `tree.rs`.** With the `last_visit_*` fields
+  removed and the `SideToMove` toggle replacing the per-transition flip, the
+  parallel `Vec<MctsRustBoard>` shrinks per element. Reserve to the existing
+  child-bound formula.
+- **Inlining and unreachable hints audit.** `#[inline(always)]` on
+  `apply_action_flip`, `legal_actions`, `path_exists_with_masks`, the rollout
+  body, and the descent body. `#[cold]` on terminal and early-exit paths.
+  `core::hint::unreachable_unchecked` after the precondition-checked action-id
+  decoding sites, each with a single-line `// safety:` comment.
+
+The expected evidence is not a new parity question. Q3/Q4/Q6/Q7 continue to own
+correctness. The new evidence is focused native-RNG Q1a/Q1b/Q2 raw performance
+for `rust` against `cpp-functional` and `haskell`, plus the aggregate gates
+required by Phase `6`. Sprint `6.10` does not change the visit-payload contract
+or the C ABI symbol set.
 
 ## Backend (v) — Haskell
 
@@ -483,6 +573,36 @@ would muddy the GHC-as-shipped parity claim. `mimalloc` static-linking
 applies to backends (ii), (iii), (iv) only — see
 [../../DEVELOPMENT_PLAN/system-components.md](../../DEVELOPMENT_PLAN/system-components.md).
 
+### Sprint 8.17 Backend (v) MutableByteArray# Arena and INLINE Audit
+
+Sprint `8.17` lands the only headroom item left on backend (v) inside the
+contracts owned by this document and
+[./backend_style_contract.md](./backend_style_contract.md):
+
+- **`MutableByteArray# s`-backed SoA arena.** `src/MCTS/Search/Arena.hs`
+  replaces the six parallel `STUArray` slabs with a single
+  `MutableByteArray# s`. Per-field offsets are named constants; reads and writes
+  go through `primitive` ops; the SoA layout itself (parent, firstChild,
+  numChildren, actionId, visits, valueSum) is preserved at the byte level.
+  Eliminates five extra header words per logical row and consolidates the six
+  array address registers into one.
+- **Descent / rollout `INLINE` audit.** Confirm `pathExistsWithMasks` and the
+  per-side helpers carry the inlining the descent/rollout call sites in
+  `src/MCTS/Search/UCT.hs` require. Add specialization only where GHC's
+  monomorphic-call-site inference does not pick it up.
+- **`-optlo-mcpu=native` / `-optlc-mcpu=native` remain deferred** under the
+  aarch64 assembler limitation already documented above; Sprint `8.17` does not
+  enable them.
+
+The Sprint `8.15` ledger of rejected candidates in
+[../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md](../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md)
+is read-only; no rejected candidate is reintroduced. If focused benches show
+the `MutableByteArray#` migration regresses Q1a/Q1b on the post-`6.10` cohort,
+the sprint records that result in the same "measured but rejected" pattern
+and reverts the migration. Q3/Q4/Q6/Q7 continue to gate closure; the verdict
+line remains informational per
+[Performance Measurement Doctrine](#performance-measurement-doctrine).
+
 ### Sprint 8.2 — Profile-Driven Hot-Path Tuning Rounds
 
 The historical `mcts-criterion` benchmark stanza in `mcts.cabal` records per-call
@@ -506,10 +626,13 @@ search inner loop. Round 1 takes the rollout's per-step cost from ~1 ms to
   `Word16` ply counter; `isTerminal` returns true on `ply >= maxPlies` with
   eval `0.0`. Lives in the same unboxed board record as the bitboards;
   restored as part of the per-rollout `ST`-arena snapshot path.
-- Engine hot path lives in `ST s`. The current tree is a structure-of-arrays
-  `STUArray` arena of unboxed fields; a hand-rolled `MutableByteArray#`
-  migration remains profile-driven and is not required by the current measured
-  baseline.
+- Engine hot path lives in `ST s`. The Sprint `8.13` baseline used six parallel
+  structure-of-arrays `STUArray` slabs of unboxed fields. Sprint `8.17` lands
+  the hand-rolled `MutableByteArray# s` arena migration: one mutable byte array
+  holds the SoA layout (parent, firstChild, numChildren, actionId, visits,
+  valueSum) at named per-field offsets, with `primitive` read/write
+  primitives. The pure boundary, `INLINABLE` density, and rollout sentinel
+  contract are unchanged.
 - Board state is `Word64` bitboards, manipulated with `Data.Bits` (compiles to
   efficient bit operations under the active `-fllvm` backend; the extra native
   LLVM CPU flags remain deferred as described above).

@@ -44,6 +44,32 @@ constexpr uint16_t kSearchMaxPlies = 60;
     return -1;
 }
 
+// Sprint 6.9: trusted internal apply path used after `run_search` already
+// validated the absolute action through `legal_actions`. Skips the
+// redundant ABI→absolute translation and legality probe that
+// `apply_action_id` performs at the C ABI boundary.
+[[gnu::hot]] static void apply_trusted_action_id(
+    mcts_functional::State &state,
+    uint8_t absolute_action_id) noexcept {
+    state.apply_action_unchecked(absolute_action_id);
+}
+
+[[gnu::hot]] static void store_search_visits(
+    mcts_functional_board *board,
+    const mcts_functional::SearchOutput &result,
+    uint8_t *out_action_ids,
+    uint32_t *out_visits) noexcept {
+    board->last_visits.clear();
+    board->last_visits.reserve(result.visit_count);
+    for (size_t i = 0; i < result.visit_count; ++i) {
+        const auto &row = result.visits[i];
+        board->last_visits.emplace_back(row.first, row.second);
+        out_action_ids[i] = row.first;
+        out_visits[i] = row.second;
+    }
+    board->last_chosen = result.chosen_action_id;
+}
+
 }  // namespace
 
 extern "C" mcts_functional_board *mcts_functional_new_board(void) {
@@ -82,7 +108,9 @@ extern "C" uint8_t mcts_functional_select_uct_move(mcts_functional_board *board,
         mcts_functional::RngBackend::Mt19937,
         seed);
     if (!result.ok) return 0;
-    if (apply_action_id(board->state, result.chosen_action_id) != 0) return 0;
+    apply_trusted_action_id(board->state, result.chosen_absolute_action_id);
+    board->last_visits.clear();
+    board->last_chosen = result.chosen_action_id;
     return result.chosen_action_id;
 }
 
@@ -98,14 +126,9 @@ extern "C" int32_t mcts_functional_search_move(
         mcts_functional::RngBackend::Mt19937,
         seed);
     if (!result.ok) return -1;
-    if (apply_action_id(board->state, result.chosen_action_id) != 0) return -1;
-    const int32_t count = static_cast<int32_t>(result.visits.size());
-    board->last_visits = result.visits;
-    board->last_chosen = result.chosen_action_id;
-    for (int32_t i = 0; i < count; ++i) {
-        out_action_ids[i] = result.visits[i].first;
-        out_visits[i] = result.visits[i].second;
-    }
+    apply_trusted_action_id(board->state, result.chosen_absolute_action_id);
+    const int32_t count = static_cast<int32_t>(result.visit_count);
+    store_search_visits(board, result, out_action_ids, out_visits);
     *out_chosen = result.chosen_action_id;
     return count;
 }
@@ -125,14 +148,9 @@ extern "C" int32_t mcts_functional_recompute_move(
         mcts_functional::RngBackend::Mt19937,
         seed);
     if (!result.ok) return -1;
-    if (apply_action_id(board->state, result.chosen_action_id) != 0) return -1;
-    const int32_t count = static_cast<int32_t>(result.visits.size());
-    board->last_visits = result.visits;
-    board->last_chosen = result.chosen_action_id;
-    for (int32_t i = 0; i < count; ++i) {
-        out_action_ids[i] = result.visits[i].first;
-        out_visits[i] = result.visits[i].second;
-    }
+    apply_trusted_action_id(board->state, result.chosen_absolute_action_id);
+    const int32_t count = static_cast<int32_t>(result.visit_count);
+    store_search_visits(board, result, out_action_ids, out_visits);
     *out_chosen = result.chosen_action_id;
     *out_equity = result.chosen_equity;
     return count;

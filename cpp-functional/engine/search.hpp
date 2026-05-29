@@ -1,10 +1,12 @@
-// Functional-style imperative-search interface. The functional API
-// surface uses `std::variant` for select outcomes and `std::optional`
-// for terminal evaluations (per Sprint 6.1's "functional style at the
-// API and data-flow level"); the implementation lowers to the same
-// arena-MCTS algorithm as backend (ii), with the same absolute action
-// ordering, splitmix seed schedule, and hero-perspective value
-// propagation as the Haskell verifier.
+// Functional-style imperative-search interface for backend (iii).
+//
+// Sprint 6.1 preserved the functional-style API surface: `std::variant`
+// for select outcomes, `std::optional` for terminal evaluations, and a
+// `DescentStep` value-type to express the descent loop as a sequence of
+// state-transition variants. Sprint 6.9 keeps the same surface while
+// lowering the implementation to the action-only flat arena and
+// iterative descent shape used by backend (ii), so `(iii)` vs `(ii)`
+// isolates style at the API/data-flow level rather than memory layout.
 
 #pragma once
 
@@ -12,6 +14,7 @@
 #include "state.hpp"
 #include "xoshiro256pp.hpp"
 
+#include <array>
 #include <cstdint>
 #include <limits>
 #include <random>
@@ -23,18 +26,15 @@ namespace mcts_functional {
 
 // `SelectOutcome` is the functional-style return type for child
 // selection: either an index into the arena, or an explicit
-// "no child" marker, per Sprint 6.1 (`std::variant<ChildIdx, NoChild>`
-// rather than a sentinel -1).
+// "no child" marker, per Sprint 6.1.
 struct ChildIdx { uint32_t value; };
 struct NoChild {};
 using SelectOutcome = std::variant<ChildIdx, NoChild>;
 
 // Sprint 6.1 (data-flow style): the descent loop is expressed as a
-// state-transition function returning one of three step variants.
-// The lowering still uses the same arena machinery as backend (ii);
-// the source-level shape differs — descent is a sequence of
-// `DescentStep` transitions rather than a fall-through `while (true)`
-// with `break`/`continue` control flow.
+// state-transition function returning one of three step variants. The
+// Sprint 6.9 lowering iterates the same variant sequence into the
+// action-only flat arena.
 struct StepDescend { uint32_t to_idx; };
 struct StepExpand { uint32_t at_idx; };
 struct StepLeaf { uint32_t idx; };
@@ -56,8 +56,12 @@ struct RngBackend {
 };
 
 struct SearchOutput {
-    std::vector<std::pair<uint8_t, uint32_t>> visits;
+    std::array<std::pair<uint8_t, uint32_t>, kMaxLegalActions> visits{};
+    size_t visit_count = 0;
+    // Legacy ABI hero-perspective action ID returned through the C ABI.
     uint8_t chosen_action_id = 0;
+    // Absolute internal action ID applied through the trusted path.
+    uint8_t chosen_absolute_action_id = 0;
     // Hero-perspective equity of the chosen child (`q_sum / visits`),
     // matching `MCTS.Search.UCT.uctSearchWithEquity`.
     double chosen_equity = std::numeric_limits<double>::quiet_NaN();

@@ -118,10 +118,21 @@ functional-core style requirements are owned by
 Sprint `5.7` replaced backend `(ii)` internals with action-only generation,
 absolute side-to-move state, split hot/cold tree storage, and trusted internal
 apply/cache buffers while keeping this public compact ABI shape stable.
-Sprint `6.8` performs a Rust-only internal handle cleanup: the optional last-visit
-cache moves from a global synchronized map into the opaque Rust board handle. This
-does not add or remove C ABI symbols; it only makes backend (iv)'s implementation
+Sprint `6.8` performed a Rust-only internal handle cleanup: the optional last-visit
+cache moved from a global synchronized map into the opaque Rust board handle. This
+did not add or remove C ABI symbols; it only made backend (iv)'s implementation
 match the C++ handle-local cache discipline.
+
+Sprint `6.10` finishes the relocation by removing the `last_visit_len`,
+`last_visit_actions: [u8; 16]`, and `last_visit_counts: [u32; 16]` fields from
+the search-board struct `MctsRustBoard` in `rust/src/board.rs` and storing them
+on the opaque handle struct declared in `rust/src/c_abi.rs`. The
+`mcts_rust_read_visits` accessor symbol, its signature, and its observable
+behavior are unchanged; only the storage location of the underlying cache
+moves. The C++ functional backend (iii) and the Sprint `6.9` shape changes do
+not touch the C ABI either: action ID encoding, the 12-wall cap, transcript wire
+format, and the symbol set remain identical, and Q3 visit payloads remain
+bit-identical (`normalized_divergence_score=0.0000`).
 
 ### Engine Operations
 

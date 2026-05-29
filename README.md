@@ -29,9 +29,9 @@ The Docker image build compiles the `mcts` executable with tests and benchmarks 
 |---|---------|------------|------|
 | (i) | C++ legacy port | `cpp-legacy` | Verbatim compatibility port of `MCTS_legacy`; Q6 legacy-envelope evidence only, not the performance ceiling. |
 | (ii) | C++ imperative steelman | `cpp-imperative` | Maximally optimised C++ performance ceiling. Sprint `5.7` closed the remaining hot-path steelman work: action-id successor generation, absolute side-to-move board state, action-only/SoA tree storage, reusable wall-block masks, internal trusted apply/cache paths, and representative PGO+BOLT training. Sprint `5.8` closed the residual squeeze: bidirectional wall-legality BFS, `UctNode` cache-line-padding removed, additive `-fno-stack-protector -fno-rtti -fipa-pta`, and extended BOLT `-split-functions -split-strategy=cdsplit -reorder-functions=cdsort -icf=1`. Visit-payload contract and C ABI unchanged (`normalized_divergence_score=0.0000` in the Sprint `8.16` rebaseline). |
-| (iii) | C++ functional-core | `cpp-functional` | Functional-core C++23 steelman under the same optimisation stack as (ii), using compact value-state search, numeric actions, direct capped legal generation, and the shared style followed by (iv) and (v). |
-| (iv) | Rust | `rust` | Cross-language systems baseline using a compatible functional-core value-state and FFI/search/recompute contract; Sprint `6.8` aligns its hot path with `(iii)`/`(v)` using bit-parallel path checks, stack action buffers, child-bound arena sizing, and board-local visit caching. |
-| (v) | Haskell | `haskell` | Native in-process target backend; pure API surface, compact value board, direct slot-based path checks, and `ST`-arena internals. |
+| (iii) | C++ functional-core | `cpp-functional` | Functional-core C++23 steelman under the same optimisation stack as (ii), using compact value-state search, numeric actions, direct capped legal generation, and the shared style followed by (iv) and (v). Sprint `6.9` closed the remaining backend-(ii) hot-path shape gap inside the functional-core boundary: absolute `SideToMove`, reusable `BlockMasks` precomputed once per `legal_actions`, bidirectional bit-parallel BFS in `path_exists_with_masks`, action-only `UctNode` with `State` materialized on the descent stack, and the Sprint `5.8` C++ flag/BOLT scrub on `cpp-functional/Makefile`. Backend (iii) now matches (and marginally exceeds) backend (ii) on Q1a/Q1b primitive throughput while Q3/Q4/Q6/Q7 remain bit-identical (`normalized_divergence_score=0.0000`). |
+| (iv) | Rust | `rust` | Cross-language systems baseline using a compatible functional-core value-state and FFI/search/recompute contract; Sprint `6.8` aligned its hot path with `(iii)`/`(v)` using bit-parallel path checks, stack action buffers, child-bound arena sizing, and board-local visit caching. Sprint `6.10` closed the remaining backend-(ii) hot-path shape gap by relocating the `last_visit_*` cache off `MctsRustBoard` onto the opaque `RustBoardHandle` declared in `rust/src/c_abi.rs` (per the style contract), adopting absolute `SideToMove`, the reusable `BlockMasks` additive pattern, bidirectional `u128` BFS in `path_exists_with_masks`, the action-only `Vec<Node>` arena in `tree.rs`, and an inlining/cold-path audit. Backend (iv) now leads the cohort on every primitive metric while Q3/Q4/Q6/Q7 remain bit-identical (`normalized_divergence_score=0.0000`). |
+| (v) | Haskell | `haskell` | Native in-process target backend; pure API surface, compact value board, direct slot-based path checks, and `ST`-arena internals. Sprint `8.17` closed with the `MutableByteArray# s` arena migration **measured but rejected** (single-buffer `STUArray s Int Word32` with named per-field offsets regressed focused Haskell rates by `Q1a -5.5%` / `Q1b -1.1%` ST against the Sprint `8.13` six-slab baseline, reverted under the Performance Measurement Doctrine) and the descent/rollout `INLINE` audit recorded as no-op. The remaining Haskell shortfall against the foreign cohort sits in the documented PGO-asymmetry band; Q3/Q4/Q6/Q7 remain bit-identical (`normalized_divergence_score=0.0000`). |
 
 Backends (i)..(iv) are loaded through stable C ABIs from canonical shared libraries produced during the Dockerfile build. Backend (v) runs in-process. Rust now uses the same functional-core hot-path shape as `(iii)` and `(v)` while remaining a raw-performance context row rather than the Q1/Q2 verdict target. The authoritative backend, style, and FFI details live in [backend_style_contract.md](documents/engineering/backend_style_contract.md), [backend_ffi_contract.md](documents/engineering/backend_ffi_contract.md), and [compiler_runtime_tuning.md](documents/engineering/compiler_runtime_tuning.md). Sprint `5.7` kept the `(ii)` public ABI stable while replacing internal search-kernel and profile-training paths.
 
@@ -66,6 +66,25 @@ self-play `3.66x`. The earlier Sprint `8.15` post-`5.7` measurement
 `52.3%`) is historical against the pre-`5.8` `(ii)` artefact; the
 ~5-percentage-point widening reflects the ~2–6% Sprint `5.8`
 improvement on backend `(ii)`, not a Haskell regression.
+
+The Sprint `8.16` numbers above are the pre-cohort-shape-audit
+measurement. On 2026-05-29 the functional-cohort shape audit reopened
+Phase `6` for Sprints `6.9` (backend (iii)) and `6.10` (backend (iv))
+and Phase `8` for Sprint `8.17` (backend (v)); see
+[DEVELOPMENT_PLAN/README.md](DEVELOPMENT_PLAN/README.md) → Closure Status
+and the matching phase docs. After all three sprints closed the same
+date, the aggregate `mcts test all` recorded the post-`8.17` cohort
+raw rates `cpp-imperative ~35990` ST / `~225800` MT8 playouts/s,
+`cpp-functional ~35720` ST / `~245470` MT8, `rust ~38940` ST /
+`~256720` MT8, `haskell 23037.9` ST / `137348.9` MT8 — cohort ranking
+`rust ≥ cpp-functional ≈ cpp-imperative > haskell`, Q3/Q4/Q6/Q7 PASS,
+`normalized_divergence_score=0.0000`, verdict `Trails parity band by
+62.7%` (informational). Closing the (iii)/(iv) permitted hot-path
+shape gap inverted Haskell's pre-`6.9` lead over the foreign cohort,
+and Sprint `8.17`'s `MutableByteArray#` arena migration was reverted
+as `measured but rejected` (focused Haskell rates regressed against
+the Sprint `8.13` six-slab baseline). The remaining Haskell shortfall
+sits in the documented PGO-asymmetry band.
 
 Under the reframed doctrine, Q1, Q2, and Q5 are measurement questions and a
 Haskell shortfall is recorded honestly with PGO-asymmetry attribution; closure

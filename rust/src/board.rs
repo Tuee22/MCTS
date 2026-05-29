@@ -1,5 +1,18 @@
 // Backend (iv) Corridors board state with bitfield walls and bit-parallel
-// escapability per Sprint 6.8.
+// escapability. Sprint 6.10 mirrors the Sprint 6.9 backend (iii) hot-path
+// shape inside the Rust ownership idioms:
+//   * An absolute `SideToMove` field replaces the per-transition full-state
+//     `flipped()` coordinate/wall reversal. `apply_action` toggles the field
+//     and increments `ply`.
+//   * A reusable `BlockMasks` value is precomputed once per `legal_actions`
+//     call and extended additively via `add_wall_to_masks` per candidate.
+//     The prior 196-byte clone in `wall_placement_legal` is gone.
+//   * `path_exists_with_masks` runs a bidirectional bit-parallel BFS over
+//     `u128`, mirroring backend (ii) Sprint `5.8`.
+//   * The 169-byte `last_visit_*` cache is relocated off the search-state
+//     struct (`MctsRustBoard`) onto the opaque handle (`RustBoardHandle`)
+//     in `c_abi.rs`. The search hot path no longer carries the cache through
+//     every clone / per-rollout copy.
 //
 // Action ID encoding (canonical, matches Haskell engine
 // `MCTS.Types.actionId` exactly):
@@ -7,11 +20,10 @@
 //   WallH(x, y) -> 81  + y * 8 + x    in [81..144]
 //   WallV(x, y) -> 145 + y * 8 + x    in [145..208]
 //
-// Like the legacy C++ engine, the board flips after every move so the
-// always-to-move side is treated as `hero` internally. Walls are
-// encoded with one bit per wall keyed by its lower-left intersection
-// (x, y) for x, y in [0..7]. The 180-degree flip required after each
-// move is a bit-reverse over the 64-bit wall bitmaps.
+// Action IDs at the C ABI boundary use the legacy hero-perspective
+// convention. Translation between the absolute internal frame and the ABI
+// frame is owned by `abi_action_from_absolute` / `absolute_action_from_abi`
+// and applied at the FFI shim.
 
 pub const BOARD_SIZE: u8 = 9;
 pub const STARTING_WALLS: u8 = 10;
@@ -21,10 +33,11 @@ const VALID_CELLS: u128 = (1u128 << 81) - 1;
 const RIGHT_SOURCE_MASK: u128 = source_mask_right();
 const LEFT_SOURCE_MASK: u128 = source_mask_left();
 
-#[derive(Clone, Copy)]
-pub enum Side {
-    Hero,
-    Villain,
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum SideToMove {
+    Hero = 0,
+    Villain = 1,
 }
 
 /// Flip a canonical action id (0..208) through the 180-degree
@@ -39,6 +52,28 @@ pub fn flip_action_id(raw: u8) -> u8 {
         (353u16 - raw as u16) as u8
     } else {
         raw
+    }
+}
+
+/// Translate an internal absolute action id to the legacy ABI
+/// hero-perspective convention used by the C ABI shim.
+#[inline]
+pub fn abi_action_from_absolute(side: SideToMove, action_id: u8) -> u8 {
+    if matches!(side, SideToMove::Hero) {
+        flip_action_id(action_id)
+    } else {
+        action_id
+    }
+}
+
+/// Inverse of `abi_action_from_absolute`: translate a legacy-ABI action
+/// id (hero-perspective) into the absolute internal frame.
+#[inline]
+pub fn absolute_action_from_abi(side: SideToMove, action_id: u8) -> u8 {
+    if matches!(side, SideToMove::Hero) {
+        flip_action_id(action_id)
+    } else {
+        action_id
     }
 }
 
@@ -103,14 +138,31 @@ impl ActionBuffer {
     pub fn as_slice(&self) -> &[u8] {
         &self.items[..self.len]
     }
+}
 
+/// Precomputed wall-block masks. Mirrors backend (iii)
+/// `cpp-functional/engine/state.hpp::BlockMasks` Sprint 6.9. Computed
+/// once per `legal_actions` call via `block_masks()` and additively
+/// extended per wall candidate via `add_wall_to_masks()`.
+#[derive(Clone, Copy)]
+pub struct BlockMasks {
+    pub up: u128,
+    pub down: u128,
+    pub right: u128,
+    pub left: u128,
+}
+
+impl BlockMasks {
     #[inline(always)]
-    fn as_mut_slice(&mut self) -> &mut [u8] {
-        &mut self.items[..self.len]
+    pub fn empty() -> Self {
+        Self { up: 0, down: 0, right: 0, left: 0 }
     }
 }
 
-#[repr(C)]
+/// Compact value-state Corridors board used by the Rust hot path.
+/// Sprint 6.10: no `last_visit_*` cache here — it lives on the C ABI
+/// handle in `c_abi.rs`.
+#[derive(Clone)]
 pub struct MctsRustBoard {
     pub hero_x: u8,
     pub hero_y: u8,
@@ -122,30 +174,7 @@ pub struct MctsRustBoard {
     pub walls_v: u64,
     pub ply: u16,
     pub last_action: u8,
-    last_visit_len: u8,
-    last_visit_actions: [u8; MAX_LEGAL_ACTIONS],
-    last_visit_counts: [u32; MAX_LEGAL_ACTIONS],
-}
-
-impl Clone for MctsRustBoard {
-    #[inline(always)]
-    fn clone(&self) -> Self {
-        Self {
-            hero_x: self.hero_x,
-            hero_y: self.hero_y,
-            villain_x: self.villain_x,
-            villain_y: self.villain_y,
-            hero_walls_remaining: self.hero_walls_remaining,
-            villain_walls_remaining: self.villain_walls_remaining,
-            walls_h: self.walls_h,
-            walls_v: self.walls_v,
-            ply: self.ply,
-            last_action: self.last_action,
-            last_visit_len: 0,
-            last_visit_actions: [0; MAX_LEGAL_ACTIONS],
-            last_visit_counts: [0; MAX_LEGAL_ACTIONS],
-        }
-    }
+    pub side_to_move: SideToMove,
 }
 
 impl MctsRustBoard {
@@ -162,9 +191,7 @@ impl MctsRustBoard {
             walls_v: 0,
             ply: 0,
             last_action: NO_ACTION,
-            last_visit_len: 0,
-            last_visit_actions: [0; MAX_LEGAL_ACTIONS],
-            last_visit_counts: [0; MAX_LEGAL_ACTIONS],
+            side_to_move: SideToMove::Hero,
         }
     }
 
@@ -183,39 +210,8 @@ impl MctsRustBoard {
         self.hero_wins() || self.villain_wins() || self.ply >= max_plies
     }
 
-    #[inline(always)]
-    pub fn advance_ply(&mut self) {
-        self.ply = self.ply.saturating_add(1);
-    }
-
-    /// Return the 180-degree flipped copy of this board. Used after
-    /// every move so the next-to-move side is treated as hero by the
-    /// engine.
-    #[inline]
-    pub fn flipped(&self) -> Self {
-        Self {
-            hero_x: BOARD_SIZE - 1 - self.villain_x,
-            hero_y: BOARD_SIZE - 1 - self.villain_y,
-            villain_x: BOARD_SIZE - 1 - self.hero_x,
-            villain_y: BOARD_SIZE - 1 - self.hero_y,
-            hero_walls_remaining: self.villain_walls_remaining,
-            villain_walls_remaining: self.hero_walls_remaining,
-            walls_h: self.walls_h.reverse_bits(),
-            walls_v: self.walls_v.reverse_bits(),
-            ply: self.ply,
-            last_action: if self.last_action == NO_ACTION {
-                NO_ACTION
-            } else {
-                flip_action_id(self.last_action)
-            },
-            last_visit_len: 0,
-            last_visit_actions: [0; MAX_LEGAL_ACTIONS],
-            last_visit_counts: [0; MAX_LEGAL_ACTIONS],
-        }
-    }
-
     /// True if the edge between two Manhattan neighbours is blocked
-    /// by a wall. Matches `MCTS.Engine.edgeBlocked`.
+    /// by a wall.
     #[inline]
     fn edge_blocked(&self, x1: u8, y1: u8, x2: u8, y2: u8) -> bool {
         if x1 == x2 && y1.abs_diff(y2) == 1 {
@@ -241,127 +237,179 @@ impl MctsRustBoard {
         }
     }
 
-    /// True if `side`'s pawn can reach its goal row through unblocked
-    /// edges. Uses the same 81-cell wavefront bitmap shape as the
-    /// functional C++ and Haskell engines.
-    pub fn path_exists(&self, side: Side) -> bool {
-        let (start_x, start_y, goal_y) = match side {
-            Side::Hero => (self.hero_x, self.hero_y, BOARD_SIZE - 1),
-            Side::Villain => (self.villain_x, self.villain_y, 0u8),
+    #[inline(always)]
+    fn walls_remaining_for(&self, side: SideToMove) -> u8 {
+        match side {
+            SideToMove::Hero => self.hero_walls_remaining,
+            SideToMove::Villain => self.villain_walls_remaining,
+        }
+    }
+
+    #[inline(always)]
+    fn decrement_current_walls(&mut self) {
+        match self.side_to_move {
+            SideToMove::Hero => {
+                if self.hero_walls_remaining > 0 {
+                    self.hero_walls_remaining -= 1;
+                }
+            }
+            SideToMove::Villain => {
+                if self.villain_walls_remaining > 0 {
+                    self.villain_walls_remaining -= 1;
+                }
+            }
+        }
+    }
+
+    /// Precompute the four-direction wall-block masks for the current
+    /// `(walls_h, walls_v)` configuration. The result is reused across
+    /// every wall candidate in `legal_actions` (Sprint 6.10), replacing
+    /// the prior per-candidate 196-byte board clone in
+    /// `wall_placement_legal`.
+    #[inline]
+    pub fn block_masks(&self) -> BlockMasks {
+        let mut masks = BlockMasks::empty();
+        let mut h = self.walls_h;
+        while h != 0 {
+            let idx = h.trailing_zeros() as u8;
+            h &= h - 1;
+            let x = idx % 8;
+            let y = idx / 8;
+            masks.up |= cell_bit(x, y) | cell_bit(x + 1, y);
+            masks.down |= cell_bit(x, y + 1) | cell_bit(x + 1, y + 1);
+        }
+        let mut v = self.walls_v;
+        while v != 0 {
+            let idx = v.trailing_zeros() as u8;
+            v &= v - 1;
+            let x = idx % 8;
+            let y = idx / 8;
+            masks.right |= cell_bit(x, y) | cell_bit(x, y + 1);
+            masks.left |= cell_bit(x + 1, y) | cell_bit(x + 1, y + 1);
+        }
+        masks
+    }
+
+    #[inline(always)]
+    pub fn add_wall_to_masks(action_id: u8, mut masks: BlockMasks) -> BlockMasks {
+        if action_id <= 144 {
+            let n = action_id - 81;
+            let x = n % 8;
+            let y = n / 8;
+            masks.up |= cell_bit(x, y) | cell_bit(x + 1, y);
+            masks.down |= cell_bit(x, y + 1) | cell_bit(x + 1, y + 1);
+        } else {
+            let n = action_id - 145;
+            let x = n % 8;
+            let y = n / 8;
+            masks.right |= cell_bit(x, y) | cell_bit(x, y + 1);
+            masks.left |= cell_bit(x + 1, y) | cell_bit(x + 1, y + 1);
+        }
+        masks
+    }
+
+    /// Sprint 6.10: bidirectional bit-parallel BFS. Two simultaneous
+    /// frontiers (start cell and goal row) expand under the same
+    /// four-direction shift+mask kernel; the function returns true on
+    /// the first intersection. Mirrors backend (iii) Sprint 6.9 and
+    /// backend (ii) Sprint 5.8.
+    #[inline]
+    pub fn path_exists_with_masks(&self, hero_side: bool, masks: &BlockMasks) -> bool {
+        let (start_x, start_y, goal_y) = if hero_side {
+            (self.hero_x, self.hero_y, BOARD_SIZE - 1)
+        } else {
+            (self.villain_x, self.villain_y, 0u8)
         };
         if start_y == goal_y {
             return true;
         }
-        let mut up_blocked = 0u128;
-        let mut down_blocked = 0u128;
-        let mut walls_h = self.walls_h;
-        while walls_h != 0 {
-            let idx = walls_h.trailing_zeros() as u8;
-            walls_h &= walls_h - 1;
-            let x = idx % 8;
-            let y = idx / 8;
-            up_blocked |= cell_bit(x, y) | cell_bit(x + 1, y);
-            down_blocked |= cell_bit(x, y + 1) | cell_bit(x + 1, y + 1);
+        let mut start_front = cell_bit(start_x, start_y);
+        let mut start_visit = start_front;
+        let mut goal_front = row_mask(goal_y);
+        let mut goal_visit = goal_front;
+        if (start_front & goal_visit) != 0 {
+            return true;
         }
-
-        let mut right_blocked = 0u128;
-        let mut left_blocked = 0u128;
-        let mut walls_v = self.walls_v;
-        while walls_v != 0 {
-            let idx = walls_v.trailing_zeros() as u8;
-            walls_v &= walls_v - 1;
-            let x = idx % 8;
-            let y = idx / 8;
-            right_blocked |= cell_bit(x, y) | cell_bit(x, y + 1);
-            left_blocked |= cell_bit(x + 1, y) | cell_bit(x + 1, y + 1);
-        }
-
-        let goal = row_mask(goal_y);
-        let mut frontier = cell_bit(start_x, start_y);
-        let mut visited = frontier;
-        while frontier != 0 {
-            let up = ((frontier & !up_blocked) << 9) & VALID_CELLS;
-            let down = (frontier & !down_blocked) >> 9;
-            let right = ((frontier & RIGHT_SOURCE_MASK & !right_blocked) << 1) & VALID_CELLS;
-            let left = (frontier & LEFT_SOURCE_MASK & !left_blocked) >> 1;
-            let next = (up | down | right | left) & !visited;
-            if (next & goal) != 0 {
-                return true;
+        while start_front != 0 && goal_front != 0 {
+            {
+                let up = ((start_front & !masks.up) << 9) & VALID_CELLS;
+                let down = (start_front & !masks.down) >> 9;
+                let right = ((start_front & RIGHT_SOURCE_MASK & !masks.right) << 1) & VALID_CELLS;
+                let left = (start_front & LEFT_SOURCE_MASK & !masks.left) >> 1;
+                let next = (up | down | right | left) & !start_visit;
+                if (next & goal_visit) != 0 {
+                    return true;
+                }
+                start_visit |= next;
+                start_front = next;
             }
-            visited |= next;
-            frontier = next;
+            {
+                let up = ((goal_front & !masks.up) << 9) & VALID_CELLS;
+                let down = (goal_front & !masks.down) >> 9;
+                let right = ((goal_front & RIGHT_SOURCE_MASK & !masks.right) << 1) & VALID_CELLS;
+                let left = (goal_front & LEFT_SOURCE_MASK & !masks.left) >> 1;
+                let next = (up | down | right | left) & !goal_visit;
+                if (next & start_visit) != 0 {
+                    return true;
+                }
+                goal_visit |= next;
+                goal_front = next;
+            }
         }
         false
     }
 
-    /// Append every legal action to `out`. Action IDs are always in
-    /// the current internal hero perspective, but the order is keyed by
-    /// the canonical Haskell/C++ verification perspective for this
-    /// absolute ply. This keeps the first-unvisited-child policy stable
-    /// even on odd plies, where the internal board has been rotated.
-    ///
-    /// Wall moves are capped at 12 to match `MCTS.Engine.legalMoves`
-    /// `take 12 (wallMoves board)`.
+    /// Sprint 6.10: emit absolute action IDs only; no per-candidate
+    /// `MctsRustBoard` clone, no inline mask recomputation. Mirrors
+    /// backend (iii) `cpp-functional/engine/state.hpp::legal_actions`.
     pub fn legal_actions(&self, out: &mut ActionBuffer, max_plies: u16) {
         out.clear();
         if self.is_terminal(max_plies) {
             return;
         }
         self.append_pawn_actions(out);
-        if self.hero_walls_remaining == 0 {
+        if self.walls_remaining_for(self.side_to_move) == 0 {
             return;
         }
+        let base = self.block_masks();
         let mut count = 0usize;
-        for canonical in 81..=208u8 {
-            if count >= 12 {
-                break;
-            }
-            let action_id = self.internal_action_for_canonical_order(canonical);
-            if self.wall_action_exists(action_id) {
-                continue;
-            }
-            if self.wall_action_legal(action_id) {
-                out.push(action_id);
+        let mut canonical = 81u16;
+        while canonical <= 208 && count < 12 {
+            let aid = canonical as u8;
+            if !self.wall_action_exists(aid) && self.wall_action_legal(aid, &base) {
+                out.push(aid);
                 count += 1;
             }
+            canonical += 1;
         }
     }
 
     fn append_pawn_actions(&self, out: &mut ActionBuffer) {
-        let start = out.len();
-        let candidates: [(i8, i8); 4] = [(0, 1), (1, 0), (-1, 0), (0, -1)];
-        for &(dx, dy) in &candidates {
-            let nx = self.hero_x as i8 + dx;
-            let ny = self.hero_y as i8 + dy;
+        // Direction order [up, left, right, down] in absolute frame.
+        let directions: [(i8, i8); 4] = [(0, -1), (-1, 0), (1, 0), (0, 1)];
+        let (actor_x, actor_y) = match self.side_to_move {
+            SideToMove::Hero => (self.hero_x, self.hero_y),
+            SideToMove::Villain => (self.villain_x, self.villain_y),
+        };
+        let (occupied_x, occupied_y) = match self.side_to_move {
+            SideToMove::Hero => (self.villain_x, self.villain_y),
+            SideToMove::Villain => (self.hero_x, self.hero_y),
+        };
+        for &(dx, dy) in &directions {
+            let nx = actor_x as i8 + dx;
+            let ny = actor_y as i8 + dy;
             if nx < 0 || ny < 0 || nx >= BOARD_SIZE as i8 || ny >= BOARD_SIZE as i8 {
                 continue;
             }
             let nx_u = nx as u8;
             let ny_u = ny as u8;
-            if nx_u == self.villain_x && ny_u == self.villain_y {
+            if nx_u == occupied_x && ny_u == occupied_y {
                 continue;
             }
-            if self.edge_blocked(self.hero_x, self.hero_y, nx_u, ny_u) {
+            if self.edge_blocked(actor_x, actor_y, nx_u, ny_u) {
                 continue;
             }
             out.push(ny_u * 9 + nx_u);
-        }
-        let odd_ply = self.ply % 2 != 0;
-        out.as_mut_slice()[start..].sort_by_key(|aid| {
-            if odd_ply {
-                flip_action_id(*aid)
-            } else {
-                *aid
-            }
-        });
-    }
-
-    #[inline(always)]
-    fn internal_action_for_canonical_order(&self, canonical_action_id: u8) -> u8 {
-        if self.ply % 2 == 0 {
-            canonical_action_id
-        } else {
-            flip_action_id(canonical_action_id)
         }
     }
 
@@ -392,92 +440,60 @@ impl MctsRustBoard {
             || (y < 7 && wall_test(self.walls_v, x, y + 1))
     }
 
+    /// Sprint 6.10: legality check against an additively-extended
+    /// `BlockMasks`. No `MctsRustBoard` clone.
     #[inline(always)]
-    fn wall_action_legal(&self, action_id: u8) -> bool {
-        if action_id <= 144 {
-            let n = action_id - 81;
-            self.wall_placement_legal(n % 8, n / 8, false)
-        } else {
-            let n = action_id - 145;
-            self.wall_placement_legal(n % 8, n / 8, true)
-        }
+    fn wall_action_legal(&self, action_id: u8, base_masks: &BlockMasks) -> bool {
+        let trial = Self::add_wall_to_masks(action_id, *base_masks);
+        self.path_exists_with_masks(true, &trial) && self.path_exists_with_masks(false, &trial)
     }
 
-    fn wall_placement_legal(&self, x: u8, y: u8, vertical: bool) -> bool {
-        let mut trial = self.clone();
-        if vertical {
-            trial.walls_v |= wall_bit(x, y);
-        } else {
-            trial.walls_h |= wall_bit(x, y);
-        }
-        trial.path_exists(Side::Hero) && trial.path_exists(Side::Villain)
-    }
-
-    #[inline(always)]
-    pub fn child_after_action(&self, action_id: u8) -> Self {
-        let mut child = self.clone();
-        let _ = child.apply_action_flip(action_id);
-        child
-    }
-
-    #[inline(always)]
-    pub fn store_last_visits(&mut self, visits: &[(u8, u32)]) {
-        self.last_visit_len = visits.len().min(MAX_LEGAL_ACTIONS) as u8;
-        for (idx, (action, count)) in visits.iter().take(MAX_LEGAL_ACTIONS).enumerate() {
-            self.last_visit_actions[idx] = *action;
-            self.last_visit_counts[idx] = *count;
-        }
-    }
-
-    #[inline(always)]
-    pub fn clear_last_visits(&mut self) {
-        self.last_visit_len = 0;
-    }
-
-    #[inline(always)]
-    pub fn read_last_visits(&self, action_id: u8) -> u32 {
-        for idx in 0..self.last_visit_len as usize {
-            if self.last_visit_actions[idx] == action_id {
-                return self.last_visit_counts[idx];
-            }
-        }
-        0
-    }
-
-    /// Apply a canonical action id from current-hero perspective, then
-    /// flip the board so the next side to move becomes hero. Caller
-    /// must have validated the action against `legal_actions`.
-    pub fn apply_action_flip(&mut self, action_id: u8) -> bool {
+    /// Trusted internal transition. Toggles `side_to_move` and
+    /// increments `ply`. Caller must already know the action is legal.
+    /// Mirrors backend (iii) `apply_action_unchecked`.
+    pub fn apply_action_unchecked(&mut self, action_id: u8) {
         if action_id <= 80 {
             let x = action_id % 9;
             let y = action_id / 9;
-            self.hero_x = x;
-            self.hero_y = y;
+            match self.side_to_move {
+                SideToMove::Hero => {
+                    self.hero_x = x;
+                    self.hero_y = y;
+                }
+                SideToMove::Villain => {
+                    self.villain_x = x;
+                    self.villain_y = y;
+                }
+            }
         } else if action_id <= 144 {
             let n = action_id - 81;
-            let x = n % 8;
-            let y = n / 8;
-            self.walls_h |= wall_bit(x, y);
-            if self.hero_walls_remaining > 0 {
-                self.hero_walls_remaining -= 1;
-            }
+            self.walls_h |= wall_bit(n % 8, n / 8);
+            self.decrement_current_walls();
         } else if action_id <= 208 {
             let n = action_id - 145;
-            let x = n % 8;
-            let y = n / 8;
-            self.walls_v |= wall_bit(x, y);
-            if self.hero_walls_remaining > 0 {
-                self.hero_walls_remaining -= 1;
-            }
-        } else {
-            return false;
+            self.walls_v |= wall_bit(n % 8, n / 8);
+            self.decrement_current_walls();
         }
         self.last_action = action_id;
-        let flipped = self.flipped();
-        *self = flipped;
-        self.advance_ply();
-        self.clear_last_visits();
-        true
+        self.ply = self.ply.saturating_add(1);
+        self.side_to_move = match self.side_to_move {
+            SideToMove::Hero => SideToMove::Villain,
+            SideToMove::Villain => SideToMove::Hero,
+        };
+    }
+
+    /// Validate an absolute action id against the current legal-action
+    /// set and apply it. Returns `false` if illegal.
+    pub fn try_apply_absolute(&mut self, absolute_action_id: u8, max_plies: u16) -> bool {
+        let mut actions = ActionBuffer::new();
+        self.legal_actions(&mut actions, max_plies);
+        for i in 0..actions.len() {
+            if actions.get(i) == absolute_action_id {
+                self.apply_action_unchecked(absolute_action_id);
+                return true;
+            }
+        }
+        false
     }
 }
 

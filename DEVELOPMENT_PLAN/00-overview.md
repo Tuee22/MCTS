@@ -226,6 +226,49 @@ improvement, not a Haskell regression. Sprints `5.1`–`5.7` and `8.1`–`8.15`
 remain closed for their delivered surfaces. See
 [README.md](README.md) → Closure Status for the full closure narrative.
 
+The 2026-05-29 functional-cohort shape audit then reopened Phase `6` for
+Sprints `6.9` and `6.10`, and Phase `8` for Sprint `8.17`. The audit
+identified that backends (iii), (iv), and (v) do not yet adopt every
+backend-(ii) hot-path technique permitted by
+[../documents/engineering/backend_style_contract.md](../documents/engineering/backend_style_contract.md)
+inside the functional-core boundary, and that backend (iv) Rust still
+carries the `last_visit_*` cache on its search-board struct where the
+style contract requires it on the opaque Rust board handle. Sprint
+`6.9` closed the same date for backend (iii) by adopting absolute
+`SideToMove`, reusable `BlockMasks`, bidirectional path-existence BFS,
+action-only `UctNode`, and the Sprint `5.8` C++ flag/BOLT scrub; the
+accepted `mcts test all` recorded backend (iii) Q1a/Q1b at the cohort
+lead alongside backend (ii) (`+94%` Q1a ST and `+105%` Q1b ST vs the
+pre-`6.9` baseline), Q3/Q4/Q6/Q7 PASS, and
+`normalized_divergence_score=0.0000`. Sprint `6.10` closed the same date by introducing `RustBoardHandle` as
+the opaque C ABI handle (with the relocated `last_visit_*` cache),
+adopting absolute `SideToMove`, the `BlockMasks` additive pattern,
+bidirectional BFS, an action-only secondary `Vec` (the parallel
+`Vec<MctsRustBoard>` was removed from `tree.rs`), and an
+inlining/cold-path audit for backend (iv). The accepted `mcts test all`
+recorded backend (iv) at the cohort lead on every primitive metric
+(`Q1a` `38941.1` ST playouts/s, `Q1b` `42078.7` ST search-iters/s),
+Q3/Q4/Q6/Q7 PASS, `normalized_divergence_score=0.0000`. Sprint `8.17`
+then closed the same date with the proposed `MutableByteArray# s`
+arena migration **measured but rejected** (single-buffer
+`STUArray s Int Word32` with named per-field offsets compiled cleanly
+but regressed focused Haskell rates by `Q1a` `-5.5%` ST / `Q1b`
+`-1.1%` ST against the Sprint `8.13` six-slab baseline; reverted under
+the Performance Measurement Doctrine) and the descent/rollout `INLINE`
+audit recorded as no-op (Sprints `8.13`/`8.15` had already saturated
+`INLINE`/`INLINABLE` density). The post-`8.17` cohort ranking
+`rust ≥ cpp-functional ≈ cpp-imperative > haskell` confirms the
+analyst prediction that closing the (iii)/(iv) permitted hot-path
+shape gap inverts Haskell's pre-`6.9` lead. The remaining Haskell
+shortfall sits in the documented PGO-asymmetry band. None of the
+deliverables touched the C ABI symbol set, the canonical action ID
+encoding, the 12-wall cap, the transcript wire format, or the
+Q3/Q4/Q6/Q7 invariants; the verdict line remains informational per
+[Performance Measurement Doctrine](../documents/engineering/compiler_runtime_tuning.md#performance-measurement-doctrine).
+The Sprint `6.9`, `6.10`, and `8.17` rows all moved to Completed in
+[legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md);
+the `8.17` row carries the `measured but rejected` notation.
+
 ## Target Outcome
 
 One `mcts` Haskell CLI binary, built by Cabal under GHC `9.14.1` and Cabal
@@ -345,7 +388,24 @@ temporary or operator-provided roots.
   `corridors::board` or action-text parsing. Backend (iv) Rust follows the
   same compact value-state and C ABI boundary with Rust ownership idioms. Sprint
   `6.8` has replaced its queue-BFS, heap action-buffer, arena-reservation, clone, and
-  global visit-cache hot-path residue. Rust runs on
+  global visit-cache hot-path residue. Sprint `6.9` (closed 2026-05-29)
+  adopted the remaining backend-(ii) hot-path techniques permitted by the
+  style contract for backend (iii) — absolute `SideToMove`, reusable
+  `BlockMasks`, bidirectional path-existence BFS, action-only `UctNode`,
+  and the Sprint `5.8` C++ flag/BOLT scrub on `cpp-functional/Makefile` —
+  bringing backend (iii) into the cohort lead alongside backend (ii) on
+  Q1a/Q1b. Sprint `6.10`
+  (closed 2026-05-29) closed the analogous shape items on backend (iv):
+  the `last_visit_*` cache moved from the search-board struct onto the
+  opaque `RustBoardHandle` declared in `rust/src/c_abi.rs` (closing the
+  style-contract deviation in
+  [../documents/engineering/backend_style_contract.md](../documents/engineering/backend_style_contract.md)),
+  the absolute `SideToMove` enum replaced the per-transition `flipped()`
+  reassignment, `BlockMasks` are reused additively per wall candidate,
+  `path_exists_with_masks` is bidirectional, and the parallel
+  `Vec<MctsRustBoard>` was removed from `tree.rs` to keep the arena
+  action-only. Backend (iv) now leads the cohort on every primitive
+  metric. Rust runs on
   the latest stable compiler with the
   pinned `[profile.release]` (`opt-level = 3`, `lto = "fat"`, `codegen-units = 1`,
   `panic = "abort"`, `strip = "debuginfo"`), `RUSTFLAGS=-C target-cpu=native -C
@@ -388,7 +448,14 @@ temporary or operator-provided roots.
   a closure gate. Closure gates on the apples-to-apples invariants Q3/Q4/Q6/Q7
   plus a non-pending measurement. Phase `8` also keeps all five backends live
   while removing stale two-backend drift and preserving the rule that generated
-  validation data is not checked into git. Owned by
+  validation data is not checked into git. Sprint `8.17` closed on
+  2026-05-29 with the `MutableByteArray# s` arena migration **measured but
+  rejected** (single-buffer `STUArray s Int Word32` regressed focused
+  Haskell rates by `Q1a -5.5%` ST / `Q1b -1.1%` ST against the Sprint
+  `8.13` six-slab baseline; reverted under the Performance Measurement
+  Doctrine) and the descent/rollout `INLINE` audit recorded as no-op
+  (Sprints `8.13`/`8.15` had already saturated `INLINE`/`INLINABLE`
+  density). Owned by
   [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md).
 
 ## Doctrine Scope

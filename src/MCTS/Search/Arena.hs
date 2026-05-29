@@ -9,10 +9,14 @@
 -- 32-bit signed integers; `-1` sentinels indicate "no parent" / "no
 -- child".
 --
--- This is the current measured Haskell engine baseline. A future
--- profile-driven migration can replace the representation with a hand-rolled
--- `MutableByteArray#` arena; the API exported here remains stable across that
--- migration.
+-- This is the current measured Haskell engine baseline. Sprint 8.17
+-- evaluated a hand-rolled single-buffer migration (one `STUArray s Int
+-- Word32` carrying the same SoA fields at named per-field offsets) and
+-- recorded a focused-bench regression (`Q1a` `-5.5%` ST, `Q1b` `-1.1%`
+-- ST) versus this baseline, so the migration was reverted and recorded
+-- as `measured but rejected` per the Performance Measurement Doctrine.
+-- The exported API is the load-bearing surface and remains stable
+-- across any future profile-driven migration.
 module MCTS.Search.Arena
     ( NodeId
     , Arena

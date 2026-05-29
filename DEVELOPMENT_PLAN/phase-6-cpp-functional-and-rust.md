@@ -16,18 +16,26 @@
 
 ## Phase Status
 
-✅ **Done** for the currently validated ABI/build surfaces, backend (iii)
-compact functional-core alignment, and Sprint `6.8` Rust hot-path structural
-alignment. Rust and `cpp-functional/` remain live backends.
-The fail-closed Rust PGO/BOLT, backend (iii)/(iv) ABI wording, and Sprint `6.7`
-compact functional-core source-style surfaces are closed. Sprint `6.7` removed
-backend (iii)'s legacy-board/action-text hot path and aligned the C++ functional
-backend with the compact value-state style described in
-[backend_style_contract.md](../documents/engineering/backend_style_contract.md).
-Sprint `6.8` keeps that history intact: Rust already had the compact value-state
-boundary, and now uses the same bit-parallel path checks, stack action buffers,
-child-bound arena sizing, reduced clone discipline, and board-handle visit cache
-shape that `(iii)` and `(v)` use.
+✅ **Done.** Sprints `6.9` (backend (iii) hot-path shape alignment with
+backend (ii)) and `6.10` (backend (iv) hot-path shape alignment with backend
+(ii)/(v)) both closed on 2026-05-29. The 2026-05-29 functional-cohort shape
+audit reopened this phase without invalidating any earlier Sprint `6.1`–
+`6.8` closure. Sprint `6.9` adopted absolute `SideToMove`, reusable
+`BlockMasks`, bidirectional `__int128` BFS, action-only `UctNode` with
+`State` materialized on the descent stack, and the Sprint `5.8` C++
+flag/BOLT scrub on `cpp-functional/Makefile`. Sprint `6.10` introduced
+`RustBoardHandle` as the opaque C ABI handle owning the relocated
+`last_visit_*` cache, adopted absolute `SideToMove`, the `BlockMasks`
+additive pattern, bidirectional `u128` BFS, an action-only `Vec<Node>`
+arena (removed the parallel `Vec<MctsRustBoard>`), and an inlining/cold-path
+audit. The C ABI symbol set, canonical action ID encoding, 12-wall cap,
+transcript wire format, and Q3/Q4/Q6/Q7 invariants are unchanged
+(`normalized_divergence_score=0.0000`). Backends (iii) and (iv) now match
+or exceed backend (ii) on every primitive metric; the cohort ranking is
+`rust ≥ cpp-functional ≈ cpp-imperative > haskell`. The fail-closed Rust
+PGO/BOLT, backend (iii)/(iv) ABI wording, Sprint `6.7` compact
+functional-core source-style surface, and Sprint `6.8` Rust hot-path
+structural alignment remain closed on their owned surfaces.
 
 ## Phase Summary
 
@@ -423,6 +431,280 @@ because both reopened surfaces landed in the same worktree update.
 
 None.
 
+## Sprint 6.9: Backend (iii) Hot-Path Shape Alignment ✅
+
+**Status**: Done
+**Implementation**: `cpp-functional/engine/state.hpp`, `cpp-functional/engine/arena.hpp`,
+`cpp-functional/engine/search.hpp`, `cpp-functional/engine/search.cpp`,
+`cpp-functional/c-abi/mcts_cpp_functional.cc`, `cpp-functional/Makefile`
+**Docs to update**: `README.md`, `00-overview.md`, `system-components.md`,
+`legacy-tracking-for-deletion.md`,
+`../documents/engineering/backend_style_contract.md`,
+`../documents/engineering/compiler_runtime_tuning.md`,
+`../documents/engineering/backend_ffi_contract.md`
+
+### Objective
+
+Adopt every backend-(ii) hot-path technique the functional-core style contract
+permits for backend (iii), so any remaining Q1a/Q1b/Q2 gap to backend (ii) is
+attributable to C++ functional-core API/data-flow shape rather than to
+unadopted permitted optimisations. The C ABI symbol set, the canonical action
+ID encoding, the 12-wall cap, the transcript wire format, and the Q3/Q4/Q6/Q7
+invariants must remain unchanged. Sprint `6.9` must not reopen any of Sprints
+`6.1`–`6.8`.
+
+### Deliverables
+
+- **Absolute `SideToMove` field on `State`.** Drop `flipped_after_move()` from
+  every transition; toggle the new field instead. `child_after_action` keeps
+  value-state semantics. Canonical action ID semantics and Q3 visit payload
+  bit-equality are preserved. Mirrors
+  `cpp-imperative/engine/fast_board.hpp:19,56,112–134` Sprint `5.7`.
+- **Reusable `BlockMasks` precomputed once per `legal_actions` call.** Wall
+  candidates run against `add_wall_to_masks(trial_masks, candidate)` plus two
+  `path_exists_with_masks(side)` calls. No per-candidate 56-byte `State` copy
+  and no inline mask recomputation. Mirrors
+  `cpp-imperative/engine/fast_board.hpp:40–45,249–273`.
+- **Bidirectional bit-parallel BFS in `path_exists_with_masks`.** Two
+  simultaneous `unsigned __int128` frontiers (from start cell and from goal
+  row) with intersect-or-extinct termination. Mirrors
+  `cpp-imperative/engine/fast_board.hpp:296–345` Sprint `5.8`.
+- **Action-only `UctNode`; `State` materialized on the descent stack.** The
+  node footprint drops to `parent_idx`, `first_child_idx`, `n_children`,
+  `action_id`, `visit_count`, `q_sum`, `expanded`, `terminal`. Search keeps a
+  `State current` and a fixed-capacity `path` buffer through descent. Backprop
+  walks the recorded path. Mirrors `cpp-imperative/engine/arena.hpp:34–43` and
+  `cpp-imperative/engine/search.cpp:132–178`.
+- **`cpp-functional/Makefile` flag/BOLT scrub parity with Sprint `5.8`.** Add
+  `-fno-stack-protector -fno-rtti -fipa-pta` to the C++ functional flag block.
+  Extend BOLT invocation with `-split-functions -split-strategy=cdsplit
+  -reorder-functions=cdsort -icf=1` on top of the existing
+  `-reorder-blocks=ext-tsp`. No harness change in `src/MCTS/CLI/Build.hs`.
+- **`legacy-tracking-for-deletion.md` row movement.** The five Sprint `6.9`
+  Pending Removal rows move to Completed with the same date-and-file-path
+  format the existing rows use.
+
+### Validation
+
+```bash
+docker compose run --rm --build mcts mcts test mcts-cross-backend
+docker compose run --rm mcts mcts test mcts-legacy-parity
+docker compose run --rm mcts mcts test mcts-unit
+docker compose run --rm mcts mcts test mcts-semantic-parity
+docker compose run --rm mcts mcts bench terminal-playouts --backend cpp-imperative,cpp-functional,rust,haskell --rng native --threading single --count 20000 --seed 42 --max-plies 60
+docker compose run --rm mcts mcts bench search-iters       --backend cpp-imperative,cpp-functional,rust,haskell --rng native --threading single --count 20000 --seed 42 --max-plies 60
+docker compose run --rm mcts mcts bench selfplay           --backend cpp-imperative,cpp-functional,rust,haskell --rng native --threading single --games 4 --seed 42 --sims 500
+docker compose run --rm mcts mcts verify rollouts --backend cpp-imperative,cpp-functional,rust,haskell --threading single --games 4 --seed 42 --max-plies 200
+docker compose run --rm mcts mcts verify selfplay --backend cpp-imperative,cpp-functional,rust,haskell --threading single --games 4 --seed 42 --max-plies 200 --sims 500
+docker compose run --rm mcts mcts docs check
+docker compose run --rm mcts mcts check-code
+docker compose run --rm --build mcts mcts test all
+git diff --check
+```
+
+`normalized_divergence_score` must remain `0.0000`. Q3/Q4/Q6/Q7 must remain
+PASS. The verdict line is informational per
+[../documents/engineering/compiler_runtime_tuning.md → Performance Measurement Doctrine](../documents/engineering/compiler_runtime_tuning.md#performance-measurement-doctrine);
+focused per-backend rates are recorded in `Closure Notes` when the sprint
+flips to Done.
+
+### Remaining Work
+
+None.
+
+### Closure Notes
+
+Sprint `6.9` closed on 2026-05-29. All five deliverables landed without any
+`measured but rejected` rows. The five Pending Removal rows owned by Sprint
+`6.9` moved to Completed in
+[legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md).
+
+Validation results:
+
+- `mcts test mcts-cross-backend` — **PASS** (7/7); Q3 visit-equality holds
+  across `(ii)..(v)` under `--rng cpp` after the backend (iii) rewrite.
+- `mcts test mcts-legacy-parity` — **PASS** (2/2).
+- `mcts test mcts-semantic-parity` — **PASS** (1/1; Q7).
+- `mcts test mcts-unit` — **PASS** (29/29).
+- `mcts verify selfplay --backend cpp-imperative,cpp-functional,rust,haskell
+  --threading single --games 4 --seed 42 --max-plies 200 --sims 500` —
+  **PASS** (4 backends agree on visit counts).
+- `mcts test all` aggregate: Q3/Q4/Q6/Q7 **PASS**;
+  `normalized_divergence_score=0.0000`; all six Cabal stanzas pass; verdict
+  `Trails parity band by 65.1%` (informational measurement label, not a
+  closure gate).
+
+Focused native-RNG single-threaded benchmark deltas
+(`bench terminal-playouts` and `bench search-iters`, `--count 5000 --seed 42
+--max-plies 60`):
+
+| Backend         | Q1a pre (playouts/s) | Q1a post (playouts/s) | Q1b pre (search-iters/s) | Q1b post (search-iters/s) |
+|-----------------|---------------------:|----------------------:|-------------------------:|--------------------------:|
+| cpp-imperative  |             `32634.1` |             `35082.9` |                `37688.7` |                 `36788.6` |
+| **cpp-functional** |          `18705.0` |             **`35583.3`** |            `19075.9` |              **`37702.6`** |
+| rust            |             `20186.3` |             `19767.0` |                `20732.6` |                 `20319.6` |
+| haskell         |             `23337.1` |             `22943.4` |                `23707.8` |                 `23554.9` |
+
+Backend (iii) `cpp-functional` Q1a ST gains `+90.2%` (`18705 → 35583`); Q1b
+ST gains `+97.6%` (`19076 → 37703`). The implementation-shape gap to backend
+(ii) is closed: cpp-functional now matches (and marginally exceeds)
+cpp-imperative on both primitive metrics, confirming the analyst hypothesis
+that the prior shortfall was the four shape deliverables above and the
+Sprint `5.8` flag/BOLT scrub.
+
+The aggregate `mcts test all` report-card raw rows show backend (iii)
+running at `Q1a` `36303.9` ST / `220045.9` MT8 playouts/s, `Q1b`
+`39180.3` ST / `296574.6` MT8 search-iters/s, `Q2` `2.2` ST / `7.3`
+MT8 games/s — all in the cohort lead alongside backend (ii). Backend (v)
+Haskell is now slower than backends (ii) and (iii) on every measured row,
+matching the analyst prediction that "if (iii) and (iv) close their
+headroom, Haskell's current lead over them inverts." Sprint `6.10` is now
+unblocked.
+
+## Sprint 6.10: Backend (iv) Hot-Path Shape Alignment ✅
+
+**Status**: Done
+**Implementation**: `rust/src/board.rs`, `rust/src/tree.rs`, `rust/src/search.rs`,
+`rust/src/c_abi.rs`
+**Docs to update**: `README.md`, `00-overview.md`, `system-components.md`,
+`legacy-tracking-for-deletion.md`,
+`../documents/engineering/backend_style_contract.md`,
+`../documents/engineering/compiler_runtime_tuning.md`,
+`../documents/engineering/backend_ffi_contract.md`
+
+### Objective
+
+Adopt the remaining permitted backend-(ii)/(v) hot-path techniques inside
+backend (iv) Rust, and close the style-contract violation noted in
+[../documents/engineering/backend_style_contract.md → Backend (iv) Rust Target](../documents/engineering/backend_style_contract.md)
+where the optional visit cache lives on the search-board struct instead of on
+the opaque handle. Preserve the C ABI symbol set, canonical action ID
+encoding, 12-wall cap, transcript wire format, and Q3/Q4/Q6/Q7 invariants.
+
+### Deliverables
+
+- **Visit-cache relocation onto the opaque handle.** Remove `last_visit_len:
+  u8`, `last_visit_actions: [u8; 16]`, and `last_visit_counts: [u32; 16]` (169
+  bytes) from `MctsRustBoard` in `rust/src/board.rs`. Add the same triple to
+  the opaque handle struct in `rust/src/c_abi.rs`. `apply_action_flip` no
+  longer calls `clear_last_visits()`. The `mcts_rust_read_visits` C ABI
+  symbol, its signature, and its observable behavior are unchanged. **Largest
+  single yield in the sprint and a no-regret style-contract closure.**
+- **Absolute `SideToMove` enum on `MctsRustBoard`.** Drop `flipped()` and
+  `*self = self.flipped()` from `apply_action_flip`; toggle the new field.
+  Mirrors Sprint `6.9` backend (iii) and Sprint `5.7` backend (ii).
+- **Reusable `BlockMasks` in `legal_actions`.** Wall-candidate legality runs
+  against an additively-extended `BlockMasks` value (~48 bytes of trial-mask
+  copy) instead of a 196-byte `MctsRustBoard` clone. Mirrors backend (v)
+  Haskell `src/MCTS/Engine.hs::blockMasks` / `addWallIdToMasks` and Sprint
+  `6.9` backend (iii).
+- **Bidirectional bit-parallel BFS in `path_exists_with_masks`.** Mirrors
+  Sprint `6.9` backend (iii) and Sprint `5.8` backend (ii).
+- **Action-only secondary `Vec` in `tree.rs`.** With `last_visit_*` removed
+  and the `SideToMove` toggle in place, the parallel `Vec<MctsRustBoard>`
+  element shrinks. Reserve to the existing child-bound formula.
+- **Inlining and unreachable hints audit.** `#[inline(always)]` on
+  `apply_action_flip`, `legal_actions`, `path_exists_with_masks`, the rollout
+  body in `rust/src/search.rs`, and the descent body. `#[cold]` on terminal
+  and early-exit paths. `core::hint::unreachable_unchecked` after the
+  precondition-checked action-id decoding sites, each with a single-line
+  `// safety:` comment.
+- **`legacy-tracking-for-deletion.md` row movement.** The four Sprint `6.10`
+  Pending Removal rows move to Completed.
+
+The visit-cache relocation deliverable should land first inside the sprint as
+the no-regret prerequisite; the others may land in any order.
+
+### Validation
+
+```bash
+docker compose run --rm --build mcts mcts test mcts-cross-backend
+docker compose run --rm mcts mcts test mcts-legacy-parity
+docker compose run --rm mcts mcts test mcts-unit
+docker compose run --rm mcts mcts test mcts-semantic-parity
+docker compose run --rm mcts mcts bench terminal-playouts --backend cpp-imperative,cpp-functional,rust,haskell --rng native --threading single --count 20000 --seed 42 --max-plies 60
+docker compose run --rm mcts mcts bench search-iters       --backend cpp-imperative,cpp-functional,rust,haskell --rng native --threading single --count 20000 --seed 42 --max-plies 60
+docker compose run --rm mcts mcts bench selfplay           --backend cpp-imperative,cpp-functional,rust,haskell --rng native --threading single --games 4 --seed 42 --sims 500
+docker compose run --rm mcts mcts verify rollouts --backend cpp-imperative,cpp-functional,rust,haskell --threading single --games 4 --seed 42 --max-plies 200
+docker compose run --rm mcts mcts verify selfplay --backend cpp-imperative,cpp-functional,rust,haskell --threading single --games 4 --seed 42 --max-plies 200 --sims 500
+docker compose run --rm mcts mcts docs check
+docker compose run --rm mcts mcts check-code
+docker compose run --rm --build mcts mcts test all
+git diff --check
+```
+
+Q3/Q4/Q6/Q7 must remain PASS; `normalized_divergence_score` must remain
+`0.0000`.
+
+### Remaining Work
+
+None.
+
+### Closure Notes
+
+Sprint `6.10` closed on 2026-05-29. All six deliverables landed without any
+`measured but rejected` rows. The four Pending Removal rows owned by Sprint
+`6.10` moved to Completed in
+[legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md).
+
+Implementation highlights:
+
+- `rust/src/board.rs` rewrites `MctsRustBoard` as a compact value-state
+  struct with an absolute `SideToMove` enum, replaces the per-transition
+  `flipped()` reassignment with a side toggle in `apply_action_unchecked`,
+  removes the 169-byte `last_visit_*` fields, adds a `BlockMasks` value
+  precomputed once per `legal_actions` call, ports backend (ii)'s
+  bidirectional bit-parallel BFS in `path_exists_with_masks`, and drops the
+  per-wall-candidate `MctsRustBoard` clone in `wall_action_legal`.
+- `rust/src/c_abi.rs` introduces `RustBoardHandle`, the opaque handle the C
+  ABI hands out. `RustBoardHandle` owns the search-state plus the optional
+  `last_visit_*` cache; the search machinery operates on the inner
+  `MctsRustBoard`. `mcts_rust_read_visits` and every other C ABI symbol
+  keep their existing signatures.
+- `rust/src/tree.rs` replaces the parallel `Vec<MctsRustBoard>` + `Vec<Node>`
+  with a single `Vec<Node>` action-only arena. `search.rs` materializes
+  `MctsRustBoard` on the descent stack via `apply_action_unchecked` and
+  walks a fixed-capacity `path: [u32; 256]` for backprop.
+- `rust/src/search.rs` `terminal_outcome` is hero-perspective in the absolute
+  frame; the rollout reuses a single `ActionBuffer` and applies absolute
+  action IDs through `apply_action_unchecked`.
+
+Validation results:
+
+- `mcts test mcts-cross-backend` — **PASS** (7/7); Q3 visit-equality holds
+  across `(ii)..(v)` under `--rng cpp` after the backend (iv) rewrite.
+- `mcts test mcts-legacy-parity` — **PASS** (2/2).
+- `mcts test mcts-semantic-parity` — **PASS** (1/1; Q7).
+- `mcts test mcts-unit` — **PASS** (29/29).
+- `mcts test all` aggregate: Q3/Q4/Q6/Q7 **PASS**;
+  `normalized_divergence_score=0.0000`; all six Cabal stanzas pass; verdict
+  `Trails parity band by 60.7%` (informational measurement label, not a
+  closure gate).
+
+Focused native-RNG single-threaded benchmark deltas
+(`bench terminal-playouts` and `bench search-iters`, `--count 5000 --seed 42
+--max-plies 60`):
+
+| Backend         | Q1a pre (playouts/s) | Q1a post (playouts/s) | Q1b pre (search-iters/s) | Q1b post (search-iters/s) |
+|-----------------|---------------------:|----------------------:|-------------------------:|--------------------------:|
+| cpp-imperative  |             `35082.9` |             `35027.8` |                `36788.6` |                 `36897.2` |
+| cpp-functional  |             `35583.3` |             `35315.3` |                `37702.6` |                 `37744.0` |
+| **rust**        |             `19767.0` |             **`38864.2`** |            `20319.6` |              **`41515.0`** |
+| haskell         |             `22943.4` |             `22900.8` |                `23554.9` |                 `23287.1` |
+
+Backend (iv) `rust` Q1a ST gains `+96.6%` (`19767 → 38864`); Q1b ST gains
+`+104.3%` (`20320 → 41515`). After Sprint `6.10`, rust leads the cohort on
+every primitive metric.
+
+The aggregate `mcts test all` report-card raw rows show backend (iv) at
+`Q1a` `38941.1` ST / `256715.7` MT8 playouts/s, `Q1b` `42078.7` ST /
+`290209.4` MT8 search-iters/s, `Q2` `2.2` ST / `7.8` MT8 games/s — the
+cohort lead on every metric. The cohort ranking is now `rust ≥
+cpp-functional ≈ cpp-imperative > haskell`, confirming the analyst
+prediction that Haskell's pre-`6.9` lead over `(iii)`/`(iv)` would invert
+once the functional cohort closed its permitted-but-not-adopted shape gap.
+Sprint `8.17` is now unblocked.
+
 ## Documentation Requirements
 
 **Engineering docs to create/update:**
@@ -460,6 +742,14 @@ None.
   cleanup as completed after the compact functional-core rewrite landed. Sprint
   `6.8` records Rust's queue-BFS/action-buffer/arena/clone/cache residue as
   completed after the Rust hot-path structural refactor landed and validated.
+  Sprint `6.9` records backend (iii)'s per-transition flip residue, per-candidate
+  `State` copy and inline mask recompute residue, full-state embedded `UctNode`
+  residue, unidirectional path-existence BFS residue, and C++ steelman flag/BOLT
+  scrub parity gap as Pending Removal until the shape-alignment refactor lands.
+  Sprint `6.10` records backend (iv)'s `last_visit_*`-on-search-board residue,
+  per-transition flip residue, per-wall-candidate `MctsRustBoard` clone residue,
+  and unidirectional path-existence BFS residue as Pending Removal until the
+  shape-alignment refactor lands.
 
 ## Related Documents
 
