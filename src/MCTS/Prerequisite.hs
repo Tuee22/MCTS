@@ -46,13 +46,29 @@ prerequisiteRegistry =
         ["--numeric-version"]
         "3.16.1.0"
     , versionPrefixNode
-        "cxx"
-        "GCC/G++ C++ compiler for C ABI backends"
-        "install GCC/G++ from ubuntu:24.04 build-essential and expose c++ on PATH"
+        "cxx-gpp"
+        "g++ C++ compiler for backends (i) cpp-legacy and (iii) cpp-functional"
+        "install GCC/G++ from ubuntu:24.04 build-essential and expose g++ on PATH"
         []
-        "c++"
+        "g++"
         ["--version"]
         ""
+    , versionContainsNode
+        "cxx-clang19"
+        "clang++-19 C++ compiler for backend (ii) cpp-imperative (Sprint 5.9 pivot)"
+        "install clang-19 from ubuntu:24.04 and expose clang++-19 on PATH"
+        []
+        "clang++-19"
+        ["--version"]
+        "clang version 19."
+    , versionContainsNode
+        "llvm-profdata-19"
+        "llvm-profdata-19 for the backend (ii) clang PGO merge step"
+        "install llvm-19 (provides llvm-profdata-19) and expose it on PATH"
+        []
+        "llvm-profdata-19"
+        ["--version"]
+        "LLVM version 19."
     , versionPrefixNode
         "llvm"
         "LLVM 19 toolchain (shared by GHC -fllvm and BOLT)"
@@ -175,19 +191,19 @@ prerequisiteRegistry =
         "libmcts-cpp-legacy-built"
         "C++ legacy shared library exists for dynamic FFI smoke tests"
         "rebuild the Docker image; backend artefacts are produced by docker/Dockerfile"
-        ["cxx"]
+        ["cxx-gpp"]
         "cpp-legacy/build/libmcts_cpp_legacy.so"
     , sharedLibraryNode
         "libmcts-cpp-imperative-built"
         "C++ imperative shared library exists for dynamic FFI smoke tests"
         "rebuild the Docker image; backend artefacts are produced by docker/Dockerfile"
-        ["cxx", "mimalloc"]
+        ["cxx-clang19", "llvm-profdata-19", "mimalloc"]
         "cpp-imperative/build/libmcts_cpp_imperative.so"
     , sharedLibraryNode
         "libmcts-cpp-functional-built"
         "C++ functional shared library exists for dynamic FFI smoke tests"
         "rebuild the Docker image; backend artefacts are produced by docker/Dockerfile"
-        ["cxx", "mimalloc"]
+        ["cxx-gpp", "mimalloc"]
         "cpp-functional/build/libmcts_cpp_functional.so"
     ]
 
@@ -195,13 +211,19 @@ prerequisitesForBuild :: String -> [PrerequisiteNode]
 prerequisitesForBuild backend =
     transitiveClosure prerequisiteRegistry $
         case backend of
-            "cpp-legacy" -> ["cxx"]
+            "cpp-legacy" -> ["cxx-gpp"]
             "cpp-imperative" ->
-                ["cxx", "mimalloc", "bolt", "cpp-imperative-pgo-profile", "cpp-imperative-bolt-profile"]
+                [ "cxx-clang19"
+                , "llvm-profdata-19"
+                , "mimalloc"
+                , "bolt"
+                , "cpp-imperative-pgo-profile"
+                , "cpp-imperative-bolt-profile"
+                ]
             "cpp-functional" ->
-                ["cxx", "mimalloc", "bolt", "cpp-functional-pgo-profile", "cpp-functional-bolt-profile"]
+                ["cxx-gpp", "mimalloc", "bolt", "cpp-functional-pgo-profile", "cpp-functional-bolt-profile"]
             "rust" -> ["cargo", "rustc", "lld-linker", "bolt", "rust-pgo-profile", "rust-bolt-profile"]
-            "legacy-fixtures" -> ["cxx"]
+            "legacy-fixtures" -> ["cxx-gpp"]
             _ -> []
 
 prerequisitesForTest :: [PrerequisiteNode]

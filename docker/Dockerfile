@@ -19,6 +19,7 @@ RUN apt-get update \
         g++ \
         gcc \
         git \
+        libclang-rt-19-dev \
         libffi-dev \
         libgmp-dev \
         libmimalloc-dev \

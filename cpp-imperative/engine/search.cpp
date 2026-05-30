@@ -2,7 +2,6 @@
 
 #include "arena.hpp"
 #include "fast_board.hpp"
-#include "state.hpp"
 
 #include <algorithm>
 #include <array>
@@ -24,12 +23,12 @@ namespace {
     return splitmix64(seed + 0x9e3779b97f4a7c15ULL * (index + 1));
 }
 
-[[gnu::hot]] static bool terminal_outcome(const State &state, uint16_t max_plies, double &outcome) noexcept {
-    if (state.b.hero_wins()) {
+[[gnu::hot]] static bool terminal_outcome(const FastBoard &state, uint16_t max_plies, double &outcome) noexcept {
+    if (state.hero_wins()) {
         outcome = 1.0;
         return true;
     }
-    if (state.b.villain_wins()) {
+    if (state.villain_wins()) {
         outcome = -1.0;
         return true;
     }
@@ -49,7 +48,7 @@ namespace {
 [[gnu::hot]] static void expand(
     Arena &arena,
     uint32_t node_idx,
-    const State &state,
+    const FastBoard &state,
     uint16_t max_plies)
 {
     UctNode &node = arena[node_idx];
@@ -62,7 +61,7 @@ namespace {
     }
 
     ActionBuffer actions;
-    state.b.legal_actions(actions);
+    state.legal_actions(actions);
     if (actions.empty()) {
         node.terminal = 1;
         return;
@@ -111,14 +110,14 @@ namespace {
     return best_offset;
 }
 
-[[gnu::hot]] static double rollout(const State &start, uint64_t seed, uint16_t max_plies) {
-    State current = start;
+[[gnu::hot]] static double rollout(const FastBoard &start, uint64_t seed, uint16_t max_plies) {
+    FastBoard current = start;
     uint64_t current_seed = seed;
     ActionBuffer actions;
     for (uint16_t step = 0; step < max_plies; ++step) {
         double outcome = 0.0;
         if (terminal_outcome(current, max_plies, outcome)) return outcome;
-        current.b.legal_actions(actions);
+        current.legal_actions(actions);
         if (actions.empty()) return 0.0;
         const int64_t signed_draw = static_cast<int64_t>(current_seed ^ static_cast<uint64_t>(step));
         int64_t pick_signed = signed_draw % static_cast<int64_t>(actions.size);
@@ -132,12 +131,12 @@ namespace {
 [[gnu::hot]] static double descend_iterative(
     Arena &arena,
     uint32_t root_idx,
-    const State &root_state,
+    const FastBoard &root_state,
     uint64_t seed,
     uint16_t max_plies,
     double c)
 {
-    State current = root_state;
+    FastBoard current = root_state;
     uint32_t node_idx = root_idx;
     uint64_t current_seed = seed;
     std::array<uint32_t, 256> path{};
@@ -178,14 +177,14 @@ namespace {
 }
 
 [[gnu::always_inline]] static inline uint8_t raw_action_for_root(
-    const State &root_state,
+    const FastBoard &root_state,
     uint8_t absolute_action_id) noexcept {
-    return FastBoard::abi_action_from_absolute(root_state.b.side_to_move, absolute_action_id);
+    return FastBoard::abi_action_from_absolute(root_state.side_to_move, absolute_action_id);
 }
 
 [[gnu::hot]] static void push_visit(
     SearchOutput &out,
-    const State &root_state,
+    const FastBoard &root_state,
     uint8_t absolute_action_id,
     uint32_t visits) noexcept {
     if (out.visit_count < out.visits.size()) {
@@ -204,7 +203,7 @@ namespace {
 }  // namespace
 
 SearchOutput run_search(
-    const State &root_state,
+    const FastBoard &root_state,
     uint32_t sims,
     uint16_t max_plies,
     RngBackend::Kind rng_kind,
@@ -214,13 +213,13 @@ SearchOutput run_search(
     (void)rng_kind;
     SearchOutput out;
     double outcome = 0.0;
-    if (root_state.b.hero_wins() || root_state.b.villain_wins()) {
+    if (root_state.hero_wins() || root_state.villain_wins()) {
         out.ok = false;
         return out;
     }
     if (root_state.ply_count >= max_plies) {
         ActionBuffer actions;
-        root_state.b.legal_actions(actions);
+        root_state.legal_actions(actions);
         if (actions.empty()) {
             out.ok = false;
             return out;
@@ -237,7 +236,7 @@ SearchOutput run_search(
     }
 
     ActionBuffer root_actions;
-    root_state.b.legal_actions(root_actions);
+    root_state.legal_actions(root_actions);
     if (root_actions.empty()) {
         out.ok = false;
         return out;
@@ -297,7 +296,7 @@ SearchOutput run_search(
 }
 
 uint64_t benchmark_terminal_playouts(
-    const State &root_state,
+    const FastBoard &root_state,
     uint32_t count,
     uint16_t max_plies,
     uint64_t seed)
@@ -317,7 +316,7 @@ uint64_t benchmark_terminal_playouts(
 }
 
 uint64_t benchmark_search_iters(
-    const State &root_state,
+    const FastBoard &root_state,
     uint32_t count,
     uint16_t max_plies,
     RngBackend::Kind rng_kind,

@@ -8,7 +8,6 @@
 
 #include "../engine/fast_board.hpp"
 #include "../engine/search.hpp"
-#include "../engine/state.hpp"
 
 #include <algorithm>
 #include <array>
@@ -31,11 +30,11 @@
 #endif
 
 // The C-ABI board handle is a small wrapper: it owns the current root
-// `State` (a compact board + `Word16` ply counter) plus the per-search
-// `read_visits` cache so `mcts_imperative_read_visits` remains O(1)
-// lookup on the last-search action set.
+// `FastBoard` (compact board + inlined `Word16` ply counter, Sprint 5.9)
+// plus the per-search `read_visits` cache so `mcts_imperative_read_visits`
+// remains O(1) lookup on the last-search action set.
 struct mcts_imperative_board {
-    mcts_imperative::State state{};
+    mcts_imperative::FastBoard state{};
     std::array<uint8_t, mcts_imperative::kMaxLegalActions> last_visit_actions{};
     std::array<uint32_t, mcts_imperative::kMaxLegalActions> last_visit_counts{};
     uint8_t last_visit_len = 0;
@@ -47,10 +46,10 @@ namespace {
 constexpr uint16_t kGameMaxPlies = 10000;
 constexpr uint16_t kSearchMaxPlies = 60;
 
-[[gnu::hot]] static int apply_action_id(mcts_imperative::State &state, uint8_t raw_action_id) {
+[[gnu::hot]] static int apply_action_id(mcts_imperative::FastBoard &state, uint8_t raw_action_id) {
     mcts_imperative::ActionBuffer actions;
-    const uint8_t absolute_action_id = state.b.absolute_action_from_abi(raw_action_id);
-    state.b.legal_actions(actions);
+    const uint8_t absolute_action_id = state.absolute_action_from_abi(raw_action_id);
+    state.legal_actions(actions);
     for (size_t i = 0; i < actions.size; ++i) {
         if (actions[i] == absolute_action_id) {
             state.apply_action_unchecked(absolute_action_id);
@@ -61,7 +60,7 @@ constexpr uint16_t kSearchMaxPlies = 60;
 }
 
 [[gnu::hot]] static void apply_trusted_action_id(
-    mcts_imperative::State &state,
+    mcts_imperative::FastBoard &state,
     uint8_t absolute_action_id) noexcept {
     state.apply_action_unchecked(absolute_action_id);
 }
@@ -219,7 +218,15 @@ extern "C" uint32_t mcts_imperative_read_visits(
 static mcts_imperative_envelope g_envelope;
 static int g_envelope_ready = 0;
 
-__attribute__((section(".envelope_build_id")))
+// Sprint 5.9: under clang++-19 + LLD + LTO, the bare `section` attribute is
+// not sufficient — LTO drops the symbol (it's reachable only via memcpy in
+// `fill_envelope_once`, which LLVM proves can use a constant zero buffer) and
+// the resulting `.envelope_build_id` section is missing from the linked .so,
+// breaking the Makefile's `llvm-objcopy --update-section` envelope patch.
+// `used` + `retain` together force both the compiler (don't eliminate) and
+// the linker (don't GC the section) to keep the bytes intact so the post-link
+// patch lands.
+__attribute__((used, retain, section(".envelope_build_id")))
 static uint8_t g_engine_build_id[32] = {0};
 
 static uint32_t probe_cpu_features(void) {
@@ -321,13 +328,25 @@ extern "C" const mcts_imperative_envelope *mcts_imperative_get_envelope(void) {
     return &g_envelope;
 }
 
-#if defined(__GNUC__)
+// Sprint 5.9: backend (ii) builds with clang++-19; clang's PGO writes
+// `.profraw` files via `__llvm_profile_write_file` rather than GCC's
+// `__gcov_dump`. Both symbols are declared weak so the dlopen path
+// works for either toolchain. The GCC symbols remain for any
+// transitional g++ build (e.g. host diagnostics) until the broader
+// gcc-removal cleanup ledger entries land.
+#if defined(__clang__)
+extern "C" int __llvm_profile_write_file(void) __attribute__((weak));
+extern "C" void __llvm_profile_reset_counters(void) __attribute__((weak));
+#else
 extern "C" void __gcov_dump(void) __attribute__((weak));
 extern "C" void __gcov_reset(void) __attribute__((weak));
 #endif
 
 extern "C" void mcts_imperative_dump_profile(void) {
-#if defined(__GNUC__)
+#if defined(__clang__)
+    if (__llvm_profile_write_file) __llvm_profile_write_file();
+    if (__llvm_profile_reset_counters) __llvm_profile_reset_counters();
+#else
     if (__gcov_dump) __gcov_dump();
     if (__gcov_reset) __gcov_reset();
 #endif

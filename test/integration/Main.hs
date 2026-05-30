@@ -468,6 +468,10 @@ expectedHostArch =
 expectedCompilerId :: Backend -> Word8
 expectedCompilerId backend =
     case backend of
+        -- Sprint 5.9: backend (ii) cpp-imperative pivoted from g++ to
+        -- clang++-19 (compiler_id=1). Backends (i) and (iii) remain on
+        -- g++ (compiler_id=0) until their own pivot sprints.
+        CppImperative -> 1
         Rust -> 2
         Haskell -> 3
         _ -> 0

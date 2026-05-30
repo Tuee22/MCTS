@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include "state.hpp"
+#include "fast_board.hpp"
 
 #include <cstdint>
 #include <limits>

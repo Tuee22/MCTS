@@ -44,6 +44,15 @@ struct BlockMasks {
     unsigned __int128 left = 0;
 };
 
+// Sprint 5.9: `ply_count` collapsed into `FastBoard` so the descent state
+// the search materializes is a flat 32 B value, matching backend (iii)
+// `cpp-functional/engine/state.hpp::State` and backend (iv) Rust
+// `rust/src/board.rs::MctsRustBoard`. The prior `State { FastBoard b;
+// uint16_t ply_count; }` wrapper in `state.hpp` is removed; the State→
+// FastBoard tax (~40 B padded) is gone from `descend_iterative`'s
+// per-simulation copy. Validated via the 2026-05-29 (ii) vs (iii)/(iv)
+// reportcard rerun: (iii) and (iv) both hit Q2 ST=2.2 with the flat 32 B
+// layout vs (ii)'s 1.9 under the wrapper.
 struct FastBoard {
     uint8_t hero_x = 4;
     uint8_t hero_y = 0;
@@ -53,8 +62,9 @@ struct FastBoard {
     uint8_t villain_walls_remaining = kStartingWalls;
     uint64_t walls_h = 0;
     uint64_t walls_v = 0;
-    SideToMove side_to_move = SideToMove::Hero;
+    uint16_t ply_count = 0;
     uint8_t last_action = kNoAction;
+    SideToMove side_to_move = SideToMove::Hero;
 
     [[gnu::always_inline]] inline bool hero_wins() const noexcept {
         return hero_y == kBoardSize - 1;
@@ -62,6 +72,17 @@ struct FastBoard {
 
     [[gnu::always_inline]] inline bool villain_wins() const noexcept {
         return villain_y == 0;
+    }
+
+    [[gnu::hot, gnu::always_inline]] inline bool is_terminal(uint16_t max_plies) const noexcept {
+        return hero_wins() || villain_wins() || ply_count >= max_plies;
+    }
+
+    // Hero-perspective terminal evaluation; ply-cap termination is a draw (0).
+    [[gnu::hot, gnu::always_inline]] inline double terminal_eval() const noexcept {
+        if (hero_wins()) return 1.0;
+        if (villain_wins()) return -1.0;
+        return 0.0;
     }
 
     [[gnu::always_inline]] static inline uint8_t flip_action_id(uint8_t action_id) noexcept {
@@ -131,6 +152,7 @@ struct FastBoard {
         }
         last_action = action_id;
         side_to_move = side_to_move == SideToMove::Hero ? SideToMove::Villain : SideToMove::Hero;
+        ply_count = static_cast<uint16_t>(ply_count + 1);
     }
 
 private:

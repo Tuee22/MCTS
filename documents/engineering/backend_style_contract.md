@@ -46,6 +46,15 @@ functional-core boundary that `(iii)`, `(iv)`, and `(v)` follow; they only
 tighten backend `(ii)`'s imperative kernel and toolchain. Functional-core
 backends do not need a matching change.
 
+Sprint `5.9` (2026-05-29 compiler audit) pivoted backend `(ii)` from `g++` to
+`clang++-19`, dropping the GCC-only `-fipa-pta` flag (clang rejects it) and
+switching the PGO file format from `.gcda` to `.profraw` + merged `.profdata`.
+The Sprint `5.8` BOLT additions remain; the C++ scrub-flag pair
+`-fno-stack-protector -fno-rtti` remains. Backend `(iii)` retains the original
+Sprint `5.8` flag set (including `-fipa-pta` and the g++ front-end) pending its
+own pivot sprint, tracked in
+[../../DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md](../../DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md).
+
 ## Functional-Core Rule
 
 Functional style in this repository means value-state game logic at the boundary:

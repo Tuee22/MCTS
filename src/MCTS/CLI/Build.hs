@@ -228,8 +228,11 @@ legacyFixturePlan options =
 --
 --   1. PGO-instrumented bench + instrumented artefacts.
 --   2. Bounded PGO training suite under `--rng native` writes
---      `<backend>/pgo-profile/*.gcda`.
---   3. PGO-optimized rebuild of both artefacts with `-fprofile-use`.
+--      `<backend>/pgo-profile/*.gcda` (backend (iii) g++) or
+--      `<backend>/pgo-profile/*.profraw` (backend (ii) clang++-19).
+--   3. PGO-optimized rebuild of both artefacts with `-fprofile-use`
+--      (after clang merges the `.profraw` set into a single
+--      `default.profdata` via `make pgo-merge`).
 --   4. BOLT instrument pass for both artefacts (writes
 --      `<backend>/bolt-profile/*.fdata`).
 --   5. Short bounded BOLT training suite produces the BOLT profile data.
@@ -241,11 +244,18 @@ legacyFixturePlan options =
 --   8. Smoke the installed canonical artefact so a crashing BOLT output
 --      fails the Dockerfile build instead of reaching runtime.
 --
+-- Sprint 5.9 split: backend (ii) cpp-imperative pivoted to clang++-19
+-- and now uses LLVM `.profraw` → merged `.profdata`. Backend (iii)
+-- cpp-functional remains on g++ pending its own pivot sprint (tracked
+-- in `DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md`).
+--
 -- The whole pipeline rides the typed `Subprocess` boundary; no
 -- ad-hoc `callProcess` or `System.Process` smart constructors live in
 -- this module. The training runs invoke the installed image-local
 -- `mcts` binary so backend image construction does not ask Cabal to
 -- configure or link anything after the CLI has been installed.
+data CppProfileStyle = CppGccProfile | CppLlvmProfile
+
 cppPgoBoltPlan :: String -> [Subprocess]
 cppPgoBoltPlan backend =
     [ resetCppProfileDirectories
@@ -257,8 +267,8 @@ cppPgoBoltPlan backend =
            , installCppTrainingArtifact "_instrumented.so"
            ]
         <> trainingRunsFor backend pgoTrainingRuns
-        <> [ requireCppGcdaProfiles
-           , makeTarget "pgo-bench-use"
+        <> profileMergeSteps profileStyle
+        <> [ makeTarget "pgo-bench-use"
            , makeTarget "pgo-instr-use"
            , makeTarget "bolt-bench-instrument"
            , installCppBoltTrainingArtifact "_bench.inst.so"
@@ -276,6 +286,7 @@ cppPgoBoltPlan backend =
   where
     libraryBase = cppLibraryBase backend
     canonicalLibrary = cppBuildPath (libraryBase <> ".so")
+    profileStyle = cppProfileStyleFor backend
 
     makeTarget target =
         Subprocess "make" ["-C", backend, target] Nothing Nothing
@@ -320,8 +331,8 @@ cppPgoBoltPlan backend =
             Nothing
             Nothing
 
-    requireCppGcdaProfiles =
-        Subprocess
+    profileMergeSteps CppGccProfile =
+        [ Subprocess
             "bash"
             [ "-c"
             , "if ! find "
@@ -336,9 +347,18 @@ cppPgoBoltPlan backend =
             ]
             Nothing
             Nothing
+        ]
+    -- Sprint 5.9: clang LLVM PGO. `make pgo-merge` validates `.profraw`
+    -- presence and writes the merged `default.profdata` consumed by the
+    -- subsequent `pgo-{bench,instr}-use` targets.
+    profileMergeSteps CppLlvmProfile = [makeTarget "pgo-merge"]
 
     cppBuildPath file =
         backend <> "/build/" <> file
+
+cppProfileStyleFor :: String -> CppProfileStyle
+cppProfileStyleFor "cpp-imperative" = CppLlvmProfile
+cppProfileStyleFor _ = CppGccProfile
 
 cppLibraryBase :: String -> String
 cppLibraryBase backend =

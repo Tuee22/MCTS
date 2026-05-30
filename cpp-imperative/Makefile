@@ -1,10 +1,16 @@
 .PHONY: smoke all clean envelope-build-id bench instrumented \
         pgo-generate pgo-use bolt-instrument bolt-optimize \
         pgo-bench-generate pgo-bench-use pgo-instr-generate pgo-instr-use \
+        pgo-merge \
         bolt-bench-instrument bolt-bench-optimize \
         bolt-instr-instrument bolt-instr-optimize install-bench
 
-CXX ?= g++
+# Use `:=` not `?=` so the Dockerfile's `ENV CXX=g++` (kept for backends
+# (i) and (iii)) does not silently override the (ii) clang pivot. A
+# command-line `make CXX=...` still takes precedence over `:=` per GNU
+# make's variable precedence rules.
+CXX := clang++-19
+LLVM_PROFDATA := llvm-profdata-19
 # Doctrine C++23 base flag set per
 # DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md → Sprint 5.1.
 # Sprint 5.3 closure: `-fno-exceptions` enabled; the legacy
@@ -19,12 +25,15 @@ CXX ?= g++
 #   -fno-rtti — no `dynamic_cast` or `typeid` is reachable from the
 #     search kernel (no virtual base anywhere on the hot path), so
 #     emitted RTTI metadata is pure code/data bloat.
-#   -fipa-pta — opt-in inter-procedural points-to analysis. Improves
-#     LTO devirtualization and alias resolution across the engine TU
-#     and the C-ABI shim. Each flag is gated by its own focused (ii)
-#     benchmark measurement under the Sprint 5.8 rollback discipline.
-CXXFLAGS ?= -std=c++23 -O3 -march=native -mtune=native -flto -fno-plt -fno-semantic-interposition -fvisibility=hidden -fvisibility-inlines-hidden -fno-exceptions -fno-stack-protector -fno-rtti -fipa-pta -fPIC -Wno-pessimizing-move -Iengine
-LDFLAGS ?= -shared -flto -Wl,--emit-relocs
+# Sprint 5.9 compiler pivot: g++ → clang++-19 closed ~80% of the (iv) Rust
+# vs (ii) gap on single-thread metrics under the same `-O3 -flto` envelope
+# per the 2026-05-29 compiler audit. The GCC-only `-fipa-pta` flag is
+# dropped (clang rejects it; the audit measurement showed it was not
+# carrying the (ii) baseline either way). PGO recipes were rewritten from
+# GCC `.gcda` (`-fprofile-correction` etc.) to LLVM `.profraw` → merged
+# `.profdata` consumed via `-fprofile-use=<file>`.
+CXXFLAGS ?= -std=c++23 -O3 -march=native -mtune=native -flto -fno-plt -fno-semantic-interposition -fvisibility=hidden -fvisibility-inlines-hidden -fno-exceptions -fno-stack-protector -fno-rtti -fPIC -Wno-pessimizing-move -Iengine
+LDFLAGS ?= -shared -flto -Wl,--emit-relocs -fuse-ld=lld
 LDLIBS ?= -lmimalloc
 
 ENGINE_SRCS = engine/search.cpp c-abi/mcts_cpp_imperative.cc
@@ -67,28 +76,40 @@ pgo-instr-generate:
 	mkdir -p build $(PGO_DIR)
 	$(CXX) $(CXXFLAGS) -fprofile-generate=$(abspath $(PGO_DIR)) -DMCTS_IMPERATIVE_INSTRUMENTED=1 $(LDFLAGS) -fprofile-generate=$(abspath $(PGO_DIR)) $(ENGINE_SRCS) $(LDLIBS) -o build/libmcts_cpp_imperative_instrumented.so
 
+# Sprint 5.9: merge clang's raw `.profraw` files into a single
+# `.profdata` consumed by `-fprofile-use=<file>`. Mirrors the Rust
+# pipeline in `rust/Makefile`. The orchestrator (`src/MCTS/CLI/Build.hs`
+# → `cppPgoBoltPlan`) runs the training workload between
+# `pgo-{bench,instr}-generate` and this merge, then `pgo-{bench,instr}-use`.
+pgo-merge:
+	@profraw_files=$$(find $(PGO_DIR) -type f -name '*.profraw' -size +0c -print | sort); \
+	if [ -z "$$profraw_files" ]; then \
+	  find $(PGO_DIR) -type f -print | sort | head -100 >&2; \
+	  echo "[pgo] no non-empty .profraw files under $(PGO_DIR); failing mandatory PGO build" >&2; \
+	  exit 1; \
+	fi; \
+	$(LLVM_PROFDATA) merge -o $(PGO_DIR)/default.profdata $$profraw_files; \
+	test -s $(PGO_DIR)/default.profdata
+
 # Stage 2: PGO optimized rebuild. Compile with
-# `-fprofile-use=$(abspath $(PGO_DIR)) -fprofile-correction` so
-# the optimizer pulls the recorded edge frequencies into hot-path
-# layout decisions.
+# `-fprofile-use=$(abspath $(PGO_DIR))/default.profdata` so clang pulls
+# the recorded edge frequencies into hot-path layout decisions.
 pgo-bench-use:
 	mkdir -p build
-	@if ! find $(PGO_DIR) -type f -name '*.gcda' -size +0c -print -quit | grep -q .; then \
-	  find . -type f \( -name '*.gcda' -o -name '*.gcno' -o -name '*gcov*' \) -print | sort | head -100 >&2; \
-	  echo "[pgo] no non-empty .gcda files under $(PGO_DIR); failing mandatory PGO build" >&2; \
+	@if [ ! -s $(PGO_DIR)/default.profdata ]; then \
+	  echo "[pgo] $(PGO_DIR)/default.profdata missing or empty; run pgo-merge first" >&2; \
 	  exit 1; \
 	fi
-	$(CXX) $(CXXFLAGS) -fprofile-use=$(abspath $(PGO_DIR)) -fprofile-correction -DMCTS_IMPERATIVE_INSTRUMENTED=0 $(LDFLAGS) -fprofile-use=$(abspath $(PGO_DIR)) -fprofile-correction $(ENGINE_SRCS) $(LDLIBS) -o build/libmcts_cpp_imperative_bench.so
+	$(CXX) $(CXXFLAGS) -fprofile-use=$(abspath $(PGO_DIR))/default.profdata -DMCTS_IMPERATIVE_INSTRUMENTED=0 $(LDFLAGS) -fprofile-use=$(abspath $(PGO_DIR))/default.profdata $(ENGINE_SRCS) $(LDLIBS) -o build/libmcts_cpp_imperative_bench.so
 	$(MAKE) envelope-build-id LIB=build/libmcts_cpp_imperative_bench.so
 
 pgo-instr-use:
 	mkdir -p build
-	@if ! find $(PGO_DIR) -type f -name '*.gcda' -size +0c -print -quit | grep -q .; then \
-	  find . -type f \( -name '*.gcda' -o -name '*.gcno' -o -name '*gcov*' \) -print | sort | head -100 >&2; \
-	  echo "[pgo] no non-empty .gcda files under $(PGO_DIR); failing mandatory PGO build" >&2; \
+	@if [ ! -s $(PGO_DIR)/default.profdata ]; then \
+	  echo "[pgo] $(PGO_DIR)/default.profdata missing or empty; run pgo-merge first" >&2; \
 	  exit 1; \
 	fi
-	$(CXX) $(CXXFLAGS) -fprofile-use=$(abspath $(PGO_DIR)) -fprofile-correction -DMCTS_IMPERATIVE_INSTRUMENTED=1 $(LDFLAGS) -fprofile-use=$(abspath $(PGO_DIR)) -fprofile-correction $(ENGINE_SRCS) $(LDLIBS) -o build/libmcts_cpp_imperative_instrumented.so
+	$(CXX) $(CXXFLAGS) -fprofile-use=$(abspath $(PGO_DIR))/default.profdata -DMCTS_IMPERATIVE_INSTRUMENTED=1 $(LDFLAGS) -fprofile-use=$(abspath $(PGO_DIR))/default.profdata $(ENGINE_SRCS) $(LDLIBS) -o build/libmcts_cpp_imperative_instrumented.so
 	$(MAKE) envelope-build-id LIB=build/libmcts_cpp_imperative_instrumented.so
 
 # Stage 3 (BOLT): instrument the PGO-optimized shared library with

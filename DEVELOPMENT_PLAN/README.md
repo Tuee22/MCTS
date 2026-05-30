@@ -559,6 +559,32 @@ checked-in generated validation data is a normal test input. The validation gate
 is `docker compose run --rm mcts mcts test all` under the pinned GHC `9.14.1`
 toolchain.
 
+The 2026-05-29 compiler-stack audit reopened Phase `5` for Sprints `5.9` and
+`5.10` after the (ii) vs (iv) gap investigation showed `clang++-19` at
+`-O3 -flto` matched or exceeded `g++` with the full PGO+BOLT pipeline on
+cpp-imperative (audit cells: Q1a ST +8.9%, Q1b ST +10.2%, Q1b MT8 +22.5%
+vs g++ PGO+BOLT). Phase `5` reclosed on 2026-05-29 with Sprints `5.9` and
+`5.10` both Done. Sprint `5.9` pivoted backend (ii) from `g++` to
+`clang++-19`, dropped `-fipa-pta`, switched PGO format to LLVM `.profraw`
+→ merged `.profdata`, and collapsed the `State { FastBoard b; uint16_t
+ply_count; }` wrapper into a flat `FastBoard { …; uint16_t ply_count; }`;
+`mcts test all` PASS, Q3/Q4/Q6/Q7 PASS, `normalized_divergence_score=
+0.0000`, and backend (ii) headline numbers lifted +7.5% Q1a ST, +7.1% Q1b
+ST, +5.3% Q2 ST, +8.5% Q2 MT8 vs the post-`5.8` g++ baseline (Q1a MT8 and
+Q1b MT8 unchanged within noise; (ii) is now within `0.88×–1.20×` of (iv)
+Rust across all six headline cells). Sprint `5.10` re-ran the
+PGO+BOLT-vs-clang-O3-only A/B on the clang artefact; arithmetic mean lift
+was `+1.8%` (below the planned `+3%` threshold), but the per-cell picture
+justified keeping the pipeline — Q1a MT8 `+13.8%` and Q1b MT8 `+7.5%`
+(comfortably above noise) on the parallel hot paths, with ST/Q2 cells
+within ±5% measurement-noise floor. Phases `4` and `6` remain closed on
+their owned surfaces; backend (i) cpp-legacy and (iii) cpp-functional
+clang pivots and full `gcc`/`g++` removal from `docker/Dockerfile` are
+tracked as Pending Removal rows in
+[legacy-tracking-for-deletion.md](./legacy-tracking-for-deletion.md)
+owned by future sprints, so the (ii) pilot validates the orchestration
+before it propagates.
+
 ## Current Validation Boundary
 
 After the 2026-05-18 Compose-only operator-surface doctrine edit, the

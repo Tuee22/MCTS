@@ -259,9 +259,10 @@ bool board::is_terminal() const
 // Sprint 5.3: replaced the non-terminal-state `throw std::string(...)`
 // with `__builtin_trap()` so this TU compiles under `-fno-exceptions`.
 // The imperative engine never calls this entry — it uses
-// `mcts_imperative::State::terminal_eval` (which is `noexcept` and
-// returns `0.0` on the ply-cap branch) for every rollout — so the
-// trap path is dead code on the supported path.
+// `mcts_imperative::FastBoard::terminal_eval` (Sprint 5.9 collapsed the
+// prior `State` wrapper; the method is `noexcept` and returns `0.0` on
+// the ply-cap branch) for every rollout — so the trap path is dead code
+// on the supported path.
 double board::get_terminal_eval() const
 {
     if (hero_wins())

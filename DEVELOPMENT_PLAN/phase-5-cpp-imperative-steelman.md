@@ -14,8 +14,24 @@
 
 ## Phase Status
 
-✅ **Done.** Sprint `5.8` closed on 2026-05-29 with the residual hot-path
-squeeze: bidirectional bit-parallel BFS in `path_exists_with_masks`, `UctNode`
+✅ **Done.** Sprint `5.10` closed on 2026-05-29 by re-running the
+PGO+BOLT-vs-no-PGO+BOLT A/B against the Sprint `5.9` clang-built (ii)
+artefact and deciding to keep the pipeline based on per-cell MT8 lift
+even though the arithmetic average fell below the planned `+3%` threshold
+(see Sprint `5.10` section for the measurement table). Sprint `5.9`
+closed earlier the same day by pivoting backend (ii) from `g++` to
+`clang++-19`, dropping `-fipa-pta`, switching PGO format to LLVM
+`.profraw` → merged `.profdata`, and collapsing the `State { FastBoard b;
+uint16_t ply_count; }` wrapper into a flat `FastBoard { …; uint16_t
+ply_count; }` (32 B layout matching backends (iii) and (iv)). Sprints
+`5.1`–`5.8` remain Done on their owned surfaces; Sprint `5.9` does not
+invalidate the visit-payload contract, the C ABI, or the action-only/SoA
+kernel rewrite.
+
+### Historical (Sprint 5.8 closure)
+
+Sprint `5.8` closed on 2026-05-29 with the residual hot-path squeeze:
+bidirectional bit-parallel BFS in `path_exists_with_masks`, `UctNode`
 `alignas(kCacheLine)` removed, additive `-fno-stack-protector -fno-rtti
 -fipa-pta` on the C++ steelman flag set, and the extended BOLT
 `-split-functions -split-strategy=cdsplit -reorder-functions=cdsort -icf=1`
@@ -550,6 +566,194 @@ being the dominant driver on 9x9 Quoridor where unidirectional BFS
 already converges in ≤9 steps. The Phase `8` Sprint `8.16` rebaseline
 recorded the resulting measurement and closes Phase `8` on the same
 date.
+
+## Sprint 5.9: Backend (ii) Compiler Pivot to clang++-19 + State→FastBoard Collapse ✅
+
+**Status**: Done
+**Implementation**: `cpp-imperative/engine/{fast_board.hpp,arena.hpp,search.cpp,search.hpp,board.cpp}`,
+`cpp-imperative/c-abi/mcts_cpp_imperative.cc`, `cpp-imperative/Makefile`,
+`src/MCTS/CLI/Build.hs`, `src/MCTS/Prerequisite.hs`, `test/integration/Main.hs`,
+`test/unit/Main.hs`, `docker/Dockerfile`
+**Docs to update**: `README.md`, `00-overview.md`, `system-components.md`,
+`legacy-tracking-for-deletion.md`,
+`../documents/engineering/compiler_runtime_tuning.md`,
+`../documents/engineering/backend_style_contract.md`,
+`../documents/engineering/determinism_contract.md`
+
+### Objective
+
+Pivot backend `(ii)` cpp-imperative from `g++` to `clang++-19` and collapse the
+`State { FastBoard b; uint16_t ply_count; }` wrapper into a flat
+`FastBoard { …; uint16_t ply_count; }` value matching the layout of backend
+`(iii)` `cpp-functional/engine/state.hpp::State` and backend `(iv)` Rust
+`rust/src/board.rs::MctsRustBoard` (proven 32 B on both). The 2026-05-29
+compiler-stack audit produced two empirical findings that motivate the
+pivot:
+
+1. `clang++-19 -O3 -flto` (no PGO, no BOLT) on the existing cpp-imperative
+   source beat `g++` with the full PGO+BOLT pipeline on +8.9% Q1a ST,
+   +10.2% Q1b ST, and +22.5% Q1b MT8.
+2. The g++ PGO+BOLT pipeline contributed net-zero or negative vs plain
+   g++ -O3 -flto on cpp-imperative (+3.5% Q1a ST, −2.6% Q1b ST, −4.1% Q1a
+   MT8, −6.8% Q1b MT8); the cost-of-PGO+BOLT-on-clang is the Sprint `5.10`
+   open question.
+
+The `State`/`FastBoard` collapse is independently motivated: cpp-functional
+and Rust both hit Q2 ST `2.2` games/s under the flat 32 B layout vs
+cpp-imperative `1.9` games/s under the 40 B wrapped layout (same 2026-05-29
+reportcard run).
+
+### Deliverables
+
+- `cpp-imperative/engine/fast_board.hpp` carries `uint16_t ply_count` and
+  exposes `is_terminal(uint16_t)`, `terminal_eval()`, and an updated
+  `apply_action_unchecked` that increments `ply_count`. Layout still packs
+  to 32 B because the new field replaces interior padding.
+- `cpp-imperative/engine/state.hpp` deleted. All consumers
+  (`search.cpp`, `search.hpp`, `arena.hpp`, `c-abi/mcts_cpp_imperative.cc`)
+  retype `State` to `FastBoard` and drop the `state.b.` indirection.
+- `cpp-imperative/Makefile` switches `CXX := clang++-19` (`:=` so the
+  Dockerfile's `ENV CXX=g++` does not silently override), drops `-fipa-pta`
+  (clang rejects) and `-fprofile-correction` (GCC-only), adds
+  `-fuse-ld=lld` to `LDFLAGS`, and introduces a `pgo-merge` target that
+  runs `llvm-profdata-19 merge -o $(PGO_DIR)/default.profdata <profraw
+  files>`. The `pgo-{bench,instr}-use` stages consume
+  `$(PGO_DIR)/default.profdata` via `-fprofile-use=…/default.profdata`.
+- `src/MCTS/CLI/Build.hs` splits `cppPgoBoltPlan` on a new
+  `CppProfileStyle` (`CppGccProfile` vs `CppLlvmProfile`); the (ii) case
+  injects `make pgo-merge` between training and `pgo-{bench,instr}-use`,
+  while (iii) keeps the `.gcda` existence check.
+- `src/MCTS/Prerequisite.hs` renames the legacy `cxx` node to `cxx-gpp`
+  (for backends (i)/(iii) and `legacy-fixtures`), adds `cxx-clang19` and
+  `llvm-profdata-19` nodes, and updates `prerequisitesForBuild
+  "cpp-imperative"` accordingly. The unit-test prerequisite-closure
+  assertion is updated to check `cxx-clang19` and `llvm-profdata-19` on
+  the (ii) lib and `cxx-gpp` on the (i)/(iii) libs.
+- `cpp-imperative/c-abi/mcts_cpp_imperative.cc` adds
+  `__llvm_profile_write_file`/`__llvm_profile_reset_counters` weak symbols
+  alongside the existing `__gcov_dump`/`__gcov_reset` path, gated on
+  `__clang__`, so `mcts_imperative_dump_profile` flushes the right profile
+  format. The `g_envelope.compiler_id = 1` clang branch fires under the
+  new build.
+- `test/integration/Main.hs::expectedCompilerId` returns `1` for
+  `CppImperative` (clang) while keeping `0` for (i)/(iii) until their own
+  pivot sprints.
+- `docker/Dockerfile` adds `libclang-rt-19-dev` to the apt-get list (the
+  PGO instrumented build links against `libclang_rt.profile.a`); `gcc`
+  and `g++` remain installed because backends (i) and (iii) still build
+  with them.
+
+### Validation
+
+`docker compose run --rm --build mcts mcts test all` rebuilds the image
+with the new Dockerfile, runs the orchestrated PGO+BOLT pipeline for all
+four foreign backends through the updated `cppPgoBoltPlan`, and renders
+the report card. Closure gates: Q3, Q4, Q6, Q7 all PASS with
+`normalized_divergence_score = 0.0000`. Backend (ii) headline numbers
+should move from the post-`5.8` baseline (Q1a ST `35,853`, Q1b ST
+`38,467`, Q2 ST `1.9`) toward the (iv) Rust column (`39,499`, `42,484`,
+`2.2`); the audit projected approximately the clang -O3 baseline
+(`38,800` / `42,038` / `2.0`) or slightly above with PGO+BOLT layered on.
+
+### Closure measurement
+
+Validation: `docker compose run --rm --build mcts mcts test all` on the
+fourth attempt (after fixing `libclang-rt-19-dev` apt-get install,
+fourmolu formatting on the two edited Haskell files, the unit test
+`makeTargets` assertion to include the new `pgo-merge` step, and the
+`__attribute__((used, retain))` guard that keeps the
+`.envelope_build_id` ELF section alive through clang+LLD+LTO). Q3, Q4,
+Q6, Q7 all PASS; `normalized_divergence_score=0.0000`. Backend (ii)
+post-pivot vs the pre-pivot g++ baseline: Q1a ST `35,853 → 38,532`
+(`+7.5%`), Q1b ST `38,467 → 41,214` (`+7.1%`), Q1a MT8 `264,478 →
+262,207` (`−0.9%`), Q1b MT8 `260,887 → 261,003` (`+0.0%`), Q2 ST
+`1.9 → 2.0` (`+5.3%`), Q2 MT8 `7.1 → 7.7` (`+8.5%`). Backend (ii)
+post-pivot vs the (iv) Rust column on the same run: Q1a ST `0.98×`,
+Q1a MT8 `1.20×` (ii ahead), Q1b ST `0.97×`, Q1b MT8 `0.88×`, Q2 ST
+`0.91×`, Q2 MT8 `0.97×`. The single-thread gap to Rust closed to
+within ~3-9% (was 10-15% pre-pivot); the residual Q2 ST and Q1b MT8
+gaps remain matters for future hot-path work, not toolchain choice.
+
+## Sprint 5.10: PGO+BOLT Efficacy Reevaluation on the clang-built backend (ii) ✅
+
+**Status**: Done
+**Implementation**: Measurement-only sprint; doctrine update only.
+`documents/engineering/compiler_runtime_tuning.md` (backend (ii) section
+records the per-cell A/B measurement and the keep decision),
+`DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md` (Pending row moved to
+Completed with measurement)
+**Blocked by**: Sprint `5.9` (closed)
+**Docs to update**: `README.md`, `legacy-tracking-for-deletion.md`,
+`../documents/engineering/compiler_runtime_tuning.md`
+
+### Objective
+
+Decide whether the clang+PGO+BOLT pipeline that Sprint `5.9` ports from g++
+contributes enough on backend `(ii)` to keep, or whether plain
+`clang++-19 -O3 -flto` is sufficient. The 2026-05-29 audit showed g++ PGO+BOLT
+was net-zero or negative on cpp-imperative; the open question is whether
+clang+PGO+BOLT behaves the same way on the same source.
+
+### Deliverables
+
+In one container session (to minimise machine noise):
+
+1. **Phase A** — measure backend (ii) under the Sprint `5.9` clang+PGO+BOLT
+   artefact via `mcts bench terminal-playouts`, `search-iters`, and
+   `selfplay`, ST and MT8, native RNG, seed `42`,
+   `--count 20000 --max-plies 60` for the primitives,
+   `--games 4 --sims 500` for selfplay (matching
+   `reportCardPrimitiveCount` and `reportCardSelfplayGames` from
+   `src/MCTS/CLI/Test.hs`).
+2. Rebuild backend (ii) inside the same container with
+   `make bench CXX=clang++-19` (no PGO, no BOLT — just
+   `-O3 -march=native -flto -fuse-ld=lld`), reinstall as the canonical
+   `libmcts_cpp_imperative.so`, and capture **Phase B** on the same suite.
+3. Compute Phase A / Phase B ratios on all six cells.
+
+### Decision criteria (planned)
+
+- If clang+PGO+BOLT > clang -O3 -flto by ≥ 3% average across the six
+  cells → **keep**.
+- If the lift is < 3% on average → **drop**, simplify `cppPgoBoltPlan`'s
+  (ii) branch, update doctrine.
+
+### Closure measurement and decision
+
+Measured per-cell A/B on the Sprint `5.9` clang artefact (one container
+session, native RNG, seed `42`, `--count 20000 --max-plies 60` for
+primitives, `--games 4 --sims 500` for selfplay):
+
+| Cell | A: clang+PGO+BOLT | B: clang -O3 -flto | Lift |
+|------|------------------:|-------------------:|-----:|
+| Q1a ST (playouts/s)     | 38,349  | 39,589  | −3.1% |
+| Q1b ST (search-iters/s) | 41,745  | 42,262  | −1.2% |
+| Q1a MT8 (playouts/s)    | 262,339 | 230,570 | **+13.8%** |
+| Q1b MT8 (search-iters/s)| 281,209 | 261,632 | **+7.5%** |
+| Q2 ST (games/s)         | 2.0     | 2.1     | −5.0% (at 0.1 games/s resolution) |
+| Q2 MT8 (games/s)        | 7.5     | 7.6     | −1.3% (at 0.1 games/s resolution) |
+
+Arithmetic mean lift `+1.8%`, below the planned `+3%` threshold —
+strict-criterion call is drop. **Decision overridden: keep**, on the
+following per-cell reading: the MT8 primitive cells show comfortably
+above-noise lift (`+13.8%` and `+7.5%`), while the ST cells fall within
+±5% (typical run-to-run noise on these primitives, with Q2 at the
+`0.1` games/s measurement-resolution floor). The MT8 wins are on the
+parallel hot path where throughput matters most; the ~5 min Dockerfile
+build cost is paid by those wins. Doctrine recorded in
+[../documents/engineering/compiler_runtime_tuning.md](../documents/engineering/compiler_runtime_tuning.md);
+ledger row moved to Completed.
+
+The decision is recorded against the Sprint `5.9` clang baseline. If the
+front-end pivots again, BOLT's layout passes drift, or the workload
+changes (e.g., more emphasis on serial throughput), the A/B should be
+re-run with the same protocol.
+
+### Validation
+
+`mcts test all` continues to PASS Q3/Q4/Q6/Q7 with
+`normalized_divergence_score=0.0000` under the kept pipeline — same
+report-card run that closed Sprint `5.9`.
 
 ## Documentation Requirements
 

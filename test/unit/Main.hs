@@ -1159,8 +1159,21 @@ exercisePrerequisiteClosure = do
         "C++ optimized build prerequisite includes bolt dir"
         ("cpp-imperative-bolt-profile" `elem` cppBuildClosure)
     let cppLibClosure = map nodeId (transitiveClosure prerequisiteRegistry ["libmcts-cpp-imperative-built"])
-    assert "C++ shared library prerequisite includes cxx" ("cxx" `elem` cppLibClosure)
-    assert "C++ shared library prerequisite includes mimalloc" ("mimalloc" `elem` cppLibClosure)
+    assert
+        "cpp-imperative shared lib prerequisite includes clang++-19"
+        ("cxx-clang19" `elem` cppLibClosure)
+    assert
+        "cpp-imperative shared lib prerequisite includes llvm-profdata-19"
+        ("llvm-profdata-19" `elem` cppLibClosure)
+    assert "cpp-imperative shared lib prerequisite includes mimalloc" ("mimalloc" `elem` cppLibClosure)
+    let cppFuncLibClosure = map nodeId (transitiveClosure prerequisiteRegistry ["libmcts-cpp-functional-built"])
+    assert
+        "cpp-functional shared lib prerequisite still includes g++"
+        ("cxx-gpp" `elem` cppFuncLibClosure)
+    let cppLegacyLibClosure = map nodeId (transitiveClosure prerequisiteRegistry ["libmcts-cpp-legacy-built"])
+    assert
+        "cpp-legacy shared lib prerequisite still includes g++"
+        ("cxx-gpp" `elem` cppLegacyLibClosure)
     let lldClosure = map nodeId (transitiveClosure prerequisiteRegistry ["lld-linker"])
     assert "lld linker prerequisite includes llvm" ("llvm" `elem` lldClosure)
     let testClosure = map nodeId prerequisitesForTest
@@ -1885,6 +1898,13 @@ exerciseCppBuildPlan = do
         ( makeTargets
             == [ "pgo-bench-generate"
                , "pgo-instr-generate"
+               , -- Sprint 5.9: cpp-imperative pivoted to clang++-19, so the
+                 -- LLVM-profile branch of cppPgoBoltPlan inserts a
+                 -- `make pgo-merge` step (llvm-profdata-19 merges .profraw
+                 -- into default.profdata) between training and
+                 -- `pgo-bench-use`. cpp-functional remains on g++ and
+                 -- still uses the `requireCppGcdaProfiles` bash check.
+                 "pgo-merge"
                , "pgo-bench-use"
                , "pgo-instr-use"
                , "bolt-bench-instrument"
@@ -1914,11 +1934,25 @@ exerciseCppBuildPlan = do
     assert
         "C++ training forces scoped foreign library dispatch"
         (all (scopedProfileTrainingEnv . (steps !!)) trainingIndexes)
+    -- Sprint 5.9: cpp-imperative's clang LLVM-profile branch fails closed
+    -- inside `make pgo-merge` (which validates .profraw existence and runs
+    -- llvm-profdata-19 merge). cpp-functional still uses the GCC bash
+    -- requireCppGcdaProfiles check, exercised separately via functionalSteps
+    -- below.
     assert
-        "C++ plan fails closed before profile-use when .gcda data is absent"
-        ( commands !! requireGcdaIndex == "bash"
-            && any ("*.gcda" `contains`) (argsOf !! requireGcdaIndex)
-            && any ("no non-empty C++ .gcda" `contains`) (argsOf !! requireGcdaIndex)
+        "C++ plan inserts pgo-merge before pgo-use"
+        ( commands !! requireGcdaIndex == "make"
+            && "pgo-merge" `elem` argsOf !! requireGcdaIndex
+        )
+    assert
+        "C++ functional plan still fails closed when .gcda data is absent"
+        ( any
+            ( \step ->
+                subprocessPath step == "bash"
+                    && any ("*.gcda" `contains`) (subprocessArguments step)
+                    && any ("no non-empty C++ .gcda" `contains`) (subprocessArguments step)
+            )
+            functionalSteps
         )
     assert
         "C++ final step smokes the installed BOLT artefact"

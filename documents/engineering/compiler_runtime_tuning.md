@@ -76,9 +76,13 @@ and self-play, ST plus MT8, native RNG, seeds `42` and `424242`, and
 rollout `--sims 1` and one self-play game for each threading mode per seed with
 self-play `--sims 500`; BOLT uses one rollout game and one self-play game for each
 threading mode per seed, rollout `--sims 1`, and self-play `--sims 100`. C++
-training uses scoped dynamic-library loading plus exported GCOV dump hooks so
-`.gcda` is flushed before `-fprofile-use`; Rust training keeps the cdylib pinned and
-relies on process-exit `.profraw` emission before `llvm-profdata merge`.
+training uses scoped dynamic-library loading plus exported profile-dump hooks so
+the profile data is flushed before `-fprofile-use`: backend (iii) g++ calls
+`__gcov_dump`/`__gcov_reset` to flush `.gcda`; backend (ii) clang++-19 (Sprint
+5.9) calls `__llvm_profile_write_file`/`__llvm_profile_reset_counters` to flush
+`.profraw` files that are then merged via `llvm-profdata-19 merge` into a
+single `default.profdata`. Rust training keeps the cdylib pinned and relies on
+process-exit `.profraw` emission before `llvm-profdata merge`.
 
 Sprint `5.7` closed backend `(ii)` profile representativeness for the rewritten
 kernel. The earlier suite remains accepted for the Sprint `5.6` `FastBoard` and
@@ -105,11 +109,70 @@ project hypothesis is proven when backend (v) Haskell matches backend (ii) — n
 
 ## Backend (ii) and (iii) — C++ Imperative and Functional-Core
 
-Compiler flags per
-[../../DEVELOPMENT_PLAN/00-overview.md → Hard Constraints item 18](../../DEVELOPMENT_PLAN/00-overview.md):
+Sprint `5.9` (2026-05-29 compiler audit) split the two backends' compiler
+stacks. Backend `(ii)` cpp-imperative pivoted to `clang++-19` after the audit
+showed `clang++-19 -O3 -flto` matched or exceeded `g++` with the full PGO+BOLT
+pipeline on cpp-imperative (the audit measured +8.9% Q1a ST, +10.2% Q1b ST,
++22.5% Q1b MT8). Backend `(iii)` cpp-functional remains on `g++` pending its
+own pivot sprint, tracked under Pending Removal in
+[../../DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md](../../DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md).
+
+### Backend (ii) — clang++-19 stack (Sprint 5.9)
 
 ```text
-# Example: mandatory C++ compile flags for backends (ii) and (iii)
+# Example: mandatory C++ compile flags for backend (ii)
+-std=c++23 -O3 -march=native -mtune=native -flto -fno-plt
+-fno-semantic-interposition -fvisibility=hidden -fvisibility-inlines-hidden
+-fno-exceptions -fno-stack-protector -fno-rtti
+```
+
+The GCC-only `-fipa-pta` flag is dropped; clang rejects it and the audit
+measurement did not show it carrying the (ii) baseline either way. The linker
+adds `-fuse-ld=lld` so BOLT consumes the same `--emit-relocs` shape used by
+backend (iv) Rust. The 2026-05-29 audit also collapsed the prior
+`State { FastBoard b; uint16_t ply_count; }` wrapper into a flat
+`FastBoard { ...; uint16_t ply_count; }` (matching backend (iii) and (iv)'s
+32 B descent state) so the per-simulation copy in `descend_iterative` is no
+longer paying a 25% padding tax versus the other steelman backends.
+
+PGO file format changes from GCC's `.gcda` to clang's `.profraw`; the
+`cpp-imperative/Makefile` adds a `pgo-merge` target that runs
+`llvm-profdata-19 merge -o $(PGO_DIR)/default.profdata <profraw files>` and
+the subsequent `pgo-{bench,instr}-use` stages consume the merged
+`.profdata` file via `-fprofile-use=…/default.profdata`. The
+`-fprofile-correction` flag is dropped (GCC-only). BOLT stages are unchanged:
+LLVM BOLT operates on the linked artefact independent of which front-end
+produced it.
+
+Sprint `5.10` (2026-05-29) re-ran the PGO+BOLT-vs-no-PGO+BOLT A/B against
+the clang-built (ii) artefact and decided to **keep** the pipeline. The
+per-cell lift was mixed but concentrated on the parallel hot path where
+throughput matters most:
+
+| Cell | clang+PGO+BOLT | clang -O3 -flto | Lift |
+|------|---------------:|----------------:|-----:|
+| Q1a ST (playouts/s) | 38,349 | 39,589 | −3.1% |
+| Q1b ST (search-iters/s) | 41,745 | 42,262 | −1.2% |
+| Q1a MT8 (playouts/s) | 262,339 | 230,570 | **+13.8%** |
+| Q1b MT8 (search-iters/s) | 281,209 | 261,632 | **+7.5%** |
+| Q2 ST (games/s) | 2.0 | 2.1 | −5.0% (at 0.1 games/s measurement floor) |
+| Q2 MT8 (games/s) | 7.5 | 7.6 | −1.3% (at 0.1 games/s measurement floor) |
+
+The arithmetic mean of +1.8% is below the Sprint `5.10` plan threshold of
++3% for "keep", but the per-cell picture justifies an override: the MT8
+primitive cells lift +13.8% and +7.5% (well above noise), while the ST
+cells fall within ±3% (typical run-to-run noise on these primitives) and
+the Q2 cells differ by 0.1 games/s (measurement-resolution floor). Sprint
+`5.10` closes with PGO+BOLT retained; the ~5 min Dockerfile build cost is
+paid by the MT8 wins on the workloads the cohort actually optimizes for.
+The decision is recorded against the Sprint `5.9` clang baseline; if the
+front-end pivots again or BOLT's layout passes drift, the A/B should be
+re-run.
+
+### Backend (iii) — g++ stack (pending pivot)
+
+```text
+# Example: mandatory C++ compile flags for backend (iii)
 -std=c++23 -O3 -march=native -mtune=native -flto -fno-plt
 -fno-semantic-interposition -fvisibility=hidden -fvisibility-inlines-hidden
 -fno-exceptions -fno-stack-protector -fno-rtti -fipa-pta
@@ -117,21 +180,20 @@ Compiler flags per
 
 `-fno-exceptions` is mandatory for the C++ steelman backends: the engine core
 does not throw, so landing-pad cost is unconditional dead weight. Sprint `5.8`
-added three additional scrub flags to backend `(ii)`'s `cpp-imperative/Makefile`
-under per-flag focused-benchmark gating: `-fno-stack-protector` removes the SSP
-cookie write because no untrusted input crosses the hot path,
-`-fno-rtti` removes unreachable RTTI metadata because `dynamic_cast` and
-`typeid` are not used on the search hot path, and `-fipa-pta` opts in to
-inter-procedural points-to analysis to tighten LTO devirtualization and alias
-resolution across the engine TU and the C-ABI shim. Each flag was reverted if
-the focused (ii) row regressed; the residue is tracked in
+added three additional scrub flags under per-flag focused-benchmark gating:
+`-fno-stack-protector` removes the SSP cookie write because no untrusted input
+crosses the hot path, `-fno-rtti` removes unreachable RTTI metadata because
+`dynamic_cast` and `typeid` are not used on the search hot path, and
+`-fipa-pta` opts in to inter-procedural points-to analysis to tighten LTO
+devirtualization and alias resolution across the engine TU and the C-ABI shim.
+Each flag was reverted if the focused row regressed; the residue is tracked in
 [../../DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md](../../DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md).
 
-**Excluded deliberately:** `-ffast-math`, `-Ofast`. Equity backprop is
-summation-order-sensitive and we want backend-internal determinism even though
-equity is excluded from the cross-backend wire format.
+### Shared constraints
 
-GCC only — Clang is not supported on the C++ side.
+**Excluded deliberately for both (ii) and (iii):** `-ffast-math`, `-Ofast`.
+Equity backprop is summation-order-sensitive and we want backend-internal
+determinism even though equity is excluded from the cross-backend wire format.
 
 The style boundary for `(iii)` is owned by
 [backend_style_contract.md](./backend_style_contract.md). In this document,
@@ -154,10 +216,14 @@ checked-in generated data.
 1. **Two-stage PGO.** Instrumented build via
    `-fprofile-generate=$(abspath $(PGO_DIR))`; the generated `_bench` and
    `_instrumented` artefacts are build/training intermediates for the bounded
-   played-game training suite so `.gcda` profile data exists before the
-   optimized build runs with
-   `-fprofile-use=$(abspath $(PGO_DIR)) -fprofile-correction`. They are not
-   supported runtime FFI load names.
+   played-game training suite so profile data exists before the optimized
+   build runs with `-fprofile-use=…`. Backend (iii) g++ emits `.gcda` files
+   and the optimized build adds `-fprofile-correction`. Backend (ii) clang++-19
+   emits `.profraw` files; the Makefile's `pgo-merge` target runs
+   `llvm-profdata-19 merge` to produce `$(PGO_DIR)/default.profdata` and the
+   optimized build consumes that file path via `-fprofile-use=…/default.profdata`
+   (Sprint 5.9). Neither set of intermediates is a supported runtime FFI load
+   name.
 2. **BOLT post-link.** `llvm-bolt -instrument` produces `_bench.inst.so` /
    `_instrumented.inst.so` build intermediates for a shorter bounded
    played-game training suite. `llvm-bolt -reorder-blocks=ext-tsp` consumes

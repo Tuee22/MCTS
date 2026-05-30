@@ -7,7 +7,7 @@
 #pragma once
 
 #include "arena.hpp"
-#include "state.hpp"
+#include "fast_board.hpp"
 #include "xoshiro256pp.hpp"
 
 #include <array>
@@ -60,8 +60,10 @@ struct SearchOutput {
 
 // Run `sims` UCT simulations from `root_state`. The `max_plies`
 // argument enables the ply-cap terminal rule per the doctrine.
+// Sprint 5.9: `root_state` is the flat `FastBoard` (ply_count inlined);
+// the prior `State` wrapper is gone.
 SearchOutput run_search(
-    const State &root_state,
+    const FastBoard &root_state,
     uint32_t sims,
     uint16_t max_plies,
     RngBackend::Kind rng_kind,
@@ -69,13 +71,13 @@ SearchOutput run_search(
     double exploration_c = 1.41421356);
 
 uint64_t benchmark_terminal_playouts(
-    const State &root_state,
+    const FastBoard &root_state,
     uint32_t count,
     uint16_t max_plies,
     uint64_t seed);
 
 uint64_t benchmark_search_iters(
-    const State &root_state,
+    const FastBoard &root_state,
     uint32_t count,
     uint16_t max_plies,
     RngBackend::Kind rng_kind,
