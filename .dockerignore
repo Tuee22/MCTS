@@ -1,4 +1,5 @@
 .git
+.claude
 dist-newstyle
 .mcts-cache
 transcripts
