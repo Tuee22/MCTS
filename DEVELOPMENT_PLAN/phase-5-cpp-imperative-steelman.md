@@ -761,10 +761,15 @@ report-card run that closed Sprint `5.9`.
 
 - `documents/engineering/compiler_runtime_tuning.md` — C++ steelman flags, mandatory
   Dockerfile-time PGO+BOLT success, parity tolerance, and native-RNG benchmark
-  semantics. Sprint `5.8` extends the C++ steelman flag block with
+  semantics. Sprint `5.8` extended the C++ steelman flag block with
   `-fno-stack-protector -fno-rtti -fipa-pta` and the BOLT invocation subsection
-  with `-split-functions -split-strategy=cdsplit -reorder-functions=hfsort+
-  -icf=safe`.
+  with `-split-functions -split-strategy=cdsplit -reorder-functions=cdsort
+  -icf=1` (flag names corrected from `hfsort+`/`safe` mid-validation after LLVM
+  19's BOLT rejected the legacy syntax). Sprint `5.9` documented the backend
+  `(ii)` pivot from `g++` to `clang++-19` (dropping the GCC-only `-fipa-pta`
+  flag and switching PGO file format to `.profraw` + merged `.profdata`), and
+  Sprint `5.10` recorded the per-cell A/B that justified keeping the PGO+BOLT
+  pipeline on the clang artefact.
 - `documents/engineering/backend_ffi_contract.md` — imperative C ABI symbols, using the
   compact live ABI surface owned by Sprint `5.5`, and canonical load-name install
   requirements that reject PGO-only/unoptimized fallback artefacts.
@@ -772,16 +777,21 @@ report-card run that closed Sprint `5.9`.
   Dockerfile-invoked fail-closed C++ build leaves.
 - `documents/engineering/determinism_contract.md` — Q3 equivalence participation.
 - `documents/engineering/backend_style_contract.md` — explicit boundary that
-  Sprints `5.7` and `5.8` change only backend `(ii)`'s imperative kernel, not the
-  closed functional implementations. Sprint `5.8` extends the (ii) budget with a
-  bidirectional / two-player bitsliced wall-legality BFS, a tighter `UctNode`
-  layout, and an expanded compiler/BOLT flag set without changing the
-  visit-payload contract or the C ABI.
+  Sprints `5.7`–`5.10` change only backend `(ii)`'s imperative kernel and
+  toolchain, not the closed functional implementations. Sprint `5.8` extended
+  the (ii) budget with a bidirectional bit-parallel wall-legality BFS, a tighter
+  `UctNode` layout, and an expanded compiler/BOLT flag set. Sprint `5.9`
+  collapsed the `State { FastBoard b; uint16_t ply_count; }` wrapper into a flat
+  `FastBoard` value to match the 32 B layout already used by backends `(iii)`
+  and `(iv)`. None of these changes touched the visit-payload contract or the C
+  ABI.
 - `documents/engineering/benchmark_metrics.md` and
   `documents/engineering/unit_testing_policy.md` — Sprint `8.14` / Sprint `8.15`
-  measurements are historical current-artifact evidence against the pre-Sprint-`5.8`
-  `(ii)` target; Sprint `8.16` is the active measurement closure against the
-  post-Sprint-`5.8` `(ii)` target.
+  measurements are historical current-artifact evidence against the
+  pre-Sprint-`5.8` `(ii)` target; Sprint `8.16` recorded the post-Sprint-`5.8`
+  rebaseline (`Trails parity band by 57.1%`) and Sprint `8.17` recorded the
+  post-functional-cohort rebaseline (`Trails parity band by 62.7%`) under the
+  Performance Measurement Doctrine.
 
 **Product docs to create/update:**
 
@@ -791,13 +801,20 @@ report-card run that closed Sprint `5.9`.
 
 - Keep [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md)
   aligned with live backend (ii) measurement; Sprint `8.15` recorded the
-  post-`5.7` Haskell-vs-`(ii)` shortfall and closed, and Sprint `8.16` is the
-  planned rebaseline against the post-`5.8` `(ii)` target.
+  post-`5.7` Haskell-vs-`(ii)` shortfall and closed with the
+  measurement-vs-invariant reframe, Sprint `8.16` closed the post-`5.8`
+  rebaseline, and Sprint `8.17` closed the post-functional-cohort rebaseline
+  with the `MutableByteArray# s` arena migration `measured but rejected`.
 - `legacy-tracking-for-deletion.md` keeps the Sprint `5.7` backend `(ii)`
-  hot-path/profile-training cleanup in Completed, carries three Pending
-  Removal rows owned by Sprint `5.8` (wall-legality path-check residue,
-  `UctNode`/arena reserve residue, compiler/linker flag scrub residue), and
-  records the Sprint `8.16` parity-rebaseline row when that sprint closes.
+  hot-path/profile-training cleanup and the three Sprint `5.8` rows
+  (wall-legality path-check residue, `UctNode` cache-line padding residue,
+  compiler/linker flag scrub residue) in Completed, along with Sprint `5.9`'s
+  compiler pivot + `State`/`FastBoard` collapse row and Sprint `5.10`'s
+  PGO+BOLT efficacy reevaluation row. The post-`5.9` compiler-stack
+  pending rows (backend (i) and (iii) `clang++-19` pivots plus the
+  follow-on `docker/Dockerfile` `gcc`/`g++` scrub) closed on 2026-05-30
+  through Sprints `4.6`, `6.11`, and `4.7`; the Pending Removal table
+  in the ledger is now empty.
 
 ## Related Documents
 

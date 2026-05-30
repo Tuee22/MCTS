@@ -73,10 +73,10 @@ Q7, and zero-divergence gates against the Sprint `5.7` backend `(ii)` kernel,
 then exited non-zero under the prior pass/fail framing with
 `Verdict: Shortfall`. Observed backend `(ii)`/Haskell ratios were Q1a terminal
 playouts `1.13x` ST and `1.49x` MT8, Q1b search iterations `1.14x` ST and
-`1.15x` MT8, and Q2 self-play `1.01x` ST and `1.19x` MT8. Sprint `8.15` is
-active until the measurement-vs-invariant reframe lands across code, doctrine,
-and plan and the aggregate is rerun so the apples-to-apples invariants
-Q3/Q4/Q6/Q7 gate closure while Q1/Q2/Q5 are recorded honestly per
+`1.15x` MT8, and Q2 self-play `1.01x` ST and `1.19x` MT8. Sprint `8.15` then
+closed on 2026-05-28 once the measurement-vs-invariant reframe landed across
+code, doctrine, and plan and the aggregate was rerun so the apples-to-apples
+invariants Q3/Q4/Q6/Q7 gate closure while Q1/Q2/Q5 are recorded honestly per
 [../documents/engineering/compiler_runtime_tuning.md → Performance Measurement Doctrine](../documents/engineering/compiler_runtime_tuning.md#performance-measurement-doctrine).
 
 Focused Sprint `8.15` Haskell work accepted compact `Word8` pawn slots,

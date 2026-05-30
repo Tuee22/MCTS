@@ -1166,14 +1166,20 @@ exercisePrerequisiteClosure = do
         "cpp-imperative shared lib prerequisite includes llvm-profdata-19"
         ("llvm-profdata-19" `elem` cppLibClosure)
     assert "cpp-imperative shared lib prerequisite includes mimalloc" ("mimalloc" `elem` cppLibClosure)
+    -- Sprint 6.11: cpp-functional pivoted from g++ to clang++-19 and
+    -- now uses the LLVM PGO `.profraw` flow, mirroring backend (ii).
     let cppFuncLibClosure = map nodeId (transitiveClosure prerequisiteRegistry ["libmcts-cpp-functional-built"])
     assert
-        "cpp-functional shared lib prerequisite still includes g++"
-        ("cxx-gpp" `elem` cppFuncLibClosure)
+        "cpp-functional shared lib prerequisite includes clang++-19"
+        ("cxx-clang19" `elem` cppFuncLibClosure)
+    assert
+        "cpp-functional shared lib prerequisite includes llvm-profdata-19"
+        ("llvm-profdata-19" `elem` cppFuncLibClosure)
+    -- Sprint 4.6: cpp-legacy pivoted from g++ to clang++-19 (no PGO).
     let cppLegacyLibClosure = map nodeId (transitiveClosure prerequisiteRegistry ["libmcts-cpp-legacy-built"])
     assert
-        "cpp-legacy shared lib prerequisite still includes g++"
-        ("cxx-gpp" `elem` cppLegacyLibClosure)
+        "cpp-legacy shared lib prerequisite includes clang++-19"
+        ("cxx-clang19" `elem` cppLegacyLibClosure)
     let lldClosure = map nodeId (transitiveClosure prerequisiteRegistry ["lld-linker"])
     assert "lld linker prerequisite includes llvm" ("llvm" `elem` lldClosure)
     let testClosure = map nodeId prerequisitesForTest
@@ -1934,23 +1940,22 @@ exerciseCppBuildPlan = do
     assert
         "C++ training forces scoped foreign library dispatch"
         (all (scopedProfileTrainingEnv . (steps !!)) trainingIndexes)
-    -- Sprint 5.9: cpp-imperative's clang LLVM-profile branch fails closed
-    -- inside `make pgo-merge` (which validates .profraw existence and runs
-    -- llvm-profdata-19 merge). cpp-functional still uses the GCC bash
-    -- requireCppGcdaProfiles check, exercised separately via functionalSteps
-    -- below.
+    -- Sprint 5.9 + 6.11: both live C++ PGO+BOLT backends use clang's
+    -- LLVM-profile branch (`make pgo-merge`, which validates `.profraw`
+    -- existence and runs `llvm-profdata-19 merge`). The legacy GCC
+    -- `.gcda` bash check is no longer reachable from `cppProfileStyleFor`.
     assert
         "C++ plan inserts pgo-merge before pgo-use"
         ( commands !! requireGcdaIndex == "make"
             && "pgo-merge" `elem` argsOf !! requireGcdaIndex
         )
     assert
-        "C++ functional plan still fails closed when .gcda data is absent"
+        "C++ functional plan also drives the clang pgo-merge step"
         ( any
             ( \step ->
-                subprocessPath step == "bash"
-                    && any ("*.gcda" `contains`) (subprocessArguments step)
-                    && any ("no non-empty C++ .gcda" `contains`) (subprocessArguments step)
+                subprocessPath step == "make"
+                    && "pgo-merge" `elem` subprocessArguments step
+                    && "cpp-functional" `elem` subprocessArguments step
             )
             functionalSteps
         )
@@ -2507,8 +2512,25 @@ exerciseReportCardRenderer = do
             , "divergence_matrix"
             , "apples_to_apples"
             , "verdict"
+            , "selfplay_sims_per_move"
+            , "selfplay_games_per_cell"
             ]
         )
+    -- Self-play (Q2) configuration must be visible in both text and
+    -- JSON so a reader doesn't have to cross-reference Test.hs to find
+    -- the sims-per-move budget.
+    assert
+        "report card text labels the self-play Q2 configuration block"
+        ("Self-play (Q2) configuration:" `contains` renderedText)
+    assert
+        "report card text renders default sims-per-move (500)"
+        ("sims/move:" `contains` renderedText && "500" `contains` renderedText)
+    assert
+        "report card JSON records the default sims-per-move (500)"
+        ("\"selfplay_sims_per_move\":500" `contains` renderedJson)
+    assert
+        "report card JSON records the default per-cell game count (4)"
+        ("\"selfplay_games_per_cell\":4" `contains` renderedJson)
     let divergentCard =
             defaultReportCard
                 { reportDivergenceRows =

@@ -18,7 +18,11 @@
 ✅ **Done.** `cpp-legacy/` source, the `legacy-to-wire` evidence generator, and live
 Haskell dynamic dispatch/envelope loading are present. Backend (i) remains
 first-class: it is the legacy-compatibility backend for the Q6 legacy-envelope
-liveness/overflow gate.
+liveness/overflow gate. Sprint `4.6` flipped the cpp-legacy build harness
+from `g++` to `clang++-19` on 2026-05-30 (verbatim engine source preserved),
+and Sprint `4.7` then dropped `gcc`/`g++` from the explicit `docker/Dockerfile`
+apt-get list and flipped the image's `ENV CC/CXX` defaults to `clang-19` /
+`clang++-19` on the same date.
 
 ## Phase Summary
 
@@ -182,6 +186,101 @@ None.
 
 Closed on 2026-05-24 after governed FFI docs described the implemented dynamic-load
 and action-conversion boundary.
+
+## Sprint 4.6: Backend (i) Compiler Pivot to clang++-19 ✅
+
+**Status**: Done
+**Implementation**: `cpp-legacy/Makefile`, `cpp-legacy/c-abi/mcts_cpp_legacy.cc`,
+`src/MCTS/Prerequisite.hs`, `test/integration/Main.hs`, `test/unit/Main.hs`
+**Docs to update**: `README.md`, `00-overview.md`, `system-components.md`,
+`legacy-tracking-for-deletion.md`,
+`../documents/engineering/compiler_runtime_tuning.md`,
+`../documents/engineering/backend_ffi_contract.md`
+
+### Objective
+
+Pivot backend `(i)` cpp-legacy from `g++` to `clang++-19` so the verbatim
+legacy engine source builds with the same front-end as backends `(ii)` and
+(post-Sprint `6.11`) `(iii)`. The legacy engine has no PGO+BOLT pipeline —
+its role is the Q6 legacy-envelope evidence backend, not a performance
+ceiling — so this sprint is a build-harness flip only, not a steelman.
+
+### Deliverables
+
+- `cpp-legacy/Makefile` pins `CXX := clang++-19` (`:=`, not `?=`, so the
+  pre-Sprint-`4.7` Dockerfile `ENV CXX=g++` could not silently override; a
+  command-line `make CXX=...` still wins per GNU make's variable precedence
+  rules).
+- `cpp-legacy/c-abi/mcts_cpp_legacy.cc::g_engine_build_id` carries
+  `__attribute__((used, retain, section(".envelope_build_id")))` so clang's
+  -O3 cannot constant-fold the `memcpy(..., g_engine_build_id, 32)` read
+  into a `memset(..., 0, 32)` and `objcopy` can still patch the section.
+  Same defensive fix Sprint `5.9` applied to cpp-imperative.
+- `cpp-legacy/Makefile::envelope-build-id` now discovers
+  `llvm-objcopy-19` before falling back to GNU `objcopy` so the post-link
+  patch keeps working under the Sprint `4.7` Dockerfile scrub.
+- `src/MCTS/Prerequisite.hs::prerequisitesForBuild "cpp-legacy"` and
+  `"legacy-fixtures"` swap `cxx-gpp` for `cxx-clang19`; the
+  `libmcts-cpp-legacy-built` shared-lib node mirrors that change. The
+  legacy engine source under `legacy-core/` is preserved verbatim per
+  Phase 4 doctrine.
+- `test/integration/Main.hs::expectedCompilerId` returns `1` (clang) for
+  `CppLegacy`.
+- `test/unit/Main.hs::exercisePrerequisiteClosure` asserts the cpp-legacy
+  shared-lib prerequisite includes `cxx-clang19`.
+
+### Validation
+
+- `docker compose run --rm --build mcts mcts test mcts-legacy-parity`
+- `docker compose run --rm mcts mcts test mcts-integration`
+- `docker compose run --rm mcts mcts test all`
+- Q6 legacy-envelope liveness PASS for the (i) slot; the post-pivot
+  `compiler_id` envelope field reads `1` (clang).
+
+### Remaining Work
+
+None.
+
+## Sprint 4.7: Dockerfile gcc/g++ Scrub ✅
+
+**Status**: Done
+**Implementation**: `docker/Dockerfile`, `src/MCTS/Prerequisite.hs`
+**Docs to update**: `README.md`, `00-overview.md`, `system-components.md`,
+`legacy-tracking-for-deletion.md`,
+`../documents/engineering/compiler_runtime_tuning.md`
+
+### Objective
+
+Drop `gcc` and `g++` from the explicit `docker/Dockerfile` apt-get list now
+that all three first-class C++ backends (`(i)` via Sprint `4.6`, `(ii)` via
+Sprint `5.9`, `(iii)` via Sprint `6.11`) build with `clang++-19`. The
+backend Makefiles each pin `CXX := clang++-19`, so the image's default
+`CC`/`CXX` no longer influences any build path.
+
+### Deliverables
+
+- `docker/Dockerfile` apt-get list no longer names `g++` or `gcc`.
+  `build-essential` is retained for `make`, `libc6-dev`, and
+  `libstdc++-dev` (it still pulls g++/gcc transitively today; a future
+  image revision can unpack the meta-package further if the apt-time
+  savings justify it).
+- `docker/Dockerfile::ENV CC=clang-19 CXX=clang++-19` so any image-default
+  tool falls back to the LLVM toolchain instead of GCC.
+- `src/MCTS/Prerequisite.hs` removes the `cxx-gpp` node entirely (no
+  first-class build path references it after Sprint `6.11`).
+- The `legacy-fixtures` build prerequisite (already swapped in Sprint
+  `4.6`) continues to point at `cxx-clang19`.
+
+### Validation
+
+- Full image rebuild: `docker compose run --rm --build mcts mcts test all`
+- `mcts test mcts-unit` exercises `exercisePrerequisiteClosure`, which no
+  longer references the `cxx-gpp` node.
+- Q3, Q4, Q6, Q7 invariants PASS; `normalized_divergence_score = 0.0000`.
+
+### Remaining Work
+
+None. Doctrine end state reached.
 
 ## Documentation Requirements
 

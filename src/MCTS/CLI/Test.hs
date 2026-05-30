@@ -297,7 +297,9 @@ buildMeasuredReportCard = do
                             }
                 Right
                     card
-                        { reportQ1aTerminalPlayoutsST = q1aST
+                        { reportSelfplaySimsPerMove = reportCardBenchSims
+                        , reportSelfplayGames = reportCardSelfplayGames
+                        , reportQ1aTerminalPlayoutsST = q1aST
                         , reportQ1aTerminalPlayoutsMT8 = q1aMT8
                         , reportQ1bSearchItersST = q1bST
                         , reportQ1bSearchItersMT8 = q1bMT8

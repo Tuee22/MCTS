@@ -83,8 +83,15 @@ later reopened parity evidence against the corrected backend (ii), making Sprint
 parity measurement and Sprint `8.14` closed the report-card exit-code gate (the gate
 semantics it established were later reframed by Sprint `8.15` so the gate now sits on
 the apples-to-apples invariants Q3/Q4/Q6/Q7 plus a non-pending measurement). Sprint
-`5.7` has since strengthened backend `(ii)`, so Sprint `8.15` is active on the
-measurement-vs-invariant doctrine reframe and the post-`5.7` Haskell rebaseline.
+`5.7` then strengthened backend `(ii)`, Sprint `8.15` closed on 2026-05-28 with the
+measurement-vs-invariant doctrine reframe and the post-`5.7` Haskell rebaseline, and
+Sprints `5.8`/`8.16`, `5.9`/`5.10`, and `6.9`/`6.10`/`8.17` closed on 2026-05-29.
+Sprints `4.6` (backend (i) cpp-legacy compiler pivot to `clang++-19`),
+`6.11` (backend (iii) cpp-functional compiler pivot + LLVM PGO migration),
+and `4.7` (Dockerfile `gcc`/`g++` scrub + `ENV CC`/`CXX` flip to clang
+defaults) then closed on 2026-05-30, reaching the doctrine end state where
+all three C++ backends build with `clang++-19` and the `cxx-gpp`
+prerequisite node is gone.
 
 ## Current Handoff Status
 

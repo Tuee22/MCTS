@@ -228,11 +228,11 @@ legacyFixturePlan options =
 --
 --   1. PGO-instrumented bench + instrumented artefacts.
 --   2. Bounded PGO training suite under `--rng native` writes
---      `<backend>/pgo-profile/*.gcda` (backend (iii) g++) or
---      `<backend>/pgo-profile/*.profraw` (backend (ii) clang++-19).
+--      `<backend>/pgo-profile/*.profraw` (both live C++ PGO+BOLT
+--      backends now build with clang++-19 per Sprints 5.9 and 6.11).
 --   3. PGO-optimized rebuild of both artefacts with `-fprofile-use`
---      (after clang merges the `.profraw` set into a single
---      `default.profdata` via `make pgo-merge`).
+--      after clang merges the `.profraw` set into a single
+--      `default.profdata` via `make pgo-merge`.
 --   4. BOLT instrument pass for both artefacts (writes
 --      `<backend>/bolt-profile/*.fdata`).
 --   5. Short bounded BOLT training suite produces the BOLT profile data.
@@ -244,10 +244,12 @@ legacyFixturePlan options =
 --   8. Smoke the installed canonical artefact so a crashing BOLT output
 --      fails the Dockerfile build instead of reaching runtime.
 --
--- Sprint 5.9 split: backend (ii) cpp-imperative pivoted to clang++-19
--- and now uses LLVM `.profraw` → merged `.profdata`. Backend (iii)
--- cpp-functional remains on g++ pending its own pivot sprint (tracked
--- in `DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md`).
+-- Sprint 5.9 / 6.11 unified pivot: backends (ii) cpp-imperative and
+-- (iii) cpp-functional both build with clang++-19 and use the LLVM
+-- `.profraw` → merged `.profdata` PGO flow. Backend (i) cpp-legacy
+-- also builds with clang++-19 (Sprint 4.6) but has no PGO+BOLT path —
+-- it has no `mcts build cpp-legacy` Plan/Apply entry beyond the
+-- `make smoke` invocation in the Dockerfile.
 --
 -- The whole pipeline rides the typed `Subprocess` boundary; no
 -- ad-hoc `callProcess` or `System.Process` smart constructors live in
@@ -331,6 +333,12 @@ cppPgoBoltPlan backend =
             Nothing
             Nothing
 
+    -- Sprint 5.9 + 6.11: both live C++ PGO+BOLT backends use the LLVM
+    -- profile flow. `make pgo-merge` validates `.profraw` presence and
+    -- writes the merged `default.profdata` consumed by the subsequent
+    -- `pgo-{bench,instr}-use` targets. The GCC `.gcda` branch is
+    -- retained for any future GCC-built backend but is unreachable
+    -- from the current `cppProfileStyleFor` mapping.
     profileMergeSteps CppGccProfile =
         [ Subprocess
             "bash"
@@ -348,16 +356,16 @@ cppPgoBoltPlan backend =
             Nothing
             Nothing
         ]
-    -- Sprint 5.9: clang LLVM PGO. `make pgo-merge` validates `.profraw`
-    -- presence and writes the merged `default.profdata` consumed by the
-    -- subsequent `pgo-{bench,instr}-use` targets.
     profileMergeSteps CppLlvmProfile = [makeTarget "pgo-merge"]
 
     cppBuildPath file =
         backend <> "/build/" <> file
 
+-- Sprint 5.9 / 6.11: both live C++ PGO+BOLT backends build with
+-- clang++-19 and use the LLVM `.profraw` → merged `.profdata` flow.
 cppProfileStyleFor :: String -> CppProfileStyle
 cppProfileStyleFor "cpp-imperative" = CppLlvmProfile
+cppProfileStyleFor "cpp-functional" = CppLlvmProfile
 cppProfileStyleFor _ = CppGccProfile
 
 cppLibraryBase :: String -> String

@@ -49,11 +49,15 @@ backends do not need a matching change.
 Sprint `5.9` (2026-05-29 compiler audit) pivoted backend `(ii)` from `g++` to
 `clang++-19`, dropping the GCC-only `-fipa-pta` flag (clang rejects it) and
 switching the PGO file format from `.gcda` to `.profraw` + merged `.profdata`.
-The Sprint `5.8` BOLT additions remain; the C++ scrub-flag pair
-`-fno-stack-protector -fno-rtti` remains. Backend `(iii)` retains the original
-Sprint `5.8` flag set (including `-fipa-pta` and the g++ front-end) pending its
-own pivot sprint, tracked in
-[../../DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md](../../DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md).
+Sprint `6.11` (2026-05-30) then pivoted backend `(iii)` onto the same
+`clang++-19` stack with the same PGO file format, completing the
+functional-cohort compiler-stack alignment; the Sprint `5.8` BOLT additions
+and the `-fno-stack-protector -fno-rtti` scrub-flag pair are shared across
+both backends. Sprint `4.6` (same date) flipped backend `(i)` cpp-legacy
+onto `clang++-19` for harness alignment; cpp-legacy has no PGO+BOLT path.
+Sprint `4.7` then dropped `gcc`/`g++` from `docker/Dockerfile`'s explicit
+apt-get list, leaving `clang++-19` as the only C++ toolchain a first-class
+backend can name.
 
 ## Functional-Core Rule
 

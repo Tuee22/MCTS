@@ -45,17 +45,9 @@ prerequisiteRegistry =
         "cabal"
         ["--numeric-version"]
         "3.16.1.0"
-    , versionPrefixNode
-        "cxx-gpp"
-        "g++ C++ compiler for backends (i) cpp-legacy and (iii) cpp-functional"
-        "install GCC/G++ from ubuntu:24.04 build-essential and expose g++ on PATH"
-        []
-        "g++"
-        ["--version"]
-        ""
     , versionContainsNode
         "cxx-clang19"
-        "clang++-19 C++ compiler for backend (ii) cpp-imperative (Sprint 5.9 pivot)"
+        "clang++-19 C++ compiler for backends (i) cpp-legacy, (ii) cpp-imperative, and (iii) cpp-functional (Sprints 4.6, 5.9, 6.11 pivots)"
         "install clang-19 from ubuntu:24.04 and expose clang++-19 on PATH"
         []
         "clang++-19"
@@ -63,7 +55,7 @@ prerequisiteRegistry =
         "clang version 19."
     , versionContainsNode
         "llvm-profdata-19"
-        "llvm-profdata-19 for the backend (ii) clang PGO merge step"
+        "llvm-profdata-19 for the backend (ii) and (iii) clang PGO merge step"
         "install llvm-19 (provides llvm-profdata-19) and expose it on PATH"
         []
         "llvm-profdata-19"
@@ -191,7 +183,7 @@ prerequisiteRegistry =
         "libmcts-cpp-legacy-built"
         "C++ legacy shared library exists for dynamic FFI smoke tests"
         "rebuild the Docker image; backend artefacts are produced by docker/Dockerfile"
-        ["cxx-gpp"]
+        ["cxx-clang19"]
         "cpp-legacy/build/libmcts_cpp_legacy.so"
     , sharedLibraryNode
         "libmcts-cpp-imperative-built"
@@ -203,7 +195,7 @@ prerequisiteRegistry =
         "libmcts-cpp-functional-built"
         "C++ functional shared library exists for dynamic FFI smoke tests"
         "rebuild the Docker image; backend artefacts are produced by docker/Dockerfile"
-        ["cxx-gpp", "mimalloc"]
+        ["cxx-clang19", "llvm-profdata-19", "mimalloc"]
         "cpp-functional/build/libmcts_cpp_functional.so"
     ]
 
@@ -211,7 +203,8 @@ prerequisitesForBuild :: String -> [PrerequisiteNode]
 prerequisitesForBuild backend =
     transitiveClosure prerequisiteRegistry $
         case backend of
-            "cpp-legacy" -> ["cxx-gpp"]
+            -- Sprint 4.6: backend (i) cpp-legacy pivoted from g++ to clang++-19.
+            "cpp-legacy" -> ["cxx-clang19"]
             "cpp-imperative" ->
                 [ "cxx-clang19"
                 , "llvm-profdata-19"
@@ -220,10 +213,19 @@ prerequisitesForBuild backend =
                 , "cpp-imperative-pgo-profile"
                 , "cpp-imperative-bolt-profile"
                 ]
+            -- Sprint 6.11: backend (iii) cpp-functional pivoted from g++ to
+            -- clang++-19 and adopted the LLVM PGO `.profraw` flow.
             "cpp-functional" ->
-                ["cxx-gpp", "mimalloc", "bolt", "cpp-functional-pgo-profile", "cpp-functional-bolt-profile"]
+                [ "cxx-clang19"
+                , "llvm-profdata-19"
+                , "mimalloc"
+                , "bolt"
+                , "cpp-functional-pgo-profile"
+                , "cpp-functional-bolt-profile"
+                ]
             "rust" -> ["cargo", "rustc", "lld-linker", "bolt", "rust-pgo-profile", "rust-bolt-profile"]
-            "legacy-fixtures" -> ["cxx-gpp"]
+            -- Sprint 4.6: legacy-fixtures rides the same cpp-legacy harness.
+            "legacy-fixtures" -> ["cxx-clang19"]
             _ -> []
 
 prerequisitesForTest :: [PrerequisiteNode]

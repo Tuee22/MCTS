@@ -45,7 +45,9 @@ random-rollout leaf evaluation in the `ST s` monad, and a pure search API at the
 boundary. The current driver allocates a fresh arena for each per-move search; the
 `treeReroot` arena primitive is tested but is not an across-move persistence path in the
 closed baseline. The optimization stack and Haskell-vs-`(ii)` performance proof are
-owned by Phase `8`; Sprint `8.15` is active on the current parity shortfall.
+owned by Phase `8`; the latest closure is Sprint `8.17` (2026-05-29), which
+recorded the `MutableByteArray# s` arena migration as `measured but rejected`
+under the Performance Measurement Doctrine.
 `mcts bench rollouts --backend haskell`,
 `mcts bench selfplay --backend haskell`, `mcts bench terminal-playouts --backend
 haskell`, and `mcts bench search-iters --backend haskell` run end-to-end; the

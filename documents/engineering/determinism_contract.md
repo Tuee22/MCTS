@@ -269,8 +269,8 @@ compares.
 ### Equity
 
 Derived float. Float accumulation order can differ subtly between the C++
-front-ends (Sprint 5.9: g++ for backends (i)/(iii), `clang++-19` for (ii)),
-`rustc`, and GHC-via-LLVM even under `-fno-fast-math`; x87 80-bit intermediates
+front-end (`clang++-19` for all three C++ backends after Sprints 4.6 / 5.9 /
+6.11), `rustc`, and GHC-via-LLVM even under `-fno-fast-math`; x87 80-bit intermediates
 can leak through libm calls; SIMD reductions can reassociate. Equity values
 produced by different backends typically agree to many digits but can differ at
 the last few ULPs.
@@ -327,8 +327,8 @@ per-move search from deterministic inputs; at move M, search state is a determin
 function of the seed and moves 0..M-1.
 
 **Different backend.** Equities are **not** bit-equal. Float accumulation order
-can differ subtly between the C++ front-ends (g++ for (i)/(iii), `clang++-19`
-for (ii) per Sprint 5.9), `rustc`, and GHC-via-LLVM even under `-fno-fast-math`;
+can differ subtly between the C++ front-end (`clang++-19` for all three C++
+backends after Sprints 4.6 / 5.9 / 6.11), `rustc`, and GHC-via-LLVM even under `-fno-fast-math`;
 x87 80-bit intermediates can leak through libm calls; SIMD reductions can
 reassociate. Equity values typically agree to many digits but can
 differ at the last few ULPs. This asymmetry is why the wire format excludes

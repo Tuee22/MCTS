@@ -1,5 +1,14 @@
 .PHONY: smoke all clean legacy-to-wire
 
+# Sprint 4.6: backend (i) cpp-legacy pivoted from g++ to clang++-19 to
+# match backend (ii) (Sprint 5.9) and prepare for the Sprint 4.7
+# Dockerfile gcc/g++ scrub. The legacy engine source under
+# `legacy-core/` is preserved verbatim; only the build harness flips.
+# `:=` (not `?=`) so the Dockerfile's `ENV CXX=g++` does not silently
+# override; a command-line `make CXX=...` still wins per GNU make's
+# variable precedence rules.
+CXX := clang++-19
+
 all: smoke
 
 smoke:
@@ -18,12 +27,17 @@ smoke:
 # `.envelope_build_id` ELF section so `mcts_legacy_get_envelope()`
 # reports it as `engine_build_id`. The patch is bytewise idempotent
 # across rebuilds with no content changes.
+# Sprint 4.6: prefer `llvm-objcopy-19` so the patch keeps working under
+# the Sprint 4.7 Dockerfile scrub that removes GNU `objcopy` along
+# with gcc/g++. The GNU binary remains as a fallback for host
+# diagnostics outside the container.
 envelope-build-id:
-	@if command -v objcopy >/dev/null 2>&1; then \
+	@objcopy_tool=$$(command -v llvm-objcopy-19 || command -v llvm-objcopy || command -v objcopy || true); \
+	if [ -n "$$objcopy_tool" ]; then \
 		sha=$$(sha256sum build/libmcts_cpp_legacy.so | cut -c1-64); \
 		python3 -c "import sys; sys.stdout.buffer.write(bytes.fromhex(sys.argv[1]))" "$$sha" \
 			> build/.envelope_build_id.bin; \
-		objcopy --update-section .envelope_build_id=build/.envelope_build_id.bin \
+		"$$objcopy_tool" --update-section .envelope_build_id=build/.envelope_build_id.bin \
 			build/libmcts_cpp_legacy.so 2>/dev/null || true; \
 	fi
 

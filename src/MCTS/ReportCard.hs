@@ -104,6 +104,14 @@ data ReportDivergenceRow = ReportDivergenceRow
 data ReportCard = ReportCard
     { reportSeed :: !Integer
     , reportMaxPlies :: !Int
+    , reportSelfplaySimsPerMove :: !Int
+    -- ^ MCTS simulation budget per move used for the Q2 self-play
+    -- measurement and the Q5 self-play scaling rows. Surfaced in the
+    -- text and JSON output so the reader does not have to cross-reference
+    -- @src/MCTS/CLI/Test.hs@ to find @reportCardBenchSims@.
+    , reportSelfplayGames :: !Int
+    -- ^ Per-cell game count used for the Q2 self-play measurement
+    -- (single-thread and MT8 each play this many games).
     , reportHost :: !String
     , reportGhc :: !String
     , reportVerdict :: !Verdict
@@ -170,6 +178,8 @@ defaultReportCard =
     ReportCard
         { reportSeed = 42
         , reportMaxPlies = 200
+        , reportSelfplaySimsPerMove = 500
+        , reportSelfplayGames = 4
         , reportHost = "<host>"
         , reportGhc = "9.14.1"
         , reportVerdict = EvidencePending
@@ -200,6 +210,18 @@ renderReportCard card =
             <> ", ghc="
             <> reportGhc card
         , "------------------------------------------------------------------------"
+        , ""
+        , "Self-play (Q2) configuration:"
+        , "  sims/move:   "
+            <> show (reportSelfplaySimsPerMove card)
+            <> "    (MCTS simulation budget per move; the search runs this many"
+        , "                       UCT iterations before committing the next ply)."
+        , "  games/cell:  "
+            <> show (reportSelfplayGames card)
+            <> "    (per-cell self-play game count; ST and MT8 each play this many)."
+        , "  max-plies:   "
+            <> show (reportMaxPlies card)
+            <> "  (per-game ply cap; the game ends at the cap if no winner has emerged)."
         , ""
         , "Terms:"
         , "  ST: single-threaded run."
@@ -244,6 +266,10 @@ renderReportCardJson card =
         <> show (reportSeed card)
         <> ",\"max_plies\":"
         <> show (reportMaxPlies card)
+        <> ",\"selfplay_sims_per_move\":"
+        <> show (reportSelfplaySimsPerMove card)
+        <> ",\"selfplay_games_per_cell\":"
+        <> show (reportSelfplayGames card)
         <> ",\"apples_to_apples\":"
         <> renderApplesToApplesJson (reportApplesToApples card)
         <> ",\"verdict\":\""

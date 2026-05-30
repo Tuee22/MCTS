@@ -186,7 +186,15 @@ extern "C" uint64_t mcts_functional_benchmark_search_iters(
 static mcts_functional_envelope g_envelope;
 static int g_envelope_ready = 0;
 
-__attribute__((section(".envelope_build_id")))
+// Sprint 6.11: under clang++-19 + LLD + LTO, the bare `section` attribute is
+// not sufficient — LTO drops the symbol (it's reachable only via memcpy in
+// `fill_envelope_once`, which LLVM proves can use a constant zero buffer) and
+// the resulting `.envelope_build_id` section is missing from the linked .so,
+// breaking the Makefile's `llvm-objcopy --update-section` envelope patch.
+// `used` + `retain` together force both the compiler (don't eliminate) and
+// the linker (don't GC the section) to keep the bytes intact so the post-link
+// patch lands. Same fix Sprint 5.9 applied to cpp-imperative.
+__attribute__((used, retain, section(".envelope_build_id")))
 static uint8_t g_engine_build_id[32] = {0};
 
 static uint32_t probe_cpu_features(void) {
@@ -287,13 +295,25 @@ extern "C" const mcts_functional_envelope *mcts_functional_get_envelope(void) {
     return &g_envelope;
 }
 
-#if defined(__GNUC__)
+// Sprint 6.11: backend (iii) builds with clang++-19; clang's PGO writes
+// `.profraw` files via `__llvm_profile_write_file` rather than GCC's
+// `__gcov_dump`. Both symbols are declared weak so the dlopen path
+// works for either toolchain. The GCC symbols remain for any
+// transitional g++ build (e.g. host diagnostics) until the broader
+// gcc-removal cleanup ledger entries land.
+#if defined(__clang__)
+extern "C" int __llvm_profile_write_file(void) __attribute__((weak));
+extern "C" void __llvm_profile_reset_counters(void) __attribute__((weak));
+#else
 extern "C" void __gcov_dump(void) __attribute__((weak));
 extern "C" void __gcov_reset(void) __attribute__((weak));
 #endif
 
 extern "C" void mcts_functional_dump_profile(void) {
-#if defined(__GNUC__)
+#if defined(__clang__)
+    if (__llvm_profile_write_file) __llvm_profile_write_file();
+    if (__llvm_profile_reset_counters) __llvm_profile_reset_counters();
+#else
     if (__gcov_dump) __gcov_dump();
     if (__gcov_reset) __gcov_reset();
 #endif

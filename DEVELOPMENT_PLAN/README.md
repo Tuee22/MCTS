@@ -134,8 +134,9 @@ docs. Phase `1` Sprint `1.12` reclosed the generated `bench rollouts` summary dr
 on the same date by updating `CommandSpec`, the generated command-matrix renderer,
 and semantic unit coverage so generated docs call the command a legacy played-game
 benchmark. Phases `2`–`7` remain closed on their owned behavior surfaces, and
-Phase `8` is active only for Sprint `8.15` Haskell parity closure against the
-Sprint `5.7` backend `(ii)` target.
+Sprint `8.15` reclosed Phase `8` on 2026-05-28 with the
+measurement-vs-invariant doctrine reframe and the post-`5.7` Haskell
+rebaseline against the fully steelmanned `(ii)` target.
 
 Phase `6` Sprint `6.8` closed on 2026-05-28 while keeping Rust's existing
 correctness, C ABI, and PGO/BOLT build contract intact. It replaced the Rust
@@ -154,11 +155,10 @@ The backend `(ii)` steelman audit on 2026-05-28 reopened Phase `5` for Sprint
 residue: child-board materialization during legal generation, per-child
 orientation flips, full-state tree-node storage, repeated wall/path mask work,
 trusted-search replay/allocation paths, and profile-training assumptions tied to
-the older kernel. Sprint `5.7` has closed that backend `(ii)` work without
-reopening the closed functional implementations in Phase `6`. It does leave the
-final Phase `8` handoff incomplete: Sprint `8.15` is active on the Haskell
-shortfall exposed by the fresh Q1a/Q1b/Q2/Q5, Q3, Q6, and Q7 rebaseline against
-the fully steelmanned `(ii)` target.
+the older kernel. Sprint `5.7` closed that backend `(ii)` work without
+reopening the closed functional implementations in Phase `6`. Sprint `8.15`
+then closed on 2026-05-28 with the measurement-vs-invariant reframe and the
+post-`5.7` Haskell rebaseline against the fully steelmanned `(ii)` target.
 
 This audit does not change the project hypothesis: one Haskell CLI keeps
 all five backend slots live, Q3 proves visit-count equivalence for `(ii)..(v)`
@@ -308,6 +308,50 @@ Further Haskell optimisation work beyond Sprint `8.17` is not blocking
 and may be scheduled as a new sprint only if the project chooses to
 invest.
 
+The 2026-05-30 compiler-stack closure landed the three remaining
+backend-pivot rows from the post-`5.9` audit. Sprint `4.6` flipped
+backend (i) cpp-legacy from `g++` to `clang++-19` (verbatim engine
+source preserved; build harness only). Sprint `6.11` flipped backend
+(iii) cpp-functional from `g++` to `clang++-19` and migrated its PGO
+half from GCC `.gcda` (`-fprofile-correction` etc.) to LLVM `.profraw`
+→ merged `.profdata`, mirroring backend (ii)'s Sprint `5.9` pivot;
+`src/MCTS/CLI/Build.hs::cppProfileStyleFor` now maps both
+`cpp-imperative` and `cpp-functional` through `CppLlvmProfile`. Sprint
+`4.7` then dropped `gcc`/`g++` from the explicit `docker/Dockerfile`
+apt-get list, flipped the image's `ENV CC`/`CXX` defaults to
+`clang-19`/`clang++-19`, and removed the now-orphan `cxx-gpp`
+prerequisite node. The C ABI symbol set, canonical action ID encoding,
+12-wall cap, transcript wire format, and Q3/Q4/Q6/Q7 invariants are
+unchanged across the three pivots. The Pending Removal table in
+[legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md) is
+now empty; all three rows are in the Completed table. The Sprint
+`6.10`-era cohort ranking (`rust ≥ cpp-functional ≈ cpp-imperative >
+haskell`) is preserved under the unified clang toolchain.
+
+The post-`4.7` aggregate `docker compose run --rm --build mcts mcts
+test all` on 2026-05-30 exits 0 with Q3/Q4/Q6/Q7 PASS, all six Cabal
+stanzas PASS, `normalized_divergence_score=0.0000`, and the labelled
+measurement `Verdict: Trails parity band by 69.1%` (informational).
+Raw rates: `cpp-legacy` `2624` ST / `19434` MT8 playouts/s,
+`cpp-imperative` `38208` ST / `224789` MT8, `cpp-functional` `38375`
+ST / `269772` MT8, `rust` `39689` ST / `281516` MT8, `haskell` `24282`
+ST / `139215` MT8. The verdict shift from the post-`8.17` `62.7%` to
+`69.1%` is consistent with the unified clang front-end raising the
+backend (ii) Q1a/Q1b ST ceiling by `~6-8%` (without PGO regressions)
+while Haskell stayed within measurement noise — the gap widened
+honestly under the documented PGO asymmetry, not because Haskell
+regressed. The cohort ranking is preserved: `rust ≥ cpp-functional ≈
+cpp-imperative > haskell`.
+
+The report-card text and JSON renderers were also extended on the same
+date to surface the self-play (Q2) configuration explicitly: a new
+"Self-play (Q2) configuration" block names the sims-per-move budget
+(`reportCardBenchSims = 500`), the per-cell game count
+(`reportCardSelfplayGames = 4`), and the per-game ply cap, and the JSON
+top-level gains `selfplay_sims_per_move` and `selfplay_games_per_cell`
+keys. This is a pure rendering / observability change — the underlying
+measurement parameters and Q3/Q4/Q6/Q7 invariants are unchanged.
+
 The Phase `1` reclosure was validated with
 `docker compose run --rm mcts mcts docs check`,
 `docker compose run --rm mcts mcts lint docs`,
@@ -426,6 +470,22 @@ Sprints `0.4` and `1.12` were validated on 2026-05-27 with
 `docker compose run --rm mcts mcts docs check`,
 `docker compose run --rm mcts mcts test mcts-unit`,
 `docker compose run --rm mcts mcts check-code`, and `git diff --check`.
+
+Sprints `4.6`, `6.11`, `4.7`, and the report-card self-play
+configuration block were validated together on 2026-05-30 with one
+end-to-end run of `docker compose run --rm --build mcts mcts test all`
+(exit 0). The aggregate run rebuilt the Docker image with the
+clang-only C++ toolchain (`gcc`/`g++` removed from the explicit
+apt-get list; `ENV CC=clang-19 CXX=clang++-19`), reran the full
+PGO+BOLT pipeline for backends (ii)/(iii)/(iv), and exercised
+`files lint`, `docs check`, `mcts-haskell-style`, `mcts-unit`
+(29/29), `mcts-integration` (25/25), `mcts-cross-backend` (7/7),
+`mcts-legacy-parity` (2/2), `mcts-semantic-parity` (1/1), and the
+four `verify` steps. Apples-to-apples invariants Q3/Q4/Q6/Q7 PASS
+with `normalized_divergence_score=0.0000`; the labelled measurement
+is `Verdict: Trails parity band by 69.1%` (informational only). The
+new "Self-play (Q2) configuration" block renders the sims-per-move
+(500), per-cell games (4), and max-plies (200) values.
 
 The 2026-05-19 report-card evidence remains useful smoke-baseline audit context.
 The previous five-backend restoration baseline still provides the starting point:
@@ -676,11 +736,11 @@ A sprint can move to `Done` only when all of the following are true:
 | 1 | Haskell CLI Surface, `CommandSpec`, Lint Stack | ✅ Done (Sprint `1.12` generated `bench rollouts` summary realignment closed 2026-05-27) | [phase-1-haskell-cli-surface.md](phase-1-haskell-cli-surface.md) |
 | 2 | Transcript Codec, RNG, and Determinism Contract | ✅ Done (Sprint `2.9` transcript/envelope doctrine realignment closed 2026-05-24) | [phase-2-transcript-codec-and-determinism.md](phase-2-transcript-codec-and-determinism.md) |
 | 3 | Backend (v) Haskell Engine | ✅ Done (Sprint `3.8` benchmark metric primitives closed 2026-05-24) | [phase-3-haskell-engine.md](phase-3-haskell-engine.md) |
-| 4 | Backend (i) C++ Legacy Port and FFI Bridge | ✅ Done (Sprint `4.5` FFI domain-conversion contract realignment closed 2026-05-24) | [phase-4-cpp-legacy-port-and-ffi-bridge.md](phase-4-cpp-legacy-port-and-ffi-bridge.md) |
+| 4 | Backend (i) C++ Legacy Port and FFI Bridge | ✅ Done (Sprint `4.7` Dockerfile gcc/g++ scrub closed 2026-05-30 after Sprint `4.6` cpp-legacy compiler pivot to `clang++-19` closed the same day; Sprints `4.1`–`4.5` remain closed for their delivered surfaces) | [phase-4-cpp-legacy-port-and-ffi-bridge.md](phase-4-cpp-legacy-port-and-ffi-bridge.md) |
 | 5 | Backend (ii) C++ Imperative Steelman with PGO+BOLT | ✅ Done (Sprint `5.8` residual hot-path squeeze closed 2026-05-29: bidirectional wall-legality BFS, `UctNode` layout pack, `-fno-stack-protector -fno-rtti -fipa-pta`, extended BOLT `-split-functions -split-strategy=cdsplit -reorder-functions=cdsort -icf=1`; Sprints `5.1`–`5.7` remain closed for their delivered surfaces) | [phase-5-cpp-imperative-steelman.md](phase-5-cpp-imperative-steelman.md) |
-| 6 | Backends (iii) C++ Functional-Core and (iv) Rust | ✅ Done for build/ABI, backend (iii) compact functional-core state alignment, and Sprint `6.8` Rust hot-path structural alignment | [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md) |
+| 6 | Backends (iii) C++ Functional-Core and (iv) Rust | ✅ Done (Sprint `6.11` closed 2026-05-30: backend (iii) cpp-functional compiler pivot to `clang++-19` + LLVM `.profraw` PGO flow, mirroring backend (ii) Sprint `5.9`. Sprints `6.1`–`6.10` remain closed for their delivered surfaces; cohort ranking is `rust ≥ cpp-functional ≈ cpp-imperative > haskell`) | [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md) |
 | 7 | Cross-Backend Verify, Test Stanzas, POC Report Card | ✅ Done (Sprint `7.11` Q7 semantic parity and normalized divergence score closed) | [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md) |
-| 8 | Haskell Performance Parity Closure and Five-Backend Restoration | ✅ Done (Sprint `8.16` post-`5.8` Haskell-vs-`(ii)` rebaseline closed 2026-05-29: Q1a `1.51x`/`1.50x`, Q1b `1.53x`/`1.56x`, Q2 `1.41x`/`1.57x`, verdict `57.1%`, Q3/Q4/Q6/Q7 PASS, divergence score `0.0000`. Sprint `8.15` and `8.14` historical against pre-`5.8` artefacts) | [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md) |
+| 8 | Haskell Performance Parity Closure and Five-Backend Restoration | ✅ Done (Sprint `8.17` closed 2026-05-29 with `MutableByteArray# s` arena migration `measured but rejected` and the descent/rollout `INLINE` audit no-op; six-`STUArray` Sprint `8.13` baseline retained. Sprint `8.16` post-`5.8` rebaseline recorded `Verdict: Trails parity band by 57.1%`; post-`8.17` rerun recorded `62.7%`. Q3/Q4/Q6/Q7 PASS throughout with `normalized_divergence_score=0.0000`. Sprints `8.1`–`8.16` remain closed for their delivered surfaces) | [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md) |
 
 ## Current Plan Status
 
@@ -707,20 +767,29 @@ strengthened backend (ii), Sprint `6.7` closed the backend (iii) compact
 functional-core rewrite, and Sprints `8.12`, `8.13`, and `8.14` closed Haskell
 parity, style alignment, and report-card verdict gating against that corrected
 target.
-Sprint `5.7` has closed backend `(ii)`'s imperative hot path: action-id
+Sprint `5.7` closed backend `(ii)`'s imperative hot path: action-id
 generation without child-board materialization, absolute side-to-move state,
 action-only tree storage, reusable wall block masks, fixed/trusted internal C ABI
-buffers, and retuned PGO/BOLT training. Sprint `8.15` is active because the first
-post-`5.7` report-card rebaseline failed closed with a Haskell shortfall against
-the fully steelmanned `(ii)` target. Accepted Sprint `8.15` Haskell changes keep
-the pure API while narrowing local hot-path overhead through compact pawn slots,
-non-terminal action sets, no-ply rollout apply, fused arena updates, worker
-pinning, direct packed-slot path starts, a no-wall legal-action fast path, and
-single-constructor action transitions.
-The latest accepted aggregate rerun still fails closed with
-`Verdict: Shortfall 0.2678864950323545`: Q1a backend `(ii)`/Haskell ratios
-`1.06x` ST and `1.27x` MT8, Q1b `1.05x` ST and `1.11x` MT8, and Q2 `0.98x` ST
-and `1.11x` MT8.
+buffers, and retuned PGO/BOLT training. Sprint `5.8` then closed the residual
+hot-path squeeze (bidirectional bit-parallel BFS, `UctNode` cache-line padding
+removed, additive `-fno-stack-protector -fno-rtti -fipa-pta`, extended BOLT
+`-split-functions -split-strategy=cdsplit -reorder-functions=cdsort -icf=1`).
+Sprint `5.9` pivoted backend (ii) from `g++` to `clang++-19` and collapsed the
+`State { FastBoard b; uint16_t ply_count; }` wrapper into a flat `FastBoard`,
+and Sprint `5.10` kept the PGO+BOLT pipeline on the clang artefact after a
+per-cell A/B (MT8 primitive lifts above noise; ST/Q2 within ±5%). Sprint
+`8.15` closed on 2026-05-28 with the measurement-vs-invariant reframe per
+[../documents/engineering/compiler_runtime_tuning.md → Performance Measurement Doctrine](../documents/engineering/compiler_runtime_tuning.md#performance-measurement-doctrine):
+`mcts test all` now gates on the apples-to-apples invariants Q3/Q4/Q6/Q7 plus a
+non-pending measurement, and the verdict line is informational. Sprint `8.16`
+recorded the post-`5.8` rebaseline (`Trails parity band by 57.1%`) and Sprint
+`8.17` closed on 2026-05-29 with the `MutableByteArray# s` arena migration
+**measured but rejected** (six-`STUArray` Sprint `8.13` baseline retained
+under the Performance Measurement Doctrine) and the descent/rollout `INLINE`
+audit recorded as no-op. The final post-`8.17` aggregate `mcts test all`
+exits 0 with Q3/Q4/Q6/Q7 PASS, `normalized_divergence_score=0.0000`, and
+the labelled measurement `Verdict: Trails parity band by 62.7%`. The cohort
+ranking is `rust ≥ cpp-functional ≈ cpp-imperative > haskell`.
 Phase `0` Sprint `0.3` restored the root CLI doctrine file cited by the plan and
 governed docs. Sprint `0.4` then removed remaining README-as-authority citation drift:
 README is reference-only, `00-overview.md` owns the doctrine-scope split, and governed
@@ -935,9 +1004,18 @@ refactored metric-suite report-card evidence. Sprint `5.6` and the backend-style
 audit reopened Sprints `6.7`, `8.12`, and `8.13`; all three reclosed by
 2026-05-26. Sprint `8.14` reclosed the report-card verdict/sample-stability gate
 on 2026-05-27. Sprint `6.8` completed backend (iv) Rust's hot-path alignment
-without changing Q3/Q6/Q7 correctness claims. Sprint `5.7` then strengthened
-backend `(ii)`, and Sprint `8.15` is active on the resulting Haskell parity
-shortfall.
+without changing Q3/Q6/Q7 correctness claims. Sprint `5.7` strengthened backend
+`(ii)`, Sprint `8.15` closed with the measurement-vs-invariant reframe and the
+post-`5.7` rebaseline on 2026-05-28, and Sprints `5.8`/`8.16` closed the
+residual `(ii)` squeeze plus the downstream rebaseline on 2026-05-29. Sprints
+`5.9`/`5.10` then pivoted backend `(ii)` to `clang++-19` and kept PGO+BOLT, and
+Sprints `6.9`/`6.10`/`8.17` closed the functional-cohort shape audit on the
+same date. Sprints `4.6`, `6.11`, and `4.7` then closed the
+compiler-stack pivot residue on 2026-05-30: backend (i) cpp-legacy and
+backend (iii) cpp-functional both build with `clang++-19` (matching
+backend (ii) Sprint `5.9`), the `cpp-functional` PGO half migrated to
+the LLVM `.profraw` flow, and `docker/Dockerfile` no longer names
+`gcc`/`g++` in its explicit apt-get list.
 
 ## Exit Definition
 

@@ -9,6 +9,13 @@ ARG STYLE_TOOLS_DIR=/opt/mcts-style-tools/bin
 ARG LLVM_VERSION=19
 ARG RUST_VERSION=1.95.0
 
+# Sprint 4.7: gcc/g++ are no longer in the explicit apt-get list.
+# All three C++ backend Makefiles pin `CXX := clang++-19` (Sprints
+# 4.6 / 5.9 / 6.11), so no first-class backend build path needs g++.
+# `build-essential` is retained for `make`, `libc6-dev`, and
+# `libstdc++-dev` (it still pulls g++/gcc transitively today; a future
+# image revision can unpack the meta-package further if the apt-time
+# savings justify it).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         build-essential \
@@ -16,8 +23,6 @@ RUN apt-get update \
         ca-certificates \
         clang-19 \
         curl \
-        g++ \
-        gcc \
         git \
         libclang-rt-19-dev \
         libffi-dev \
@@ -70,8 +75,11 @@ RUN ln -sf "/usr/bin/llvm-config-${LLVM_VERSION}" /usr/local/bin/llvm-config \
     && if [ -f "/usr/lib/llvm-${LLVM_VERSION}/lib/libbolt_rt_instr.a" ]; then ln -sf "/usr/lib/llvm-${LLVM_VERSION}/lib/libbolt_rt_instr.a" /usr/local/lib/libbolt_rt_instr.a; fi
 
 ENV LLVM_CONFIG=/usr/local/bin/llvm-config
-ENV CC=gcc
-ENV CXX=g++
+# Sprint 4.7: defaults updated so anything in the image that respects
+# the environment falls back to clang. Each backend Makefile owns its
+# own `CXX := clang++-19` pin and is unaffected by these vars.
+ENV CC=clang-19
+ENV CXX=clang++-19
 ENV RUSTUP_TOOLCHAIN=${RUST_VERSION}
 ENV CARGO_HTTP_TIMEOUT=120
 ENV CARGO_NET_RETRY=5

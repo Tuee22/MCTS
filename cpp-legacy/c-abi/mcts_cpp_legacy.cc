@@ -229,7 +229,14 @@ static int g_envelope_ready = 0;
 // `libmcts_cpp_legacy.so` itself. The default contents stay
 // zero-initialised so smoke builds without the patch still match the
 // envelope's `zeroDigest` sentinel.
-__attribute__((section(".envelope_build_id")))
+// Sprint 4.6: under clang++-19, at -O3 the compiler can constant-fold
+// the `memcpy(..., g_engine_build_id, 32)` read into a `memset(..., 0,
+// 32)` because the symbol's initializer is visible in the same TU, so
+// the post-link objcopy patch lands but the runtime read still sees
+// zeros. `used` + `retain` force both the compiler (don't fold the
+// read) and the linker (don't GC the section) to keep the bytes
+// intact. Same fix Sprint 5.9 applied to cpp-imperative.
+__attribute__((used, retain, section(".envelope_build_id")))
 static uint8_t g_engine_build_id[32] = {0};
 
 // Runtime CPU feature bits per

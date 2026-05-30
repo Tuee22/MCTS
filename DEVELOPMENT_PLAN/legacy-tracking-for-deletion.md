@@ -142,13 +142,21 @@ Sprint `8.17` (backend (v)). The audit identified that the three steelman
 backends in the functional cohort do not yet adopt every backend-(ii) hot-path
 technique that
 [../documents/engineering/backend_style_contract.md](../documents/engineering/backend_style_contract.md)
-permits. The reopened scope is restricted to those permitted-but-not-adopted
-items. Sprints `6.9`, `6.10`, and `8.17` are Planned; their pending-removal
-rows below name the residue each sprint owns. None of the deliverables touch
+permits. Sprints `6.9`, `6.10`, and `8.17` closed on the same date; their
+rows live in the Completed table below. None of the deliverables touched
 the C ABI symbol set, the canonical action ID encoding, the 12-wall cap, the
-transcript wire format, or the Q3/Q4/Q6/Q7 invariants; closure follows the
+transcript wire format, or the Q3/Q4/Q6/Q7 invariants; closure followed the
 [../documents/engineering/compiler_runtime_tuning.md → Performance Measurement Doctrine](../documents/engineering/compiler_runtime_tuning.md#performance-measurement-doctrine)
-closure gate.
+gate.
+
+The 2026-05-30 compiler-stack closure landed the three remaining
+backend-pivot rows from the post-`5.9` audit: Sprint `4.6` flipped
+backend (i) cpp-legacy to `clang++-19`, Sprint `6.11` flipped backend
+(iii) cpp-functional and migrated its PGO half to LLVM `.profraw` →
+merged `.profdata`, and Sprint `4.7` dropped `gcc`/`g++` from the
+explicit `docker/Dockerfile` apt-get list and flipped the image's
+`ENV CC/CXX` defaults to `clang-19`/`clang++-19`. The Pending Removal
+table is now empty; all three rows are in the Completed table below.
 
 Two classes of entries populate this ledger over time:
 
@@ -165,21 +173,17 @@ repository.
 
 ## Pending Removal
 
-The 2026-05-29 compiler-stack audit reopened Phase `5` (see
-[README.md → Closure Status](./README.md)) and produced the following four
-rows. They share a common end state — all three C++ backends on
-`clang++-19`, `gcc`/`g++` dropped from `docker/Dockerfile` — sequenced as
-"(ii) pilot, then (i) and (iii), then Dockerfile scrub" so the Sprint `5.9`
-build-orchestration changes (LLVM PGO `.profraw` flow, `cppPgoBoltPlan`
-profile-style split) are validated before they propagate.
+The 2026-05-29 compiler-stack audit reopened Phase `5` and produced four
+rows sequenced as "(ii) pilot, then (i) and (iii), then Dockerfile
+scrub" so the Sprint `5.9` build-orchestration changes (LLVM PGO
+`.profraw` flow, `cppPgoBoltPlan` profile-style split) were validated
+before they propagated. All four rows closed on 2026-05-30 through
+Sprints `4.6` / `6.11` / `4.7` (see Completed table below). The
+Pending Removal table is now empty.
 
 | Item | Owner | Notes |
 |------|-------|-------|
-| Backend (i) cpp-legacy compiler pivot to `clang++-19` | Phase `4` reopen (sprint TBD) | Verbatim engine source preserved; only the build harness switches. `cpp-legacy/Makefile`'s `CXX` flips to `clang++-19`; `cpp-legacy/c-abi/mcts_cpp_legacy.cc` already has the `#if defined(__clang__) g_envelope.compiler_id = 1` branch and will fire under the new build. Validation: `mcts test mcts-legacy-parity` still PASS, Q6 legacy-envelope liveness still PASS for the (i) slot. `test/integration/Main.hs::expectedCompilerId` adds `CppLegacy -> 1`. |
-| Backend (iii) cpp-functional compiler pivot to `clang++-19` | Phase `6` reopen (sprint TBD) | Mirrors Sprint `5.9` mechanics on `cpp-functional`: `Makefile` CXX flip, drop `-fipa-pta`, drop `-fprofile-correction`, add `-fuse-ld=lld`, add `pgo-merge` target. `src/MCTS/CLI/Build.hs::cppProfileStyleFor` adds `"cpp-functional" -> CppLlvmProfile`. `src/MCTS/Prerequisite.hs::prerequisitesForBuild "cpp-functional"` swaps `cxx-gpp` for `cxx-clang19` and adds `llvm-profdata-19`. `test/integration/Main.hs::expectedCompilerId` adds `CppFunctional -> 1`. Validation: `mcts test all` still PASS, Q3/Q7 still PASS, (iii) numbers should land near (iv) Rust per the same compiler-choice mechanism Sprint `5.9` measured on (ii). |
-| Remove `gcc` and `g++` from `docker/Dockerfile` apt-get list; flip `ENV CC=gcc CXX=g++` to clang equivalents (or remove) | Sprint after both (i) and (iii) pivot rows close | Currently blocked by (i) and (iii) still building with `g++`. After both pivot, `docker/Dockerfile:14-30` drops `g++` and `gcc` from the apt-get list (keeps `build-essential` for `make`/`libc6-dev`/`libstdc++-dev` unless we also unpack that), and `docker/Dockerfile:72-73` flips `ENV CC=clang-19 CXX=clang++-19` (or removes the vars so each backend Makefile owns its CXX). `src/MCTS/Prerequisite.hs` drops the `cxx-gpp` node and the `legacy-fixtures` build prerequisite switches. Validation: full image rebuild + `mcts test all` PASS; resulting image is smaller and apt-time drops. |
-(Sprint `5.10` PGO+BOLT efficacy row moved to Completed 2026-05-29; see the
-Completed table below.)
+| (none) | | |
 
 ## Pending Removal Notes
 
@@ -194,6 +198,9 @@ data instead of publishing a fallback shared library.
 
 | Item | Removed In | Notes |
 |------|------------|-------|
+| Sprint `4.7` Dockerfile gcc/g++ scrub | Sprint 4.7, 2026-05-30 | `docker/Dockerfile`'s explicit apt-get list no longer names `g++` or `gcc`; `build-essential` is retained for `make`/`libc6-dev`/`libstdc++-dev` (it still pulls g++/gcc transitively, but no first-class backend build path depends on either). `ENV CC=gcc CXX=g++` flipped to `clang-19`/`clang++-19` so any image-default tool falls back to clang. `src/MCTS/Prerequisite.hs` dropped the `cxx-gpp` node entirely; the `cpp-legacy`, `cpp-functional`, and `legacy-fixtures` build paths and the `libmcts-cpp-{legacy,functional}-built` shared-lib nodes now name only `cxx-clang19` (+ `llvm-profdata-19` where the PGO+BOLT path runs). Validation: full image rebuild and `mcts test all` PASS. |
+| Sprint `6.11` backend (iii) cpp-functional compiler pivot to `clang++-19` | Sprint 6.11, 2026-05-30 | Mirrors Sprint `5.9` on backend (iii). `cpp-functional/Makefile` flipped `CXX := clang++-19`, dropped `-fipa-pta` (clang rejects) and `-fprofile-correction` (GCC-only), added `-fuse-ld=lld`, and gained a `pgo-merge` target that runs `llvm-profdata-19 merge -o $(PGO_DIR)/default.profdata <*.profraw>` for the `-fprofile-use=…/default.profdata` consumption. `src/MCTS/CLI/Build.hs::cppProfileStyleFor` now maps `cpp-functional → CppLlvmProfile` so `cppPgoBoltPlan` drives the LLVM `.profraw` flow for both live PGO+BOLT C++ backends. `cpp-functional/c-abi/mcts_cpp_functional.cc` adds the `__llvm_profile_write_file`/`__llvm_profile_reset_counters` weak-symbol branch alongside the existing `__gcov_*` fallback, gated on `__clang__`. The `g_engine_build_id` slot picks up `used, retain` so clang+LLD+LTO does not GC the `.envelope_build_id` section. `src/MCTS/Prerequisite.hs::prerequisitesForBuild "cpp-functional"` now lists `cxx-clang19` + `llvm-profdata-19`; the `libmcts-cpp-functional-built` shared-lib dep mirrors that change. `test/unit/Main.hs::exerciseCppBuildPlan` asserts the cpp-functional plan drives the `make pgo-merge` step (the legacy `.gcda` bash check is no longer reachable). `test/integration/Main.hs::expectedCompilerId` returns `1` (clang) for `CppFunctional`. |
+| Sprint `4.6` backend (i) cpp-legacy compiler pivot to `clang++-19` | Sprint 4.6, 2026-05-30 | `cpp-legacy/Makefile` pinned `CXX := clang++-19` (`:=`, not `?=`, so the Dockerfile's `ENV CXX=g++` could not override before Sprint 4.7 dropped that var). Engine source under `cpp-legacy/legacy-core/` is preserved verbatim per Phase 4 doctrine; only the build harness flipped. `cpp-legacy/c-abi/mcts_cpp_legacy.cc`'s `g_engine_build_id` slot picked up `used, retain` so clang's -O3 cannot constant-fold the `memcpy(..., g_engine_build_id, 32)` read into a `memset(..., 0, 32)` (same Sprint 5.9 fix as cpp-imperative). The `envelope-build-id` target now discovers `llvm-objcopy-19` before falling back to GNU `objcopy` so the post-link patch keeps working under the Sprint 4.7 scrub. `src/MCTS/Prerequisite.hs::prerequisitesForBuild "cpp-legacy"` and `"legacy-fixtures"` swap `cxx-gpp` for `cxx-clang19`; `libmcts-cpp-legacy-built` mirrors that. `test/integration/Main.hs::expectedCompilerId` returns `1` (clang) for `CppLegacy`. Validation: `mcts test mcts-legacy-parity` PASS, Q6 legacy-envelope liveness PASS. |
 | Sprint `5.10` PGO+BOLT efficacy reevaluation on clang-built backend (ii) | Sprint 5.10, 2026-05-29 (measured and kept) | The A/B against the Sprint `5.9` clang+PGO+BOLT baseline vs `clang++-19 -O3 -flto -fuse-ld=lld` produced mixed per-cell results. Average lift +1.8% (below the +3% threshold the plan committed to), but the per-cell picture justified an override: Q1a MT8 `+13.8%` (`262,339` vs `230,570` playouts/s) and Q1b MT8 `+7.5%` (`281,209` vs `261,632` search-iters/s) — comfortably above noise — while the four ST/Q2-MT8 cells fell within ±5% (typical run-to-run noise on these primitives, with Q2 at the `0.1` games/s measurement-resolution floor). The MT8 primitive wins justify the ~5 min Dockerfile build cost; the pipeline is retained. The decision is recorded against the Sprint `5.9` clang baseline; if the front-end pivots again or BOLT's layout passes drift, the A/B should be re-run. Doctrine recorded in `documents/engineering/compiler_runtime_tuning.md` backend (ii) section. |
 | Sprint `5.9` backend (ii) compiler pivot from `g++` to `clang++-19` + `State`→`FastBoard` collapse | Sprint 5.9, 2026-05-29 | The 2026-05-29 compiler-stack audit found `clang++-19 -O3 -flto` matched or exceeded `g++` with full PGO+BOLT on cpp-imperative. `cpp-imperative/Makefile` flipped `CXX := clang++-19`, dropped `-fipa-pta` (clang rejects) and `-fprofile-correction` (GCC-only), added `-fuse-ld=lld`, and added a `pgo-merge` target that runs `llvm-profdata-19 merge -o $(PGO_DIR)/default.profdata <*.profraw>` for the `-fprofile-use=…/default.profdata` consumption. `src/MCTS/CLI/Build.hs::cppPgoBoltPlan` split on `CppProfileStyle` so (ii) takes the LLVM-merge branch while (iii) keeps the GCC `.gcda` check. `cpp-imperative/engine/state.hpp` deleted; `uint16_t ply_count` inlined into `cpp-imperative/engine/fast_board.hpp::FastBoard` along with `is_terminal(max_plies)` and `terminal_eval()`; `search.cpp`, `search.hpp`, `arena.hpp`, and `c-abi/mcts_cpp_imperative.cc` retype `State` → `FastBoard` and drop `state.b.` indirection. `__attribute__((used, retain, section(".envelope_build_id")))` on `g_engine_build_id` keeps the envelope section alive through clang+LLD+LTO. `docker/Dockerfile` adds `libclang-rt-19-dev` (needed by `-fprofile-generate` linking). `src/MCTS/Prerequisite.hs` renames `cxx` → `cxx-gpp` and adds `cxx-clang19` + `llvm-profdata-19` nodes. `test/integration/Main.hs::expectedCompilerId` returns `1` (clang) for `CppImperative`. Validation: `mcts test all` PASS, Q3/Q4/Q6/Q7 PASS, `normalized_divergence_score=0.0000`. Backend (ii) post-pivot vs pre-pivot g++ baseline: Q1a ST `35,853 → 38,532` (`+7.5%`), Q1b ST `38,467 → 41,214` (`+7.1%`), Q1a MT8 `264,478 → 262,207` (`−0.9%`), Q1b MT8 `260,887 → 261,003` (`+0.0%`), Q2 ST `1.9 → 2.0` (`+5.3%`), Q2 MT8 `7.1 → 7.7` (`+8.5%`). (ii) is now within `0.88×–1.20×` of (iv) Rust across the six headline cells (was `0.85×–1.10×` pre-pivot); the residual gap is reduced. |
 | Backend (v) six-`STUArray` UCT arena residue | Sprint 8.17, 2026-05-29 (measured but rejected) | The proposed `MutableByteArray# s`-backed migration was implemented (single `STUArray s Int Word32` carrying the six SoA fields at named per-field offsets, stride 24 bytes, `castFloatToWord32`/`castWord32ToFloat` for the `valueSum` slot) and compiled cleanly through `mcts test mcts-unit`. Focused native-RNG single-threaded benchmarks recorded a regression vs the Sprint `8.13` six-slab baseline (`Q1a` `22900.8 → 21650.3` playouts/s, `-5.5%`; `Q1b` `23287.1 → 23038.4` search-iters/s, `-1.1%`), so the change was reverted under the Performance Measurement Doctrine and `src/MCTS/Search/Arena.hs` keeps the Sprint `8.13` six-`STUArray` layout. The likely cause is per-field offset arithmetic plus the `Float`/`Word32` cast on `addVisitValue` outweighing the address-register consolidation win. This mirrors the Sprint `8.15` "measured but rejected" pattern; no further (v) optimisation work is scheduled. |

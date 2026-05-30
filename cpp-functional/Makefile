@@ -1,9 +1,18 @@
 .PHONY: smoke all clean envelope-build-id bench instrumented \
         pgo-bench-generate pgo-instr-generate pgo-bench-use pgo-instr-use \
+        pgo-merge \
         bolt-bench-instrument bolt-instr-instrument \
         bolt-bench-optimize bolt-instr-optimize install-bench
 
-CXX ?= g++
+# Sprint 6.11: backend (iii) cpp-functional pivoted from g++ to
+# clang++-19 to match backend (ii) (Sprint 5.9) and complete the
+# functional-cohort compiler-stack alignment. The functional-core source
+# style is unchanged; only the build harness flips. `:=` (not `?=`) so
+# the Dockerfile's `ENV CXX=g++` cannot silently override; a
+# command-line `make CXX=...` still wins per GNU make's variable
+# precedence rules.
+CXX := clang++-19
+LLVM_PROFDATA := llvm-profdata-19
 # Doctrine flag set shared with backend (ii) so the (ii)-vs-(iii)
 # comparison isolates source style as the variable. Backend (iii)'s
 # compact functional-core state is header-only; the old legacy
@@ -12,12 +21,11 @@ CXX ?= g++
 #   -fno-stack-protector — engine core takes no untrusted input on the
 #                          hot path; SSP cookie is dead weight.
 #   -fno-rtti           — no `dynamic_cast` or `typeid` on the hot path.
-#   -fipa-pta           — opts in to inter-procedural points-to analysis;
-#                         tightens LTO devirtualization and alias
-#                         resolution across the engine TU and the C ABI
-#                         shim.
-CXXFLAGS ?= -std=c++23 -O3 -march=native -mtune=native -flto -fno-plt -fno-semantic-interposition -fvisibility=hidden -fvisibility-inlines-hidden -fno-exceptions -fno-stack-protector -fno-rtti -fipa-pta -fPIC -Wno-pessimizing-move -Iengine
-LDFLAGS ?= -shared -flto -Wl,--emit-relocs
+# Sprint 6.11: `-fipa-pta` is dropped because clang rejects the flag
+# (GCC-only inter-procedural points-to analysis); the Sprint 5.9 audit
+# showed it was not load-bearing on the (ii) baseline either way.
+CXXFLAGS ?= -std=c++23 -O3 -march=native -mtune=native -flto -fno-plt -fno-semantic-interposition -fvisibility=hidden -fvisibility-inlines-hidden -fno-exceptions -fno-stack-protector -fno-rtti -fPIC -Wno-pessimizing-move -Iengine
+LDFLAGS ?= -shared -flto -Wl,--emit-relocs -fuse-ld=lld
 LDLIBS ?= -lmimalloc
 
 ENGINE_SRCS = engine/search.cpp c-abi/mcts_cpp_functional.cc
@@ -42,7 +50,10 @@ instrumented:
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(ENGINE_SRCS) $(LDLIBS) -o build/libmcts_cpp_functional_instrumented.so
 	$(MAKE) envelope-build-id LIB=build/libmcts_cpp_functional_instrumented.so
 
-# PGO + BOLT pipeline mirroring Sprint 5.3 for backend (ii).
+# PGO + BOLT pipeline mirroring Sprint 5.3 for backend (ii). Sprint 6.11
+# rewrote the PGO half from GCC `.gcda` (`-fprofile-correction` etc.) to
+# LLVM `.profraw` → merged `.profdata` consumed via `-fprofile-use=<file>`,
+# mirroring cpp-imperative's Sprint 5.9 pivot.
 pgo-bench-generate:
 	mkdir -p build $(PGO_DIR)
 	$(CXX) $(CXXFLAGS) -fprofile-generate=$(abspath $(PGO_DIR)) $(LDFLAGS) -fprofile-generate=$(abspath $(PGO_DIR)) $(ENGINE_SRCS) $(LDLIBS) -o build/libmcts_cpp_functional_bench.so
@@ -51,24 +62,37 @@ pgo-instr-generate:
 	mkdir -p build $(PGO_DIR)
 	$(CXX) $(CXXFLAGS) -fprofile-generate=$(abspath $(PGO_DIR)) $(LDFLAGS) -fprofile-generate=$(abspath $(PGO_DIR)) $(ENGINE_SRCS) $(LDLIBS) -o build/libmcts_cpp_functional_instrumented.so
 
+# Sprint 6.11: merge clang's raw `.profraw` files into a single
+# `.profdata` consumed by `-fprofile-use=<file>`. Mirrors cpp-imperative
+# and the Rust PGO pipeline. The orchestrator (`src/MCTS/CLI/Build.hs`
+# → `cppPgoBoltPlan`) runs the training workload between
+# `pgo-{bench,instr}-generate` and this merge, then `pgo-{bench,instr}-use`.
+pgo-merge:
+	@profraw_files=$$(find $(PGO_DIR) -type f -name '*.profraw' -size +0c -print | sort); \
+	if [ -z "$$profraw_files" ]; then \
+	  find $(PGO_DIR) -type f -print | sort | head -100 >&2; \
+	  echo "[pgo] no non-empty .profraw files under $(PGO_DIR); failing mandatory PGO build" >&2; \
+	  exit 1; \
+	fi; \
+	$(LLVM_PROFDATA) merge -o $(PGO_DIR)/default.profdata $$profraw_files; \
+	test -s $(PGO_DIR)/default.profdata
+
 pgo-bench-use:
 	mkdir -p build
-	@if ! find $(PGO_DIR) -type f -name '*.gcda' -size +0c -print -quit | grep -q .; then \
-	  find . -type f \( -name '*.gcda' -o -name '*.gcno' -o -name '*gcov*' \) -print | sort | head -100 >&2; \
-	  echo "[pgo] no non-empty .gcda files under $(PGO_DIR); failing mandatory PGO build" >&2; \
+	@if [ ! -s $(PGO_DIR)/default.profdata ]; then \
+	  echo "[pgo] $(PGO_DIR)/default.profdata missing or empty; run pgo-merge first" >&2; \
 	  exit 1; \
 	fi
-	$(CXX) $(CXXFLAGS) -fprofile-use=$(abspath $(PGO_DIR)) -fprofile-correction $(LDFLAGS) -fprofile-use=$(abspath $(PGO_DIR)) -fprofile-correction $(ENGINE_SRCS) $(LDLIBS) -o build/libmcts_cpp_functional_bench.so
+	$(CXX) $(CXXFLAGS) -fprofile-use=$(abspath $(PGO_DIR))/default.profdata $(LDFLAGS) -fprofile-use=$(abspath $(PGO_DIR))/default.profdata $(ENGINE_SRCS) $(LDLIBS) -o build/libmcts_cpp_functional_bench.so
 	$(MAKE) envelope-build-id LIB=build/libmcts_cpp_functional_bench.so
 
 pgo-instr-use:
 	mkdir -p build
-	@if ! find $(PGO_DIR) -type f -name '*.gcda' -size +0c -print -quit | grep -q .; then \
-	  find . -type f \( -name '*.gcda' -o -name '*.gcno' -o -name '*gcov*' \) -print | sort | head -100 >&2; \
-	  echo "[pgo] no non-empty .gcda files under $(PGO_DIR); failing mandatory PGO build" >&2; \
+	@if [ ! -s $(PGO_DIR)/default.profdata ]; then \
+	  echo "[pgo] $(PGO_DIR)/default.profdata missing or empty; run pgo-merge first" >&2; \
 	  exit 1; \
 	fi
-	$(CXX) $(CXXFLAGS) -fprofile-use=$(abspath $(PGO_DIR)) -fprofile-correction $(LDFLAGS) -fprofile-use=$(abspath $(PGO_DIR)) -fprofile-correction $(ENGINE_SRCS) $(LDLIBS) -o build/libmcts_cpp_functional_instrumented.so
+	$(CXX) $(CXXFLAGS) -fprofile-use=$(abspath $(PGO_DIR))/default.profdata $(LDFLAGS) -fprofile-use=$(abspath $(PGO_DIR))/default.profdata $(ENGINE_SRCS) $(LDLIBS) -o build/libmcts_cpp_functional_instrumented.so
 	$(MAKE) envelope-build-id LIB=build/libmcts_cpp_functional_instrumented.so
 
 bolt-bench-instrument:

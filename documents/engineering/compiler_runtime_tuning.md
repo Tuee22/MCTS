@@ -77,11 +77,11 @@ rollout `--sims 1` and one self-play game for each threading mode per seed with
 self-play `--sims 500`; BOLT uses one rollout game and one self-play game for each
 threading mode per seed, rollout `--sims 1`, and self-play `--sims 100`. C++
 training uses scoped dynamic-library loading plus exported profile-dump hooks so
-the profile data is flushed before `-fprofile-use`: backend (iii) g++ calls
-`__gcov_dump`/`__gcov_reset` to flush `.gcda`; backend (ii) clang++-19 (Sprint
-5.9) calls `__llvm_profile_write_file`/`__llvm_profile_reset_counters` to flush
-`.profraw` files that are then merged via `llvm-profdata-19 merge` into a
-single `default.profdata`. Rust training keeps the cdylib pinned and relies on
+the profile data is flushed before `-fprofile-use`: backends (ii) cpp-imperative
+(Sprint 5.9) and (iii) cpp-functional (Sprint 6.11) both build with `clang++-19`
+and call `__llvm_profile_write_file`/`__llvm_profile_reset_counters` to flush
+`.profraw` files that are then merged via `llvm-profdata-19 merge` into a single
+`default.profdata`. Rust training keeps the cdylib pinned and relies on
 process-exit `.profraw` emission before `llvm-profdata merge`.
 
 Sprint `5.7` closed backend `(ii)` profile representativeness for the rewritten
@@ -109,13 +109,20 @@ project hypothesis is proven when backend (v) Haskell matches backend (ii) — n
 
 ## Backend (ii) and (iii) — C++ Imperative and Functional-Core
 
-Sprint `5.9` (2026-05-29 compiler audit) split the two backends' compiler
-stacks. Backend `(ii)` cpp-imperative pivoted to `clang++-19` after the audit
-showed `clang++-19 -O3 -flto` matched or exceeded `g++` with the full PGO+BOLT
-pipeline on cpp-imperative (the audit measured +8.9% Q1a ST, +10.2% Q1b ST,
-+22.5% Q1b MT8). Backend `(iii)` cpp-functional remains on `g++` pending its
-own pivot sprint, tracked under Pending Removal in
-[../../DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md](../../DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md).
+Sprint `5.9` (2026-05-29 compiler audit) pivoted backend `(ii)`
+cpp-imperative from `g++` to `clang++-19` after the audit showed
+`clang++-19 -O3 -flto` matched or exceeded `g++` with the full PGO+BOLT
+pipeline on cpp-imperative (+8.9% Q1a ST, +10.2% Q1b ST, +22.5% Q1b
+MT8). Sprint `6.11` (2026-05-30) then pivoted backend `(iii)`
+cpp-functional onto the same `clang++-19` stack and migrated its PGO
+half from GCC `.gcda` (`-fprofile-correction` etc.) to LLVM
+`.profraw` → merged `.profdata`, mirroring the cpp-imperative
+mechanics. `src/MCTS/CLI/Build.hs::cppProfileStyleFor` now maps both
+`cpp-imperative` and `cpp-functional` through `CppLlvmProfile` so a
+single LLVM `pgo-merge` flow drives the two PGO+BOLT backends.
+Sprint `4.6` (same date) flipped backend `(i)` cpp-legacy onto
+`clang++-19` for harness alignment; cpp-legacy has no PGO+BOLT path
+(it is the verbatim regression-sanity backend).
 
 ### Backend (ii) — clang++-19 stack (Sprint 5.9)
 
@@ -169,25 +176,38 @@ The decision is recorded against the Sprint `5.9` clang baseline; if the
 front-end pivots again or BOLT's layout passes drift, the A/B should be
 re-run.
 
-### Backend (iii) — g++ stack (pending pivot)
+### Backend (iii) — clang++-19 stack (Sprint 6.11)
 
 ```text
 # Example: mandatory C++ compile flags for backend (iii)
 -std=c++23 -O3 -march=native -mtune=native -flto -fno-plt
 -fno-semantic-interposition -fvisibility=hidden -fvisibility-inlines-hidden
--fno-exceptions -fno-stack-protector -fno-rtti -fipa-pta
+-fno-exceptions -fno-stack-protector -fno-rtti
 ```
 
 `-fno-exceptions` is mandatory for the C++ steelman backends: the engine core
 does not throw, so landing-pad cost is unconditional dead weight. Sprint `5.8`
-added three additional scrub flags under per-flag focused-benchmark gating:
-`-fno-stack-protector` removes the SSP cookie write because no untrusted input
-crosses the hot path, `-fno-rtti` removes unreachable RTTI metadata because
-`dynamic_cast` and `typeid` are not used on the search hot path, and
-`-fipa-pta` opts in to inter-procedural points-to analysis to tighten LTO
-devirtualization and alias resolution across the engine TU and the C-ABI shim.
-Each flag was reverted if the focused row regressed; the residue is tracked in
-[../../DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md](../../DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md).
+added two additional scrub flags under per-flag focused-benchmark gating that
+backend (iii) adopted in Sprint `6.9`: `-fno-stack-protector` removes the SSP
+cookie write because no untrusted input crosses the hot path, and `-fno-rtti`
+removes unreachable RTTI metadata because `dynamic_cast` and `typeid` are not
+used on the search hot path. Sprint `6.11` dropped the GCC-only `-fipa-pta`
+flag from the (iii) flag set because clang rejects it and the Sprint `5.9`
+audit measurement showed it was not load-bearing on the (ii) baseline either
+way. The linker adds `-fuse-ld=lld` so BOLT consumes the same `--emit-relocs`
+shape used by backend (ii) cpp-imperative and backend (iv) Rust.
+
+PGO file format (Sprint `6.11`): backend (iii) now emits clang `.profraw`
+files alongside backend (ii), and `cpp-functional/Makefile`'s `pgo-merge`
+target runs `llvm-profdata-19 merge -o $(PGO_DIR)/default.profdata <profraw
+files>` so the subsequent `pgo-{bench,instr}-use` stages consume the merged
+`.profdata` file via `-fprofile-use=…/default.profdata`. The
+`-fprofile-correction` flag is dropped (GCC-only). The
+`cpp-functional/c-abi/mcts_cpp_functional.cc` C ABI shim calls
+`__llvm_profile_write_file`/`__llvm_profile_reset_counters` to flush
+`.profraw` files for the training step (the `__gcov_dump`/`__gcov_reset`
+fallback is retained under `#if !defined(__clang__)` for any future
+host-diagnostics build).
 
 ### Shared constraints
 
@@ -217,13 +237,13 @@ checked-in generated data.
    `-fprofile-generate=$(abspath $(PGO_DIR))`; the generated `_bench` and
    `_instrumented` artefacts are build/training intermediates for the bounded
    played-game training suite so profile data exists before the optimized
-   build runs with `-fprofile-use=…`. Backend (iii) g++ emits `.gcda` files
-   and the optimized build adds `-fprofile-correction`. Backend (ii) clang++-19
-   emits `.profraw` files; the Makefile's `pgo-merge` target runs
-   `llvm-profdata-19 merge` to produce `$(PGO_DIR)/default.profdata` and the
-   optimized build consumes that file path via `-fprofile-use=…/default.profdata`
-   (Sprint 5.9). Neither set of intermediates is a supported runtime FFI load
-   name.
+   build runs with `-fprofile-use=…`. Backends (ii) and (iii) both build with
+   `clang++-19` (Sprints `5.9` and `6.11`) and emit `.profraw` files; each
+   Makefile's `pgo-merge` target runs `llvm-profdata-19 merge` to produce
+   `$(PGO_DIR)/default.profdata` and the optimized build consumes that file
+   path via `-fprofile-use=…/default.profdata`. The `-fprofile-correction`
+   flag is dropped (GCC-only). Neither set of intermediates is a supported
+   runtime FFI load name.
 2. **BOLT post-link.** `llvm-bolt -instrument` produces `_bench.inst.so` /
    `_instrumented.inst.so` build intermediates for a shorter bounded
    played-game training suite. `llvm-bolt -reorder-blocks=ext-tsp` consumes

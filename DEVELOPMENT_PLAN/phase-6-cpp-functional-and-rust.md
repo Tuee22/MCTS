@@ -16,24 +16,17 @@
 
 ## Phase Status
 
-✅ **Done.** Sprints `6.9` (backend (iii) hot-path shape alignment with
-backend (ii)) and `6.10` (backend (iv) hot-path shape alignment with backend
-(ii)/(v)) both closed on 2026-05-29. The 2026-05-29 functional-cohort shape
-audit reopened this phase without invalidating any earlier Sprint `6.1`–
-`6.8` closure. Sprint `6.9` adopted absolute `SideToMove`, reusable
-`BlockMasks`, bidirectional `__int128` BFS, action-only `UctNode` with
-`State` materialized on the descent stack, and the Sprint `5.8` C++
-flag/BOLT scrub on `cpp-functional/Makefile`. Sprint `6.10` introduced
-`RustBoardHandle` as the opaque C ABI handle owning the relocated
-`last_visit_*` cache, adopted absolute `SideToMove`, the `BlockMasks`
-additive pattern, bidirectional `u128` BFS, an action-only `Vec<Node>`
-arena (removed the parallel `Vec<MctsRustBoard>`), and an inlining/cold-path
-audit. The C ABI symbol set, canonical action ID encoding, 12-wall cap,
-transcript wire format, and Q3/Q4/Q6/Q7 invariants are unchanged
-(`normalized_divergence_score=0.0000`). Backends (iii) and (iv) now match
+✅ **Done.** Sprints `6.9` and `6.10` closed on 2026-05-29 for the
+functional-cohort hot-path shape alignment; Sprint `6.11` closed on
+2026-05-30 by pivoting backend `(iii)` cpp-functional from `g++` to
+`clang++-19` and migrating its PGO half to the LLVM `.profraw` → merged
+`.profdata` flow, mirroring backend `(ii)`'s Sprint `5.9` pivot. The
+C ABI symbol set, canonical action ID encoding, 12-wall cap, transcript
+wire format, and Q3/Q4/Q6/Q7 invariants are unchanged
+(`normalized_divergence_score=0.0000`). Backends (iii) and (iv) match
 or exceed backend (ii) on every primitive metric; the cohort ranking is
-`rust ≥ cpp-functional ≈ cpp-imperative > haskell`. The fail-closed Rust
-PGO/BOLT, backend (iii)/(iv) ABI wording, Sprint `6.7` compact
+`rust ≥ cpp-functional ≈ cpp-imperative > haskell`. The fail-closed
+Rust PGO/BOLT, backend (iii)/(iv) ABI wording, Sprint `6.7` compact
 functional-core source-style surface, and Sprint `6.8` Rust hot-path
 structural alignment remain closed on their owned surfaces.
 
@@ -704,6 +697,73 @@ cpp-functional ≈ cpp-imperative > haskell`, confirming the analyst
 prediction that Haskell's pre-`6.9` lead over `(iii)`/`(iv)` would invert
 once the functional cohort closed its permitted-but-not-adopted shape gap.
 Sprint `8.17` is now unblocked.
+
+## Sprint 6.11: Backend (iii) Compiler Pivot to clang++-19 ✅
+
+**Status**: Done
+**Implementation**: `cpp-functional/Makefile`,
+`cpp-functional/c-abi/mcts_cpp_functional.cc`, `src/MCTS/CLI/Build.hs`,
+`src/MCTS/Prerequisite.hs`, `test/integration/Main.hs`, `test/unit/Main.hs`
+**Docs to update**: `README.md`, `00-overview.md`, `system-components.md`,
+`legacy-tracking-for-deletion.md`,
+`../documents/engineering/compiler_runtime_tuning.md`,
+`../documents/engineering/backend_style_contract.md`
+
+### Objective
+
+Pivot backend `(iii)` cpp-functional from `g++` to `clang++-19` and
+migrate its PGO half from GCC `.gcda` (`-fprofile-correction` etc.) to
+LLVM `.profraw` → merged `.profdata` consumed via
+`-fprofile-use=<file>`, mirroring backend `(ii)`'s Sprint `5.9` pivot.
+Closes the last first-class backend on the compiler-stack alignment
+needed before the Sprint `4.7` Dockerfile `gcc`/`g++` scrub.
+
+### Deliverables
+
+- `cpp-functional/Makefile` pins `CXX := clang++-19`, drops `-fipa-pta`
+  (clang rejects; GCC-only) and `-fprofile-correction` (GCC-only), adds
+  `-fuse-ld=lld`, and introduces a `pgo-merge` target that runs
+  `llvm-profdata-19 merge -o $(PGO_DIR)/default.profdata <*.profraw>`.
+  `pgo-{bench,instr}-use` consume `$(PGO_DIR)/default.profdata` via
+  `-fprofile-use=…/default.profdata`.
+- `src/MCTS/CLI/Build.hs::cppProfileStyleFor` maps both
+  `cpp-imperative → CppLlvmProfile` and `cpp-functional → CppLlvmProfile`
+  so `cppPgoBoltPlan` drives the LLVM `.profraw` flow for both live
+  PGO+BOLT C++ backends. The GCC `.gcda` branch is retained in the
+  source but is unreachable from the current mapping.
+- `cpp-functional/c-abi/mcts_cpp_functional.cc` adds
+  `__llvm_profile_write_file` / `__llvm_profile_reset_counters` weak
+  symbols alongside the `__gcov_dump` / `__gcov_reset` fallback, gated
+  on `__clang__`. The existing `g_envelope.compiler_id = 1` clang
+  branch fires under the new build.
+- `cpp-functional/c-abi/mcts_cpp_functional.cc::g_engine_build_id` picks
+  up `__attribute__((used, retain, section(".envelope_build_id")))` so
+  clang+LLD+LTO does not GC the `.envelope_build_id` section. Mirrors the
+  Sprint `5.9` cpp-imperative fix.
+- `src/MCTS/Prerequisite.hs::prerequisitesForBuild "cpp-functional"`
+  swaps `cxx-gpp` for `cxx-clang19` and adds `llvm-profdata-19`; the
+  `libmcts-cpp-functional-built` shared-lib node mirrors that change.
+- `test/integration/Main.hs::expectedCompilerId` returns `1` (clang) for
+  `CppFunctional`.
+- `test/unit/Main.hs::exerciseCppBuildPlan` asserts the cpp-functional
+  plan drives the `make pgo-merge` step (the legacy `.gcda` bash check
+  is no longer reachable).
+
+### Validation
+
+- `docker compose run --rm --build mcts mcts test all` rebuilds the
+  Docker image with the new Makefile and runs the orchestrated PGO+BOLT
+  pipeline for all four foreign backends through the updated
+  `cppPgoBoltPlan`.
+- Closure gates: Q3, Q4, Q6, Q7 all PASS with
+  `normalized_divergence_score = 0.0000`.
+- Per-cell backend (iii) numbers should land near backend (iv) Rust
+  given the same compiler-choice mechanism Sprint `5.9` measured on
+  (ii).
+
+### Remaining Work
+
+None.
 
 ## Documentation Requirements
 
