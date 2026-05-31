@@ -308,6 +308,55 @@ Further Haskell optimisation work beyond Sprint `8.17` is not blocking
 and may be scheduled as a new sprint only if the project chooses to
 invest.
 
+Sprint `8.18` closed on 2026-05-30 with the profile-driven arm64
+recovery investigation: a cross-platform A/B measurement
+(`bench-profiles/diagnosis-final.md`) between an Apple Silicon Mac
+Docker arm64 host and an x86_64 Linux amd64 host (caledon) confirmed
+the cohort-vs-Haskell gap is dramatically wider on arm64 (`mcts test
+all` verdict `Trails parity band by 85.6%`) than on amd64
+(`29.5%`, with `Q1b MT8` at essentially parity `1.06x` and Haskell's
+MT8 search scaling `6.36x` **outperforming** backend `(ii)`'s
+`5.38x`). One Haskell-source change was accepted (`src/MCTS/Search/Arena.hs`
+→ `Data.Array.Base.unsafeRead`/`unsafeWrite` for the eight Arena
+read/write helpers, eliminating per-access STUArray bounds-check
+instructions; +4-8% Q1a ST arm64 focused-bench gain, amd64 flat).
+Four other recovery attempts were ledgered: Stage 2
+`-mcpu=apple-m1` toolchain unblock (root cause confirmed:
+binutils-2.42 in `docker/Dockerfile` rejects LSE atomics that GHC's
+LLVM aarch64 pipeline emits; out of cabal-only scope, hands off to
+Sprint `8.19`), Stage 3 `Float`→`Word32` arena bitcast (LLVM
+register-class promotion eliminates the hypothesised GPR↔NEON
+crossings), Stage 4 hand-written rollout worker-wrapper (asm shows
+GHC's auto-wrapper already produces the optimal calling convention),
+and Stage 5 GHC NCG `-fasm` on aarch64 (-3.45% vs `-fllvm`). Both
+hosts exit 0 with Q3/Q4/Q6/Q7 PASS and
+`normalized_divergence_score=0.0000`.
+
+Sprint `8.19` closed the same date 2026-05-30 with the
+Dockerfile-level aarch64 mcpu unblock **measured but rejected**.
+The wrapper-routed Approach A (settings patch on `pgm_c` + `LLVM
+llvm-as command`, cabal `if arch(aarch64) ghc-options
+-optlo-mcpu=apple-m1 -optlc-mcpu=apple-m1`) built cleanly with
+Q3/Q4/Q6/Q7 PASS and `normalized_divergence_score=0.0000`, but the
+arm64 `mcts test all` verdict regressed from Sprint `8.18`'s
+`85.6%` to `268.7%` (Q1a ST `1.60x → 3.46x`, Haskell Q1b ST
+`~24779 → 12195.2` search-iters/s — **-51% Haskell-only**) because
+LSE / `rcpc-immo` atomics emitted by `llc-19 -mcpu=apple-m1`
+execute slower than the baseline ARMv8 LL/SC atomics GHC's RTS was
+tuned against on Docker-on-Apple-Silicon. Cohort C++/Rust rates
+were within ±3% (rules out broader side-effects); the regression
+is Haskell-only. Reverted under the Performance Measurement
+Doctrine; `docker/Dockerfile` and `mcts.cabal` are byte-identical
+to the pre-`8.19` state. The documented aarch64 mcpu deferral now
+stands on two load-bearing grounds: binutils-2.42 assembler
+rejection (toolchain-fixable) and the measured Haskell-runtime
+regression from LSE/rcpc-immo atomics (not toolchain-fixable from
+this project's side). Phases `5` (Sprint `5.8`), `6` (Sprint
+`6.10`), and `7` (Sprint `7.11`) remain `Done` and were unaffected
+(the `if arch(aarch64)` cabal guard kept amd64 toolchain
+unchanged; the cross-backend no-regression gate held throughout).
+Phase `8` returns to ✅ Done.
+
 The 2026-05-30 compiler-stack closure landed the three remaining
 backend-pivot rows from the post-`5.9` audit. Sprint `4.6` flipped
 backend (i) cpp-legacy from `g++` to `clang++-19` (verbatim engine

@@ -138,7 +138,24 @@ rows joined the audit history; Sprint `8.15` recorded the post-`5.7` honest
 rebaseline. After Sprint `5.8` further strengthened backend `(ii)`, Sprint
 `8.16` recorded the post-`5.8` rebaseline as the current-artifact evidence;
 the Sprint `8.14`/`8.15` rows are historical against the pre-`5.8` artefact.
-The apples-to-apples invariants Q3/Q4/Q6/Q7 hold per
+After Sprint `8.18` (profile-driven arm64 recovery; Stage 1
+`Data.Array.Base.unsafeRead`/`unsafeWrite` accepted, Stages 2-5
+ledgered), the post-`8.18` `mcts test all` measurement is the current
+arm64 evidence: arm64 (Apple Silicon Docker)
+`Trails parity band by 85.6%` and amd64 (caledon)
+`Trails parity band by 29.5%`, both with Q3/Q4/Q6/Q7 PASS and
+`normalized_divergence_score=0.0000`; see
+[../../bench-profiles/diagnosis-final.md](../../bench-profiles/diagnosis-final.md)
+for the cross-platform A/B methodology. Sprint `8.19`
+(Dockerfile-level aarch64 mcpu unblock; closed 2026-05-30
+**measured but rejected**) attempted to recover the arm64-specific
+delta via a wrapper-routed `-mcpu=apple-m1` but recorded a `-51%`
+Haskell Q1b ST regression on Docker-on-Apple-Silicon because LSE /
+`rcpc-immo` atomics emitted by `llc-19 -mcpu=apple-m1` execute
+slower than baseline ARMv8 LL/SC atomics GHC's RTS was tuned
+against; toolchain reverted. The Sprint `8.18` measurement above
+remains the current arm64 evidence. The apples-to-apples invariants
+Q3/Q4/Q6/Q7 hold per
 [compiler_runtime_tuning.md → Performance Measurement Doctrine](./compiler_runtime_tuning.md#performance-measurement-doctrine).
 
 ## Legacy C++ Basis

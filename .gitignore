@@ -1,5 +1,6 @@
 .claude/
 .mcts-cache/
+bench-profiles/
 transcripts/
 **/transcripts/
 test/golden/

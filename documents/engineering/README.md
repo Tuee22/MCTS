@@ -52,7 +52,7 @@ own their content outright.
 | [transcript_format.md](./transcript_format.md) | Little-endian binary wire format, single-byte action enumeration, content addressing, git-style hash-prefix lookup |
 | [backend_ffi_contract.md](./backend_ffi_contract.md) | C ABI shape across the live C-ABI backends, `unsafe`/`safe` import policy, `--rng cpp` plumbing, canonical FFI load names, and the one-bolted-library-per-backend runtime contract |
 | [backend_style_contract.md](./backend_style_contract.md) | Functional-core style contract for backends (iii), (iv), and (v): compact value state, typed action transitions, deterministic legal-action order, permitted local mutation, and completed Rust hot-path alignment |
-| [compiler_runtime_tuning.md](./compiler_runtime_tuning.md) | Per-backend tuning stack: legacy (i) exemption, (ii)/(iii) doctrine flag set, mandatory Dockerfile-time bounded PGO/BOLT success for steelman foreign backends, closed Sprint `5.7` backend `(ii)` kernel/profile target, (iv) Rust `[profile.release]` and hot-path refactor, (v) Haskell GHC/LLVM/RTS tuning, Haskell PGO asymmetry note |
+| [compiler_runtime_tuning.md](./compiler_runtime_tuning.md) | Per-backend tuning stack: legacy (i) exemption, (ii)/(iii) doctrine flag set, mandatory Dockerfile-time bounded PGO/BOLT success for steelman foreign backends, closed Sprint `5.7` backend `(ii)` kernel/profile target, (iv) Rust `[profile.release]` and hot-path refactor, (v) Haskell GHC/LLVM/RTS tuning (including Sprint `8.18` `unsafeRead`/`unsafeWrite` arena and Sprint `8.19` aarch64 mcpu resolution `measured but rejected`), comprehensive five-factor arm64 Performance Gap Anatomy, Haskell PGO asymmetry note |
 
 ## Quick Navigation
 
@@ -101,6 +101,9 @@ own their content outright.
 - [PGO/BOLT Training Workload Doctrine](./compiler_runtime_tuning.md#pgobolt-training-workload-doctrine)
 - [Backend (iv) Rust `[profile.release]`](./compiler_runtime_tuning.md#rust-profile)
 - [Backend (v) Haskell GHC/RTS](./compiler_runtime_tuning.md#haskell-tuning)
+- [Sprint 8.18 Backend (v) Arena `unsafeRead`/`unsafeWrite`](./compiler_runtime_tuning.md#sprint-818-backend-v-arena-unsafereadunsafewrite)
+- [Sprint 8.19 aarch64 mcpu resolution (measured but rejected)](./compiler_runtime_tuning.md#sprint-819-aarch64-mcpu-resolution)
+- [arm64 Performance Gap Anatomy](./compiler_runtime_tuning.md#arm64-performance-gap-anatomy) — comprehensive five-factor explanation of the lingering arm64-specific gap and what is/isn't recoverable
 - [One-Known-Asymmetry PGO Note](./compiler_runtime_tuning.md#pgo-asymmetry)
 
 ### Testing

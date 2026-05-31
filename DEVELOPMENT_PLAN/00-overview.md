@@ -276,6 +276,45 @@ The Sprint `6.9`, `6.10`, and `8.17` rows all moved to Completed in
 [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md);
 the `8.17` row carries the `measured but rejected` notation.
 
+Sprint `8.18` closed on 2026-05-30 with the profile-driven arm64
+recovery investigation. A cross-platform A/B measurement between an
+Apple Silicon arm64 Docker host and an x86_64 amd64 host (caledon),
+both running the same `docker/Dockerfile`, GHC `9.14.1`, and LLVM
+`19`, confirmed the cohort-vs-Haskell gap is dramatically wider on
+arm64 (`mcts test all` verdict `Trails parity band by 85.6%`) than
+on amd64 (`29.5%`; Q1b MT8 ratio `1.06x`; Haskell MT8 search scaling
+`6.36x` outperforms backend `(ii)`'s `5.38x`). Sprint `8.18` Stage 1
+accepted one Haskell-source change (`src/MCTS/Search/Arena.hs` →
+`Data.Array.Base.unsafeRead`/`unsafeWrite` for the Arena read/write
+helpers; +4-8% Q1a ST arm64 focused-bench, amd64 flat); Stages 2-5
+ledgered (toolchain `mcpu` unblock root-caused to binutils-2.42 LSE
+rejection, `Float`→`Word32` bitcast neutral, rollout worker-wrapper
+asm-skipped, NCG `-fasm` -3.45% vs `-fllvm`). Authoritative
+investigation methodology and per-stage records live in
+`bench-profiles/diagnosis-final.md` and
+`bench-profiles/stage{1..5}-result.md`; see
+[phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md)
+Sprint `8.18` section for the closure narrative.
+
+Sprint `8.19` closed 2026-05-30 with the Dockerfile-level aarch64
+mcpu unblock **measured but rejected**. The wrapper-routed Approach
+A (settings patch on `pgm_c` + `LLVM llvm-as command`, cabal
+`if arch(aarch64) ghc-options -optlo-mcpu=apple-m1
+-optlc-mcpu=apple-m1`) built cleanly with closure gates PASS, but
+the arm64 `mcts test all` verdict regressed from Sprint `8.18`'s
+`85.6%` to `268.7%` because LSE / `rcpc-immo` atomics emitted by
+`llc-19 -mcpu=apple-m1` execute slower than the baseline ARMv8
+LL/SC atomics GHC's RTS was tuned against on Docker-on-Apple-Silicon
+(Haskell Q1b ST -51%; cohort C++/Rust within noise — rules out
+broader side-effects). Reverted to byte-identical pre-`8.19`
+toolchain state. The documented aarch64 mcpu deferral now stands on
+two load-bearing grounds: binutils-2.42 assembler rejection
+(toolchain-fixable) plus the measured Haskell-runtime regression
+from LSE/rcpc-immo atomics (not toolchain-fixable from this
+project's side). Phase `8` returns to ✅ Done. See
+[phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md)
+Sprint `8.19` Closure Notes for the full measurement table.
+
 ## Target Outcome
 
 One `mcts` Haskell CLI binary, built by Cabal under GHC `9.14.1` and Cabal

@@ -1,5 +1,6 @@
 .git
 .claude
+bench-profiles
 dist-newstyle
 .mcts-cache
 transcripts

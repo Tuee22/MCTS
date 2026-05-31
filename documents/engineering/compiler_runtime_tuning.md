@@ -622,9 +622,25 @@ evidence.
 published so `mcts test all` executes prebuilt stanzas rather than compiling them
 on first use.
 
-`-optlo-mcpu=native` and `-optlc-mcpu=native` remain deferred on the documented
-aarch64 assembler limitation: enabling them inside the pinned container can emit
-LSE instructions that the assembler rejects. GHC's LLVM backend uses the pinned
+`-optlo-mcpu=native` and `-optlc-mcpu=native` remain deferred on aarch64 on
+two load-bearing grounds. **First**, the documented assembler limitation:
+enabling them inside the pinned container emits LSE / `rcpc-immo` instructions
+that binutils-2.42 rejects (Sprint `8.18` Stage 2 confirmed with four
+cabal-only attempts; see
+[../../bench-profiles/stage2-result.md](../../bench-profiles/stage2-result.md)).
+**Second**, a Haskell-runtime regression: Sprint `8.19`
+[§ Sprint 8.19 aarch64 mcpu resolution](#sprint-819-aarch64-mcpu-resolution)
+worked around the assembler limitation with a wrapper-routed Approach A and
+measured a **-51% Haskell-only regression** on Q1b ST (arm64 verdict
+`85.6% → 268.7%`) because LSE / `rcpc-immo` atomics emitted by
+`llc-19 -mcpu=apple-m1` execute slower than the baseline ARMv8 LL/SC atomics
+GHC's RTS was tuned against under Docker-on-Apple-Silicon — the cohort
+C++/Rust backends are unaffected (rules out broader side-effects). The
+deferral therefore stands not only on toolchain compatibility but on
+Haskell-specific runtime behaviour that is not fixable from this project's
+toolchain side. See
+[../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md → Sprint 8.19](../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md#sprint-819-dockerfile-level-aarch64-toolchain-unblock-)
+Closure Notes for the full measurement table. GHC's LLVM backend uses the pinned
 LLVM toolchain carried by `docker/Dockerfile`. `INLINABLE` pragmas
 are landed on the hot path: every primitive in `MCTS.Search.Arena`,
 `MCTS.Search.UCT`, `MCTS.Rng.Mix`, and the exported engine functions
@@ -689,6 +705,84 @@ and reverts the migration. Q3/Q4/Q6/Q7 continue to gate closure; the verdict
 line remains informational per
 [Performance Measurement Doctrine](#performance-measurement-doctrine).
 
+### Sprint 8.18 Backend (v) Arena unsafeRead/unsafeWrite
+
+Sprint `8.18` Stage 1 swapped the eight `MCTS.Search.Arena` read/write
+helpers from `Data.Array.ST.{readArray,writeArray}` to
+`Data.Array.Base.{unsafeRead,unsafeWrite}` indexed by
+`fromIntegral nid :: Int`. The arena's callers in `MCTS.Search.UCT`
+produce indices via `firstChild + i` arithmetic where `0 <= i <
+numChildren` and the cursor monotonically grows to a pre-computed
+capacity; indices are provably in-range, so the bounds checks that
+`Data.Array.ST` emits are pure overhead. Post-change the eight Arena
+helpers fully inline into the UCT descent path; `UCT.descend$w` shrinks
+from 456 B to 92 B on arm64 (no standalone `Arena.addVisitValue` /
+`readVisits` / etc. symbols remain in the binary). Focused 3-rep
+arm64 Q1a ST: `+7.97%` (22881.9 → 24705.1 playouts/s); amd64 within
+±2-4% noise. Validation: `mcts test all` PASS on both hosts;
+Q3/Q4/Q6/Q7 PASS; `normalized_divergence_score=0.0000`. See
+[../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md → Sprint 8.18](../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md#sprint-818-profile-driven-arm64-recovery-)
+for the full investigation (cross-platform A/B with caledon amd64
+host, four ledgered recovery attempts beyond Stage 1, asm-level
+verification).
+
+### Sprint 8.19 aarch64 mcpu resolution
+
+Sprint `8.19` closed 2026-05-30 with the Dockerfile-level aarch64
+mcpu unblock **measured but rejected**. The wrapper-routed
+Approach A (`docker/Dockerfile` installs a 7-line
+`/usr/local/bin/clang-19-aarch64-apple-m1` wrapper exec'ing
+`clang-19 -mcpu=apple-m1`; GHC's `$GHC_LIB/settings` patched so
+both `("C compiler command", ...)` and **`("LLVM llvm-as command",
+...)`** route through the wrapper; `mcts.cabal` re-adds
+`if arch(aarch64) ghc-options: -optlo-mcpu=apple-m1
+-optlc-mcpu=apple-m1`) successfully unblocks the build:
+binutils-2.42 no longer rejects the LSE / `rcpc-immo` atoms because
+they are now assembled by clang's integrated assembler under
+`-mcpu=apple-m1`. The build passes `mcts test all` with Q3/Q4/Q6/Q7
+PASS and `normalized_divergence_score=0.0000` preserved.
+
+**Empirical lesson on GHC -fllvm assembly stage routing.** Patching
+only `("C compiler command", ...)` (pgm_c) is **not sufficient** —
+GHC's `-fllvm` LLVM-assembler stage invokes the `LLVM llvm-as
+command`, not pgm_c, for `.s → .o`. `-opta-*` flags also do not
+propagate to that stage. Both settings entries must be patched to
+route through the wrapper.
+
+**Performance verdict: rejected.** Even with the unblock working
+correctly at the code-generation level, the measurement on
+Docker-on-Apple-Silicon recorded a **-51% Haskell-only** regression:
+
+| Metric             | Sprint `8.18` arm64 | Sprint `8.19` arm64 | Δ          |
+|--------------------|--------------------:|--------------------:|-----------:|
+| Q1a ST ratio       | `1.60x`             | `3.46x`             | +116%      |
+| Q1b ST ratio       | `1.63x`             | `3.53x`             | +117%      |
+| Q2 ST ratio        | `1.49x`             | `3.19x`             | +114%      |
+| Haskell Q1b ST     | `~24779`            | `12195.2`           | **-51%**   |
+| Verdict            | `85.6%`             | `268.7%`            | worse      |
+
+Cohort C++/Rust rates were within ±3% of Sprint `8.18` (rules out
+broader toolchain side-effects); the regression is **Haskell-only**.
+The cause: LSE / `rcpc-immo` atomics emitted by `llc-19
+-mcpu=apple-m1` execute slower than the baseline ARMv8 LL/SC atomics
+GHC's RTS was tuned against under Docker-on-Apple-Silicon. GHC's
+RTS atomic-heavy code (capability scheduling, MVar wakeups,
+thread-local storage, allocator-block locking) is the load-bearing
+path; cohort C++/Rust backends, which were already compiled with
+clang `-march=native -mtune=native` and thus already use LSE/rcpc,
+are unaffected.
+
+**Result.** `docker/Dockerfile` and `mcts.cabal` reverted to
+byte-identical pre-`8.19` state. The Sprint `8.18` Stage 1 accepted
+change in `src/MCTS/Search/Arena.hs`
+(`Data.Array.Base.unsafeRead`/`unsafeWrite`) remains in effect.
+The aarch64 mcpu deferral above now has two load-bearing reasons
+(assembler limitation + Haskell-runtime regression); arm64 recovery
+beyond Sprint `8.18` Stage 1 requires upstream GHC/LLVM/RTS work
+outside this project's control. See
+[../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md → Sprint 8.19](../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md#sprint-819-dockerfile-level-aarch64-toolchain-unblock-)
+Closure Notes for the full validation/measurement record.
+
 ### Sprint 8.2 — Profile-Driven Hot-Path Tuning Rounds
 
 The historical `mcts-criterion` benchmark stanza in `mcts.cabal` records per-call
@@ -736,6 +830,219 @@ search inner loop. Round 1 takes the rollout's per-step cost from ~1 ms to
   and frozen at the API boundary if tree-persistence semantics need it.
 - No `Maybe` or `Either` in the rollout inner loop; sentinel values or unboxed
   sum representations instead.
+
+## arm64 Performance Gap Anatomy
+
+The Sprint `8.18` cross-platform investigation
+(`bench-profiles/diagnosis-final.md`) established that the
+backend-(v)-Haskell-vs-cohort gap on Q1a/Q1b primitive throughput
+is **dramatically wider on arm64 than on amd64**, and Sprint `8.19`
+proved the residual is not recoverable from this project's
+toolchain or Haskell-source side. This section is the SSoT
+explanation of that gap. The Sprint `8.17` / `8.18` / `8.19`
+sub-sections above are the per-sprint implementation records; this
+section is the cause-and-effect synthesis.
+
+### Quantified gap
+
+Same `docker/Dockerfile`, same GHC `9.14.1`, same LLVM `19`, same
+`clang-19`, measured on the post-Sprint-`8.18` baseline image:
+
+| Cohort vs Haskell, Q1a ST | arm64 ratio | amd64 ratio | gap_arm64_specific |
+|---------------------------|------------:|------------:|-------------------:|
+| cpp-imperative            | `1.63x`     | `1.27x`     | `0.36` (44% of gap) |
+| cpp-functional            | `1.72x`     | `1.22x`     | `0.50` (69% of gap) |
+| **rust**                  | **`1.77x`** | **`1.12x`** | **`0.65` (84% of gap)** |
+
+Post-Sprint-`8.18` `mcts test all` verdicts: arm64
+`Trails parity band by 85.6%`, amd64
+`Trails parity band by 29.5%` (Q1b MT8 `1.06x` — essentially
+parity; **Q5 MT8 Haskell search scaling `6.36x` outperforms
+backend (ii)'s `5.38x`**). On amd64 Haskell is within `12%` of
+Rust on Q1a ST; on arm64 the same source is `77%` slower than
+Rust. The recoverable surface targeted by Sprints `8.18` and
+`8.19` was the 65-percentage-point arm64-specific delta on the
+headline Q1a ST / Rust ratio.
+
+### Five contributing factors
+
+The arm64-specific gap has **five distinct mechanisms**, each
+load-bearing. Removing any one would shrink the gap measurably;
+removing all five would close it. Sprint `8.18` source-level work
+addressed factor (1); Sprint `8.19` proved factor (2) is not
+recoverable from this project's side; factors (3), (4), (5) require
+upstream GHC / LLVM / RTS work.
+
+#### Factor 1 — Per-Arena-access bounds-check overhead (RECOVERED, +5pp arm64)
+
+`Data.Array.ST`'s `readArray`/`writeArray` emit array-bounds checks
+on every read and write. Visible in the captured arm64 asm of
+`MCTS.Search.Arena.addVisitValue` as 5-6 `cmp/setg/setl/test/b.gt`
+instructions out of ~16 total in the hot-path body; identical
+pattern with x86 mnemonics on amd64. The MCTS descent's
+`firstChild + i` arithmetic produces indices that are provably
+in-range (`0 ≤ i < numChildren`; cursor monotonically grows to a
+pre-computed capacity), so the bounds checks are pure overhead.
+
+**Sprint `8.18` Stage 1** swapped the eight Arena helpers to
+`Data.Array.Base.unsafeRead` / `unsafeWrite` indexed by
+`fromIntegral nid :: Int` (see
+[Sprint 8.18 sub-section above](#sprint-818-backend-v-arena-unsafereadunsafewrite)).
+Post-change, GHC fully inlines the Arena helpers into the UCT
+descent path; `UCT.descend$w` shrinks from 456 B to 92 B on arm64;
+no standalone `Arena.addVisitValue` / `readVisits` / etc. symbols
+remain in the binary. Focused 3-rep arm64 Q1a ST: `+7.97%`
+(22881.9 → 24705.1 playouts/s); amd64 within ±2-4% noise (already
+absorbed by amd64's wider OoO and CISC density). Within-Mac
+cohort/Haskell ratio: cpp-imperative/haskell `1.570x → 1.542x`
+(~5 percentage points of the 65pp recovered).
+
+#### Factor 2 — Deferred aarch64 `-mcpu=apple-m1` for GHC's LLVM pipeline (NOT RECOVERABLE)
+
+GHC's LLVM pipeline on aarch64 defaults to baseline ARMv8 codegen
+because pinning `-optlc-mcpu=apple-m1` causes `llc-19` to emit LSE
+(`ldadd`, `swpl`, `cas`) and `rcpc-immo` (`ldapur`) atomics that
+binutils-2.42's `as` rejects. Sprint `8.18` Stage 2 confirmed the
+mechanism with four cabal-only sub-variants
+(`-mcpu=apple-m1` with `-opta-mcpu`, `-opta-march=armv8.5-a`,
+`-mattr=-lse,-rcpc,-rcpc-immo`, and `-mtune=` in opt and llc
+forms); see `bench-profiles/stage2-result.md` for the per-variant
+ledger. Meanwhile, clang and rustc inside the same image *do*
+take `-march=native -mtune=native` and emit ARMv8.5+ (M-series)
+instructions freely — the cohort backends collect the M-series
+codegen win; backend (v) does not.
+
+**Sprint `8.19` Approach A** worked around the assembler limitation
+with a Dockerfile-installed 7-line
+`/usr/local/bin/clang-19-aarch64-apple-m1` shell wrapper exec'ing
+`/usr/bin/clang-19 -mcpu=apple-m1 "$@"`, plus a GHC `settings`
+patch routing both `("C compiler command", ...)` (pgm_c) **and**
+`("LLVM llvm-as command", ...)` through the wrapper. The second
+patch was load-bearing — GHC's `-fllvm` LLVM-assembler stage uses
+`LLVM llvm-as command`, not `pgm_c`, for `.s → .o`, and silently
+drops any `-opta-*` flags. With both patched, the build completed
+with `mcts test all` Q3/Q4/Q6/Q7 PASS and
+`normalized_divergence_score=0.0000` preserved. **The measurement
+rejected the change** — see
+[Sprint 8.19 sub-section above](#sprint-819-aarch64-mcpu-resolution).
+Net effect: arm64 verdict regressed `85.6% → 268.7%`; Haskell Q1b
+ST `~24779 → 12195.2` search-iters/s (**-51%**); cohort C++/Rust
+rates within ±3% (rules out broader side-effects). The deferral
+therefore stands on **two** load-bearing grounds:
+
+1. The original binutils-2.42 assembler rejection
+   (toolchain-fixable in principle by a newer binutils or the
+   wrapper, but only after factor 3 is addressed).
+2. The Haskell-runtime regression from factor 3 below
+   (**not** toolchain-fixable from this project's side).
+
+#### Factor 3 — GHC RTS atomics tuned to LL/SC, not LSE (NOT RECOVERABLE from project side)
+
+GHC's runtime system (capability scheduling, MVar wakeups,
+thread-local storage barriers, allocator-block locking, garbage
+collector stop-the-world coordination) is implemented with atomic
+operations whose performance characteristics are tuned to the
+baseline ARMv8 load-linked / store-conditional (LL/SC) primitives.
+When `llc -mcpu=apple-m1` lowers those atomic operations to LSE
+(`ldadd`, `swpl`, `cas`) or `rcpc-immo` (`ldapur`) instructions
+instead — instructions which are architecturally *supposed* to be
+faster — the resulting Haskell binary runs **measurably slower**
+under Docker-on-Apple-Silicon. Sprint `8.19` quantified this as a
+`-51%` Q1b ST regression with no change to the user-facing hot
+loop (cohort backends already use LSE/rcpc via clang/rustc
+`-march=native` and are unaffected; the regression is Haskell-only
+and isolated to the RTS atomic path).
+
+The probable cause is the Docker-on-macOS host-OS layer's
+emulation or trap behaviour for these instruction encodings; bare
+ARMv8.5 silicon (e.g., a native macOS process or a non-Docker
+Linux on the same chip) would likely show the expected LSE
+speedup. This project does not optimise for bare-metal arm64; the
+supported workflow runs in Docker per `CLAUDE.md`, and that's
+where the measurement lives. Recovering this requires either a
+patched GHC RTS that uses LL/SC even under `-mcpu=apple-m1`, an
+LLVM build with different atomic lowering heuristics, or a base
+image whose virtualisation layer doesn't penalise these
+instructions — all upstream work.
+
+#### Factor 4 — GHC LLVM aarch64 codegen maturity (NOT RECOVERABLE from project side)
+
+GHC's primary x86_64 test surface has been tuned for decades.
+aarch64 LLVM output has historically had rougher edges in register
+allocation (around `Float` ops crossing GPR↔NEON banks), NEON
+instruction selection, and code-density-driven scheduling.
+Sprint `8.18` Stage 3 (`STUArray s NodeId Float` → `STUArray s
+NodeId Word32` + bitcast) tested the GPR↔NEON-bank hypothesis
+directly; the change is bit-identical at the LLVM-IR level
+(register-class promotion eliminates the hypothesised crossings)
+and measured `+0.04%` arm64 / `-0.4%` amd64 — within noise.
+That rules out the specific bank-crossing mechanism but leaves
+broader codegen-maturity factors (less aggressive instruction
+selection, larger emitted code per Haskell function, weaker
+branch-prediction-friendly scheduling) that show up as ~10-18%
+larger Haskell hot-loop bodies on arm64 vs amd64 in absolute byte
+size (per the asm symbol-size inventory in
+`bench-profiles/{arm64-local,amd64-caledon}/uct-arena-hotloop.asm`).
+Recovery requires upstream GHC work on the LLVM aarch64 backend.
+
+#### Factor 5 — Apple Silicon microarchitecture amplification (NOT RECOVERABLE)
+
+M-series chips have wide (8-wide) decode and large reorder
+buffers. This amplifies codegen-quality differences: already-good
+clang/rustc output benefits more than middling GHC-LLVM output.
+The same codegen-quality delta shows up smaller on amd64's
+narrower-pipeline server-class chip. This is also why x86 CISC
+density (memory-operand instructions like
+`incl 0x10(%r8,%rax,4)` — single insn — vs arm64 `ldr/add/str` —
+three insns — on every visit-count increment) closes some of the
+gap on amd64 that opens it on arm64. Not actionable; constraint
+on what is theoretically recoverable rather than something
+fixable.
+
+### What's NOT a contributor (ruled out empirically)
+
+- **GC/allocator overhead.** `+RTS -s` recorded **99.3% productivity
+  on arm64** and **99.7% on amd64**; GC time 0.0-0.3% of total. The
+  `-A64m -n4m -qg1 -qb -T` RTS tuning has absorbed the 558 MB heap
+  traffic (Board + ActionIds per rollout step) on both platforms.
+- **LLVM version asymmetry.** GHC 9.14.1 uses `llc-19` / `opt-19`
+  (LLVM 19.1.1), same major version as `clang-19`. Confirmed via
+  `ghc --info | grep -i llvm`.
+- **Rejected-ledger candidates from Sprints `8.15` / `8.17` /
+  `8.18`.** Iterative descent, single-buffer `MutableByteArray#`
+  arena, strict `quotRem` index decode, direct wall-bit-index
+  apply, forced splitmix inlining, bulk arena child reservation,
+  GHC NCG (`-fasm`), rollout worker-wrapper (asm-justified skip),
+  `Float`→`Word32` arena bitcast — all measured-but-rejected or
+  asm-skipped. None of these would close the arm64-specific delta
+  because their mechanisms are platform-agnostic.
+
+### Honest residual
+
+After Sprint `8.18` Stage 1, the arm64 verdict is `~83-86%`
+(Trails parity band; verdict-line variance within doctrine noise).
+The 65-percentage-point arm64-specific surface decomposes as:
+
+| Component                                  | Status                              | Recovery |
+|--------------------------------------------|-------------------------------------|---------:|
+| Factor 1 (bounds-check overhead)           | Recovered by Sprint `8.18` Stage 1  | ~5pp     |
+| Factor 2 (mcpu unblock, code-gen side)     | Recoverable but **counter-productive** under Factor 3 | 0pp |
+| Factor 3 (RTS atomic / LSE mismatch)       | Upstream GHC RTS work               | n/a      |
+| Factor 4 (aarch64 LLVM codegen maturity)   | Upstream GHC work                   | n/a      |
+| Factor 5 (microarch amplification)         | Architectural constraint            | n/a      |
+
+The post-`8.18` measurement is the **honest current state**: arm64
+`Trails parity band by ~85%`, amd64 `Trails parity band by ~30%`,
+both with Q3/Q4/Q6/Q7 PASS and
+`normalized_divergence_score=0.0000`. Further arm64 recovery
+beyond Sprint `8.18` Stage 1 requires either (a) upstream GHC
+work on aarch64 LLVM codegen + RTS atomic tuning, or (b) a
+different runtime substrate (bare-metal Linux instead of
+Docker-on-macOS) that does not penalise LSE/`rcpc-immo` atomics.
+Neither is in scope for this project. The Performance Measurement
+Doctrine (below) preserves Q3/Q4/Q6/Q7 as the closure gates so
+this honest measurement does not block closure of `mcts test
+all`; the verdict line records it honestly.
 
 ## PGO Asymmetry
 

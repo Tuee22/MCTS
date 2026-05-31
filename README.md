@@ -31,7 +31,7 @@ The Docker image build compiles the `mcts` executable with tests and benchmarks 
 | (ii) | C++ imperative steelman | `cpp-imperative` | Maximally optimised C++ performance ceiling. Sprint `5.7` closed the remaining hot-path steelman work: action-id successor generation, absolute side-to-move board state, action-only/SoA tree storage, reusable wall-block masks, internal trusted apply/cache paths, and representative PGO+BOLT training. Sprint `5.8` closed the residual squeeze: bidirectional wall-legality BFS, `UctNode` cache-line-padding removed, additive `-fno-stack-protector -fno-rtti -fipa-pta`, and extended BOLT `-split-functions -split-strategy=cdsplit -reorder-functions=cdsort -icf=1`. Visit-payload contract and C ABI unchanged (`normalized_divergence_score=0.0000` in the Sprint `8.16` rebaseline). |
 | (iii) | C++ functional-core | `cpp-functional` | Functional-core C++23 steelman under the same optimisation stack as (ii), using compact value-state search, numeric actions, direct capped legal generation, and the shared style followed by (iv) and (v). Sprint `6.9` closed the remaining backend-(ii) hot-path shape gap inside the functional-core boundary: absolute `SideToMove`, reusable `BlockMasks` precomputed once per `legal_actions`, bidirectional bit-parallel BFS in `path_exists_with_masks`, action-only `UctNode` with `State` materialized on the descent stack, and the Sprint `5.8` C++ flag/BOLT scrub on `cpp-functional/Makefile`. Backend (iii) now matches (and marginally exceeds) backend (ii) on Q1a/Q1b primitive throughput while Q3/Q4/Q6/Q7 remain bit-identical (`normalized_divergence_score=0.0000`). |
 | (iv) | Rust | `rust` | Cross-language systems baseline using a compatible functional-core value-state and FFI/search/recompute contract; Sprint `6.8` aligned its hot path with `(iii)`/`(v)` using bit-parallel path checks, stack action buffers, child-bound arena sizing, and board-local visit caching. Sprint `6.10` closed the remaining backend-(ii) hot-path shape gap by relocating the `last_visit_*` cache off `MctsRustBoard` onto the opaque `RustBoardHandle` declared in `rust/src/c_abi.rs` (per the style contract), adopting absolute `SideToMove`, the reusable `BlockMasks` additive pattern, bidirectional `u128` BFS in `path_exists_with_masks`, the action-only `Vec<Node>` arena in `tree.rs`, and an inlining/cold-path audit. Backend (iv) now leads the cohort on every primitive metric while Q3/Q4/Q6/Q7 remain bit-identical (`normalized_divergence_score=0.0000`). |
-| (v) | Haskell | `haskell` | Native in-process target backend; pure API surface, compact value board, direct slot-based path checks, and `ST`-arena internals. Sprint `8.17` closed with the `MutableByteArray# s` arena migration **measured but rejected** (single-buffer `STUArray s Int Word32` with named per-field offsets regressed focused Haskell rates by `Q1a -5.5%` / `Q1b -1.1%` ST against the Sprint `8.13` six-slab baseline, reverted under the Performance Measurement Doctrine) and the descent/rollout `INLINE` audit recorded as no-op. The remaining Haskell shortfall against the foreign cohort sits in the documented PGO-asymmetry band; Q3/Q4/Q6/Q7 remain bit-identical (`normalized_divergence_score=0.0000`). |
+| (v) | Haskell | `haskell` | Native in-process target backend; pure API surface, compact value board, direct slot-based path checks, and `ST`-arena internals. Sprint `8.17` closed with the `MutableByteArray# s` arena migration **measured but rejected** (single-buffer `STUArray s Int Word32` with named per-field offsets regressed focused Haskell rates by `Q1a -5.5%` / `Q1b -1.1%` ST against the Sprint `8.13` six-slab baseline, reverted under the Performance Measurement Doctrine) and the descent/rollout `INLINE` audit recorded as no-op. Sprint `8.18` closed the cabal-only arm64 recovery ceiling at `+4-8%` Q1a ST on arm64 with `Data.Array.Base.unsafeRead`/`unsafeWrite` for the eight Arena read/write helpers (amd64 flat; Q3/Q4/Q6/Q7 bit-identical); four other Stage-2..5 candidates ledgered. Sprint `8.19` closed 2026-05-30 with the Dockerfile-level aarch64 mcpu unblock **measured but rejected**: the wrapper-routed `-mcpu=apple-m1` worked at the code-generation level (Q3/Q4/Q6/Q7 PASS, `normalized_divergence_score=0.0000`) but regressed Haskell Q1b ST by `-51%` on Docker-on-Apple-Silicon because LSE / `rcpc-immo` atomics execute slower than baseline ARMv8 LL/SC atomics GHC's RTS was tuned against; cohort C++/Rust unaffected (rules out side-effects). Reverted to byte-identical pre-`8.19` toolchain. The aarch64 mcpu deferral now stands on two load-bearing grounds (assembler limitation + Haskell-runtime regression). See [DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md](DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md) Sprint `8.19` and [compiler_runtime_tuning.md → Sprint 8.19 aarch64 mcpu resolution](documents/engineering/compiler_runtime_tuning.md#sprint-819-aarch64-mcpu-resolution). |
 
 Backends (i)..(iv) are loaded through stable C ABIs from canonical shared libraries produced during the Dockerfile build. Backend (v) runs in-process. Rust now uses the same functional-core hot-path shape as `(iii)` and `(v)` while remaining a raw-performance context row rather than the Q1/Q2 verdict target. The authoritative backend, style, and FFI details live in [backend_style_contract.md](documents/engineering/backend_style_contract.md), [backend_ffi_contract.md](documents/engineering/backend_ffi_contract.md), and [compiler_runtime_tuning.md](documents/engineering/compiler_runtime_tuning.md). Sprint `5.7` kept the `(ii)` public ABI stable while replacing internal search-kernel and profile-training paths.
 
@@ -85,6 +85,66 @@ and Sprint `8.17`'s `MutableByteArray#` arena migration was reverted
 as `measured but rejected` (focused Haskell rates regressed against
 the Sprint `8.13` six-slab baseline). The remaining Haskell shortfall
 sits in the documented PGO-asymmetry band.
+
+Sprint `8.18` (2026-05-30) closes the cross-platform recovery
+investigation. The cross-host A/B measurement (Apple Silicon Mac
+Docker arm64 vs caledon x86_64 amd64, same `docker/Dockerfile`, same
+GHC 9.14.1, same LLVM 19) shows the cohort-vs-Haskell gap is
+**dramatically wider on arm64 than on amd64**: post-Sprint-`8.18`
+`mcts test all` records `Trails parity band by 85.6%` on arm64
+(Q1a `1.60x` ST / `1.86x` MT8, Q1b `1.63x` / `1.69x`, Q2 `1.49x` /
+`1.68x`) but only `29.5%` on amd64 (Q1a `1.25x` ST / `1.28x` MT8,
+Q1b `1.25x` / `1.06x`, Q2 `1.14x` / `1.29x`; **Q5 MT8 search
+scaling Haskell `6.36x` beats backend `(ii)` `5.38x`**). Both
+exit 0 with Q3/Q4/Q6/Q7 PASS and
+`normalized_divergence_score=0.0000`. One Haskell-source change
+accepted (`src/MCTS/Search/Arena.hs` →
+`Data.Array.Base.unsafeRead`/`unsafeWrite` for all eight read/write
+helpers, eliminating per-access bounds-check insns; +4-8% Q1a ST
+arm64 focused-bench gain, amd64 flat). Four other recovery attempts
+ledgered as measured-but-rejected or asm-skipped: `-mcpu=apple-m1`
+toolchain unblock (binutils-2.42 rejects LSE atomics; out of cabal
+scope, needs Dockerfile work), `Float`→`Word32` bitcast in arena
+(LLVM register-class promotion eliminates the hypothesised GPR↔NEON
+crossings), hand-written rollout worker-wrapper (asm shows GHC's
+auto-wrapper already produces the optimal calling convention), and
+GHC NCG `-fasm` on aarch64 (-3.45% vs `-fllvm`). See
+[`bench-profiles/diagnosis-final.md`](bench-profiles/diagnosis-final.md)
+for the cross-platform investigation and
+[`bench-profiles/stage{1..5}-result.md`](bench-profiles/)
+for per-stage accept/reject records. **The 65-percentage-point
+arm64-specific portion of the gap identified in the investigation is
+characterised as ~5pp recovered by Stage 1 + ~60pp blocked on the
+binutils/assembler issue (Dockerfile-level work).**
+
+Sprint `8.19` closed 2026-05-30 with the Dockerfile-level aarch64
+mcpu unblock **measured but rejected**. The wrapper-routed
+Approach A (`docker/Dockerfile` installs
+`/usr/local/bin/clang-19-aarch64-apple-m1` wrapping `clang-19
+-mcpu=apple-m1`; GHC settings patched so both `pgm_c` and `LLVM
+llvm-as command` route through the wrapper — the second sed
+load-bearing for the `-fllvm` LLVM-assembler stage; cabal
+`if arch(aarch64) ghc-options: -optlo-mcpu=apple-m1
+-optlc-mcpu=apple-m1`) built cleanly with all closure gates PASS
+(Q3/Q4/Q6/Q7, `normalized_divergence_score=0.0000`). **Measurement
+rejected:** arm64 `mcts test all` verdict regressed from Sprint
+`8.18`'s `85.6%` to `268.7%`; Haskell Q1b ST `~24779 → 12195.2`
+search-iters/s (`-51%`); Q1a/Q1b/Q2 ratios all roughly doubled.
+Cohort C++/Rust rates within ±3% (rules out broader side-effects);
+the regression is **Haskell-only**. Root cause: LSE / `rcpc-immo`
+atomics emitted by `llc-19 -mcpu=apple-m1` execute slower than
+baseline ARMv8 LL/SC atomics GHC's RTS was tuned against on
+Docker-on-Apple-Silicon. `docker/Dockerfile` and `mcts.cabal`
+reverted to byte-identical pre-`8.19` state; the Sprint `8.18`
+Stage 1 accepted change in `src/MCTS/Search/Arena.hs` remains in
+effect. The aarch64 mcpu deferral now stands on two load-bearing
+grounds: binutils-2.42 assembler rejection (toolchain-fixable) plus
+the Haskell-specific runtime regression (not toolchain-fixable from
+this project's side). Further arm64 recovery requires upstream
+GHC/LLVM/RTS work outside this project's control. See
+[DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md → Sprint 8.19](DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md#sprint-819-dockerfile-level-aarch64-toolchain-unblock-)
+and
+[compiler_runtime_tuning.md → Sprint 8.19 aarch64 mcpu resolution](documents/engineering/compiler_runtime_tuning.md#sprint-819-aarch64-mcpu-resolution).
 
 Under the reframed doctrine, Q1, Q2, and Q5 are measurement questions and a
 Haskell shortfall is recorded honestly with PGO-asymmetry attribution; closure

@@ -17,6 +17,15 @@
 -- as `measured but rejected` per the Performance Measurement Doctrine.
 -- The exported API is the load-bearing surface and remains stable
 -- across any future profile-driven migration.
+--
+-- Sprint 8.18 uses `Data.Array.Base.unsafeRead`/`unsafeWrite` for all
+-- hot-path arena slot accesses. Indices are produced by `allocNode`
+-- (which advances the cursor monotonically up to `arenaCapacity_`) and
+-- by `firstChild + i` arithmetic in `MCTS.Search.UCT` (where
+-- `0 <= i < numChildren` and every child slot was allocated before
+-- it is read). Indices are therefore provably in `[0, capacity)`; the
+-- bounds checks that `Data.Array.ST.readArray`/`writeArray` emit are
+-- pure overhead on this call path.
 module MCTS.Search.Arena
     ( NodeId
     , Arena
@@ -41,7 +50,8 @@ module MCTS.Search.Arena
     ) where
 
 import Control.Monad.ST (ST)
-import Data.Array.ST (STUArray, newArray, readArray, writeArray)
+import Data.Array.Base (unsafeRead, unsafeWrite)
+import Data.Array.ST (STUArray, newArray)
 import Data.Int (Int32)
 import Data.STRef (STRef, modifySTRef', newSTRef, readSTRef, writeSTRef)
 import Data.Word (Word8)
@@ -100,64 +110,75 @@ allocNode arena parent action = do
     if idx >= arenaCapacity_ arena
         then error "MCTS.Search.Arena: arena overflow"
         else do
-            let nid = fromIntegral idx
-            writeArray (arenaParent arena) nid parent
-            writeArray (arenaFirstChild arena) nid (-1)
-            writeArray (arenaNumChildren arena) nid 0
-            writeArray (arenaActionId arena) nid action
-            writeArray (arenaVisits arena) nid 0
-            writeArray (arenaValueSum arena) nid 0
+            let nid = fromIntegral idx :: NodeId
+                off = idx
+            unsafeWrite (arenaParent arena) off parent
+            unsafeWrite (arenaFirstChild arena) off (-1)
+            unsafeWrite (arenaNumChildren arena) off 0
+            unsafeWrite (arenaActionId arena) off action
+            unsafeWrite (arenaVisits arena) off 0
+            unsafeWrite (arenaValueSum arena) off 0
             modifySTRef' (arenaCursor arena) (+ 1)
             pure nid
 
 {-# INLINEABLE readVisits #-}
 readVisits :: Arena s -> NodeId -> ST s Int32
-readVisits arena = readArray (arenaVisits arena)
+readVisits arena nid =
+    unsafeRead (arenaVisits arena) (fromIntegral nid)
 
 {-# INLINEABLE addVisits #-}
 addVisits :: Arena s -> NodeId -> Int32 -> ST s ()
 addVisits arena nid n = do
-    !current <- readArray (arenaVisits arena) nid
-    writeArray (arenaVisits arena) nid (current + n)
+    let !off = fromIntegral nid
+    !current <- unsafeRead (arenaVisits arena) off
+    unsafeWrite (arenaVisits arena) off (current + n)
 
 {-# INLINEABLE readValueSum #-}
 readValueSum :: Arena s -> NodeId -> ST s Float
-readValueSum arena = readArray (arenaValueSum arena)
+readValueSum arena nid =
+    unsafeRead (arenaValueSum arena) (fromIntegral nid)
 
 {-# INLINEABLE addValueSum #-}
 addValueSum :: Arena s -> NodeId -> Float -> ST s ()
 addValueSum arena nid v = do
-    !current <- readArray (arenaValueSum arena) nid
-    writeArray (arenaValueSum arena) nid (current + v)
+    let !off = fromIntegral nid
+    !current <- unsafeRead (arenaValueSum arena) off
+    unsafeWrite (arenaValueSum arena) off (current + v)
 
 {-# INLINEABLE addVisitValue #-}
 addVisitValue :: Arena s -> NodeId -> Float -> ST s ()
 addVisitValue arena nid v = do
-    !currentVisits <- readArray (arenaVisits arena) nid
-    writeArray (arenaVisits arena) nid (currentVisits + 1)
-    !currentValue <- readArray (arenaValueSum arena) nid
-    writeArray (arenaValueSum arena) nid (currentValue + v)
+    let !off = fromIntegral nid
+    !currentVisits <- unsafeRead (arenaVisits arena) off
+    unsafeWrite (arenaVisits arena) off (currentVisits + 1)
+    !currentValue <- unsafeRead (arenaValueSum arena) off
+    unsafeWrite (arenaValueSum arena) off (currentValue + v)
 
 {-# INLINEABLE readActionId #-}
 readActionId :: Arena s -> NodeId -> ST s Word8
-readActionId arena = readArray (arenaActionId arena)
+readActionId arena nid =
+    unsafeRead (arenaActionId arena) (fromIntegral nid)
 
 {-# INLINEABLE readParent #-}
 readParent :: Arena s -> NodeId -> ST s NodeId
-readParent arena = readArray (arenaParent arena)
+readParent arena nid =
+    unsafeRead (arenaParent arena) (fromIntegral nid)
 
 {-# INLINEABLE readFirstChild #-}
 readFirstChild :: Arena s -> NodeId -> ST s NodeId
-readFirstChild arena = readArray (arenaFirstChild arena)
+readFirstChild arena nid =
+    unsafeRead (arenaFirstChild arena) (fromIntegral nid)
 
 {-# INLINEABLE readNumChildren #-}
 readNumChildren :: Arena s -> NodeId -> ST s Int32
-readNumChildren arena = readArray (arenaNumChildren arena)
+readNumChildren arena nid =
+    unsafeRead (arenaNumChildren arena) (fromIntegral nid)
 
 setChildren :: Arena s -> NodeId -> NodeId -> Int32 -> ST s ()
 setChildren arena nid firstChild count = do
-    writeArray (arenaFirstChild arena) nid firstChild
-    writeArray (arenaNumChildren arena) nid count
+    let !off = fromIntegral nid
+    unsafeWrite (arenaFirstChild arena) off firstChild
+    unsafeWrite (arenaNumChildren arena) off count
 
 treeRoot :: Arena s -> ST s NodeId
 treeRoot arena = do
@@ -176,5 +197,8 @@ bulkVisits arena n = do
     cursor <- readSTRef (arenaCursor arena)
     let limit = min n cursor
     mapM
-        (\nid -> do v <- readArray (arenaVisits arena) nid; pure (nid, v))
+        ( \nid -> do
+            v <- unsafeRead (arenaVisits arena) (fromIntegral nid)
+            pure (nid, v)
+        )
         [0 .. fromIntegral (limit - 1)]
