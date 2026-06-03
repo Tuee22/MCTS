@@ -211,9 +211,12 @@ closed backend `(ii)`'s full imperative-kernel steelman, and Phase `8` Sprint
 `8.15` recorded the post-`5.7` Haskell-vs-`(ii)` rebaseline. Phase `5` Sprint
 `5.8` further extended backend `(ii)` with bidirectional path-existence BFS,
 `UctNode` cache-line padding removed, and additive C++/BOLT flag scrub; Phase
-`8` Sprint `8.16` closed on 2026-05-29 with the post-`5.8` rebaseline as the
-current-artifact evidence. The apples-to-apples invariants Q3/Q4/Q6/Q7 remain
-the closure gate per
+`8` Sprint `8.16` closed on 2026-05-29 with the post-`5.8` rebaseline. Sprint
+`8.17` measured and rejected the `MutableByteArray#` arena migration, Sprint
+`8.18` accepted `unsafeRead`/`unsafeWrite` Arena helpers and recorded arm64/amd64
+cross-host evidence, and Sprint `8.19` measured and rejected the Dockerfile-level
+aarch64 `-mcpu=apple-m1` unblock. The apples-to-apples invariants Q3/Q4/Q6/Q7
+remain the closure gate per
 [compiler_runtime_tuning.md → Performance Measurement Doctrine](./compiler_runtime_tuning.md#performance-measurement-doctrine).
 
 1. **Q1a.** Does pure Haskell match backend (ii) on terminal playout throughput
@@ -318,12 +321,15 @@ and `1.27x` MT8, Q1b `1.05x` ST and `1.11x` MT8, and Q2 `0.98x` ST and
 `5.8` `(ii)` artefact, because Sprint `5.8` landed the bidirectional
 path-existence BFS, the `UctNode` cache-line padding drop, and the additive
 C++/BOLT flag scrub. Phase `8` Sprint `8.16` closed on 2026-05-29 with the
-post-`5.8` measurement as the current-artifact evidence: Q1a backend
+post-`5.8` measurement: Q1a backend
 `(ii)`/Haskell ratios `1.51x` ST / `1.50x` MT8, Q1b `1.53x` ST / `1.56x`
 MT8, Q2 `1.41x` ST / `1.57x` MT8, Q5 scaling Haskell search `7.16x` vs
 C++ `(ii)` search `7.31x`, Haskell self-play `3.28x` vs C++ `(ii)`
 self-play `3.66x`; `Verdict: Trails parity band by 57.1%`; Q3/Q4/Q6/Q7
-PASS and `normalized_divergence_score=0.0000`.
+PASS and `normalized_divergence_score=0.0000`. Later accepted evidence is the
+Sprint `8.18` arm64/amd64 cross-host measurement (`85.6%` / `29.5%`) plus the
+post-`4.7` unified-clang aggregate (`69.1%`), with Sprint `8.19` recorded as
+measured but rejected and reverted.
 The 2026-05-24 Sprint `8.11` aggregate run remains historical refactored-metric
 evidence for the older backend (ii) artefact: Q1a terminal playout ST `0.07x`,
 Q1a MT8 `0.39x`, Q1b search-iteration ST `0.06x`, Q1b MT8 `0.40x`, Q2

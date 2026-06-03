@@ -94,14 +94,18 @@ records Q1/Q2/Q5 as **measurement** questions: shortfalls are honestly recorded
 with PGO-asymmetry attribution and do not gate closure. Closure is gated by the
 apples-to-apples invariants Q3/Q4/Q6/Q7 in the same doctrine.
 
-The latest accepted aggregate rerun records `Verdict: Trails parity band by
-26.8%` (legacy label `Shortfall 0.2678864950323545`): Q1a backend
-`(ii)`/Haskell ratios `1.06x` ST and `1.27x` MT8, Q1b `1.05x` ST and
-`1.11x` MT8, and Q2 `0.98x` ST and `1.11x` MT8. The accepted Haskell hot-path
-changes now include single-constructor action transitions with the no-ply
-rollout variant, in addition to the earlier compact pawn slots, direct
-non-terminal action sets, packed-slot path starts, and no-wall legal-action
-fast path.
+The Sprint `8.15` post-`5.7` aggregate rerun recorded `Verdict: Trails
+parity band by 26.8%` (legacy label `Shortfall 0.2678864950323545`):
+Q1a backend `(ii)`/Haskell ratios `1.06x` ST and `1.27x` MT8, Q1b
+`1.05x` ST and `1.11x` MT8, and Q2 `0.98x` ST and `1.11x` MT8. That
+measurement is historical after Sprint `5.8` raised the backend `(ii)`
+ceiling and Sprints `8.16`-`8.19` recorded later accepted and
+measured-but-rejected Haskell performance work. The accepted Haskell
+hot-path changes include single-constructor action transitions with the
+no-ply rollout variant, compact pawn slots, direct non-terminal action
+sets, packed-slot path starts, no-wall legal-action fast path, and the
+Sprint `8.18` `Data.Array.Base.unsafeRead`/`unsafeWrite` Arena helper
+change.
 
 ## Benchmark Leaves
 
@@ -136,8 +140,8 @@ but the current Q1/Q5 rows use the explicit `playouts/s`, `search-iters/s`, and
 `games/s` units. After Sprint `5.7` changed backend `(ii)`, the Sprint `8.14`
 rows joined the audit history; Sprint `8.15` recorded the post-`5.7` honest
 rebaseline. After Sprint `5.8` further strengthened backend `(ii)`, Sprint
-`8.16` recorded the post-`5.8` rebaseline as the current-artifact evidence;
-the Sprint `8.14`/`8.15` rows are historical against the pre-`5.8` artefact.
+`8.16` recorded the post-`5.8` rebaseline; the Sprint `8.14`/`8.15`
+rows are historical against the pre-`5.8` artefact.
 After Sprint `8.18` (profile-driven arm64 recovery; Stage 1
 `Data.Array.Base.unsafeRead`/`unsafeWrite` accepted, Stages 2-5
 ledgered), the post-`8.18` `mcts test all` measurement is the current

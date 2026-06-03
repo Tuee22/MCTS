@@ -787,11 +787,11 @@ report-card run that closed Sprint `5.9`.
   ABI.
 - `documents/engineering/benchmark_metrics.md` and
   `documents/engineering/unit_testing_policy.md` — Sprint `8.14` / Sprint `8.15`
-  measurements are historical current-artifact evidence against the
-  pre-Sprint-`5.8` `(ii)` target; Sprint `8.16` recorded the post-Sprint-`5.8`
-  rebaseline (`Trails parity band by 57.1%`) and Sprint `8.17` recorded the
-  post-functional-cohort rebaseline (`Trails parity band by 62.7%`) under the
-  Performance Measurement Doctrine.
+  measurements are historical evidence against the pre-Sprint-`5.8` `(ii)`
+  target; Sprint `8.16` recorded the post-Sprint-`5.8` rebaseline (`Trails
+  parity band by 57.1%`), Sprint `8.17` recorded the post-functional-cohort
+  rebaseline (`Trails parity band by 62.7%`), and later Sprint `8.18`/`8.19`
+  evidence remains governed by the same Performance Measurement Doctrine.
 
 **Product docs to create/update:**
 

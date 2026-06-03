@@ -1962,8 +1962,8 @@ exerciseCppBuildPlan = do
                  -- LLVM-profile branch of cppPgoBoltPlan inserts a
                  -- `make pgo-merge` step (llvm-profdata-19 merges .profraw
                  -- into default.profdata) between training and
-                 -- `pgo-bench-use`. cpp-functional remains on g++ and
-                 -- still uses the `requireCppGcdaProfiles` bash check.
+                 -- `pgo-bench-use`. Sprint 6.11 moved cpp-functional onto
+                 -- the same LLVM-profile branch.
                  "pgo-merge"
                , "pgo-bench-use"
                , "pgo-instr-use"

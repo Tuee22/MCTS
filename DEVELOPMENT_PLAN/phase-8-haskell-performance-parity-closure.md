@@ -1162,8 +1162,9 @@ reframe and updates the historical-evidence labels on prior rows.
   for Sprint `8.16` recording the post-`5.8` evidence.
 - Update `documents/engineering/benchmark_metrics.md` and
   `documents/engineering/unit_testing_policy.md` historical-evidence
-  pointers to name the Sprint `8.16` post-`5.8` measurement as the active
-  current-artifact evidence.
+  pointers to name the Sprint `8.16` post-`5.8` measurement as the
+  post-`5.8` evidence point. Later Sprint `8.17`-`8.19` measurements move the
+  active handoff forward without changing this sprint's closure.
 - No Haskell engine or Cabal changes are in scope. If the focused Haskell
   rows shift outside measurement noise after the `(ii)` rebaseline, that
   shift is reported honestly but does not block sprint closure.
