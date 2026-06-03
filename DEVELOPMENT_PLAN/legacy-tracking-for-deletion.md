@@ -156,7 +156,15 @@ backend (i) cpp-legacy to `clang++-19`, Sprint `6.11` flipped backend
 merged `.profdata`, and Sprint `4.7` dropped `gcc`/`g++` from the
 explicit `docker/Dockerfile` apt-get list and flipped the image's
 `ENV CC/CXX` defaults to `clang-19`/`clang++-19`. The Pending Removal
-table is now empty; all three rows are in the Completed table below.
+table was empty after that closure; all three rows are in the Completed
+table below.
+
+The 2026-06-03 CLI introspection audit reopened Phase `1` for Sprint
+`1.13`. The code accepted several closed value sets (`Backend`, Q3
+`VerifyBackend`, `RngSource`, `Side`, `Threading`, output/color modes), but
+help and command JSON did not expose those value sets consistently, and
+`mcts help <path>` was pointer-only. Sprint `1.13` reclosed the same day; the
+completed row below records the stale introspection surface cleanup.
 
 Two classes of entries populate this ledger over time:
 
@@ -191,12 +199,12 @@ LSE/`rcpc-immo` atomics emitted by `llc-19 -mcpu=apple-m1` execute
 slower than the baseline ARMv8 LL/SC atomics GHC's RTS was tuned
 against under Docker-on-Apple-Silicon. The Sprint `8.18` deferral
 and root-cause attribution stand; the deferral now has two
-load-bearing reasons instead of one. The Pending Removal table is
-empty again.
+load-bearing reasons instead of one. Sprint `1.13` later closed the
+CLI-introspection residue on 2026-06-03. No pending removal rows remain.
 
 | Item | Owner | Notes |
 |------|-------|-------|
-| (none) | | |
+| (none) | N/A | No pending removal rows. |
 
 ## Pending Removal Notes
 
@@ -211,6 +219,7 @@ data instead of publishing a fallback shared library.
 
 | Item | Removed In | Notes |
 |------|------------|-------|
+| Pointer-only help and missing enum-value introspection | Sprint `1.13`, 2026-06-03 | `src/MCTS/CLI/Spec.hs` now carries enriched command, option, positional, default, choice, list-syntax, note, example, and completion metadata; `src/MCTS/CLI/Parser.hs` consumes the same value sets for enum readers and renders focused `optparse-applicative` help for `mcts help <path>` and explicit `--help` requests; invalid enum/list parse errors name accepted values and Q3's `cpp-legacy` rejection points to `mcts verify legacy-parity`; `mcts commands --json`, generated Markdown/manpage output, and shell completions expose the enriched registry data. Validation passed `mcts-unit`, `docs check`, `lint haskell`, `lint docs`, `lint files`, `check-code`, `play --help`, `help play`, `commands --json`, the expected exit-2 invalid-backend probe, and `git diff --check` through the Compose workflow. |
 | Deferred `-optlo-mcpu=native` / `-optlc-mcpu=native` on aarch64 | Sprint `8.19`, 2026-05-30 (measured but rejected) | Sprint `8.18` Stage 2 root-caused the deferral to binutils-2.42 LSE rejection. Sprint `8.19` Approach A worked around that with a 7-line `/usr/local/bin/clang-19-aarch64-apple-m1` wrapper exec'ing `clang-19 -mcpu=apple-m1`, GHC `settings` patched so both `("C compiler command", ...)` and `("LLVM llvm-as command", ...)` route through the wrapper (the second sed was load-bearing — GHC's `-fllvm` LLVM-assembler stage uses `LLVM llvm-as command`, not `pgm_c`, and ignores `-opta-*` flags). Build completed; Q3/Q4/Q6/Q7 PASS; `normalized_divergence_score=0.0000`. **Measurement rejected:** arm64 `mcts test all` verdict regressed `85.6% → 268.7%`; Haskell Q1b ST `~24779 → 12195.2` search-iters/s (`-51%`); Q1a/Q1b/Q2 ratios all roughly doubled. Cohort C++/Rust rates within ±3% (rules out broader toolchain side-effects); the regression is Haskell-only. Root cause: LSE/`rcpc-immo` atomics emitted by `llc-19 -mcpu=apple-m1` execute slower than baseline ARMv8 LL/SC atomics GHC's RTS was tuned against on Docker-on-Apple-Silicon. The deferral now stands on two load-bearing grounds: (a) the original binutils-2.42 assembler rejection (toolchain-fixable), and (b) the Haskell-specific runtime regression from LSE/`rcpc-immo` (not toolchain-fixable from this project's side). `docker/Dockerfile` and `mcts.cabal` reverted to byte-identical pre-`8.19` state. See `phase-8-haskell-performance-parity-closure.md` Sprint `8.19` Closure Notes for the full measurement table. |
 | `docker/Dockerfile` aarch64 build path emits baseline ARMv8 instructions while clang/rustc emit ARMv8.5+ | Sprint `8.19`, 2026-05-30 (measured but rejected) | Same root cause as the row above. Sprint `8.19` proved the toolchain shape gap is not recoverable on this hardware: enabling `-mcpu=apple-m1` for GHC's `-fllvm` pipeline produces correct code (Q3/Q4/Q6/Q7 PASS, bit-identical visit payloads) but slower (-51% Haskell-only). The arm64 baseline ARMv8 codegen, while slower in instruction selection than clang/rustc's ARMv8.5+, runs faster overall because GHC RTS atomics are tuned to LL/SC. |
 | Backend (v) `Data.Array.ST.readArray`/`writeArray` bounds-check overhead in the `MCTS.Search.Arena` hot path | Sprint `8.18`, 2026-05-30 | `src/MCTS/Search/Arena.hs` swapped all eight read*/add*/set*/allocNode/bulkVisits helpers from `Data.Array.ST.{readArray,writeArray}` to `Data.Array.Base.{unsafeRead,unsafeWrite}` indexed by `fromIntegral nid :: Int`. The arena's callers in `MCTS.Search.UCT` produce indices via `firstChild + i` arithmetic where `0 <= i < numChildren` and the cursor monotonically grows to capacity; indices are provably in-range. Post-change, GHC fully inlines the Arena helpers into the UCT descent path (e.g. `UCT.descend$w` shrinks 456→92 bytes on arm64; no standalone `Arena.addVisitValue` / `readVisits` symbols remain in the binary). Validation: `mcts test all` PASS on both arm64 (Apple Silicon Docker) and amd64 (caledon Linux) hosts; Q3/Q4/Q6/Q7 PASS; `normalized_divergence_score=0.0000`. Focused 3-rep arm64 Q1a ST: 22881.9 → 24705.1 playouts/s (`+7.97%`); amd64 within ±2-4% noise. |

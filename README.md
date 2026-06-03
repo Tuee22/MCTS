@@ -175,6 +175,13 @@ gate outcomes. JSON output includes the same raw metric fields under
 
 The full generated command reference is [documents/cli/commands.md](documents/cli/commands.md); the command contract is [cli_command_surface.md](documents/engineering/cli_command_surface.md).
 
+The CLI is self-describing through normal introspection. `--help`, `mcts help
+<subcommand>`, `mcts commands --json`, generated docs, manpages, completions, and
+parse errors expose accepted enum values such as the valid `--backend` identifiers
+from the command registry. The owning contract is
+[cli_command_surface.md](documents/engineering/cli_command_surface.md#self-describing-cli-contract);
+the backend identifiers are listed in the [Backend Cohort](#backend-cohort).
+
 Common operator commands:
 
 ```bash

@@ -2,7 +2,7 @@
 
 **Status**: Authoritative source
 **Supersedes**: N/A
-**Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, ../../DEVELOPMENT_PLAN/phase-2-transcript-codec-and-determinism.md, ../../DEVELOPMENT_PLAN/phase-3-haskell-engine.md, ../../DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md, ../../DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md, ../../DEVELOPMENT_PLAN/phase-6-cpp-functional-and-rust.md, ../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md, ../documentation_standards.md, ./README.md, ./benchmark_metrics.md, ./semantic_parity_contract.md
+**Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/00-overview.md, ../../DEVELOPMENT_PLAN/system-components.md, ../../DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, ../../DEVELOPMENT_PLAN/phase-2-transcript-codec-and-determinism.md, ../../DEVELOPMENT_PLAN/phase-3-haskell-engine.md, ../../DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md, ../../DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md, ../../DEVELOPMENT_PLAN/phase-6-cpp-functional-and-rust.md, ../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md, ../documentation_standards.md, ./README.md, ./benchmark_metrics.md, ./semantic_parity_contract.md
 **Generated sections**: command-matrix
 
 > **Purpose**: Operator-facing `mcts` command matrix. Defers to
@@ -31,6 +31,37 @@ see:
 - [../../HASKELL_CLI_TOOL.md → Error Handling](../../HASKELL_CLI_TOOL.md) — single
   `AppError` ADT, canonical `renderError :: AppError -> Text` boundary
   (`MCTS.CLI.Output` currently exposes a String adapter for command runners).
+
+## Self-Describing CLI Contract
+
+The operator must be able to understand and use the complete `mcts` surface through
+introspection alone. This project-specific contract extends the doctrine's
+[Progressive Introspection](../../HASKELL_CLI_TOOL.md#progressive-introspection)
+and
+[Automatically Generated Documentation](../../HASKELL_CLI_TOOL.md#automatically-generated-documentation)
+sections:
+
+- Every leaf `mcts <path> --help` shows required inputs, optional flags, defaults,
+  accepted enum values, comma-list syntax, examples, and command-specific side
+  effects.
+- `mcts help <path>` renders the same focused `optparse-applicative` help as the
+  command's own `--help`, so operators do not need to know both forms.
+- `mcts commands --json` exposes the command tree plus option metadata, positional
+  arguments, defaults, enum value sets, examples, and notes in a stable machine-readable
+  schema.
+- Invalid enum and enum-list values render the accepted values and any command-specific
+  remedy, for example the Q3 verifier's exclusion of `cpp-legacy`.
+- Shell completions for enum-valued options are generated from the same value metadata
+  that backs parser readers, help, JSON, manpages, and Markdown command docs.
+- Generated docs and generated command artefacts are derived from the same typed registry
+  that constructs parser topology; examples carried by that registry must parse in tests.
+
+The current implementation satisfies this contract through the enriched
+`CommandSpec` registry and explicit semantic parsers in `src/MCTS/CLI/Parser.hs`.
+`OptionSpec` carries choice sets, defaults, positional arguments, list semantics, notes,
+and completion metadata; enum readers consume the same value sets that appear in help,
+JSON, manpages, Markdown, completions, and parse-error diagnostics. Phase `1`
+Sprint `1.13` closed this surface on 2026-06-03.
 
 ## Command Matrix
 
@@ -70,7 +101,7 @@ From the host, run any listed logical command as
 | `mcts docs check` | Compare rendered output against on-disk markers and tracked paths |
 | `mcts docs generate [--dry-run] [--plan-file <path>]` | Splice rendered output into markers and write tracked generated paths |
 | `mcts commands [--tree\|--json]` | Flat, tree, or JSON rendering of the command registry |
-| `mcts help <subcommand>` | Focused help pointer for a target command |
+| `mcts help <subcommand>` | Focused parser help for a target command |
 | `mcts check-code` | Doctrine alignment, formatter, HLint, and generated-doc checks |
 | `mcts build cpp-legacy [--dry-run] [--plan-file <path>]` | Plan/Apply: Dockerfile C++ legacy backend build recipe |
 | `mcts build cpp-imperative [--dry-run] [--plan-file <path>]` | Plan/Apply: Dockerfile C++ imperative backend mandatory PGO/BOLT build recipe |
@@ -92,8 +123,11 @@ throughput with one search iteration per real move. It does not measure terminal
 
 Current implementation baseline: `src/MCTS/CLI/Parser.hs` exposes
 `commandParserInfo`, an `optparse-applicative` parser whose command topology is
-rendered from the `CommandSpec` tree while leaf option parsers remain explicit;
-verify parsers reject `--rng native` at the option-reader boundary. `inspect list`
+rendered from the enriched `CommandSpec` tree while leaf option parsers remain explicit
+and choice-aware. Focused `mcts help <path>` renders the target parser help rather than
+a pointer, and generated JSON/docs/manpages/completions consume the same registry
+metadata. Verify parsers reject `--rng native` at the
+option-reader boundary. `inspect list`
 renders backend, seed, games, threading, sims,
 total moves, mtime, and path; `inspect show --with-equity` first reads an
 envelope-matched cached originator sidecar, then writes an originator replacement
@@ -156,7 +190,7 @@ set of common invocations.
 
 | Flag | Commands | Default | Notes |
 |------|----------|---------|-------|
-| `--backend <list>` | `bench`, `verify`, `play` | required | Comma-separated `NonEmpty Backend` for bench/verify; single `Backend` for play. |
+| `--backend <list>` | `bench`, `verify`, `play` | required | Comma-separated `NonEmpty Backend` for bench/verify; single `Backend` for play. Valid backend identifiers are listed in [Backend Identifiers](#backend-identifiers); `--help`, parse errors, completions, JSON, manpages, and generated Markdown enumerate the accepted values from one typed choice set. |
 | `--vs <backend>` | `play` | `Nothing` (human plays) | When set, AI-vs-AI spectator mode. |
 | `--side hero\|villain` | `play` | required | Side controlled by `--backend`; with `--vs`, the `--vs` backend controls the opposite side and the human spectates. |
 | `--threading single\|multi` | `bench`, `verify` | `multi` for `bench`, `single` for `verify` | Threading mode for the batch dispatcher. Primitive benchmark leaves use the same threading flags and default to 8 workers when multi-threaded. |

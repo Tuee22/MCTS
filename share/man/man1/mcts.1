@@ -37,3 +37,18 @@ mcts build cpp\-imperative
 mcts build cpp\-functional
 mcts build rust
 mcts build legacy\-fixtures
+.SH COMMON VALUE SETS
+.SS Backends
+cpp\-legacy ((i) C++ legacy port); cpp\-imperative ((ii) C++ imperative steelman); cpp\-functional ((iii) C++ functional\-core steelman); rust ((iv) Rust steelman); haskell ((v) in\-process Haskell engine)
+.SS Q3 verify backends
+cpp\-imperative ((ii) C++ imperative steelman); cpp\-functional ((iii) C++ functional\-core steelman); rust ((iv) Rust steelman); haskell ((v) in\-process Haskell engine)
+.SS RNG sources
+native (backend\-native RNG); cpp (legacy\-compatible C++ RNG)
+.SS Sides
+hero (the hero side); villain (the villain side)
+.SS Threading
+single (single\-threaded dispatch); multi (multi\-threaded dispatch using \-\-workers)
+.SS Output formats
+json (machine\-readable JSON); table (human\-readable table output); plain (plain text output)
+.SS Color modes
+auto (color when stdout is a terminal); always (always emit ANSI color); never (never emit ANSI color)

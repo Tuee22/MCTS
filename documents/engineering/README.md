@@ -22,11 +22,10 @@ the development plan changes the supported architecture, the affected doctrine d
 must be updated in the same change so they continue to describe the implemented
 repository state.
 
-Current planning note: Phase `5` Sprint `5.7` has closed backend `(ii)`'s full
-imperative hot-path steelman, and Phase `8` Sprint `8.15` is active on the
-Haskell parity shortfall exposed by the first post-`5.7` rebaseline. The Sprint
-`8.14` report-card verdict is historical current-artifact evidence for the older
-Sprint `5.6` backend `(ii)` target.
+Current planning note: Phase `1` Sprint `1.13` closed the self-describing CLI
+introspection gap on 2026-06-03. The backend, transcript, verification, and
+performance surfaces were not reopened; the work was limited to parser/help,
+command-metadata introspection, generated docs, and completions.
 
 The canonical CLI doctrine for this project lives at
 [../../HASKELL_CLI_TOOL.md](../../HASKELL_CLI_TOOL.md). The overlap docs below
@@ -42,7 +41,7 @@ own their content outright.
 
 | Document | Purpose |
 |----------|---------|
-| [cli_command_surface.md](./cli_command_surface.md) | Canonical `mcts` operator command matrix; defers to the doctrine on Command Topology, `CommandSpec`, and Progressive Introspection |
+| [cli_command_surface.md](./cli_command_surface.md) | Canonical `mcts` operator command matrix and self-describing CLI contract; defers to the doctrine on Command Topology, `CommandSpec`, and Progressive Introspection |
 | [code_quality.md](./code_quality.md) | The `mcts check-code` gate and the lint stack; build/warning-clean compilation is Dockerfile-owned; defers to the doctrine on Lint, Format, Code-Quality Stack, Generated Artifacts, and Forbidden Surfaces |
 | [unit_testing_policy.md](./unit_testing_policy.md) | The six current live Cabal test stanzas, including `mcts-semantic-parity` for Q7, the `mcts test all` Plan/Apply command, the report-card workload/output layout, the Dockerfile-built steelman artefact and prebuilt-test-executable prerequisite, and the no-generated-validation-data rule; defers to the doctrine on Test Organization |
 | [haskell_code_guide.md](./haskell_code_guide.md) | How the project uses `Subprocess`, `Plan / Apply`, `prerequisiteRegistry`, `Env`, `AppError`, and GADT state machines; defers to the doctrine on each pattern |
@@ -59,6 +58,7 @@ own their content outright.
 ### CLI Surface
 
 - [`mcts` Command Matrix](./cli_command_surface.md#command-matrix)
+- [Self-Describing CLI Contract](./cli_command_surface.md#self-describing-cli-contract)
 - [Command Topology](../../HASKELL_CLI_TOOL.md) — doctrine
 - [Progressive Introspection](../../HASKELL_CLI_TOOL.md) — doctrine
 - [`CommandSpec` Source of Truth](../../HASKELL_CLI_TOOL.md) — doctrine

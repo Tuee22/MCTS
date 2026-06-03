@@ -55,9 +55,10 @@ import MCTS.CLI.Inspect
     )
 import MCTS.CLI.Lint (ForbiddenPath (..), forbiddenPathPaths, forbiddenPathRegistry)
 import MCTS.CLI.Output (OutputFormat (..), OutputOptions (..), defaultOutputOptions)
-import MCTS.CLI.Parser (commandParserInfo, parseBackends, parseCommand)
+import MCTS.CLI.Parser (commandParserInfo, parseBackends, parseCommand, renderFocusedHelp)
 import MCTS.CLI.Spec
     ( CommandSpec (..)
+    , Example (..)
     , OptionSpec (..)
     , commandRows
     , commandSpec
@@ -282,6 +283,21 @@ exerciseCommandParserSurface = do
     assert "command tree mentions verify" ("verify" `contains` renderCommandTree)
     assert "command json is object" (take 1 renderCommandJson == "{")
     assert "all leaves have examples" (all (not . null . examples) (leafSpecs commandSpec))
+    assert "all registered examples parse" (all exampleParses registeredExampleInvocations)
+    assert
+        "play help enumerates backend choices"
+        ( focusedHelpContains
+            ["play"]
+            ["--backend BACKEND", "cpp-legacy", "cpp-imperative", "cpp-functional", "rust", "haskell"]
+        )
+    assert
+        "focused help matches leaf --help surface"
+        ( case parseCommand ["play", "--help"] of
+            Right (RenderHelp helpText) ->
+                all (`contains` helpText) ["--backend BACKEND", "--side hero|villain", "cpp-imperative"]
+                    && focusedHelpContains ["play"] ["--backend BACKEND", "--side hero|villain", "cpp-imperative"]
+            _ -> False
+        )
     assert
         "backend parser"
         ( parseBackends "cpp-legacy,cpp-imperative,cpp-functional,rust,haskell"
@@ -333,6 +349,18 @@ exerciseCommandParserSurface = do
     assert
         "bench requires an explicit backend cohort"
         (isLeft (parseCommand ["bench", "selfplay", "--games", "1", "--seed", "42"]))
+    assert
+        "invalid backend reports accepted values"
+        ( parseErrorContains
+            (parseCommand ["play", "--backend", "nope", "--side", "hero"])
+            ["unknown backend: nope", "accepted values:", "cpp-legacy", "haskell"]
+        )
+    assert
+        "malformed backend list reports accepted values"
+        ( parseErrorContains
+            (parseCommand ["bench", "selfplay", "--backend", "rust,", "--games", "1", "--seed", "42"])
+            ["backend list is empty or malformed", "accepted values:", "cpp-imperative", "haskell"]
+        )
     assert
         "legacy parity command parses all five backend slots"
         ( parsesLegacyParityCohort
@@ -437,10 +465,11 @@ exerciseCommandParserSurface = do
         )
     assert
         "verify rejects cpp-legacy at parser boundary"
-        ( isLeft
+        ( parseErrorContains
             ( parseCommand
                 ["verify", "selfplay", "--backend", "cpp-legacy,haskell", "--games", "1", "--seed", "42"]
             )
+            ["cpp-legacy is not in the Q3 verify cohort", "cpp-imperative", "legacy-parity"]
         )
     assert
         "verify accepts cpp-imperative at parser boundary"
@@ -674,6 +703,31 @@ assert label ok =
     if ok
         then pure ()
         else error ("assertion failed: " <> label)
+
+registeredExampleInvocations :: [String]
+registeredExampleInvocations =
+    [ exampleInvocation example
+    | spec <- leafSpecs commandSpec
+    , example <- examples spec
+    ]
+
+exampleParses :: String -> Bool
+exampleParses invocation =
+    case words invocation of
+        "mcts" : args -> isRight (parseCommand args)
+        _ -> False
+
+focusedHelpContains :: [String] -> [String] -> Bool
+focusedHelpContains target needles =
+    case renderFocusedHelp target of
+        Right helpText -> all (`contains` helpText) needles
+        Left _ -> False
+
+parseErrorContains :: Either AppError Command -> [String] -> Bool
+parseErrorContains parsed needles =
+    case parsed of
+        Left (ParseError message) -> all (`contains` message) needles
+        _ -> False
 
 contains :: String -> String -> Bool
 contains needle haystack = any (needle `prefixOf`) (tails haystack)
@@ -2327,11 +2381,29 @@ exerciseCommandRenderers = do
         "commands --json has command schema keys"
         ( jsonObjectHasKeys
             (decodeJsonValue "commands json" renderCommandJson)
-            ["name", "summary", "children"]
+            ["name", "path", "summary", "children", "options", "positionals", "examples", "notes"]
+        )
+    assert
+        "commands --json includes enriched option metadata"
+        ( all
+            (`contains` renderCommandJson)
+            [ "\"long\":\"backend\""
+            , "\"default\":\"1000\""
+            , "\"values\":["
+            , "\"token\":\"cpp-imperative\""
+            , "\"list_syntax\":\"comma-separated non-empty list\""
+            ]
         )
     assert
         "generated command docs describe rollouts as legacy played-game"
-        ("mcts bench rollouts` - Legacy played-game benchmark" `contains` renderCommandMarkdown)
+        ( "## `mcts bench rollouts`" `contains` renderCommandMarkdown
+            && "Legacy played-game benchmark" `contains` renderCommandMarkdown
+        )
+    assert
+        "generated command docs include accepted backend values"
+        ( "`--backend BACKENDS`" `contains` renderCommandMarkdown
+            && "`cpp-legacy`, `cpp-imperative`" `contains` renderCommandMarkdown
+        )
     assert
         "generated command docs do not call rollouts random-rollout"
         (not ("Random-rollout benchmark" `contains` renderCommandMarkdown))

@@ -48,6 +48,7 @@ data Command
     | Docs DocsCommand
     | Commands CommandsOptions
     | Help HelpOptions
+    | RenderHelp String
     | CheckCode
     | Build BuildCommand
     deriving (Eq, Show)

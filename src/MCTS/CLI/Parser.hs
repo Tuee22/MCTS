@@ -3,10 +3,12 @@ module MCTS.CLI.Parser
     , parseBackends
     , parsePlanOptions
     , commandParserInfo
+    , renderFocusedHelp
     ) where
 
 import Control.Applicative ((<**>), (<|>))
 import Data.Foldable (fold)
+import Data.List (inits)
 import Data.Word (Word16, Word64)
 import MCTS.CLI.Command
 import qualified MCTS.CLI.Spec as Spec
@@ -15,15 +17,30 @@ import MCTS.Error (AppError (..))
 import MCTS.Plan (PlanOptions (..))
 import MCTS.Types
 import qualified Options.Applicative as OA
+import System.Exit (ExitCode (..))
 
 parseCommand :: [String] -> Either AppError Command
-parseCommand [] = Right (Commands (CommandsOptions True False))
 parseCommand args =
+    case helpRequestTarget args of
+        Just target ->
+            case renderFocusedHelp target of
+                Right rendered -> Right (RenderHelp rendered)
+                Left rendered -> Left (ParseError rendered)
+        Nothing ->
+            case args of
+                [] -> Right (Commands (CommandsOptions True False))
+                _ -> parseCommandTree args
+
+parseCommandTree :: [String] -> Either AppError Command
+parseCommandTree args =
     case OA.execParserPure OA.defaultPrefs commandParserInfo args of
         OA.Success command -> validateCommand command
         OA.Failure failure ->
-            let (message, _) = OA.renderFailure failure "mcts"
-             in Left (ParseError (trimTrailingNewlines message))
+            let (message, code) = OA.renderFailure failure "mcts"
+                rendered = trimTrailingNewlines message
+             in case code of
+                    ExitSuccess -> Right (RenderHelp rendered)
+                    ExitFailure _ -> Left (ParseError rendered)
         OA.CompletionInvoked _ -> Right (Commands (CommandsOptions True False))
 
 commandParserInfo :: OA.ParserInfo Command
@@ -31,6 +48,63 @@ commandParserInfo =
     OA.info
         (commandTreeParser <**> OA.helper)
         (OA.fullDesc <> OA.progDesc (Spec.summary Spec.commandSpec))
+
+renderFocusedHelp :: [String] -> Either String String
+renderFocusedHelp target
+    | knownPath normalized = Right (renderParserHelp normalized)
+    | otherwise =
+        Left
+            ( "unknown help target: mcts "
+                <> unwords normalized
+                <> "\n\nNearest valid context:\n"
+                <> renderParserHelp (nearestKnownPrefix normalized)
+            )
+  where
+    normalized =
+        case target of
+            "mcts" : rest -> rest
+            rest -> rest
+    knownPath [] = True
+    knownPath path = maybe False (const True) (Spec.findCommandSpec path)
+    nearestKnownPrefix path =
+        foldl keepKnown [] (inits path)
+    keepKnown _ prefix
+        | knownPath prefix = prefix
+    keepKnown previous _ = previous
+
+renderParserHelp :: [String] -> String
+renderParserHelp target =
+    case OA.execParserPure OA.defaultPrefs (targetParserInfo target) ["--help"] of
+        OA.Failure failure ->
+            trimTrailingNewlines (fst (OA.renderFailure failure (programName target)))
+        OA.Success _ -> "No focused help is available for mcts " <> unwords target
+        OA.CompletionInvoked _ -> trimTrailingNewlines Spec.renderCommandTree
+
+targetParserInfo :: [String] -> OA.ParserInfo Command
+targetParserInfo [] = commandParserInfo
+targetParserInfo target =
+    case Spec.findCommandSpec target of
+        Just spec ->
+            OA.info
+                (nodeParser target spec <**> OA.helper)
+                (OA.fullDesc <> OA.progDesc (Spec.summary spec))
+        Nothing -> commandParserInfo
+
+programName :: [String] -> String
+programName [] = "mcts"
+programName target = unwords ("mcts" : target)
+
+helpRequestTarget :: [String] -> Maybe [String]
+helpRequestTarget args
+    | any isHelpFlag args = Just (takeCommandPath (takeWhile (not . isHelpFlag) args))
+    | otherwise = Nothing
+  where
+    takeCommandPath = takeWhile (not . isOption)
+    isOption ('-' : _) = True
+    isOption _ = False
+
+isHelpFlag :: String -> Bool
+isHelpFlag raw = raw == "--help" || raw == "-h"
 
 commandTreeParser :: OA.Parser Command
 commandTreeParser = childrenParser [] Spec.commandSpec
@@ -53,7 +127,7 @@ nodeParser path spec
     | path == ["test"] = testParser
     | null (Spec.children spec) =
         case leafParser path of
-            Just parser -> parser
+            Just parser -> withCommonOptions parser
             Nothing -> pure (Help (HelpOptions path))
     | otherwise = childrenParser path spec
 
@@ -88,6 +162,8 @@ leafParser path =
         ["commands"] -> Just (Commands <$> commandsParser)
         ["help"] -> Just (Help . HelpOptions <$> manyStringArguments "COMMAND")
         ["check-code"] -> Just (pure CheckCode)
+        ["test", "all"] -> Just (Test . TestAll <$> planOptionsParser)
+        ["test", "parity-anchor"] -> Just (Test . TestParityAnchor <$> parityAnchorOptionsParser)
         ["build", "cpp-legacy"] -> Just (Build . BuildCppLegacy <$> planOptionsParser)
         ["build", "cpp-imperative"] -> Just (Build . BuildCppImperative <$> planOptionsParser)
         ["build", "cpp-functional"] -> Just (Build . BuildCppFunctional <$> planOptionsParser)
@@ -298,7 +374,7 @@ threadingOption defaultThreading =
                 <> OA.metavar "single|multi"
                 <> OA.value defaultThreading
                 <> OA.showDefaultWith renderThreading
-                <> OA.help "Threading mode"
+                <> OA.help (choiceHelp "Threading mode" Spec.threadingChoices)
             )
         <*> OA.option
             OA.auto
@@ -321,16 +397,22 @@ playParser =
             backendReader
             ( OA.long "backend"
                 <> OA.metavar "BACKEND"
-                <> OA.help "Backend"
+                <> OA.help (choiceHelp "Backend controlled by --side" Spec.backendChoices)
             )
         <*> OA.option
             sideReader
             ( OA.long "side"
                 <> OA.metavar "hero|villain"
-                <> OA.help "Side controlled by --backend"
+                <> OA.help (choiceHelp "Side controlled by --backend" Spec.sideChoices)
             )
         <*> OA.optional
-            (OA.option backendReader (OA.long "vs" <> OA.metavar "BACKEND" <> OA.help "Opponent backend"))
+            ( OA.option
+                backendReader
+                ( OA.long "vs"
+                    <> OA.metavar "BACKEND"
+                    <> OA.help (choiceHelp "Opponent backend" Spec.backendChoices)
+                )
+            )
         <*> rngOption NativeRng True
         <*> OA.option
             simBudgetReader
@@ -355,12 +437,14 @@ playParser =
 
 parseBackends :: String -> Either AppError [Backend]
 parseBackends raw =
-    let pieces = splitCommas raw
-        parsed = traverse parseBackend pieces
-     in case parsed of
-            Just [] -> Left (ParseError "backend list is empty")
-            Just values -> Right values
-            Nothing -> Left (ParseError ("bad backend list: " <> raw))
+    case parseChoiceList "backend" Spec.backendChoices parseBackend raw of
+        Right [] ->
+            Left
+                ( ParseError
+                    ("backend list is empty; accepted values: " <> Spec.renderChoiceTokens Spec.backendChoices)
+                )
+        Right values -> Right values
+        Left message -> Left (ParseError message)
 
 showParser :: OA.Parser ShowOptions
 showParser =
@@ -405,22 +489,25 @@ divergenceParser =
 
 testParser :: OA.Parser Command
 testParser =
-    (Test . TestAll <$> allParser)
-        <|> (Test . TestParityAnchor <$> parityAnchorParser)
-        <|> (Test . TestStanza <$> OA.strArgument (OA.metavar "STANZA"))
+    allParser
+        <|> parityAnchorParser
+        <|> withCommonOptions (Test . TestStanza <$> OA.strArgument (OA.metavar "STANZA"))
   where
     allParser =
         OA.hsubparser
             ( OA.command
                 "all"
-                (OA.info (planOptionsParser <**> OA.helper) (OA.progDesc "Run full suite and report card"))
+                ( OA.info
+                    (withCommonOptions (Test . TestAll <$> planOptionsParser) <**> OA.helper)
+                    (OA.progDesc "Run full suite and report card")
+                )
             )
     parityAnchorParser =
         OA.hsubparser
             ( OA.command
                 "parity-anchor"
                 ( OA.info
-                    (parityAnchorOptionsParser <**> OA.helper)
+                    (withCommonOptions (Test . TestParityAnchor <$> parityAnchorOptionsParser) <**> OA.helper)
                     (OA.progDesc "Measure backend parity anchor")
                 )
             )
@@ -479,37 +566,53 @@ backendListOption :: OA.Parser [Backend]
 backendListOption =
     OA.option
         backendListReader
-        (OA.long "backend" <> OA.metavar "BACKENDS" <> OA.help "Comma-separated backend list")
+        ( OA.long "backend"
+            <> OA.metavar "BACKENDS"
+            <> OA.help
+                ( choiceHelp "Comma-separated backend list" Spec.backendChoices
+                    <> ". Syntax: comma-separated non-empty list"
+                )
+        )
 
 verifyBackendListOption :: OA.Parser [VerifyBackend]
 verifyBackendListOption =
     OA.option
         verifyBackendListReader
-        (OA.long "backend" <> OA.metavar "BACKENDS" <> OA.help "Comma-separated Q3 backend list")
+        ( OA.long "backend"
+            <> OA.metavar "BACKENDS"
+            <> OA.help
+                ( choiceHelp "Comma-separated Q3 backend list" Spec.verifyBackendChoices
+                    <> ". Syntax: comma-separated non-empty list. Use mcts verify legacy-parity for all five backend slots"
+                )
+        )
 
 backendReader :: OA.ReadM Backend
 backendReader =
-    OA.eitherReader $ \raw ->
-        case parseBackend raw of
-            Just backend -> Right backend
-            Nothing -> Left ("unknown backend: " <> raw)
+    choiceReader "backend" Spec.backendChoices parseBackend
 
 backendListReader :: OA.ReadM [Backend]
 backendListReader =
     OA.eitherReader $ \raw ->
         case parseBackends raw of
             Right backends -> Right backends
+            Left (ParseError message) -> Left message
             Left err -> Left (show err)
 
 verifyBackendListReader :: OA.ReadM [VerifyBackend]
 verifyBackendListReader =
     OA.eitherReader $ \raw ->
         case parseBackends raw of
+            Left (ParseError message) -> Left message
             Left err -> Left (show err)
             Right [] -> Left "backend list is empty"
             Right backends ->
                 case traverse toVerifyBackend backends of
-                    Nothing -> Left "cpp-legacy is not in the Q3 verify cohort; use legacy parity"
+                    Nothing ->
+                        Left
+                            ( "cpp-legacy is not in the Q3 verify cohort; accepted values: "
+                                <> Spec.renderChoiceTokens Spec.verifyBackendChoices
+                                <> "; use mcts verify legacy-parity for all-five legacy-envelope checks"
+                            )
                     Just typedBackends -> Right typedBackends
 
 rngOption :: RngSource -> Bool -> OA.Parser RngSource
@@ -520,7 +623,7 @@ rngOption defaultRng allowNativeRng =
             <> OA.metavar "native|cpp"
             <> OA.value defaultRng
             <> OA.showDefaultWith renderRng
-            <> OA.help "RNG source"
+            <> OA.help (choiceHelp "RNG source" Spec.rngChoices)
         )
 
 rngReader :: Bool -> OA.ReadM RngSource
@@ -530,7 +633,7 @@ rngReader allowNativeRng =
             Just NativeRng
                 | not allowNativeRng -> Left "verify requires --rng cpp; omit --rng or pass --rng cpp"
             Just rng -> Right rng
-            Nothing -> Left ("bad --rng: " <> raw)
+            Nothing -> Left (unknownChoiceMessage "rng" Spec.rngChoices raw)
 
 threadingReader :: OA.ReadM Threading
 threadingReader =
@@ -538,7 +641,7 @@ threadingReader =
         case raw of
             "single" -> Right SingleThreaded
             "multi" -> Right (MultiThreaded 8)
-            _ -> Left ("bad --threading: " <> raw)
+            _ -> Left (unknownChoiceMessage "threading" Spec.threadingChoices raw)
 
 simBudgetReader :: OA.ReadM SimBudget
 simBudgetReader =
@@ -553,7 +656,7 @@ sideReader =
         case raw of
             "hero" -> Right Hero
             "villain" -> Right Villain
-            _ -> Left ("bad --side: " <> raw)
+            _ -> Left (unknownChoiceMessage "side" Spec.sideChoices raw)
 
 allowStaleSwitch :: OA.Parser Bool
 allowStaleSwitch =
@@ -562,6 +665,77 @@ allowStaleSwitch =
 
 writeSwitch :: OA.Parser Bool
 writeSwitch = OA.switch (OA.long "write" <> OA.help "Apply fixes where supported")
+
+withCommonOptions :: OA.Parser Command -> OA.Parser Command
+withCommonOptions parser =
+    parser <* commonOutputOptionsParser
+
+commonOutputOptionsParser :: OA.Parser ()
+commonOutputOptionsParser =
+    ()
+        <$ OA.optional
+            ( OA.option
+                (choiceUnitReader "format" Spec.outputFormatChoices)
+                ( OA.long "format"
+                    <> OA.metavar "json|table|plain"
+                    <> OA.help
+                        ( choiceHelp "Output format" Spec.outputFormatChoices
+                            <> ". Default: plain when stdout is not a TTY; table when stdout is a TTY"
+                        )
+                )
+            )
+        <* OA.optional
+            ( OA.option
+                (choiceUnitReader "color" Spec.colorModeChoices)
+                ( OA.long "color"
+                    <> OA.metavar "auto|always|never"
+                    <> OA.help (choiceHelp "Color mode" Spec.colorModeChoices <> ". Default: auto")
+                )
+            )
+        <* OA.switch (OA.long "no-color" <> OA.help "Alias for --color never")
+
+choiceReader :: String -> [Spec.ChoiceSpec] -> (String -> Maybe a) -> OA.ReadM a
+choiceReader label choiceSet parseValue =
+    OA.eitherReader $ \raw ->
+        case parseValue raw of
+            Just value -> Right value
+            Nothing -> Left (unknownChoiceMessage label choiceSet raw)
+
+choiceUnitReader :: String -> [Spec.ChoiceSpec] -> OA.ReadM ()
+choiceUnitReader label choiceSet =
+    choiceReader label choiceSet parse
+  where
+    parse raw =
+        if raw `elem` Spec.choiceTokens choiceSet
+            then Just ()
+            else Nothing
+
+parseChoiceList :: String -> [Spec.ChoiceSpec] -> (String -> Maybe a) -> String -> Either String [a]
+parseChoiceList label choiceSet parseValue raw =
+    let pieces = splitCommas raw
+     in if null raw || null pieces || any null pieces
+            then
+                Left
+                    (label <> " list is empty or malformed; accepted values: " <> Spec.renderChoiceTokens choiceSet)
+            else traverse parsePiece pieces
+  where
+    parsePiece piece =
+        case parseValue piece of
+            Just value -> Right value
+            Nothing -> Left (unknownChoiceMessage label choiceSet piece)
+
+unknownChoiceMessage :: String -> [Spec.ChoiceSpec] -> String -> String
+unknownChoiceMessage label choiceSet raw =
+    "unknown "
+        <> label
+        <> ": "
+        <> raw
+        <> "; accepted values: "
+        <> Spec.renderChoiceTokens choiceSet
+
+choiceHelp :: String -> [Spec.ChoiceSpec] -> String
+choiceHelp label choiceSet =
+    label <> ". Accepted values: " <> Spec.renderChoiceTokens choiceSet
 
 optionalStringOption :: String -> String -> String -> OA.Parser (Maybe String)
 optionalStringOption longName metavar helpText =
@@ -617,8 +791,8 @@ renderThreading threading =
 splitCommas :: String -> [String]
 splitCommas raw =
     case break (== ',') raw of
-        (one, "") -> [one | not (null one)]
-        (one, _ : rest) -> [one | not (null one)] <> splitCommas rest
+        (one, "") -> [one]
+        (one, _ : rest) -> one : splitCommas rest
 
 trimTrailingNewlines :: String -> String
 trimTrailingNewlines = reverse . dropWhile (== '\n') . reverse

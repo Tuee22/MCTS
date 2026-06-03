@@ -103,7 +103,7 @@ renderPurpose path spec =
         "mcts docs check" -> "Compare rendered output against on-disk markers and tracked paths"
         "mcts docs generate" -> "Splice rendered output into markers and write tracked generated paths"
         "mcts commands" -> "Flat, tree, or JSON rendering of the command registry"
-        "mcts help" -> "Focused help pointer for a target command"
+        "mcts help" -> "Focused parser help for a target command"
         "mcts check-code" -> "Doctrine alignment, formatter, HLint, and generated-doc checks"
         "mcts build cpp-legacy" -> "Plan/Apply: Dockerfile C++ legacy backend build recipe"
         "mcts build cpp-imperative" ->

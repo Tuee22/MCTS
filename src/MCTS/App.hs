@@ -15,7 +15,7 @@ import MCTS.CLI.Inspect (runInspect)
 import MCTS.CLI.Json (renderCommandJson)
 import MCTS.CLI.Lint (runLint)
 import MCTS.CLI.Output
-import MCTS.CLI.Parser (parseCommand)
+import MCTS.CLI.Parser (parseCommand, renderFocusedHelp)
 import MCTS.CLI.Test (runTestCommand)
 import MCTS.CLI.Tree (renderCommandList, renderCommandTree)
 import qualified MCTS.CLI.Tui.Play as TuiPlay
@@ -73,14 +73,11 @@ runCommand command =
                 )
                 >> pure ExitSuccess
         Help (HelpOptions target) ->
-            liftIO
-                ( outputLine
-                    ( "help: mcts "
-                        <> unwords target
-                        <> "\nRun `docker compose run --rm mcts mcts commands --tree` for the command tree."
-                    )
-                )
-                >> pure ExitSuccess
+            case renderFocusedHelp target of
+                Right rendered -> liftIO (outputLine rendered) >> pure ExitSuccess
+                Left rendered -> liftIO (outputLine rendered) >> pure (ExitFailure 2)
+        RenderHelp rendered ->
+            liftIO (outputLine rendered) >> pure ExitSuccess
         CheckCode -> runCheckCode
         Play options -> runPlay options
 

@@ -28,10 +28,14 @@ generated-document metadata enforcement, `check-code` dispatch ordering, and
 style-policy wording matched the implemented lint stack exactly. Sprint `1.11`
 reclosed README/lint-write contract alignment on 2026-05-24, and Sprint `1.12`
 reclosed generated `bench rollouts` summary wording on 2026-05-27 so generated
-command docs match the implemented legacy played-game workload. Backend logic and
-transcript semantics remain owned by later phases; this closure owns only the
-generated artefact machinery, container-owned lint stack, and code-quality doctrine
-surface.
+command docs match the implemented legacy played-game workload. Phase `1`
+reopened again on 2026-06-03 for Sprint `1.13` after operator use showed the CLI
+was not fully self-describing. Sprint `1.13` reclosed the same day after adding
+choice-aware registry metadata, focused `optparse-applicative` help, value-aware
+parse errors, enriched command JSON, regenerated Markdown/manpage/completion artefacts,
+and semantic parser/help/JSON/generated-doc tests. Backend logic and transcript
+semantics remain owned by later phases; this reopening was limited to
+parser/help/command-metadata introspection.
 
 ## Phase Summary
 
@@ -39,8 +43,13 @@ Phase `1` establishes the Haskell CLI surface as the single execution surface fo
 project. The `mcts` binary is the only operator-facing entry point; `CommandSpec`
 is the registry for command topology, command-tree rendering, examples, generated
 markdown command reference, manpage command list, shell-completion metadata, and JSON
-command schema. `Parser.hs` renders the top-level/subcommand topology from that
-registry while retaining explicit semantic parsers for leaf options. The phase adopts
+command schema. Sprint `1.13` extends that registry with typed choice/default/note
+metadata and makes the explicit leaf option parsers consume the same value sets, so
+`optparse-applicative` remains the parser implementation while the CLI becomes
+fully introspectable through `--help`, `mcts help`, `mcts commands --json`,
+generated docs, and completions. `Parser.hs` renders the top-level/subcommand
+topology from that registry while retaining explicit semantic parsers for leaf options.
+The phase adopts
 every in-scope doctrine surface — `CommandSpec`
 + Generated Artifacts, Progressive Introspection, `Subprocess` as typed values,
 `Plan / Apply`, `prerequisiteRegistry`, `ReaderT Env IO`, the single `AppError` ADT with
@@ -1169,13 +1178,114 @@ throughput lives at `mcts bench terminal-playouts`.
 
 None.
 
+## Sprint 1.13: Self-Describing CLI Introspection ✅
+
+**Status**: Done
+**Implementation**: `src/MCTS/CLI/Spec.hs`, `src/MCTS/CLI/Parser.hs`,
+`src/MCTS/CLI/Command.hs`, `src/MCTS/CLI/Docs.hs`, `src/MCTS/Generated/Paths.hs`,
+`src/MCTS/Generated/Sections.hs`, `test/unit/Main.hs`
+**Docs to update**: `README.md`, `documents/engineering/cli_command_surface.md`,
+`documents/engineering/README.md`, `documents/cli/commands.md`,
+`share/man/man1/mcts.1`, `share/completion/bash/mcts`,
+`share/completion/zsh/_mcts`, `share/completion/fish/mcts.fish`,
+`DEVELOPMENT_PLAN/README.md`, `DEVELOPMENT_PLAN/00-overview.md`,
+`DEVELOPMENT_PLAN/system-components.md`,
+`DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md`
+
+### Objective
+
+Make the `mcts` CLI fully self-describing through introspection alone while keeping
+`optparse-applicative` as the idiomatic parser implementation. An operator must be able
+to discover valid backend identifiers, Q3 verify backend subsets, RNG modes, side values,
+threading modes, defaults, examples, list syntax, and command-specific notes from
+`--help`, `mcts help <path>`, `mcts commands --json`, generated Markdown/manpages, and
+shell completions without reading source code or the development plan.
+
+### Deliverables
+
+- Introduce a typed choice metadata layer for enum-like CLI values. The first-class choice
+  sets are the complete backend list (`cpp-legacy`, `cpp-imperative`,
+  `cpp-functional`, `rust`, `haskell`), the Q3 verify cohort
+  (`cpp-imperative`, `cpp-functional`, `rust`, `haskell`), `RngSource`
+  (`native`, `cpp`), `Side` (`hero`, `villain`), `Threading` (`single`, `multi`),
+  output formats, color modes, and any build/test identifiers that are accepted as
+  closed sets. Each choice carries the parser token, a short summary, and any
+  command-specific availability rule.
+- Replace ad hoc enum readers with choice-aware `OA.ReadM` readers built from those
+  choice sets. Unknown values and malformed comma lists render the rejected token plus
+  the accepted values. The Q3 verify reader continues to reject `cpp-legacy`, but its
+  diagnostic names the valid Q3 choices and points operators to
+  `mcts verify legacy-parity` for all-five legacy-envelope checks.
+- Enrich `OptionSpec` and the command registry with defaults, value sets, positional
+  arguments, list semantics, examples, notes, and completion metadata. The enriched
+  metadata supplements `optparse-applicative`; it does not replace typed semantic
+  parsers for flags such as `--sims N|A:B`.
+- Add reusable option builders for common surfaces: single backend, backend list, Q3
+  backend list, RNG, side, threading/workers, simulation budget, cache directory,
+  output format/color, dry-run/plan-file, and hash-prefix positional arguments. Each
+  builder emits the `optparse-applicative` modifier set (`metavar`, `help`, default,
+  completer) and the registry metadata from the same definition.
+- Make every leaf `mcts <path> --help` show required inputs, optional flags, defaults,
+  accepted enum values, list syntax, examples, and command-specific side effects.
+  `mcts play --help` must enumerate all valid backend identifiers for both `--backend`
+  and `--vs`.
+- Rework `mcts help <path>` to render the actual focused parser help for that command
+  path. Unknown help targets render the nearest valid command tree context.
+- Expand `mcts commands --json` so downstream tools can inspect command paths,
+  summaries, descriptions, options, positional arguments, defaults, requiredness,
+  accepted values, examples, and notes from one stable schema. `mcts commands --tree`
+  remains the compact topology view.
+- Regenerate `documents/cli/commands.md`, `share/man/man1/mcts.1`, and
+  `share/completion/{bash,zsh,fish}/` from the enriched registry. Generated docs must
+  include the same value-set and example data visible through parser help.
+- Add unit tests that assert every enum-valued option exposes accepted values in help
+  and JSON, invalid enum input reports the valid values, `mcts help play` carries the
+  same important sections as `mcts play --help`, every registered example parses, and
+  the generated command docs retain the enriched value metadata.
+
+### Validation
+
+- `docker compose run --rm mcts mcts play --help`
+- `docker compose run --rm mcts mcts help play`
+- `docker compose run --rm mcts mcts play --backend nope --side hero`
+- `docker compose run --rm mcts mcts commands --json`
+- `docker compose run --rm mcts mcts docs generate`
+- `docker compose run --rm mcts mcts docs check`
+- `docker compose run --rm mcts mcts test mcts-unit`
+- `docker compose run --rm mcts mcts check-code`
+- `git diff --check`
+
+### Remaining Work
+
+None.
+
+### Closure Notes
+
+- Closed on 2026-06-03 after `CommandSpec` / `OptionSpec` gained typed choice,
+  default, positional, list-syntax, note, and completion metadata; parser readers now
+  consume the same value sets that generated docs, JSON, manpages, completions, and
+  diagnostics render.
+- `mcts play --help` and `mcts help play` render focused help with accepted backend,
+  side, RNG, format, and color values; invalid enum/list values report the accepted
+  choices, and Q3 verify backend parsing rejects `cpp-legacy` with the
+  `legacy-parity` remedy.
+- Validation passed through the Compose entrypoint: `docker compose run --rm --build
+  mcts mcts test mcts-unit`, `docker compose run --rm mcts mcts docs check`,
+  `docker compose run --rm mcts mcts lint haskell`, `docker compose run --rm mcts
+  mcts lint docs`, `docker compose run --rm mcts mcts lint files`, `docker compose run
+  --rm mcts mcts check-code`, `docker compose run --rm mcts mcts play --help`,
+  `docker compose run --rm mcts mcts help play`, `docker compose run --rm mcts mcts
+  commands --json`, expected-failing `docker compose run --rm mcts mcts play --backend
+  nope --side hero` (exit `2` with accepted backend values), and `git diff --check`.
+
 ## Documentation Requirements
 
 **Engineering docs to create/update:**
 
 - `documents/engineering/cli_command_surface.md` — fill in the MCTS-specific command
-  matrix derived from `CommandSpec`; defer to the doctrine on Command Topology and
-  Progressive Introspection.
+  matrix derived from `CommandSpec`, add the self-describing CLI introspection
+  contract, and defer to the doctrine on Command Topology and Progressive
+  Introspection.
 - `documents/engineering/code_quality.md` — describe `mcts check-code` /
   `mcts lint *` / `mcts docs check`; defer to the doctrine on Lint, Format,
   Code-Quality Stack, Generated Artifacts, and Forbidden Surfaces.
@@ -1187,10 +1297,13 @@ None.
   to the doctrine on each pattern.
 - `documents/documentation_standards.md` — align the generated-section metadata rule with
   the Sprint `1.10` implementation.
+- `documents/engineering/README.md` — index the self-describing CLI contract and record
+  Sprint `1.13` as closed.
 
 **Product docs to create/update:**
 
-- None.
+- `README.md` — link operators to the implemented self-describing CLI contract plus the
+  current backend identifier table.
 
 **Cross-references to add:**
 
@@ -1198,6 +1311,8 @@ None.
   `documents/engineering/README.md` index.
 - `legacy-tracking-for-deletion.md` carries any Sprint `1.10` doctrine-deviation residue
   until the generated-doc and style contracts are reclosed.
+- `legacy-tracking-for-deletion.md` records the pointer-only help / missing enum-value
+  metadata row as completed by Sprint `1.13`.
 
 ## Related Documents
 

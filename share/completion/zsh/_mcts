@@ -1,2 +1,11 @@
 #compdef mcts
-_arguments '1:command:(bench verify play inspect test lint docs commands help check-code build)' '*::arg:->args'
+_arguments \
+  '1:command:(bench verify play inspect test lint docs commands help check-code build)' \
+  '--backend[backend or comma-separated backend list]:backend:(cpp-legacy cpp-imperative cpp-functional rust haskell)' \
+  '--vs[opponent backend]:backend:(cpp-legacy cpp-imperative cpp-functional rust haskell)' \
+  '--rng[RNG source]:rng:(native cpp)' \
+  '--side[controlled side]:side:(hero villain)' \
+  '--threading[threading mode]:threading:(single multi)' \
+  '--format[output format]:format:(json table plain)' \
+  '--color[color mode]:color:(auto always never)' \
+  '*::arg:->args'

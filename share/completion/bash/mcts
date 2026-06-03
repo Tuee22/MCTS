@@ -1,6 +1,31 @@
 _mcts_complete()
 {
-    local words="bench verify play inspect test lint docs commands help check-code build"
-    COMPREPLY=( $(compgen -W "$words" -- "${COMP_WORDS[COMP_CWORD]}") )
+    local cur prev words
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+    case "$prev" in
+        --backend|--vs|BASELINE|CANDIDATE)
+            words="cpp-legacy cpp-imperative cpp-functional rust haskell"
+            ;;
+        --rng)
+            words="native cpp"
+            ;;
+        --side)
+            words="hero villain"
+            ;;
+        --threading)
+            words="single multi"
+            ;;
+        --format)
+            words="json table plain"
+            ;;
+        --color)
+            words="auto always never"
+            ;;
+        *)
+            words="bench verify play inspect test lint docs commands help check-code build rollouts selfplay terminal-playouts search-iters rollouts selfplay rollouts selfplay play list show replay list prune divergence all parity-anchor <stanza> files docs haskell all check generate commands help check-code cpp-legacy cpp-imperative cpp-functional rust legacy-fixtures"
+            ;;
+    esac
+    COMPREPLY=( $(compgen -W "$words" -- "$cur") )
 }
 complete -F _mcts_complete mcts

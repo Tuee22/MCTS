@@ -39,8 +39,10 @@ Phase `0` reclosed Sprint `0.3` on 2026-05-27 by restoring
 doctrine topology intact, and moving the stale-reference cleanup row to
 Completed. Sprint `0.1` (plan-suite bootstrap) and Sprint `0.2`
 (doctrine-driven scheduling audit) remain historical `Done` records. Later
-implementation phases remain closed on their owned code and evidence surfaces
-except active Phase `8` Sprint `8.15` described below.
+implementation phases remain closed on their owned code and evidence surfaces.
+Phase `1` Sprint `1.13` reclosed on 2026-06-03 after the CLI introspection surface
+became self-describing through focused help, enriched command metadata, generated docs,
+and completions.
 The 2026-05-21 evidence-surface audit reopened the phases whose governed docs
 or code overclaimed the implementation. Phase `1` reclosed Sprint `1.10` on
 2026-05-21 after generated-document metadata and lint/code-quality contract
@@ -401,11 +403,28 @@ top-level gains `selfplay_sims_per_move` and `selfplay_games_per_cell`
 keys. This is a pure rendering / observability change — the underlying
 measurement parameters and Q3/Q4/Q6/Q7 invariants are unchanged.
 
-The Phase `1` reclosure was validated with
+On 2026-06-03, operator use reopened Phase `1` for Sprint `1.13` on the
+self-describing CLI introspection surface. The immediate symptom was
+`mcts play --help` accepting `--backend BACKEND` without enumerating the
+valid backend identifiers, while `mcts help <path>` printed only a pointer and
+invalid enum parse errors omitted accepted values. Sprint `1.13` reclosed the
+same day with choice metadata, focused `optparse-applicative` help, enriched
+`commands --json`, generated docs, and completion updates that make the CLI usable
+through introspection alone. Phases `2`–`8` remain closed on their backend,
+transcript, verification, and performance surfaces.
+
+The Sprint `1.13` Phase `1` reclosure was validated with
+`docker compose run --rm --build mcts mcts test mcts-unit`,
 `docker compose run --rm mcts mcts docs check`,
+`docker compose run --rm mcts mcts lint haskell`,
 `docker compose run --rm mcts mcts lint docs`,
-`docker compose run --rm mcts mcts test mcts-haskell-style`,
-`docker compose run --rm mcts mcts check-code`, and `git diff --check`.
+`docker compose run --rm mcts mcts lint files`,
+`docker compose run --rm mcts mcts check-code`,
+`docker compose run --rm mcts mcts play --help`,
+`docker compose run --rm mcts mcts help play`,
+`docker compose run --rm mcts mcts commands --json`, the expected exit-2 invalid-backend
+probe `docker compose run --rm mcts mcts play --backend nope --side hero`, and
+`git diff --check`.
 The Phase `2` reclosure was validated with
 `docker compose run --rm mcts mcts test mcts-unit`,
 `docker compose run --rm mcts mcts docs check`,
@@ -782,7 +801,7 @@ A sprint can move to `Done` only when all of the following are true:
 | Phase | Name | Status | Document |
 |-------|------|--------|----------|
 | 0 | Planning and Documentation Topology | ✅ Done (Sprint `0.4` README-authority citation cleanup closed 2026-05-27) | [phase-0-planning-documentation.md](phase-0-planning-documentation.md) |
-| 1 | Haskell CLI Surface, `CommandSpec`, Lint Stack | ✅ Done (Sprint `1.12` generated `bench rollouts` summary realignment closed 2026-05-27) | [phase-1-haskell-cli-surface.md](phase-1-haskell-cli-surface.md) |
+| 1 | Haskell CLI Surface, `CommandSpec`, Lint Stack | ✅ Done (Sprint `1.13` self-describing CLI introspection closed 2026-06-03: enum values, focused help, enriched command JSON/docs/completions) | [phase-1-haskell-cli-surface.md](phase-1-haskell-cli-surface.md) |
 | 2 | Transcript Codec, RNG, and Determinism Contract | ✅ Done (Sprint `2.9` transcript/envelope doctrine realignment closed 2026-05-24) | [phase-2-transcript-codec-and-determinism.md](phase-2-transcript-codec-and-determinism.md) |
 | 3 | Backend (v) Haskell Engine | ✅ Done (Sprint `3.8` benchmark metric primitives closed 2026-05-24) | [phase-3-haskell-engine.md](phase-3-haskell-engine.md) |
 | 4 | Backend (i) C++ Legacy Port and FFI Bridge | ✅ Done (Sprint `4.7` Dockerfile gcc/g++ scrub closed 2026-05-30 after Sprint `4.6` cpp-legacy compiler pivot to `clang++-19` closed the same day; Sprints `4.1`–`4.5` remain closed for their delivered surfaces) | [phase-4-cpp-legacy-port-and-ffi-bridge.md](phase-4-cpp-legacy-port-and-ffi-bridge.md) |
@@ -844,9 +863,11 @@ governed docs. Sprint `0.4` then removed remaining README-as-authority citation 
 README is reference-only, `00-overview.md` owns the doctrine-scope split, and governed
 engineering docs own wire-format, report-card, FFI, determinism, and tuning details.
 Phase `1` Sprint `1.12` removed the generated `bench rollouts` summary drift so the
-command registry and generated docs match the implemented played-game workload. These
-topology and generated-text repairs did not reopen Phases `2`–`8` on their
-implementation-owned surfaces.
+command registry and generated docs match the implemented played-game workload. Sprint
+`1.13` reclosed the self-describing introspection gap: accepted values, defaults,
+examples, parse-error remedies, command JSON, manpages, completions, and focused help are
+discoverable from the CLI itself. This topology and generated-text reopening did not
+reopen Phases `2`–`8` on their implementation-owned surfaces.
 Implemented in the worktree:
 
 - `mcts.cabal`, `cabal.project`, `app/Main.hs`, `src/MCTS/**`, `test/**`,
