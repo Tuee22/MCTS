@@ -76,7 +76,7 @@ The MCTS commands that consume the `Plan / Apply` pattern are:
 - `mcts inspect cache prune` — Plan/Apply over equity-sidecar deletion plans.
 
 Host invocations wrap these logical commands as
-`hostbootstrap run mcts <command>`.
+`hostbootstrap run <mcts-args>`.
 
 `mcts bench` and `mcts verify` are not Plan/Apply commands — they do not mutate
 external state (only the transcript cache, which they own), so the
@@ -338,7 +338,7 @@ first.
 ## Editor / IDE Setup
 
 The project's build doctrine routes all supported builds, tests, lints, and
-codegen through `hostbootstrap run mcts <command>`. Host editor
+codegen through `hostbootstrap run <mcts-args>`. Host editor
 integration is personal convenience only; it is not a supported validation,
 build, formatting, linting, documentation-generation, test, benchmark, or
 backend-build workflow.

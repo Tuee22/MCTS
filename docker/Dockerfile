@@ -34,3 +34,5 @@ RUN mcts build cpp-legacy \
     && mcts build cpp-imperative \
     && mcts build cpp-functional \
     && mcts build rust
+
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/mcts"]

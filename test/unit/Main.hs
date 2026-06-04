@@ -2829,7 +2829,7 @@ exerciseErrorRenderings = do
     assert "TranscriptNotFound mentions the ref" ("abc" `inText` renderError (TranscriptNotFound "abc"))
     assert
         "DocsCheckDrift mentions the remedy"
-        ("hostbootstrap run mcts docs generate" `inText` renderError (DocsCheckDrift "x" "y"))
+        ("hostbootstrap run docs generate" `inText` renderError (DocsCheckDrift "x" "y"))
     assert
         "PrerequisiteUnmet mentions the remedy"
         ("install ghcup" `inText` renderError (PrerequisiteUnmet "ghc" "GHC" "install ghcup"))

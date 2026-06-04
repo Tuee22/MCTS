@@ -9,7 +9,7 @@
 > across the MCTS repository.
 
 > **Phase 9 note (2026-06-04):** The canonical invocation shape for every
-> host-runnable command example below is `hostbootstrap run mcts <command>`
+> host-runnable command example below is `hostbootstrap run <mcts-args>`
 > (Phase 1 reopen Sprint `1.15`; see
 > [../DEVELOPMENT_PLAN/phase-9-hostbootstrap-adoption.md](../DEVELOPMENT_PLAN/phase-9-hostbootstrap-adoption.md)).
 > Compose entrypoints are no longer a supported project workflow.
@@ -188,7 +188,7 @@ Code examples must not use:
 - stale commands that bypass the public `mcts` surface.
 - host-level validation fallbacks. Supported project work, including
   Fourmolu/HLint execution, enters through
-  `hostbootstrap run mcts <command>`; examples must not tell
+  `hostbootstrap run <mcts-args>`; examples must not tell
   contributors to run `docker compose up`, `docker compose exec`, Compose
   one-shot commands, or ambient host toolchains as a fallback, and must
   not route project work through `.sh` scripts or `bootstrap/` helpers.
@@ -254,7 +254,7 @@ flowchart TB
 
 - BAD: `See the old host-side bootstrap script`.
 - GOOD: `Run the supported CLI through
-  hostbootstrap run mcts <command>`.
+  hostbootstrap run <mcts-args>`.
 
 ---
 
@@ -322,17 +322,17 @@ currently scheduled registry entries are:
 
 ### How to Regenerate
 
-Run `hostbootstrap run mcts docs generate` to splice the current renderer
+Run `hostbootstrap run docs generate` to splice the current renderer
 output between every marker pair declared in the registry. Hand edits between markers
 are reverted on the next regenerate and fail
-`hostbootstrap run mcts docs check` until reverted.
+`hostbootstrap run docs check` until reverted.
 
 The check command emits the doctrine's three-element error message on drift:
 
 1. The file path that drifted.
 2. The marker key (so the contributor knows which renderer is responsible).
 3. A literal remedy hint:
-   `` run `hostbootstrap run mcts docs generate` ``
+   `` run `hostbootstrap run docs generate` ``
 
 ### How to Add a New Generated Section
 
@@ -343,9 +343,9 @@ The doctrine's five-step extension protocol:
 2. Add the marker pair to the target file using the conventions above.
 3. Register a new `GeneratedSectionRule` or `TrackedGeneratedPath` entry in the
    in-code registry.
-4. Run `hostbootstrap run mcts docs generate` to populate the section.
-5. Confirm `hostbootstrap run mcts docs check` and
-   `hostbootstrap run mcts test all` pass.
+4. Run `hostbootstrap run docs generate` to populate the section.
+5. Confirm `hostbootstrap run docs check` and
+   `hostbootstrap run test all` pass.
 
 ### Fully Generated, Do-Not-Hand-Edit Paths
 

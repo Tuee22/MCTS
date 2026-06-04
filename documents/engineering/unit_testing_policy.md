@@ -133,7 +133,7 @@ from normal `mcts test all`.
 
 The doctrine-mandatory canonical test command. Phase 7 Sprint 7.3 owns the
 implementation. From the host, run it as
-`hostbootstrap run mcts test all` (Phase 1 reopen Sprint `1.15` canonical
+`hostbootstrap run test all` (Phase 1 reopen Sprint `1.15` canonical
 invocation; see
 [../../DEVELOPMENT_PLAN/phase-9-hostbootstrap-adoption.md](../../DEVELOPMENT_PLAN/phase-9-hostbootstrap-adoption.md));
 the first run builds the image when needed. Image construction compiles the `mcts` executable with tests and benchmarks

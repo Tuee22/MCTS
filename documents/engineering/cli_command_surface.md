@@ -71,7 +71,7 @@ completion scripts under `share/completion/` all derive from the same `CommandSp
 registry that drives this table. Phase-owned per
 [../../DEVELOPMENT_PLAN/system-components.md](../../DEVELOPMENT_PLAN/system-components.md).
 From the host, run any listed logical command as
-`docker compose run --rm mcts mcts <command>`.
+`hostbootstrap run <mcts-args>`.
 
 <!-- mcts:command-matrix:start -->
 | Command | Purpose |

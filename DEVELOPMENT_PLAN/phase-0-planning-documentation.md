@@ -35,7 +35,7 @@ the Phase 1 reopen sprints `1.14`, `1.15`, `1.16` in
 [phase-1-haskell-cli-surface.md](phase-1-haskell-cli-surface.md)). Sprint
 `0.5` reclosed on 2026-06-04 after Sprint `0.2`'s toolchain-pinning
 enumeration and doctrine ownership table row tracked the GHC `9.12.4`
-pin and the `hostbootstrap run mcts <command>` canonical invocation. The
+pin and the `hostbootstrap run <mcts-args>` canonical invocation. The
 documentation-topology surfaces owned by Sprints `0.1`–`0.4` remain
 closed.
 
@@ -537,8 +537,8 @@ remain closed on their owned narratives.
 
 ### Validation
 
-`hostbootstrap run mcts docs check` exits 0;
-`hostbootstrap run mcts check-code` exits 0. Bidirectional
+`hostbootstrap run docs check` exits 0;
+`hostbootstrap run check-code` exits 0. Bidirectional
 `Referenced by` audit passes between this phase doc and
 [phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md).
 

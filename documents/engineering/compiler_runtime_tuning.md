@@ -33,10 +33,10 @@ doctrine-owned; the per-backend tuning stacks are project-specific.
   `--plan-file <path>` for Dockerfile use and focused diagnostics.
 
 Normal host validation enters through
-`hostbootstrap run mcts <command>` and consumes Dockerfile-built Cabal
+`hostbootstrap run <mcts-args>` and consumes Dockerfile-built Cabal
 components plus backend artefacts. `hostbootstrap run` idempotently rebuilds
 the image when needed; use the same shape for dry-run diagnostics, for example
-`hostbootstrap run mcts test all --dry-run`. Direct host toolchain use is
+`hostbootstrap run test all --dry-run`. Direct host toolchain use is
 unsupported.
 
 ## PGO/BOLT Training Workload Doctrine

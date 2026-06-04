@@ -17,10 +17,10 @@ This restriction applies to all variants and equivalents (e.g., `git commit -a`,
 All supported project build, run, validation, formatting, linting, documentation-generation, test, benchmark, and backend-build work must enter through the host-installed `hostbootstrap` CLI (Phase 9 doctrine; see [`DEVELOPMENT_PLAN/phase-9-hostbootstrap-adoption.md`](DEVELOPMENT_PLAN/phase-9-hostbootstrap-adoption.md)):
 
 ```bash
-hostbootstrap run mcts <command>   # Phase 1 reopen Sprint 1.15 canonical shape
+hostbootstrap run <mcts-args>   # canonical shape; Dockerfile ENTRYPOINT supplies mcts
 ```
 
-`hostbootstrap run` is the canonical host-side entrypoint. It reads `hostbootstrap.dhall` at the repo root, idempotently builds the project image against the pinned base (`docker.io/tuee22/hostbootstrap:basecontainer-cpu-<arch>`), and dispatches `mcts <command>` inside a one-shot `docker run --rm` container. The base image owns GHC `9.12.4` (Phase 1 reopen Sprint `1.14`), Cabal `3.16.1.0`, LLVM `19` + BOLT, clang-19, Rust `1.95.0`, fourmolu `0.19.0.1`, hlint `3.10`, and the warm Cabal store; the project Dockerfile owns the MCTS source build and the four foreign backend `.so` artifacts.
+`hostbootstrap run` is the canonical host-side entrypoint. It reads `hostbootstrap.dhall` at the repo root, idempotently builds the project image against the pinned base (`docker.io/tuee22/hostbootstrap:basecontainer-cpu-<arch>`), and passes `<mcts-args>` to the image's tini-wrapped `mcts` ENTRYPOINT inside a one-shot `docker run --rm` container. The base image owns GHC `9.12.4` (Phase 1 reopen Sprint `1.14`), Cabal `3.16.1.0`, LLVM `19` + BOLT, clang-19, Rust `1.95.0`, fourmolu `0.19.0.1`, hlint `3.10`, and the warm Cabal store; the project Dockerfile owns the MCTS source build, the `ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/mcts"]`, and the four foreign backend `.so` artifacts.
 
 Install `hostbootstrap` once per host:
 
@@ -42,9 +42,9 @@ Use `pipx` for `hostbootstrap`; do not install it with direct `pip`, and do not 
 
 Do not run project commands directly on the host with ambient toolchains or host-installed binaries. In particular, do not use host `cabal run`, `cabal exec`, `cargo`, `cmake`, `make`, `fourmolu`, `hlint`, or similar commands as a fallback for project work. The `hostbootstrap` Python CLI itself is the one allowed host-installed orchestrator.
 
-Repository shell-script wrappers are not supported. Do not add or run `.sh` scripts, `bootstrap/` helpers, or other host-side orchestration for project build, run, validation, formatting, linting, documentation-generation, test, benchmark, or backend-build work. If a workflow is needed, expose it as an `mcts` command and run it through `hostbootstrap run mcts <command>`.
+Repository shell-script wrappers are not supported. Do not add or run `.sh` scripts, `bootstrap/` helpers, or other host-side orchestration for project build, run, validation, formatting, linting, documentation-generation, test, benchmark, or backend-build work. If a workflow is needed, expose it as an `mcts` command and run it through `hostbootstrap run <mcts-args>`.
 
-Host-side file inspection and bookkeeping commands such as `rg`, `sed`, `git diff --check`, and `git status --short` are acceptable when they do not build, run, format, lint, generate, or validate the project. Direct `docker build` / `docker run` invocations against the project image are not supported; use `hostbootstrap run mcts <command>` or `hostbootstrap build` instead. Do not use `docker compose up` or `docker compose exec` for this repository's normal workflow.
+Host-side file inspection and bookkeeping commands such as `rg`, `sed`, `git diff --check`, and `git status --short` are acceptable when they do not build, run, format, lint, generate, or validate the project. Direct `docker build` / `docker run` invocations against the project image are not supported; use `hostbootstrap run <mcts-args>` or `hostbootstrap build` instead. Do not use `docker compose up` or `docker compose exec` for this repository's normal workflow.
 
 ## Plan and Doctrine
 

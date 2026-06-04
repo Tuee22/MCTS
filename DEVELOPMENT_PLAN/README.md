@@ -687,7 +687,7 @@ Host-level fallback to ambient toolchains or style binaries is never allowed.
 The baseline uses semantic/property/temp-dir tests for transcript, renderer,
 report-card, and backend-equivalence evidence; no checked-in generated
 validation data is a normal test input. The validation gate for this baseline
-is `hostbootstrap run mcts test all` (Phase 1 reopen Sprint `1.15`) under the
+is `hostbootstrap run test all` (Phase 1 reopen Sprint `1.15`) under the
 pinned GHC `9.12.4` toolchain.
 
 The 2026-05-29 compiler-stack audit reopened Phase `5` for Sprints `5.9` and
@@ -720,11 +720,11 @@ orchestrator installed with `pipx`, `hostbootstrap.dhall` maps
 `AppleSilicon`, `LinuxCpu`, and
 `LinuxGpu` to the short-lived container model, `docker/Dockerfile` inherits
 `FROM ${BASE_IMAGE}`, and `compose.yaml` is deleted. Sprint `9.3` is also
-`✅ Done`: the post-migration `hostbootstrap run mcts test all` gate emits a
+`✅ Done`: the post-migration `hostbootstrap run test all` gate emits a
 non-pending report-card measurement and passes Q3/Q4/Q6/Q7 without requiring
 checked-in arm64/amd64 throughput anchors. Phase `1` reclosed Sprints `1.14`
 (toolchain pin update to GHC `9.12.4` + Cabal `3.16.1.0`), `1.15`
-(canonical invocation shape — `hostbootstrap run mcts <command>`), and `1.16`
+(canonical invocation shape — `hostbootstrap run <mcts-args>`), and `1.16`
 (lint stack — formatter-tools GHC unified with project GHC). Phase `0`
 reclosed Sprint `0.5`. Phases `2`, `3`, `4`, `5`, `6`, `7`, and `8` remain
 closed on their owned surfaces. The implementation handoff is complete.
@@ -740,7 +740,7 @@ Sprint `0.5` for the doctrine.
 ## Current Validation Boundary
 
 Phase 9 moved the current host validation boundary to
-`hostbootstrap run mcts <command>`; see
+`hostbootstrap run <mcts-args>`; see
 [phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md) for the
 hostbootstrap closure evidence. The
 older 2026-05-18 Compose-only operator-surface doctrine edit, selected-backend
@@ -837,7 +837,7 @@ A sprint can move to `Done` only when all of the following are true:
 | 6 | Backends (iii) C++ Functional-Core and (iv) Rust | ✅ Done (Sprint `6.11` closed 2026-05-30: backend (iii) cpp-functional compiler pivot to `clang++-19` + LLVM `.profraw` PGO flow, mirroring backend (ii) Sprint `5.9`. Sprints `6.1`–`6.10` remain closed for their delivered surfaces; cohort ranking is `rust ≥ cpp-functional ≈ cpp-imperative > haskell`) | [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md) |
 | 7 | Cross-Backend Verify, Test Stanzas, POC Report Card | ✅ Done (Sprint `7.11` Q7 semantic parity and normalized divergence score closed) | [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md) |
 | 8 | Haskell Performance Parity Closure and Five-Backend Restoration | ✅ Done (Sprint `8.19` closed 2026-05-30 with the Dockerfile-level aarch64 `-mcpu=apple-m1` unblock `measured but rejected`; Sprint `8.18` accepted `unsafeRead`/`unsafeWrite` arena helpers and recorded arm64 `85.6%` / amd64 `29.5%` cross-host evidence; the post-`4.7` unified-clang aggregate recorded `Verdict: Trails parity band by 69.1%`. Q3/Q4/Q6/Q7 PASS throughout with `normalized_divergence_score=0.0000`; Sprints `8.1`–`8.19` are closed for their delivered surfaces) | [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md) |
-| 9 | hostbootstrap Adoption | ✅ Done (Sprints `9.1`, `9.2`, and `9.3` closed 2026-06-04: hostbootstrap orchestrator, root `hostbootstrap.dhall`, slim `FROM ${BASE_IMAGE}` Dockerfile, deleted `compose.yaml`, and post-migration `hostbootstrap run mcts test all` report-card closure without checked-in arm64/amd64 throughput anchors. Phase `1` Sprints `1.14`, `1.15`, `1.16` and Phase `0` Sprint `0.5` reclosed. Phases `2`–`8` remain closed on their owned surfaces.) | [phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md) |
+| 9 | hostbootstrap Adoption | ✅ Done (Sprints `9.1`, `9.2`, and `9.3` closed 2026-06-04: hostbootstrap orchestrator, root `hostbootstrap.dhall`, slim `FROM ${BASE_IMAGE}` Dockerfile, deleted `compose.yaml`, and post-migration `hostbootstrap run test all` report-card closure without checked-in arm64/amd64 throughput anchors. Phase `1` Sprints `1.14`, `1.15`, `1.16` and Phase `0` Sprint `0.5` reclosed. Phases `2`–`8` remain closed on their owned surfaces.) | [phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md) |
 
 ## Current Plan Status
 
@@ -1258,7 +1258,7 @@ This plan is complete only when all of the following are true:
 24. The Docker development environment inherits the hostbootstrap base image
     through `FROM ${BASE_IMAGE}` and provides one LLVM 19 stack shared by GHC
     `-fllvm` and BOLT; the canonical host entrypoint is
-    `hostbootstrap run mcts <command>`. There is no long-running daemon
+    `hostbootstrap run <mcts-args>`. There is no long-running daemon
     container, no bind-mounted workspace, no Compose-level environment-variable
     block, and no `sleep infinity` placeholder. `hostbootstrap run`
     idempotently builds the image when needed, including the prebuilt Cabal

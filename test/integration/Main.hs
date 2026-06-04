@@ -166,7 +166,7 @@ captureMcts args = do
                     ( PrerequisiteUnmet
                         "mcts"
                         "installed image-local CLI executable"
-                        "run hostbootstrap run mcts commands so Dockerfile installs /usr/local/bin/mcts"
+                        "run hostbootstrap run commands so Dockerfile installs /usr/local/bin/mcts"
                     )
                 )
 

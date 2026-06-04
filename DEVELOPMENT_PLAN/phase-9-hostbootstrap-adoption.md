@@ -35,8 +35,8 @@
 2026-06-04: the hostbootstrap doctrine has landed,
 `hostbootstrap.dhall` exists at repo root, `docker/Dockerfile` inherits
 `FROM ${BASE_IMAGE}`, `compose.yaml` is deleted, and the project builds
-and runs through `hostbootstrap run mcts <command>`. Sprint `9.3`
-closed by proving the canonical post-migration `hostbootstrap run mcts
+and runs through `hostbootstrap run <mcts-args>`. Sprint `9.3`
+closed by proving the canonical post-migration `hostbootstrap run
 test all` gate emits a non-pending report card and passes Q3/Q4/Q6/Q7
 under the new image. Phase 1 Sprints `1.14`, `1.15`, and `1.16` are
 reclosed; Phase 0 Sprint `0.5` is reclosed. Phases 2–8 remain closed
@@ -79,7 +79,7 @@ on their owned surfaces.
 
 - The toolchain pin values (GHC `9.12.4` + Cabal `3.16.1.0`) — owned by
   [Sprint 1.14](phase-1-haskell-cli-surface.md#sprint-114-toolchain-pin-update-to-ghc-9124--cabal-3161).
-- The canonical invocation shape (`hostbootstrap run mcts <command>`) —
+- The canonical invocation shape (`hostbootstrap run <mcts-args>`) —
   owned by [Sprint 1.15](phase-1-haskell-cli-surface.md#sprint-115-canonical-command-shape--hostbootstrap-run-mcts-command).
 - The lint stack architecture (formatter-tools GHC unified with project
   GHC) — owned by [Sprint 1.16](phase-1-haskell-cli-surface.md#sprint-116-lint-stack--formatter-tools-ghc-unified-with-project-ghc).
@@ -116,10 +116,11 @@ on their owned surfaces.
 
 Establish `hostbootstrap` as the host-installed orchestrator that
 substrate-detects, validates prerequisites, builds the project image
-against the pinned base, and dispatches `mcts <command>` inside a
-one-shot container. Declare the typed `hostbootstrap.dhall` project
-config and the `FROM ${BASE_IMAGE}` Dockerfile inheritance pattern as
-the new project architecture.
+against the pinned base, and passes `<mcts-args>` to the image's
+tini-wrapped `mcts` ENTRYPOINT inside a one-shot container. Declare the
+typed `hostbootstrap.dhall` project config, the `FROM ${BASE_IMAGE}`
+Dockerfile inheritance pattern, and the runtime ENTRYPOINT as the new
+project architecture.
 
 ### Deliverables
 
@@ -142,7 +143,7 @@ this Apple Silicon host; the updated local hostbootstrap correctly
 reports FileVault as enabled, which is a host setup issue outside this
 repository. Docker itself is reachable, and the canonical project
 build/run gates below validated the repository work. The project
-closure gate is `hostbootstrap run mcts <command>`.
+closure gate is `hostbootstrap run <mcts-args>`.
 
 Bidirectional `Referenced by` audit passes: every governed doc this
 sprint updates lists `phase-9-hostbootstrap-adoption.md` in its own
@@ -207,7 +208,7 @@ formatter-tools GHC install is collapsed into the project GHC.
 ### Validation
 
 `hostbootstrap build` exits 0 and exports `mcts:apple-silicon-arm64`.
-`hostbootstrap run mcts test all` exits 0 with Q3/Q4/Q6/Q7 PASS,
+`hostbootstrap run test all` exits 0 with Q3/Q4/Q6/Q7 PASS,
 `normalized_divergence_score = 0.0000`, all six Cabal test stanzas
 pass, and the four foreign backend smokes succeed.
 
@@ -218,7 +219,7 @@ None.
 ## Sprint 9.3: Post-migration report-card closure ✅
 
 **Status**: Done
-**Implementation**: `hostbootstrap run mcts test all` runs under the new pin and image, passes the apples-to-apples invariants, and renders the live report-card measurement without requiring checked-in arm64/amd64 throughput anchors.
+**Implementation**: `hostbootstrap run test all` runs under the new pin and image, passes the apples-to-apples invariants, and renders the live report-card measurement without requiring checked-in arm64/amd64 throughput anchors.
 **Blocked by**: N/A
 **Docs to update**: this phase doc, [`README.md`](README.md), [`00-overview.md`](00-overview.md), [`legacy-tracking-for-deletion.md`](legacy-tracking-for-deletion.md), and [`development_plan_standards.md`](development_plan_standards.md). Sprint `8.18` and `8.19` historical measurement narratives remain verbatim because they are historical performance investigations, not Phase 9 closure prerequisites.
 
@@ -233,7 +234,7 @@ non-pending report card, and passes the Q3/Q4/Q6/Q7 invariants.
 
 - The phase plan records invariant/report-card closure, not hardcoded
   per-architecture throughput rates.
-- `hostbootstrap run mcts test all` remains the source of truth for
+- `hostbootstrap run test all` remains the source of truth for
   live post-migration report-card numbers on whichever substrate runs
   the gate.
 - Cross-architecture report-card reruns remain permitted performance
@@ -241,7 +242,7 @@ non-pending report card, and passes the Q3/Q4/Q6/Q7 invariants.
 
 ### Validation
 
-`hostbootstrap run mcts test all` exits 0; all six Cabal test stanzas
+`hostbootstrap run test all` exits 0; all six Cabal test stanzas
 pass; Q3/Q4/Q6/Q7 PASS; `normalized_divergence_score=0.0000`; and the
 report-card verdict is a non-pending measurement label per the
 [Performance Measurement Doctrine](../documents/engineering/compiler_runtime_tuning.md#performance-measurement-doctrine).

@@ -146,7 +146,7 @@ forbiddenPathRegistry =
         "Host-level .build/ is unsupported; build artefacts live inside the hostbootstrap-built container image"
     , ForbiddenPath
         "bootstrap"
-        "Bootstrap directories invite host-side orchestration; project work enters through hostbootstrap run mcts <command>"
+        "Bootstrap directories invite host-side orchestration; project work enters through hostbootstrap run <mcts-args>"
     , ForbiddenPath
         "*.sh"
         "Shell-script wrappers duplicate the mcts command surface and bypass the hostbootstrap doctrine"

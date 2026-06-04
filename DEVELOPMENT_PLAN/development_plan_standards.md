@@ -56,7 +56,7 @@ management summaries.
 - Examples do not need to be verbatim copies of implementation files, but they must not
   contradict the supported architecture or command surface.
 - Host-runnable command examples must use the canonical invocation
-  `hostbootstrap run mcts <command>` (Phase 1 reopen Sprint `1.15`; see
+  `hostbootstrap run <mcts-args>` (Phase 1 reopen Sprint `1.15`; see
   [phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md)).
   Bare `mcts <command>` may be used only when naming the CLI surface
   rather than giving a host command to run. Do not document `.sh`
@@ -251,7 +251,7 @@ If a change adds or edits a Mermaid block in this directory, closure requires:
 1. Rendering every Mermaid block in `DEVELOPMENT_PLAN/` through a standalone renderer.
 2. Failing the change on any render error.
 3. Verifying the edited diagram in the repository's target Markdown viewer.
-4. Running `hostbootstrap run mcts check-code` after the documentation
+4. Running `hostbootstrap run check-code` after the documentation
    change (Phase 1 reopen Sprint `1.15`). The lint stack must run
    inside the short-lived container through the pinned Fourmolu / HLint
    binaries and `cabal format`.
@@ -311,7 +311,7 @@ registry`, `Test Organization`, `Output Rules`, `Error Handling`, `Toolchain pin
 3. Update the governed engineering docs listed in `Docs to update`.
 4. Update [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md) whenever
    cleanup scope changes.
-5. Run `hostbootstrap run mcts check-code` before closing the work
+5. Run `hostbootstrap run check-code` before closing the work
    (Phase 1 reopen Sprint `1.15`). The pinned Fourmolu / HLint binaries
    and `cabal format` must run inside the short-lived container.
    Host-level validation fallback is never a closure gate.

@@ -23,7 +23,7 @@
 `src/MCTS/` library layout, manual `CommandSpec` registry, parser, output/error
 boundary, typed `Subprocess` wrapper, Plan/Apply helpers, prerequisite skeleton,
 lint/docs commands, and `mcts-haskell-style` stanza exist;
-`hostbootstrap run mcts test all` is the baseline host validation gate under the
+`hostbootstrap run test all` is the baseline host validation gate under the
 pinned toolchain. Phase `1`
 reopened on 2026-05-21 for Sprint `1.10` and reclosed the same day after
 generated-document metadata enforcement, `check-code` dispatch ordering, and
@@ -44,10 +44,10 @@ Sprint `1.14` updated the toolchain pin doctrine and source surfaces from
 GHC `9.14.1` + Cabal `3.16.1.0` to GHC `9.12.4` + Cabal `3.16.1.0`;
 Sprint `1.15` replaced the canonical invocation shape
 `docker compose run --rm mcts mcts <command>` with
-`hostbootstrap run mcts <command>` backed by `hostbootstrap.dhall` and
+`hostbootstrap run <mcts-args>` backed by `hostbootstrap.dhall` and
 deleted `compose.yaml`; Sprint `1.16` collapsed the lint stack's
 separate formatter-tools GHC into the project GHC. All three sprints
-reclosed on 2026-06-04 after `hostbootstrap run mcts test all` passed.
+reclosed on 2026-06-04 after `hostbootstrap run test all` passed.
 Sprints `1.1` through `1.13` remain closed on their owned CLI surface,
 `CommandSpec`, self-describing introspection, lint stack, and
 toolchain-baseline surfaces; their closure narratives are preserved.
@@ -138,14 +138,14 @@ the reproducible Docker development environment that every later sprint builds o
   Fourmolu, HLint, Cabal, GHC, or backend toolchains is unsupported.
   Root-level `hostbootstrap.dhall` declares the project config the
   `hostbootstrap` CLI reads to dispatch the canonical invocation
-  `hostbootstrap run mcts <command>` per Sprint `1.15`; there is no
+  `hostbootstrap run <mcts-args>` per Sprint `1.15`; there is no
   long-running daemon container, bind mount, or `sleep infinity` command.
-- `hostbootstrap run mcts check-code` succeeds with no warnings under the
+- `hostbootstrap run check-code` succeeds with no warnings under the
   pinned toolchain.
 
 ### Validation
 
-1. `hostbootstrap run mcts check-code` succeeds, proving the container
+1. `hostbootstrap run check-code` succeeds, proving the container
    image carries the installed `mcts` binary and the container-owned lint/style gate.
 2. `cabal --version` reports `Cabal 3.16.1.0`; `ghc --version` reports `9.12.4`.
 3. `app/Main.hs` is ≤ 5 lines of business logic; `src/MCTS/App.hs` carries
@@ -176,7 +176,7 @@ the reproducible Docker development environment that every later sprint builds o
   GHC `9.12.4` (Sprint `1.16`).
   Root-level `hostbootstrap.dhall` is the canonical project config (Sprint
   `1.15` + [phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md));
-  `hostbootstrap run mcts <command>` is the canonical invocation shape.
+  `hostbootstrap run <mcts-args>` is the canonical invocation shape.
 - Validated on 2026-05-15 through the root Compose entrypoint:
   `ghc --numeric-version == 9.14.1`, `cabal --numeric-version == 3.16.1.0`,
   and `docker compose run --rm mcts mcts check-code`. Warning-clean compilation is
@@ -1361,9 +1361,9 @@ so the pin update is a source-compatible adjustment.
 
 ### Validation
 
-`hostbootstrap run mcts test all` exits 0 under GHC `9.12.4`;
-`hostbootstrap run mcts docs check` and
-`hostbootstrap run mcts check-code` are the closing documentation and
+`hostbootstrap run test all` exits 0 under GHC `9.12.4`;
+`hostbootstrap run docs check` and
+`hostbootstrap run check-code` are the closing documentation and
 style gates. Grep for `9.14.1`
 across `DEVELOPMENT_PLAN/`, `documents/`, `README.md`, `CLAUDE.md`,
 `AGENTS.md`, `HASKELL_CLI_TOOL.md` returns hits only inside historical
@@ -1376,7 +1376,7 @@ ledger history.
 
 None.
 
-## Sprint 1.15: Canonical command shape — `hostbootstrap run mcts <command>` ✅
+## Sprint 1.15: Canonical command shape — `hostbootstrap run <mcts-args>` ✅
 
 **Status**: Done
 **Implementation**: inline doctrine edits in this phase doc (Sprint `1.1` Implementation list, Sprint `1.1` Compose-entrypoint doctrine row, Sprint `1.1` closure-note Compose entrypoint row). Coordinated doctrine edits landed in [`00-overview.md`](00-overview.md), [`system-components.md`](system-components.md), every governed engineering doc that quotes the entrypoint, [`../HASKELL_CLI_TOOL.md`](../HASKELL_CLI_TOOL.md), [`../CLAUDE.md`](../CLAUDE.md), [`../AGENTS.md`](../AGENTS.md), [`../README.md`](../README.md), and the Phase 8 validation-gate example at the line outside the Sprint `8.18` historical evidence block. `compose.yaml` was deleted and root `hostbootstrap.dhall` landed with Phase 9 Sprint `9.2`.
@@ -1386,12 +1386,14 @@ None.
 ### Objective
 
 Replace `docker compose run --rm mcts mcts <command>` with
-`hostbootstrap run mcts <command>` as the canonical invocation shape for
+`hostbootstrap run <mcts-args>` as the canonical invocation shape for
 all build, run, validation, formatting, linting,
 documentation-generation, test, benchmark, and backend-build work. The
-`hostbootstrap` tool itself is owned by Phase 9 Sprint `9.1`; this sprint
-owns only the *shape* of the canonical command line in Phase 1's
-doctrine and the governed docs that mirror it.
+Dockerfile's tini-wrapped `mcts` ENTRYPOINT supplies the executable, so
+host invocations pass only the arguments after `mcts`. The `hostbootstrap`
+tool itself is owned by Phase 9 Sprint `9.1`; this sprint owns only the
+*shape* of the canonical command line in Phase 1's doctrine and the
+governed docs that mirror it.
 
 ### Deliverables
 
@@ -1416,8 +1418,8 @@ doctrine and the governed docs that mirror it.
 
 ### Validation
 
-`hostbootstrap run mcts docs check` exits 0;
-`hostbootstrap run mcts check-code` exits 0. Grep for
+`hostbootstrap run docs check` exits 0;
+`hostbootstrap run check-code` exits 0. Grep for
 `docker compose run --rm mcts mcts` returns hits only inside (a)
 historical evidence blocks and (b) completed ledger history.
 
@@ -1471,8 +1473,8 @@ tools by absolute path. The `fourmolu.yaml` twelve-settings file and
 
 ### Validation
 
-`hostbootstrap run mcts docs check` exits 0;
-`hostbootstrap run mcts check-code` exits 0. The lint stack
+`hostbootstrap run docs check` exits 0;
+`hostbootstrap run check-code` exits 0. The lint stack
 contents are unchanged in this sprint's scope (`fourmolu.yaml`,
 `.hlint.yaml`, the `cabal format` round-trip, the `mcts-haskell-style`
 stanza); the lint-stack regression surface is zero.

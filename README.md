@@ -43,7 +43,7 @@ All project build, run, test, lint, documentation, benchmark, and backend work
 goes through the host-installed `hostbootstrap` CLI:
 
 ```bash
-hostbootstrap run mcts <command>
+hostbootstrap run <mcts-args>
 ```
 
 Install `hostbootstrap` once on the host:
@@ -65,13 +65,14 @@ hostbootstrap doctor
 Then try the CLI:
 
 ```bash
-hostbootstrap run mcts commands --tree
-hostbootstrap run mcts play --backend haskell --side villain --rng native --max-plies 200 --sims 1000
+hostbootstrap run commands --tree
+hostbootstrap run play --backend haskell --side villain --rng native --max-plies 200 --sims 1000
 ```
 
 `hostbootstrap run` builds or refreshes the pinned container image as needed and
-dispatches `mcts` inside that environment. Do not run project workflows directly
-with host `cabal`, `cargo`, `cmake`, `make`, formatter binaries, repository shell
+passes arguments to the image's tini-wrapped `mcts` ENTRYPOINT. Do not repeat
+`mcts` after `hostbootstrap run`. Do not run project workflows directly with
+host `cabal`, `cargo`, `cmake`, `make`, formatter binaries, repository shell
 wrappers, or direct project `docker build` / `docker run` commands.
 
 ## Play Against The Computer
@@ -81,7 +82,7 @@ Use `mcts play` from a real terminal so the Brick TUI can open.
 To play as Hero against the Haskell computer opponent:
 
 ```bash
-hostbootstrap run mcts play --backend haskell --side villain --rng native --max-plies 200 --sims 1000
+hostbootstrap run play --backend haskell --side villain --rng native --max-plies 200 --sims 1000
 ```
 
 `--backend haskell --side villain` means the computer controls Villain, so you
@@ -95,7 +96,7 @@ so you can start by typing a legal move such as:
 To play as Villain instead, let the computer control Hero:
 
 ```bash
-hostbootstrap run mcts play --backend haskell --side hero --rng native --max-plies 200 --sims 1000
+hostbootstrap run play --backend haskell --side hero --rng native --max-plies 200 --sims 1000
 ```
 
 Move notation in the TUI:
@@ -121,7 +122,7 @@ You can also spectate two computer players with `--vs`; the backend named by
 opposite side:
 
 ```bash
-hostbootstrap run mcts play --backend haskell --side hero --vs rust --rng native --max-plies 200 --sims 1000
+hostbootstrap run play --backend haskell --side hero --vs rust --rng native --max-plies 200 --sims 1000
 ```
 
 In spectator mode, press Space to advance an AI turn when prompted.
@@ -130,22 +131,22 @@ In spectator mode, press Space to advance an AI turn when prompted.
 
 ```bash
 # List the command tree
-hostbootstrap run mcts commands --tree
+hostbootstrap run commands --tree
 
 # Open focused help
-hostbootstrap run mcts help play
+hostbootstrap run help play
 
 # Compare two backends on search-iteration throughput
-hostbootstrap run mcts bench search-iters --backend cpp-imperative,haskell --rng native --threading single --count 20000 --seed 42
+hostbootstrap run bench search-iters --backend cpp-imperative,haskell --rng native --threading single --count 20000 --seed 42
 
 # Run a small cross-backend self-play verification
-hostbootstrap run mcts verify selfplay --backend cpp-imperative,cpp-functional,rust,haskell --threading single --games 4 --seed 42 --max-plies 200 --sims 500
+hostbootstrap run verify selfplay --backend cpp-imperative,cpp-functional,rust,haskell --threading single --games 4 --seed 42 --max-plies 200 --sims 500
 
 # Inspect saved transcripts
-hostbootstrap run mcts inspect list
+hostbootstrap run inspect list
 
 # Run the aggregate validation/report-card gate
-hostbootstrap run mcts test all
+hostbootstrap run test all
 ```
 
 The complete generated command reference is
@@ -178,18 +179,18 @@ determinism, replay, and semantic parity details, see
 Use the smallest hostbootstrap gate that covers the change:
 
 ```bash
-hostbootstrap run mcts docs check
-hostbootstrap run mcts lint files
-hostbootstrap run mcts lint docs
-hostbootstrap run mcts test mcts-unit
-hostbootstrap run mcts check-code
+hostbootstrap run docs check
+hostbootstrap run lint files
+hostbootstrap run lint docs
+hostbootstrap run test mcts-unit
+hostbootstrap run check-code
 ```
 
 When touching shared behavior, backend contracts, generated docs, or report-card
 surfaces, close with:
 
 ```bash
-hostbootstrap run mcts test all
+hostbootstrap run test all
 ```
 
 ## Where To Go Next

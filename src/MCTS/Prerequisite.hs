@@ -122,55 +122,55 @@ prerequisiteRegistry =
     , PrerequisiteNode
         "logical-backends"
         "The logical in-process backend cohort is available"
-        "run hostbootstrap run mcts check-code"
+        "run hostbootstrap run check-code"
         []
         (pure True)
     , executableNode
         "mcts-installed"
         "installed image-local CLI executable"
-        "run hostbootstrap run mcts commands so Dockerfile installs /usr/local/bin/mcts"
+        "run hostbootstrap run commands so Dockerfile installs /usr/local/bin/mcts"
         []
         "mcts"
     , executableNode
         "mcts-haskell-style-installed"
         "installed mcts-haskell-style test executable"
-        "run hostbootstrap run mcts check-code so Dockerfile installs /usr/local/bin/mcts-haskell-style"
+        "run hostbootstrap run check-code so Dockerfile installs /usr/local/bin/mcts-haskell-style"
         []
         "mcts-haskell-style"
     , executableNode
         "mcts-unit-installed"
         "installed mcts-unit test executable"
-        "run hostbootstrap run mcts test all so Dockerfile installs /usr/local/bin/mcts-unit"
+        "run hostbootstrap run test all so Dockerfile installs /usr/local/bin/mcts-unit"
         []
         "mcts-unit"
     , executableNode
         "mcts-integration-installed"
         "installed mcts-integration test executable"
-        "run hostbootstrap run mcts test all so Dockerfile installs /usr/local/bin/mcts-integration"
+        "run hostbootstrap run test all so Dockerfile installs /usr/local/bin/mcts-integration"
         []
         "mcts-integration"
     , executableNode
         "mcts-cross-backend-installed"
         "installed mcts-cross-backend test executable"
-        "run hostbootstrap run mcts test all so Dockerfile installs /usr/local/bin/mcts-cross-backend"
+        "run hostbootstrap run test all so Dockerfile installs /usr/local/bin/mcts-cross-backend"
         []
         "mcts-cross-backend"
     , executableNode
         "mcts-legacy-parity-installed"
         "installed mcts-legacy-parity test executable"
-        "run hostbootstrap run mcts test all so Dockerfile installs /usr/local/bin/mcts-legacy-parity"
+        "run hostbootstrap run test all so Dockerfile installs /usr/local/bin/mcts-legacy-parity"
         []
         "mcts-legacy-parity"
     , executableNode
         "mcts-semantic-parity-installed"
         "installed mcts-semantic-parity test executable"
-        "run hostbootstrap run mcts test all so Dockerfile installs /usr/local/bin/mcts-semantic-parity"
+        "run hostbootstrap run test all so Dockerfile installs /usr/local/bin/mcts-semantic-parity"
         []
         "mcts-semantic-parity"
     , executableNode
         "mcts-criterion-installed"
         "installed mcts-criterion benchmark executable"
-        "run hostbootstrap run mcts test all so Dockerfile installs /usr/local/bin/mcts-criterion"
+        "run hostbootstrap run test all so Dockerfile installs /usr/local/bin/mcts-criterion"
         []
         "mcts-criterion"
     , PrerequisiteNode

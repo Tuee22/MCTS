@@ -330,7 +330,7 @@ docker compose run --rm --build mcts mcts test all
 The focused parity-anchor surface is validated by:
 
 ```bash
-hostbootstrap run mcts test parity-anchor cpp-imperative haskell --dry-run
+hostbootstrap run test parity-anchor cpp-imperative haskell --dry-run
 ```
 
 (Phase 1 reopen Sprint `1.15` canonical invocation; until Phase 9 Sprint `9.2`

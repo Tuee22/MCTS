@@ -40,7 +40,7 @@ example:
 
 ```bash
 # Example: canonical code-quality gate
-hostbootstrap run mcts check-code
+hostbootstrap run check-code
 ```
 
 The host `hostbootstrap` command is installed with `pipx` per the repository
@@ -51,7 +51,7 @@ Direct `pip` installs and project-virtualenv installs are not supported.
 Ambient host-level tool fallback is unsupported. Fourmolu and HLint must come from
 the short-lived container's pinned style-tool install, not from the host `PATH`.
 Repository shell-script wrappers are unsupported for the same reason: project
-work must enter through `hostbootstrap run mcts <command>`.
+work must enter through `hostbootstrap run <mcts-args>`.
 
 Running `mcts check-code` dispatches, in order:
 
@@ -103,7 +103,7 @@ one canonical `mcts` operator surface:
   short-lived container filesystem or explicit operator-provided artifact roots.
 - `bootstrap/` and repository `.sh` scripts — shell-script wrappers are refused
   because the single supported host entrypoint is
-  `hostbootstrap run mcts <command>`.
+  `hostbootstrap run <mcts-args>`.
 
 ### Generated Sections
 
@@ -190,7 +190,7 @@ hostbootstrap base image installs `fourmolu-0.19.0.1` and `hlint-3.10` into
 project GHC.
 The style stanza invokes only those pinned container paths and does not honour
 environment-variable overrides. If they are absent, the check fails with a remedy
-pointing at `hostbootstrap run mcts check-code`; it must not skip the tools
+pointing at `hostbootstrap run check-code`; it must not skip the tools
 or fall back to host `PATH`. The existing source walker remains an additional guard
 for tab characters and the conservative forbidden-symbol subset.
 

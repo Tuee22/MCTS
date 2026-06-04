@@ -121,7 +121,7 @@ renderError err =
                 <> path
                 <> " marker="
                 <> key
-                <> "; run `hostbootstrap run mcts docs generate`"
+                <> "; run `hostbootstrap run docs generate`"
         UnknownCommand command ->
             "unknown command: " <> command
         InvalidMove raw ->
