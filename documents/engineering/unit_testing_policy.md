@@ -2,7 +2,7 @@
 
 **Status**: Authoritative source
 **Supersedes**: N/A
-**Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/00-overview.md, ../../DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, ../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md, ../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, ../documentation_standards.md, ./README.md, ./benchmark_metrics.md, ./code_quality.md, ./semantic_parity_contract.md
+**Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/00-overview.md, ../../DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, ../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md, ../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, ../../DEVELOPMENT_PLAN/phase-9-hostbootstrap-adoption.md, ../documentation_standards.md, ./README.md, ./benchmark_metrics.md, ./code_quality.md, ./semantic_parity_contract.md
 **Generated sections**: none
 
 > **Purpose**: Describe the six current live Cabal test stanzas, including
@@ -133,8 +133,12 @@ from normal `mcts test all`.
 
 The doctrine-mandatory canonical test command. Phase 7 Sprint 7.3 owns the
 implementation. From the host, run it as
-`docker compose run --rm mcts mcts test all`; the first run builds the image when
-needed. Image construction compiles the `mcts` executable with tests and benchmarks
+`hostbootstrap run mcts test all` (Phase 1 reopen Sprint `1.15` canonical
+invocation; until Phase 9 Sprint `9.2` ships `hostbootstrap.dhall` and deletes
+`compose.yaml`, the legacy invocation
+`docker compose run --rm mcts mcts test all` remains functional — see
+[../../DEVELOPMENT_PLAN/phase-9-hostbootstrap-adoption.md](../../DEVELOPMENT_PLAN/phase-9-hostbootstrap-adoption.md));
+the first run builds the image when needed. Image construction compiles the `mcts` executable with tests and benchmarks
 enabled, installs the `mcts-criterion` benchmark executable, installs all six Cabal
 current test-suite executables, and produces the Dockerfile-owned foreign backend
 artefacts before publishing the image. Before applying the plan,
@@ -156,8 +160,11 @@ is a typed `[Subprocess]` sequence run via `Plan / Apply`:
    `/opt/mcts-style-tools/bin/fourmolu --mode check`,
    `/opt/mcts-style-tools/bin/hlint --with-group=default --with-group=extra`
    with only `Error:` findings blocking, and the source-walker guard). The
-   style tools are installed inside the container with the separate pinned
-   formatter-tools GHC `9.12.4`; ambient host tools are never used as a fallback.
+   style tools are installed inside the container against the project GHC
+   `9.12.4` (Phase 1 reopen Sprints `1.14` + `1.16`; the legacy separate
+   `STYLE_GHC_VERSION` arrangement is residue tracked in
+   [../../DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md](../../DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md));
+   ambient host tools are never used as a fallback.
 4. Inside the container, run the installed `mcts-unit` executable.
 5. Inside the container, run the installed `mcts-integration` executable.
 6. Inside the container, run the installed `mcts-cross-backend` executable.

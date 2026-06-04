@@ -2,7 +2,7 @@
 
 **Status**: Authoritative source
 **Supersedes**: N/A
-**Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md, ../../DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, ../../DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md, ../../DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md, ../../DEVELOPMENT_PLAN/phase-6-cpp-functional-and-rust.md, ../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, ../documentation_standards.md, ./README.md, ./backend_ffi_contract.md, ./backend_style_contract.md, ./benchmark_metrics.md, ./semantic_parity_contract.md, ./unit_testing_policy.md
+**Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md, ../../DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, ../../DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md, ../../DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md, ../../DEVELOPMENT_PLAN/phase-6-cpp-functional-and-rust.md, ../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, ../../DEVELOPMENT_PLAN/phase-9-hostbootstrap-adoption.md, ../documentation_standards.md, ./README.md, ./backend_ffi_contract.md, ./backend_style_contract.md, ./benchmark_metrics.md, ./semantic_parity_contract.md, ./unit_testing_policy.md
 **Generated sections**: none
 
 > **Purpose**: Authoritative spec of the per-backend compiler, RTS, and code-level
@@ -13,13 +13,16 @@
 > mandatory Dockerfile-time bounded PGO/BOLT training contract plus Haskell PGO
 > asymmetry note.
 
-This document owns its content. The toolchain pin (GHC `9.14.1`, Cabal `3.16.1.0`)
-is doctrine-owned; the per-backend tuning stacks are project-specific.
+This document owns its content. The toolchain pin (GHC `9.12.4`, Cabal `3.16.1.0`
+per Phase 1 reopen Sprint `1.14`; see
+[../../DEVELOPMENT_PLAN/phase-9-hostbootstrap-adoption.md](../../DEVELOPMENT_PLAN/phase-9-hostbootstrap-adoption.md)
+for the hostbootstrap base image whose warm Cabal store this pin matches) is
+doctrine-owned; the per-backend tuning stacks are project-specific.
 
 ## Doctrine Pointers
 
 - [../../HASKELL_CLI_TOOL.md → Toolchain pinning](../../HASKELL_CLI_TOOL.md) — GHC
-  `9.14.1` and Cabal `3.16.1.0` are the pinned versions for the Haskell binary.
+  `9.12.4` and Cabal `3.16.1.0` are the pinned versions for the Haskell binary.
 - [../../HASKELL_CLI_TOOL.md → Architecture → Subprocesses as Typed
   Values](../../HASKELL_CLI_TOOL.md) — supported build harnesses invoke toolchains
   through typed `Subprocess` values. The Dockerfile invokes the Rust and steelman
@@ -1005,9 +1008,11 @@ fixable.
   on arm64** and **99.7% on amd64**; GC time 0.0-0.3% of total. The
   `-A64m -n4m -qg1 -qb -T` RTS tuning has absorbed the 558 MB heap
   traffic (Board + ActionIds per rollout step) on both platforms.
-- **LLVM version asymmetry.** GHC 9.14.1 uses `llc-19` / `opt-19`
+- **LLVM version asymmetry.** GHC 9.12.4 uses `llc-19` / `opt-19`
   (LLVM 19.1.1), same major version as `clang-19`. Confirmed via
-  `ghc --info | grep -i llvm`.
+  `ghc --info | grep -i llvm`. (Historical Sprint `8.18` measurement
+  was recorded under GHC `9.14.1`; the LLVM major-version invariant is
+  preserved by Phase 1 reopen Sprint `1.14`'s pin to `9.12.4`.)
 - **Rejected-ledger candidates from Sprints `8.15` / `8.17` /
   `8.18`.** Iterative descent, single-buffer `MutableByteArray#`
   arena, strict `quotRem` index decode, direct wall-bit-index
@@ -1378,8 +1383,11 @@ Pinned per [../../HASKELL_CLI_TOOL.md → Toolchain
 pinning](../../HASKELL_CLI_TOOL.md) and
 [../../DEVELOPMENT_PLAN/00-overview.md → Hard Constraints item 16](../../DEVELOPMENT_PLAN/00-overview.md):
 
-- **GHC `9.14.1`** — pinned in `mcts.cabal` (`tested-with: ghc ==9.14.1`) and
-  `cabal.project` (`with-compiler: ghc-9.14.1`).
+- **GHC `9.12.4`** (Phase 1 reopen Sprint `1.14`) — pinned in `mcts.cabal`
+  (`tested-with: ghc ==9.12.4`) and `cabal.project`
+  (`with-compiler: ghc-9.12.4`). Matches the warm Cabal store baked into the
+  hostbootstrap base image per
+  [../../DEVELOPMENT_PLAN/phase-9-hostbootstrap-adoption.md](../../DEVELOPMENT_PLAN/phase-9-hostbootstrap-adoption.md).
 - **Cabal `3.16.1.0`** — pinned in `cabal.project`; not a floor.
 - **GCC** — latest stable on `ubuntu:24.04` (the container base).
 - **LLVM** — pinned version shared by GHC's `-fllvm` backend and BOLT

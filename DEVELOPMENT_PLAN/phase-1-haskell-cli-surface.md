@@ -6,6 +6,7 @@
 [development_plan_standards.md](development_plan_standards.md),
 [system-components.md](system-components.md),
 [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md),
+[phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md),
 [../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md),
 [../documents/engineering/benchmark_metrics.md](../documents/engineering/benchmark_metrics.md)
 **Generated sections**: none
@@ -18,11 +19,12 @@
 
 ## Phase Status
 
-✅ **Done.** A Cabal package, thin `app/Main.hs`, `src/MCTS/` library layout,
-manual `CommandSpec` registry, parser, output/error boundary, typed `Subprocess`
-wrapper, Plan/Apply helpers, prerequisite skeleton, lint/docs commands, and
-`mcts-haskell-style` stanza exist; `docker compose run --rm mcts mcts test all` is
-the baseline host validation gate under the pinned toolchain. Phase `1`
+🔄 **Reopened on three narrow sub-surfaces.** A Cabal package, thin `app/Main.hs`,
+`src/MCTS/` library layout, manual `CommandSpec` registry, parser, output/error
+boundary, typed `Subprocess` wrapper, Plan/Apply helpers, prerequisite skeleton,
+lint/docs commands, and `mcts-haskell-style` stanza exist;
+`hostbootstrap run mcts test all` is the baseline host validation gate under the
+pinned toolchain. Phase `1`
 reopened on 2026-05-21 for Sprint `1.10` and reclosed the same day after
 generated-document metadata enforcement, `check-code` dispatch ordering, and
 style-policy wording matched the implemented lint stack exactly. Sprint `1.11`
@@ -35,7 +37,22 @@ choice-aware registry metadata, focused `optparse-applicative` help, value-aware
 parse errors, enriched command JSON, regenerated Markdown/manpage/completion artefacts,
 and semantic parser/help/JSON/generated-doc tests. Backend logic and transcript
 semantics remain owned by later phases; this reopening was limited to
-parser/help/command-metadata introspection.
+parser/help/command-metadata introspection. Phase `1` reopened again on
+2026-06-03 on three narrow sub-surfaces driven by the Phase 9 hostbootstrap
+adoption (see [phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md)):
+Sprint `1.14` updates the toolchain pin doctrine from GHC `9.14.1` + Cabal
+`3.16.1.0` to GHC `9.12.4` + Cabal `3.16.1.0` to match the warm Cabal store baked
+into the hostbootstrap base image; Sprint `1.15` updates the canonical invocation
+shape from `docker compose run --rm mcts mcts <command>` to
+`hostbootstrap run mcts <command>` backed by the new `hostbootstrap.dhall`
+project config; Sprint `1.16` collapses the lint stack's separate formatter-tools
+GHC into the project GHC. Each sub-surface is `🔄 Active` for its doctrine
+portion; the code-side implementation deliverables are scheduled in Phase 9
+Sprint `9.2` and tracked as Pending-Removal rows in
+[legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md). Sprints `1.1`
+through `1.13` remain closed on their owned CLI surface, `CommandSpec`,
+self-describing introspection, lint stack, and toolchain-baseline surfaces;
+their closure narratives are preserved.
 
 ## Phase Summary
 
@@ -62,7 +79,8 @@ lands in this phase; those phases plug into the scaffold built here.
 
 **Status**: Done
 **Implementation**: `mcts.cabal`, `cabal.project`, `app/Main.hs`, `src/MCTS/App.hs`,
-`docker/Dockerfile`, `compose.yaml`
+`docker/Dockerfile`, `hostbootstrap.dhall` (Phase 9 Sprint `9.2` supersedes the
+prior `compose.yaml` per [Sprint 1.15](#sprint-115-canonical-command-shape--hostbootstrap-run-mcts-command-and-Phase-9-hostbootstrap-orchestrator-9-active))
 **Docs to update**: `documents/engineering/code_quality.md`,
 `documents/engineering/cli_command_surface.md`, `DEVELOPMENT_PLAN/system-components.md`
 
@@ -73,7 +91,7 @@ the reproducible Docker development environment that every later sprint builds o
 
 ### Deliverables
 
-- `mcts.cabal` declares `tested-with: ghc ==9.14.1` per
+- `mcts.cabal` declares `tested-with: ghc ==9.12.4` per
   [../HASKELL_CLI_TOOL.md → Toolchain pinning](../HASKELL_CLI_TOOL.md). The
   current `build-depends` set includes the doctrine's standardized non-TUI stack:
   `optparse-applicative`, `text`, `bytestring`, `aeson`, `prettyprinter`,
@@ -86,7 +104,7 @@ the reproducible Docker development environment that every later sprint builds o
   the doctrine prescribes `dhall` for daemon configuration, daemon configuration
   is itself out of scope (the CLI is short-running only), so the dependency does
   not enter the stack.
-- `cabal.project` declares `with-compiler: ghc-9.14.1` and `Cabal 3.16.1.0` per
+- `cabal.project` declares `with-compiler: ghc-9.12.4` and `Cabal 3.16.1.0` per
   [../HASKELL_CLI_TOOL.md → Toolchain pinning](../HASKELL_CLI_TOOL.md). The current
   file mirrors the report-card constants (`G_R`, `G_S`, `G_V`, `G_LP`,
   `S_BENCH`, `S_VERIFY`, `S_LP_SIMS`, `S_LP`) as pinned comments. The current
@@ -104,22 +122,32 @@ the reproducible Docker development environment that every later sprint builds o
 
 - `src/MCTS/App.hs` owns the `App.main` entrypoint; subsequent sprints add modules
   under `src/MCTS/`.
-- `docker/Dockerfile` is single-stage `ubuntu:24.04`, installs `ghcup` in-image, pins
-  GHC `9.14.1` and Cabal `3.16.1.0`, pins one LLVM version shared by GHC's `-fllvm`
-  backend and BOLT post-link, pins GCC (latest stable on 24.04), installs `rustup`
-  with a pinned Rust minor version, installs `mimalloc`, and installs a separate
-  formatter-tools GHC `9.12.4` for `fourmolu-0.19.0.1` and `hlint-3.10` under
-  `/opt/mcts-style-tools/bin/` inside the container. The style compiler is
-  isolated from the main project compiler and does not change
-  `with-compiler: ghc-9.14.1`. The Dockerfile prebuilds the executable with tests
-  and benchmarks enabled, installs all Cabal test-suite executables plus the
-  `mcts-criterion` benchmark executable, and leaves runtime commands consuming
-  image-local artefacts instead of compiling on first use. Host-level fallback to
-  ambient Fourmolu, HLint, Cabal, GHC, or backend toolchains is unsupported.
-  Root-level `compose.yaml` exposes the canonical
-  `docker compose run --rm mcts mcts <command>` entrypoint declared in the project
-  [README](../README.md); there is no long-running daemon container, bind mount,
-  Compose environment-variable block, or `sleep infinity` command.
+- `docker/Dockerfile` inherits `FROM ${BASE_IMAGE}` per
+  [phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md) (the
+  `hostbootstrap` CLI passes the arch-specific tag
+  `docker.io/tuee22/hostbootstrap:basecontainer-cpu-<arch>`), which ships GHC
+  `9.12.4` and Cabal `3.16.1.0`, one LLVM version shared by GHC's `-fllvm`
+  backend and BOLT post-link (`19`), `rustup` with the channel `stable` (a
+  pinned Rust `1.95.0` toolchain is installed over it by the project Dockerfile
+  per Sprint 9.2), `mimalloc`, fourmolu, hlint, and the warm Cabal store. The
+  project Dockerfile adds only what the base does not ship: `clang-19`,
+  `libclang-rt-19-dev`, pinned Rust `1.95.0`, pinned `fourmolu-0.19.0.1` plus
+  `hlint-3.10` at `/opt/mcts-style-tools/bin/` (installed via `cabal install`
+  against the base's project GHC `9.12.4` per Sprint `1.16`), the
+  `${BOLT_RT_INSTR_LIB}` → `/usr/local/lib/libbolt_rt_instr.a` symlink, the
+  source copy, the seven Cabal exe builds, and the four `mcts build <backend>`
+  invocations. The lint stack uses the single project GHC `9.12.4`; the legacy
+  separate `STYLE_GHC_VERSION` install is residue tracked in
+  [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md). The
+  Dockerfile prebuilds the executable with tests and benchmarks enabled,
+  installs all Cabal test-suite executables plus the `mcts-criterion`
+  benchmark executable, and leaves runtime commands consuming image-local
+  artefacts instead of compiling on first use. Host-level fallback to ambient
+  Fourmolu, HLint, Cabal, GHC, or backend toolchains is unsupported.
+  Root-level `hostbootstrap.dhall` declares the project config the
+  `hostbootstrap` CLI reads to dispatch the canonical invocation
+  `hostbootstrap run mcts <command>` per Sprint `1.15`; there is no
+  long-running daemon container, bind mount, or `sleep infinity` command.
 - `docker compose run --rm mcts mcts check-code` succeeds with no warnings under
   the pinned toolchain.
 
@@ -127,10 +155,10 @@ the reproducible Docker development environment that every later sprint builds o
 
 1. `docker compose run --rm mcts mcts check-code` succeeds, proving the container
    image carries the installed `mcts` binary and the container-owned lint/style gate.
-2. `cabal --version` reports `Cabal 3.16.1.0`; `ghc --version` reports `9.14.1`.
+2. `cabal --version` reports `Cabal 3.16.1.0`; `ghc --version` reports `9.12.4`.
 3. `app/Main.hs` is ≤ 5 lines of business logic; `src/MCTS/App.hs` carries
    `App.main`.
-4. A static check of `mcts.cabal` confirms `tested-with: ghc ==9.14.1` and the
+4. A static check of `mcts.cabal` confirms `tested-with: ghc ==9.12.4` and the
    doctrine's standardized library set (deviations explicitly annotated as the
    `brick`/`vty` TUI exception).
 
@@ -145,12 +173,20 @@ the reproducible Docker development environment that every later sprint builds o
   `tasty-quickcheck`, `temporary`). The recorded `brick` /
   `vty` TUI exception is active and limited to `MCTS.CLI.Tui.Board`,
   `MCTS.CLI.Tui.Play`, and `MCTS.CLI.Tui.Replay`.
-- Docker toolchain pinning is now encoded in `docker/Dockerfile` for GHC `9.14.1`,
-  Cabal `3.16.1.0`, LLVM/BOLT `19`, GCC/G++, Rust `1.95.0`, and `mimalloc`;
-  the image also installs the isolated style-tool compiler GHC `9.12.4` and uses
-  it to install `fourmolu-0.19.0.1` plus `hlint-3.10` into
-  `/opt/mcts-style-tools/bin/`; root-level `compose.yaml` is the only supported
-  Compose entrypoint.
+- Docker toolchain pinning is now encoded across the hostbootstrap base image
+  (per [phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md))
+  and the slim project `docker/Dockerfile` overlay: GHC `9.12.4` and Cabal
+  `3.16.1.0` (Sprint `1.14`) come from the base image's warm Cabal store;
+  LLVM/BOLT `19`, fourmolu, and hlint runtime come from the base image;
+  `clang-19`, `libclang-rt-19-dev`, Rust `1.95.0`, `mimalloc`, and the pinned
+  `fourmolu-0.19.0.1` + `hlint-3.10` at `/opt/mcts-style-tools/bin/` come from
+  the project Dockerfile overlay. The formatter tools share the single project
+  GHC `9.12.4` (Sprint `1.16`); the legacy separate `STYLE_GHC_VERSION` install
+  is residue tracked in
+  [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md).
+  Root-level `hostbootstrap.dhall` is the canonical project config (Sprint
+  `1.15` + [phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md));
+  `hostbootstrap run mcts <command>` is the canonical invocation shape.
 - Validated on 2026-05-15 through the root Compose entrypoint:
   `ghc --numeric-version == 9.14.1`, `cabal --numeric-version == 3.16.1.0`,
   and `docker compose run --rm mcts mcts check-code`. Warning-clean compilation is
@@ -632,8 +668,10 @@ forbidden-symbol HLint rules behind the `mcts-haskell-style` test stanza plus th
   round-trip unconditionally and requires
   `/opt/mcts-style-tools/bin/fourmolu` and `/opt/mcts-style-tools/bin/hlint`
   from the container image. Host `PATH` fallback and skipped external style
-  tools are not supported closure paths. This keeps the project compiler pinned
-  to GHC `9.14.1` while matching the isolated formatter-tools GHC model.
+  tools are not supported closure paths. The project compiler and the
+  formatter tools share GHC `9.12.4` (Phase 1 reopen Sprints `1.14` +
+  `1.16`); the legacy separate `STYLE_GHC_VERSION` install layer is residue
+  tracked in [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md).
 - The `check-code` dispatcher now lives in dedicated `src/MCTS/CheckCode.hs`;
   `src/MCTS/App.hs` only routes the top-level constructor to that owner.
 - Validated on 2026-05-15 through the root Compose entrypoint:
@@ -663,6 +701,17 @@ forbidden-symbol HLint rules behind the `mcts-haskell-style` test stanza plus th
   `.hlint.yaml`, and the conservative source walker where HLint cannot express the
   boundary precisely. Later style-rule changes reopen this sprint explicitly rather
   than leaving action items in a `Done` sprint.
+- **Phase 9 forward pointer (2026-06-03):** Sprint `1.16` retires the separate
+  `STYLE_GHC_VERSION` install layer once the Phase 1 project GHC drops to
+  `9.12.4` (Sprint `1.14`); the formatter tools (`fourmolu-0.19.0.1`,
+  `hlint-3.10`) install at `/opt/mcts-style-tools/bin/` against the single
+  project GHC. The Sprint `1.4` closure prose above is preserved as historical
+  narrative per [development_plan_standards.md → §D Declarative Plan
+  Language](development_plan_standards.md); the Sprint `1.16` doctrine portion
+  has landed in this phase doc, the governed engineering docs, and the root
+  doctrine, while the code-side removal of the legacy install layer is bound
+  to Phase 9 Sprint `9.2` and tracked in
+  [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md).
 
 ### Remaining Work
 
@@ -815,7 +864,7 @@ typed boundary and emits structured remedy hints on failure.
   `nodeDescription`, dependencies, and a remedy hint per
   [../HASKELL_CLI_TOOL.md → Prerequisites as Typed Effects](../HASKELL_CLI_TOOL.md).
 - The prerequisite registry carries concrete nodes for the current
-  toolchain/build surfaces: exact GHC `9.14.1`, Cabal `3.16.1.0`,
+  toolchain/build surfaces: exact GHC `9.12.4`, Cabal `3.16.1.0`,
   LLVM/BOLT/LLD `19`, Rust `1.95.0`, `mimalloc`, live Rust shared-library
   artefacts, C++ PGO/BOLT profile and shared-library artefacts, optional legacy
   evidence prerequisites, and retained profile directory checks.
@@ -833,14 +882,14 @@ typed boundary and emits structured remedy hints on failure.
 
 - `PrerequisiteNode`, `prerequisiteRegistry`, `checkPrerequisites`,
   `transitiveClosure`, and `registryHasCycle` exist. The registry carries
-  version-aware probes for `ghcup`, `ghc-9.14.1`, `cabal`, `c++`,
+  version-aware probes for `ghcup`, `ghc-9.12.4`, `cabal`, `c++`,
   `llvm-config` (LLVM `19.x`), `llvm-bolt` (LLVM `19.x`), `rustup`,
   `cargo` / `rustc` (`1.95.0`), LLD `19`, and `mimalloc` via library-path probes,
   plus backend-local C++ and Rust profile-directory probes, the `logical-backends`
   node, and canonical foreign shared-library artefact nodes. C++ PGO/BOLT profile
   and artefact prerequisite coverage closed in Sprint `5.3`.
 - `nodeDependsOn` carries dependency edges (`cargo`/`rustc` depend on
-  `rustup`; `bolt` depends on `llvm`; `ghc-9.14.1`/`cabal-3.16.1.0` depend
+  `rustup`; `bolt` depends on `llvm`; `ghc-9.12.4`/`cabal-3.16.1.0` depend
   on `ghcup`). `prerequisitesForBuild` and `prerequisitesForTest` resolve
   through `transitiveClosure`.
 - `mcts build *` checks backend build prerequisites before apply, and
@@ -1277,6 +1326,201 @@ None.
   `docker compose run --rm mcts mcts help play`, `docker compose run --rm mcts mcts
   commands --json`, expected-failing `docker compose run --rm mcts mcts play --backend
   nope --side hero` (exit `2` with accepted backend values), and `git diff --check`.
+
+## Sprint 1.14: Toolchain pin update to GHC 9.12.4 + Cabal 3.16.1.0 [🔄 Active]
+
+**Status**: Active
+**Implementation**: inline doctrine edits in this phase doc (Sprint `1.1` deliverables at the pin-assertion lines, Sprint `1.1` Validation gate `ghc --version` line, Sprint `1.1` closure notes pin row, Sprint `1.4` closure-note project-compiler row, Sprint `1.7` prerequisite-registry pin assertions). Coordinated doctrine edits land in [`00-overview.md`](00-overview.md), [`system-components.md`](system-components.md), [`../documents/engineering/code_quality.md`](../documents/engineering/code_quality.md), [`../documents/engineering/compiler_runtime_tuning.md`](../documents/engineering/compiler_runtime_tuning.md), [`../documents/engineering/haskell_code_guide.md`](../documents/engineering/haskell_code_guide.md), [`../HASKELL_CLI_TOOL.md`](../HASKELL_CLI_TOOL.md), [`../CLAUDE.md`](../CLAUDE.md), [`../AGENTS.md`](../AGENTS.md), [`../README.md`](../README.md). Source edits to `mcts.cabal`, `cabal.project`, `src/MCTS/Prerequisite.hs`, `src/MCTS/ReportCard.hs`, `src/MCTS/Engine/Envelope.hs`, `test/unit/Main.hs`, and the project `docker/Dockerfile` `ARG GHC_VERSION` are deferred to Phase 9 Sprint `9.2` and tracked as a Pending-Removal row in [`legacy-tracking-for-deletion.md`](legacy-tracking-for-deletion.md).
+**Blocked by**: N/A
+**Docs to update**: `00-overview.md`, `system-components.md`, `../documents/engineering/code_quality.md`, `../documents/engineering/compiler_runtime_tuning.md`, `../documents/engineering/haskell_code_guide.md`, `../HASKELL_CLI_TOOL.md`, `../CLAUDE.md`, `../AGENTS.md`, `../README.md`, `phase-9-hostbootstrap-adoption.md`.
+
+### Objective
+
+Update Phase 1's toolchain pin doctrine from GHC `9.14.1` to GHC `9.12.4`
+(Cabal `3.16.1.0` unchanged) to align with the warm Cabal store baked into
+the hostbootstrap base image (see
+[phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md)).
+MCTS uses no GHC 9.14-specific language features, and the existing
+`base >=4.20 && <5` constraint is satisfied by GHC `9.12.4`'s `base-4.21`,
+so the pin update is a source-compatible adjustment.
+
+### Deliverables
+
+- Inline edits at the Sprint `1.1` `mcts.cabal` `tested-with` doctrine line,
+  the `cabal.project` `with-compiler` doctrine line, the
+  `docker/Dockerfile` "pins GHC X" doctrine line, the Sprint `1.1` Validation
+  `ghc --version` line, the Sprint `1.1` `mcts.cabal` static-check
+  `tested-with` line, and the Sprint `1.1` closure-note "Docker toolchain
+  pinning is now encoded" doctrine row.
+- Inline edits in Sprint `1.4`'s closure note that referenced the project
+  compiler pin and the isolated formatter-tools GHC model (the latter
+  collapsed by Sprint `1.16`).
+- Inline edits in Sprint `1.7`'s prerequisite-registry deliverable and
+  closure-note pin assertions (`ghc-9.14.1` → `ghc-9.12.4` at every
+  occurrence inside Sprint `1.7`).
+- Coordinated doctrine edits in [`00-overview.md`](00-overview.md),
+  [`system-components.md`](system-components.md), the named governed
+  engineering docs, [`../HASKELL_CLI_TOOL.md`](../HASKELL_CLI_TOOL.md),
+  [`../CLAUDE.md`](../CLAUDE.md), [`../AGENTS.md`](../AGENTS.md), and
+  [`../README.md`](../README.md). Historical evidence narratives (Sprint
+  `8.18` / `8.19` measurement blocks, the Sprint `7.4` `allow-newer`
+  history, Sprint-X dated validation lines) are preserved verbatim per
+  [development_plan_standards.md → §D](development_plan_standards.md).
+- One Pending-Removal row appended to
+  [`legacy-tracking-for-deletion.md`](legacy-tracking-for-deletion.md)
+  covering the worktree source surfaces still pinned at GHC `9.14.1`.
+
+### Validation
+
+`docker compose run --rm mcts mcts docs check` exits 0;
+`docker compose run --rm mcts mcts lint docs` exits 0. Grep for `9.14.1`
+across `DEVELOPMENT_PLAN/`, `documents/`, `README.md`, `CLAUDE.md`,
+`AGENTS.md`, `HASKELL_CLI_TOOL.md` returns hits only inside historical
+evidence blocks (Sprint `8.18` / `8.19` narratives, Sprint-X dated
+validation lines), the Sprint `7.4` `allow-newer` history (`cabal.project`
+comment and Phase 7 closure narrative), and the Pending-Removal row in
+the ledger naming the worktree source surfaces still pinned at the old
+version.
+
+### Remaining Work
+
+Source edits to `mcts.cabal`, `cabal.project`, `src/MCTS/Prerequisite.hs`,
+`src/MCTS/ReportCard.hs`, `src/MCTS/Engine/Envelope.hs`,
+`test/unit/Main.hs`, and the project `docker/Dockerfile` `ARG GHC_VERSION`.
+Closure requires those edits land via Phase 9 Sprint `9.2` and
+`docker compose run --rm --build mcts mcts test all` exits 0 under the
+GHC-only-flipped legacy Dockerfile (the isolation gate that proves source
+compatibility before the base-image switch). Tracked as the
+Pending-Removal row owned by this sprint.
+
+## Sprint 1.15: Canonical command shape — `hostbootstrap run mcts <command>` [🔄 Active]
+
+**Status**: Active
+**Implementation**: inline doctrine edits in this phase doc (Sprint `1.1` Implementation list, Sprint `1.1` Compose-entrypoint doctrine row, Sprint `1.1` closure-note Compose entrypoint row). Coordinated doctrine edits land in [`00-overview.md`](00-overview.md), [`system-components.md`](system-components.md), every governed engineering doc that quotes the entrypoint, [`../HASKELL_CLI_TOOL.md`](../HASKELL_CLI_TOOL.md), [`../CLAUDE.md`](../CLAUDE.md), [`../AGENTS.md`](../AGENTS.md), [`../README.md`](../README.md), and the Phase 8 validation-gate example at the line outside the Sprint `8.18` historical evidence block. Deletion of `compose.yaml` is deferred to Phase 9 Sprint `9.2` and tracked as a Pending-Removal row in [`legacy-tracking-for-deletion.md`](legacy-tracking-for-deletion.md).
+**Blocked by**: Phase 9 Sprint `9.1` (the `hostbootstrap` orchestrator must be declared as a host-side CLI before this sprint's doctrine can name its `run` command as the canonical invocation shape).
+**Docs to update**: same list as Sprint `1.14`, plus `phase-8-haskell-performance-parity-closure.md` at the validation-gate example outside Sprint `8.18` historical evidence.
+
+### Objective
+
+Replace `docker compose run --rm mcts mcts <command>` with
+`hostbootstrap run mcts <command>` as the canonical invocation shape for
+all build, run, validation, formatting, linting,
+documentation-generation, test, benchmark, and backend-build work. The
+`hostbootstrap` tool itself is owned by Phase 9 Sprint `9.1`; this sprint
+owns only the *shape* of the canonical command line in Phase 1's
+doctrine and the governed docs that mirror it.
+
+### Deliverables
+
+- Inline edits at the Sprint `1.1` Implementation list (replacing
+  `compose.yaml` with `hostbootstrap.dhall` and forward-pointing to
+  Phase 9 Sprint `9.2`), the Sprint `1.1` Compose-entrypoint doctrine
+  row in the `docker/Dockerfile` deliverable bullet, and the Sprint
+  `1.1` closure-note Compose-entrypoint row.
+- Coordinated doctrine edits in [`00-overview.md`](00-overview.md)
+  (entrypoint doctrine line, the `compose.yaml`-as-only-supported-entrypoint
+  sentence, the layout-row reference), [`system-components.md`](system-components.md)
+  (Docker development environment row), the named governed engineering
+  docs (`code_quality.md` entrypoint example, `unit_testing_policy.md`
+  entrypoint references, others by audit),
+  [`../HASKELL_CLI_TOOL.md`](../HASKELL_CLI_TOOL.md) (operator-facing
+  entrypoint sentences), [`../CLAUDE.md`](../CLAUDE.md),
+  [`../AGENTS.md`](../AGENTS.md), and [`../README.md`](../README.md)
+  (Supported Workflow block, Common Operator Commands, Validation
+  block). Historical evidence and Sprint-X-dated validation lines are
+  preserved verbatim.
+- One Pending-Removal row appended to
+  [`legacy-tracking-for-deletion.md`](legacy-tracking-for-deletion.md)
+  for `compose.yaml` at repo root.
+
+### Validation
+
+`docker compose run --rm mcts mcts docs check` exits 0 (the validation
+gate itself uses the legacy entrypoint — that is intended; during
+Phase 9 Sprint `9.2` the gate switches to
+`hostbootstrap run mcts docs check`);
+`docker compose run --rm mcts mcts lint docs` exits 0. Grep for
+`docker compose run --rm mcts mcts` returns hits only inside (a)
+historical evidence blocks, (b)
+[`phase-9-hostbootstrap-adoption.md`](phase-9-hostbootstrap-adoption.md)
+Validation sections that explicitly name the legacy gate, (c) the
+Pending-Removal row in the ledger, (d) transitional notes in root
+doctrine docs that explicitly document the Phase 9 Sprint `9.2` gap.
+
+### Remaining Work
+
+Deletion of `compose.yaml` at repo root. Closure requires the deletion
+ships together with the new `hostbootstrap.dhall` in Phase 9 Sprint
+`9.2` and `hostbootstrap run mcts test all` exits 0 with Q3/Q4/Q6/Q7
+PASS and `normalized_divergence_score = 0.0000`. Tracked as the
+Pending-Removal row owned by this sprint.
+
+## Sprint 1.16: Lint stack — formatter-tools GHC unified with project GHC [🔄 Active]
+
+**Status**: Active
+**Implementation**: inline doctrine edits in this phase doc (Sprint `1.1` `docker/Dockerfile` deliverable bullet at the formatter-tools-isolation wording, Sprint `1.1` closure-note style-tool compiler row, Sprint `1.4` closure-note project-compiler-pinned row, the forward-pointer footnote at end of Sprint `1.4` closure narrative). Coordinated doctrine edits land in [`00-overview.md`](00-overview.md), [`../documents/engineering/code_quality.md`](../documents/engineering/code_quality.md), [`../documents/engineering/unit_testing_policy.md`](../documents/engineering/unit_testing_policy.md). Removal of the `STYLE_GHC_VERSION` ARG and its install layer from `docker/Dockerfile` is deferred to Phase 9 Sprint `9.2` and tracked as a Pending-Removal row in [`legacy-tracking-for-deletion.md`](legacy-tracking-for-deletion.md).
+**Blocked by**: Sprint `1.14` (the unified GHC value is the new project pin; this sprint's doctrine references it).
+**Docs to update**: `00-overview.md`, `../documents/engineering/code_quality.md`, `../documents/engineering/unit_testing_policy.md`, and the Sprint `1.4` forward-pointer footnote in this file.
+
+### Objective
+
+Collapse the lint stack's separate formatter-tools GHC into the project
+GHC. Under Sprint `1.14`'s pin both are GHC `9.12.4` — the single GHC
+the hostbootstrap base image ships. The formatter tools
+(`fourmolu-0.19.0.1`, `hlint-3.10`) install at
+`/opt/mcts-style-tools/bin/` against the project GHC. The
+`mcts-haskell-style` test stanza is unchanged; it still resolves the
+tools by absolute path. The `fourmolu.yaml` twelve-settings file and
+`.hlint.yaml` are unchanged.
+
+### Deliverables
+
+- Inline edit at the Sprint `1.1` `docker/Dockerfile` deliverable bullet:
+  drop the "separate formatter-tools GHC `9.12.4`" and "isolated from
+  the main project compiler" wording; restate the lint stack as sharing
+  the project GHC `9.12.4` under Sprint `1.14`.
+- Inline edit at the Sprint `1.1` closure note "style-tool compiler GHC
+  `9.12.4`" row: collapse to the unified GHC wording.
+- Inline edit at the Sprint `1.4` closure note "the project compiler
+  pinned to GHC `9.14.1` while matching the isolated formatter-tools
+  GHC model" row: restate as the project compiler and the formatter
+  tools sharing GHC `9.12.4`.
+- Forward-pointer footnote appended at end of Sprint `1.4` closure
+  narrative (above) naming Sprint `1.16` as the supersession owner and
+  preserving the original Sprint `1.4` closure prose per
+  [development_plan_standards.md → §D](development_plan_standards.md).
+- Coordinated doctrine edits in
+  [`00-overview.md`](00-overview.md) (lint-stack narrative collapses
+  separate-GHC implication; file list unchanged),
+  [`../documents/engineering/code_quality.md`](../documents/engineering/code_quality.md)
+  (drop "separate container-owned install" wording; state unified GHC),
+  [`../documents/engineering/unit_testing_policy.md`](../documents/engineering/unit_testing_policy.md)
+  (parallel sweep if the doc carries the same wording).
+- One Pending-Removal row appended to
+  [`legacy-tracking-for-deletion.md`](legacy-tracking-for-deletion.md)
+  for the `STYLE_GHC_VERSION` ARG and the separate
+  `ghcup install ghc ${STYLE_GHC_VERSION}` + `cabal install
+  fourmolu-${FOURMOLU_VERSION} hlint-${HLINT_VERSION} --with-compiler
+  ghc-${STYLE_GHC_VERSION}` install step in the legacy
+  `docker/Dockerfile`.
+
+### Validation
+
+`docker compose run --rm mcts mcts docs check` exits 0;
+`docker compose run --rm mcts mcts check-code` exits 0. The lint stack
+contents are unchanged in this sprint's scope (`fourmolu.yaml`,
+`.hlint.yaml`, the `cabal format` round-trip, the `mcts-haskell-style`
+stanza); the lint-stack regression surface is zero.
+
+### Remaining Work
+
+Removal of the `STYLE_GHC_VERSION` ARG and the separate `ghcup install
+ghc ${STYLE_GHC_VERSION}` + `cabal install fourmolu hlint
+--with-compiler ghc-${STYLE_GHC_VERSION}` step from
+`docker/Dockerfile`; replacement with a single `cabal install
+fourmolu-0.19.0.1 hlint-3.10 --installdir /opt/mcts-style-tools/bin`
+step against the project GHC. Coordinated with Phase 9 Sprint `9.2`.
+Tracked as the Pending-Removal row owned by this sprint.
 
 ## Documentation Requirements
 

@@ -2,7 +2,7 @@
 
 **Status**: Authoritative source
 **Supersedes**: N/A
-**Referenced by**: ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, ../documentation_standards.md, ./README.md, ./unit_testing_policy.md
+**Referenced by**: ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, ../../DEVELOPMENT_PLAN/phase-9-hostbootstrap-adoption.md, ../../DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md, ../documentation_standards.md, ./README.md, ./unit_testing_policy.md
 **Generated sections**: none
 
 > **Purpose**: Describe `mcts check-code`, the `mcts lint *` family, the `mcts docs
@@ -34,13 +34,19 @@
 The doctrine-alignment gate. Phase 1 Sprint 1.4 owns the implementation in
 `src/MCTS/CheckCode.hs`.
 
-`mcts check-code` is a container-only gate. Run it through the root-level
-`compose.yaml` entrypoint, for example:
+`mcts check-code` is a container-only gate. Run it through the host-installed
+`hostbootstrap` CLI (Phase 1 reopen Sprint `1.15` canonical invocation), for
+example:
 
 ```bash
 # Example: canonical code-quality gate
-docker compose run --rm mcts mcts check-code
+hostbootstrap run mcts check-code
 ```
+
+Until Phase 9 Sprint `9.2` ships the new `hostbootstrap.dhall` and the slim
+Dockerfile and deletes `compose.yaml`, the legacy invocation
+`docker compose run --rm mcts mcts check-code` remains functional. See
+[../../DEVELOPMENT_PLAN/phase-9-hostbootstrap-adoption.md](../../DEVELOPMENT_PLAN/phase-9-hostbootstrap-adoption.md).
 
 Ambient host-level tool fallback is unsupported. Fourmolu and HLint must come from
 the short-lived container's pinned style-tool install, not from the host `PATH`.
@@ -178,12 +184,14 @@ ceiling.
 
 The `mcts-haskell-style` Cabal stanza in `test/haskell-style/Main.hs` enforces the
 `cabal format` round-trip through a system temp file on every run. The project policy is to
-install `fourmolu-0.19.0.1` and `hlint-3.10` into
-`/opt/mcts-style-tools/bin/` inside the container with a separate pinned
-formatter-tools GHC `9.12.4`; the main project compiler stays on GHC `9.14.1`.
+install `fourmolu-0.19.0.1` and `hlint-3.10` into `/opt/mcts-style-tools/bin/`
+inside the container against the project GHC `9.12.4` (Phase 1 reopen
+Sprints `1.14` + `1.16`); the formatter tools share the project GHC. The
+legacy separate `STYLE_GHC_VERSION` arrangement is residue tracked in
+[../../DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md](../../DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md).
 The style stanza invokes only those pinned container paths and does not honour
 environment-variable overrides. If they are absent, the check fails with a remedy
-pointing at `docker compose run --rm mcts mcts check-code`; it must not skip the tools
+pointing at `hostbootstrap run mcts check-code`; it must not skip the tools
 or fall back to host `PATH`. The existing source walker remains an additional guard
 for tab characters and the conservative forbidden-symbol subset.
 

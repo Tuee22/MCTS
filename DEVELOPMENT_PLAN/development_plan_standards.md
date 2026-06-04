@@ -14,6 +14,7 @@
 [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md),
 [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md),
 [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md),
+[phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md),
 [../documents/documentation_standards.md](../documents/documentation_standards.md),
 [../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md)
 **Generated sections**: none
@@ -54,11 +55,17 @@ management summaries.
   prerequisites when they materially clarify closure.
 - Examples do not need to be verbatim copies of implementation files, but they must not
   contradict the supported architecture or command surface.
-- Host-runnable command examples must use the root Compose entrypoint
-  `docker compose run --rm mcts mcts <command>`. Bare `mcts <command>` may be used only
-  when naming the CLI surface rather than giving a host command to run. Do not
-  document `.sh` scripts, `bootstrap/` helpers, or other host-side wrappers as
-  supported project workflows.
+- Host-runnable command examples must use the canonical invocation
+  `hostbootstrap run mcts <command>` (Phase 1 reopen Sprint `1.15`; see
+  [phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md)).
+  Until Phase 9 Sprint `9.2` ships `hostbootstrap.dhall` and deletes
+  `compose.yaml`, the legacy invocation
+  `docker compose run --rm mcts mcts <command>` remains functional for
+  examples that explicitly document the transitional gap. Bare
+  `mcts <command>` may be used only when naming the CLI surface rather
+  than giving a host command to run. Do not document `.sh` scripts,
+  `bootstrap/` helpers, or other host-side wrappers as supported project
+  workflows.
 - Backend identifiers are `cpp-legacy`, `cpp-imperative`, `cpp-functional`, `rust`,
   `haskell` on the CLI and the Roman numerals `(i)`, `(ii)`, `(iii)`, `(iv)`, `(v)` in
   prose.
@@ -245,9 +252,12 @@ If a change adds or edits a Mermaid block in this directory, closure requires:
 1. Rendering every Mermaid block in `DEVELOPMENT_PLAN/` through a standalone renderer.
 2. Failing the change on any render error.
 3. Verifying the edited diagram in the repository's target Markdown viewer.
-4. Running `docker compose run --rm mcts mcts check-code` after the documentation
-   change. The lint stack must run inside the short-lived Compose container through the
-   pinned Fourmolu / HLint binaries and `cabal format`.
+4. Running `hostbootstrap run mcts check-code` after the documentation
+   change (Phase 1 reopen Sprint `1.15`; the legacy
+   `docker compose run --rm mcts mcts check-code` remains functional until
+   Phase 9 Sprint `9.2` ships `hostbootstrap.dhall` and deletes
+   `compose.yaml`). The lint stack must run inside the short-lived
+   container through the pinned Fourmolu / HLint binaries and `cabal format`.
 
 This standards document describes Mermaid rules with prose, inline code, or `markdown`
 examples only. Do not add live Mermaid blocks here.
@@ -304,8 +314,12 @@ registry`, `Test Organization`, `Output Rules`, `Error Handling`, `Toolchain pin
 3. Update the governed engineering docs listed in `Docs to update`.
 4. Update [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md) whenever
    cleanup scope changes.
-5. Run `docker compose run --rm mcts mcts check-code` before closing the work. The
-   pinned Fourmolu / HLint binaries and `cabal format` must run inside the short-lived
-   Compose container. Host-level validation fallback is never a closure gate.
+5. Run `hostbootstrap run mcts check-code` before closing the work (Phase 1
+   reopen Sprint `1.15`; the legacy
+   `docker compose run --rm mcts mcts check-code` remains functional until
+   Phase 9 Sprint `9.2` ships `hostbootstrap.dhall` and deletes
+   `compose.yaml`). The pinned Fourmolu / HLint binaries and `cabal format`
+   must run inside the short-lived container. Host-level validation fallback
+   is never a closure gate.
 6. If the change touched Mermaid, render every Mermaid block in `DEVELOPMENT_PLAN/` and
    verify the edited diagram in the target viewer before closing the work.

@@ -400,7 +400,7 @@ wall-clock time from a single `GHC.Clock.getMonotonicTimeNSec`, emit
   established the renderers).
 - The bench command is **not** a Plan/Apply command (no external state
   mutation); but it does consume the `prerequisiteRegistry` to check toolchain
-  prereqs (GHC 9.14.1 available, RTS opts honoured).
+  prereqs (GHC 9.12.4 available per Phase 1 reopen Sprint `1.14`, RTS opts honoured).
 
 ### Validation
 

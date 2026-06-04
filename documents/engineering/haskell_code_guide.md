@@ -2,7 +2,7 @@
 
 **Status**: Authoritative source
 **Supersedes**: N/A
-**Referenced by**: ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, ../../DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md, ../../DEVELOPMENT_PLAN/phase-6-cpp-functional-and-rust.md, ../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, ../documentation_standards.md, ./README.md
+**Referenced by**: ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, ../../DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md, ../../DEVELOPMENT_PLAN/phase-6-cpp-functional-and-rust.md, ../../DEVELOPMENT_PLAN/phase-8-haskell-performance-parity-closure.md, ../../DEVELOPMENT_PLAN/phase-9-hostbootstrap-adoption.md, ../documentation_standards.md, ./README.md
 **Generated sections**: none
 
 > **Purpose**: Describe how the MCTS project uses the doctrine's Haskell patterns —
@@ -87,7 +87,7 @@ external state (only the transcript cache, which they own), so the
 
 The `prerequisiteRegistry` (Phase 1 Sprint 1.7) covers every toolchain dependency
 across the five backends. The current baseline uses exact version probes for
-`ghc-9.14.1 --numeric-version == 9.14.1` and
+`ghc-9.12.4 --numeric-version == 9.12.4` (Phase 1 reopen Sprint `1.14`) and
 `cabal --numeric-version == 3.16.1.0`, LLVM/BOLT `19.x`, Rust `1.95.0`, LLD `19`,
 `mimalloc` via library-path probes, executable/file probes for the remaining
 build-command prerequisites (`c++`, Dockerfile-installed `mcts`/test/benchmark

@@ -13,15 +13,27 @@ The long-term research direction is AlphaZero-style ANN evaluation, but this rep
 
 ## Supported Workflow
 
-All build, run, validation, formatting, linting, documentation-generation, test, benchmark, and backend-build work enters through the root Compose service:
+All build, run, validation, formatting, linting, documentation-generation, test, benchmark, and backend-build work enters through the host-installed `hostbootstrap` CLI (Phase 9 doctrine; see [`DEVELOPMENT_PLAN/phase-9-hostbootstrap-adoption.md`](DEVELOPMENT_PLAN/phase-9-hostbootstrap-adoption.md)):
 
 ```bash
-docker compose run --rm mcts mcts <command>
+hostbootstrap run mcts <command>   # Phase 1 reopen Sprint 1.15 canonical shape
 ```
 
-Do not use host `cabal`, `cargo`, `cmake`, `make`, `fourmolu`, `hlint`, repository shell wrappers, `docker compose up`, or `docker compose exec` as project workflows. The pinned container owns GHC, Cabal, LLVM/BOLT, Rust, style tools, the prebuilt Cabal component cache, and the foreign backend shared libraries.
+`hostbootstrap run` reads `hostbootstrap.dhall` at the repo root, idempotently builds the project image against the pinned base (`docker.io/tuee22/hostbootstrap:basecontainer-cpu-<arch>`), and dispatches `mcts <command>` inside a one-shot `docker run --rm` container. The base image owns GHC `9.12.4` (Phase 1 reopen Sprint `1.14`), Cabal `3.16.1.0`, LLVM `19` + BOLT, fourmolu, hlint, and the warm Cabal store; the project Dockerfile owns clang-19, Rust `1.95.0`, the pinned style-tool versions (Phase 1 reopen Sprint `1.16`), the MCTS source build, and the four foreign backend `.so` artifacts.
 
-The Docker image build compiles the `mcts` executable with tests and benchmarks enabled, installs all Cabal test-suite executables, installs the `mcts-criterion` benchmark executable, and produces the four foreign backend shared libraries before the image is published. After the image is built, ordinary `mcts` runtime, lint, docs, test, verify, inspect, play, and benchmark commands should execute from image-local artefacts without compiling or linking on the fly. If a non-build command prints Cabal `Building...`, `Configuring...`, or `Linking...` output, treat the image as stale or incorrectly prewarmed and rebuild it with `--build`.
+Install `hostbootstrap` once per host:
+
+```bash
+python -m pip install \
+  "git+https://github.com/tuee22/hostbootstrap.git#egg=hostbootstrap"
+hostbootstrap doctor
+```
+
+**Transitional note (Phase 9):** until Phase 9 Sprint `9.2` ships the new `hostbootstrap.dhall` and the slim Dockerfile and deletes `compose.yaml`, the worktree still supports the legacy invocation `docker compose run --rm mcts mcts <command>` for validation. `compose.yaml` is residue tracked in [`DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md`](DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md).
+
+Do not use host `cabal`, `cargo`, `cmake`, `make`, `fourmolu`, `hlint`, repository shell wrappers, or direct `docker build` / `docker run` against the project image as project workflows.
+
+The Docker image build compiles the `mcts` executable with tests and benchmarks enabled, installs all Cabal test-suite executables, installs the `mcts-criterion` benchmark executable, and produces the four foreign backend shared libraries before the image is published. After the image is built, ordinary `mcts` runtime, lint, docs, test, verify, inspect, play, and benchmark commands should execute from image-local artefacts without compiling or linking on the fly. If a non-build command prints Cabal `Building...`, `Configuring...`, or `Linking...` output, treat the image as stale or incorrectly prewarmed and ask `hostbootstrap build` to rebuild it.
 
 ## Backend Cohort
 
@@ -50,7 +62,7 @@ throughput with one search iteration per move, not terminal `playouts/s`.
 Played-game benchmark output uses `games/s` only. The metric taxonomy and Q1-Q7 mapping live in
 [benchmark_metrics.md](documents/engineering/benchmark_metrics.md).
 
-The post-Sprint-`5.8` `docker compose run --rm --build mcts mcts test all`
+The post-Sprint-`5.8` `hostbootstrap run mcts test all` (Phase 1 reopen Sprint `1.15` canonical invocation; the legacy `docker compose run --rm --build mcts mcts test all` remains functional until Phase 9 Sprint `9.2` ships `hostbootstrap.dhall` and deletes `compose.yaml`)
 under the [Performance Measurement Doctrine](documents/engineering/compiler_runtime_tuning.md#performance-measurement-doctrine)
 exits 0 with all four apples-to-apples invariants Q3/Q4/Q6/Q7 PASS, all six
 Cabal stanzas PASS, zero live-cohort divergence
@@ -185,21 +197,23 @@ the backend identifiers are listed in the [Backend Cohort](#backend-cohort).
 Common operator commands:
 
 ```bash
-docker compose run --rm mcts mcts commands --tree
-docker compose run --rm mcts mcts bench rollouts --backend cpp-imperative,haskell --threading single --rng native --games 1000 --seed 42
-docker compose run --rm mcts mcts bench selfplay --backend haskell --rng native --games 100 --seed 42 --sims 10000
-docker compose run --rm mcts mcts verify selfplay --backend cpp-imperative,cpp-functional,rust,haskell --threading single --games 4 --seed 42 --max-plies 200 --sims 500
-docker compose run --rm mcts mcts verify legacy-parity selfplay --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell --games 2 --seed 42 --sims 4
-docker compose run --rm mcts mcts play --backend haskell --side hero --rng native --max-plies 200
-docker compose run --rm mcts mcts inspect list
-docker compose run --rm mcts mcts check-code
+hostbootstrap run mcts commands --tree
+hostbootstrap run mcts bench rollouts --backend cpp-imperative,haskell --threading single --rng native --games 1000 --seed 42
+hostbootstrap run mcts bench selfplay --backend haskell --rng native --games 100 --seed 42 --sims 10000
+hostbootstrap run mcts verify selfplay --backend cpp-imperative,cpp-functional,rust,haskell --threading single --games 4 --seed 42 --max-plies 200 --sims 500
+hostbootstrap run mcts verify legacy-parity selfplay --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell --games 2 --seed 42 --sims 4
+hostbootstrap run mcts play --backend haskell --side hero --rng native --max-plies 200
+hostbootstrap run mcts inspect list
+hostbootstrap run mcts check-code
 ```
 
-`mcts build cpp-legacy`, `mcts build cpp-imperative`, `mcts build cpp-functional`, and `mcts build rust` are Dockerfile-owned build leaves. The Dockerfile also prebuilds and installs the Cabal test and benchmark executables so later validation runs consume image-local artefacts instead of compiling test stanzas on demand. Refreshing any build artefact normally means rebuilding the Compose image:
+`mcts build cpp-legacy`, `mcts build cpp-imperative`, `mcts build cpp-functional`, and `mcts build rust` are Dockerfile-owned build leaves. The Dockerfile also prebuilds and installs the Cabal test and benchmark executables so later validation runs consume image-local artefacts instead of compiling test stanzas on demand. Refreshing any build artefact normally means rebuilding the project image; `hostbootstrap run` rebuilds the image idempotently on every invocation, so the aggregate gate is simply:
 
 ```bash
-docker compose run --rm --build mcts mcts test all
+hostbootstrap run mcts test all
 ```
+
+(Until Phase 9 Sprint `9.2` ships `hostbootstrap.dhall` and deletes `compose.yaml`, the legacy `docker compose run --rm --build mcts mcts test all` remains functional.)
 
 ## Determinism
 
@@ -224,13 +238,15 @@ Transcripts are local operator cache files under `.mcts-cache/` by default. They
 Use the smallest Compose gate that covers the change, then close with the aggregate gate when touching cross-cutting code or docs:
 
 ```bash
-docker compose run --rm mcts mcts docs check
-docker compose run --rm mcts mcts lint files
-docker compose run --rm mcts mcts lint docs
-docker compose run --rm mcts mcts test mcts-unit
-docker compose run --rm mcts mcts check-code
-docker compose run --rm --build mcts mcts test all
+hostbootstrap run mcts docs check
+hostbootstrap run mcts lint files
+hostbootstrap run mcts lint docs
+hostbootstrap run mcts test mcts-unit
+hostbootstrap run mcts check-code
+hostbootstrap run mcts test all
 ```
+
+(Until Phase 9 Sprint `9.2` ships `hostbootstrap.dhall` and deletes `compose.yaml`, the legacy aggregate gate `docker compose run --rm --build mcts mcts test all` remains functional.)
 
 Normal tests do not depend on checked-in generated transcripts, throughput anchors, renderer snapshots, or report-card fixtures. Generated documentation files are the tracked exception and are governed by [documentation_standards.md](documents/documentation_standards.md).
 

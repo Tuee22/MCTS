@@ -6,6 +6,8 @@
 [development_plan_standards.md](development_plan_standards.md),
 [system-components.md](system-components.md),
 [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md),
+[phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md),
+[phase-1-haskell-cli-surface.md](phase-1-haskell-cli-surface.md),
 [../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md)
 **Generated sections**: none
 
@@ -15,15 +17,27 @@
 
 ## Phase Status
 
-✅ **Done.** Sprint `0.1` (canonical plan suite bootstrap) and Sprint `0.2`
-(doctrine-driven scheduling audit) remain historical `Done` records. Sprint
-`0.3` restored `HASKELL_CLI_TOOL.md` as the root authoritative CLI doctrine on
-2026-05-27, so the plan, governed engineering docs, `README.md`, `AGENTS.md`,
-`CLAUDE.md`, and source comments resolve their existing doctrine citations again.
-Sprint `0.4` reclosed the README-as-authority cleanup on the same date by keeping
-README reference-only and retargeting doctrine scope, wire-format, report-card, and
-tuning citations to their owning plan or governed engineering docs.
-Later implementation phases remain `Done` on their owned code surfaces.
+🔄 **Reopened on the planning-baseline sub-surface.** Sprint `0.1` (canonical
+plan suite bootstrap) and Sprint `0.2` (doctrine-driven scheduling audit)
+remain historical `Done` records. Sprint `0.3` restored `HASKELL_CLI_TOOL.md`
+as the root authoritative CLI doctrine on 2026-05-27, so the plan, governed
+engineering docs, `README.md`, `AGENTS.md`, `CLAUDE.md`, and source comments
+resolve their existing doctrine citations again. Sprint `0.4` reclosed the
+README-as-authority cleanup on the same date by keeping README reference-only
+and retargeting doctrine scope, wire-format, report-card, and tuning citations
+to their owning plan or governed engineering docs. Later implementation phases
+remain `Done` on their owned code surfaces.
+
+Phase `0` reopened on 2026-06-03 for Sprint `0.5` to align the planning
+baseline with the Phase 9 hostbootstrap adoption (see
+[phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md) and
+the Phase 1 reopen sprints `1.14`, `1.15`, `1.16` in
+[phase-1-haskell-cli-surface.md](phase-1-haskell-cli-surface.md)). Sprint
+`0.5` updates Sprint `0.2`'s toolchain-pinning enumeration and the doctrine
+ownership table row to track the GHC `9.12.4` pin and the
+`hostbootstrap run mcts <command>` canonical invocation; Sprint `0.5` is
+`🔄 Active`. The documentation-topology surfaces owned by Sprints `0.1`–`0.4`
+remain closed; only the planning-baseline doctrine references are touched.
 
 ## Phase Summary
 
@@ -207,8 +221,12 @@ rule L.
 - A grep audit of [../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md) enumerates every
   prescriptive identifier from the in-scope sections. The expected identifier list
   (non-exhaustive) is:
-  - **Toolchain pinning**: `GHC 9.14.1`, `Cabal 3.16.1.0`,
-    `tested-with: ghc ==9.14.1`, `with-compiler: ghc-9.14.1`.
+  - **Toolchain pinning**: `GHC 9.12.4`, `Cabal 3.16.1.0`,
+    `tested-with: ghc ==9.12.4`, `with-compiler: ghc-9.12.4` (Phase 1
+    reopen Sprint `1.14`; see
+    [phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md)
+    for the hostbootstrap base image whose warm Cabal store this pin
+    matches).
   - **Project Structure**: `app/Main.hs` thin, `src/MyTool/` (here `src/MCTS/`)
     library-first layout.
   - **Command Topology / CommandSpec**: `Command`, `CommandSpec`, `OptionSpec`,
@@ -346,7 +364,7 @@ the surrounding phase documents and engineering docs cited above.
 
 | Doctrine class | Owning sprint(s) |
 |----------------|------------------|
-| Toolchain pinning (`GHC 9.14.1`, `Cabal 3.16.1.0`, `tested-with`, `with-compiler`) | Phase 1 Sprint 1.1 |
+| Toolchain pinning (`GHC 9.12.4`, `Cabal 3.16.1.0`, `tested-with`, `with-compiler`) | Phase 1 Sprint 1.1 (initial pin) + Sprint 1.14 (Phase 9 reopen to `9.12.4`) |
 | Project Structure (`app/Main.hs` thin, `src/MCTS/` library-first) | Phase 1 Sprint 1.1 |
 | Command Topology / `CommandSpec` / `OptionSpec` / `Example` | Phase 1 Sprint 1.2 |
 | Progressive Introspection (`mcts commands`, `--tree`, `--json`, `mcts help`) | Phase 1 Sprint 1.2 |
@@ -488,6 +506,47 @@ tuning doctrine.
 ### Remaining Work
 
 None.
+
+## Sprint 0.5: Planning baseline alignment with Phase 9 hostbootstrap adoption [🔄 Active]
+
+**Status**: Active
+**Implementation**: inline doctrine edits in this phase doc at the Sprint `0.2` toolchain-pinning row and the doctrine ownership table row.
+**Blocked by**: Phase 1 Sprints `1.14`, `1.15`, `1.16` (this sprint's edits cite Phase 1's reopened sub-surfaces).
+**Docs to update**: this phase doc only; cross-links to [phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md) and the Phase 1 reopen sprints.
+
+### Objective
+
+Update Phase 0's planning baseline so its enumerated toolchain pin
+identifiers and its doctrine ownership table row cite the Phase 9
+hostbootstrap adoption and the Phase 1 reopen sprints. Phase 0's
+documentation-topology and README-authority surfaces (Sprints `0.1`–`0.4`)
+remain closed on their owned narratives.
+
+### Deliverables
+
+- Inline edit at the Sprint `0.2` toolchain-pinning enumeration bullet:
+  `GHC 9.14.1`, `tested-with: ghc ==9.14.1`, `with-compiler: ghc-9.14.1`
+  → `GHC 9.12.4`, `tested-with: ghc ==9.12.4`, `with-compiler:
+  ghc-9.12.4` with a forward pointer to Sprint `1.14` and Phase 9.
+- Inline edit at the doctrine ownership table row for the toolchain pin:
+  owning sprint annotation now reads "Phase 1 Sprint 1.1 (initial pin) +
+  Sprint 1.14 (Phase 9 reopen to `9.12.4`)".
+- Sprint `0.3` and Sprint `0.4` validation lists (dated 2026-05-27) and
+  Sprint `0.1`/`0.2` historical narratives are preserved verbatim per
+  [development_plan_standards.md → §D](development_plan_standards.md).
+
+### Validation
+
+`docker compose run --rm mcts mcts docs check` exits 0;
+`docker compose run --rm mcts mcts lint docs` exits 0. Bidirectional
+`Referenced by` audit passes between this phase doc and
+[phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md).
+
+### Remaining Work
+
+Closes when the two inline edits land and `mcts docs check` /
+`lint docs` exit 0. This sprint owns no implementation deliverable;
+Phase 0 is documentation only.
 
 ## Doctrine Sections Cited
 

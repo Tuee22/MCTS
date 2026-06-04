@@ -2,11 +2,23 @@
 
 **Status**: Authoritative source
 **Supersedes**: N/A
-**Referenced by**: ../README.md, ../AGENTS.md, ../CLAUDE.md, ../HASKELL_CLI_TOOL.md, ../DEVELOPMENT_PLAN/README.md, ../DEVELOPMENT_PLAN/development_plan_standards.md, ../DEVELOPMENT_PLAN/00-overview.md, engineering/README.md, engineering/benchmark_metrics.md, engineering/cli_command_surface.md, engineering/code_quality.md, engineering/unit_testing_policy.md, engineering/haskell_code_guide.md, engineering/determinism_contract.md, engineering/semantic_parity_contract.md, engineering/transcript_format.md, engineering/backend_ffi_contract.md, engineering/backend_style_contract.md, engineering/compiler_runtime_tuning.md
+**Referenced by**: ../README.md, ../AGENTS.md, ../CLAUDE.md, ../HASKELL_CLI_TOOL.md, ../DEVELOPMENT_PLAN/README.md, ../DEVELOPMENT_PLAN/development_plan_standards.md, ../DEVELOPMENT_PLAN/00-overview.md, ../DEVELOPMENT_PLAN/phase-9-hostbootstrap-adoption.md, engineering/README.md, engineering/benchmark_metrics.md, engineering/cli_command_surface.md, engineering/code_quality.md, engineering/unit_testing_policy.md, engineering/haskell_code_guide.md, engineering/determinism_contract.md, engineering/semantic_parity_contract.md, engineering/transcript_format.md, engineering/backend_ffi_contract.md, engineering/backend_style_contract.md, engineering/compiler_runtime_tuning.md
 **Generated sections**: none
 
 > **Purpose**: Single Source of Truth (SSoT) for writing and maintaining documentation
 > across the MCTS repository.
+
+> **Phase 9 transitional note (2026-06-03):** The canonical invocation shape
+> for every host-runnable command example below is
+> `hostbootstrap run mcts <command>` (Phase 1 reopen Sprint `1.15`; see
+> [../DEVELOPMENT_PLAN/phase-9-hostbootstrap-adoption.md](../DEVELOPMENT_PLAN/phase-9-hostbootstrap-adoption.md)).
+> Until Phase 9 Sprint `9.2` ships `hostbootstrap.dhall` and deletes
+> `compose.yaml`, the legacy
+> `docker compose run --rm mcts <command>` form remains functional and is
+> still used in the example bodies below; both invocation shapes apply
+> identical semantics through the same container image. New examples added
+> after Phase 9 Sprint `9.2` closes must use only the
+> `hostbootstrap run mcts <command>` form.
 
 ---
 

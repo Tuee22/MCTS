@@ -51,16 +51,20 @@ All projects standardize on this stack.
 The exact GHC and Cabal versions every project under this doctrine builds with:
 
 ```text
-GHC 9.14.1
+GHC 9.12.4
 Cabal 3.16.1.0
 ```
 
 These are not floors or recommendations. The `.cabal` file declares
-`tested-with: ghc ==9.14.1`. A `cabal.project` (or equivalent) pins
-`with-compiler: ghc-9.14.1`. The container/CI path uses the same versions. The
-pinned formatter-tools GHC is a separate container-owned install managed by the
-lint stack; the project's main compiler is the version named here. Host-level
-`.build/` tool installs are not part of this repository's supported workflow.
+`tested-with: ghc ==9.12.4`. A `cabal.project` (or equivalent) pins
+`with-compiler: ghc-9.12.4`. The container/CI path uses the same versions —
+the pinned base image
+(`docker.io/tuee22/hostbootstrap:basecontainer-cpu-<arch>`) ships exactly this
+GHC + Cabal pair with a warm Cabal store, per
+[`DEVELOPMENT_PLAN/phase-9-hostbootstrap-adoption.md`](DEVELOPMENT_PLAN/phase-9-hostbootstrap-adoption.md).
+Under Phase 1 reopen Sprint `1.16` the formatter tools (`fourmolu-0.19.0.1`,
+`hlint-3.10`) share the project GHC `9.12.4`. Host-level `.build/` tool
+installs are not part of this repository's supported workflow.
 
 ---
 
@@ -2275,7 +2279,7 @@ the in-stanza test tree.
 Every project under this doctrine is built as:
 
 ```text
-GHC 9.14.1
+GHC 9.12.4
 Cabal 3.16.1.0
 + exitcode-stdio-1.0
 + optparse-applicative

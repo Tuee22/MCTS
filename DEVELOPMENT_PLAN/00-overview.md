@@ -15,6 +15,7 @@
 [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md),
 [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md),
 [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md),
+[phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md),
 [../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md),
 [../documents/engineering/backend_style_contract.md](../documents/engineering/backend_style_contract.md),
 [../documents/engineering/benchmark_metrics.md](../documents/engineering/benchmark_metrics.md),
@@ -324,10 +325,36 @@ project's side). Phase `8` returns to ✅ Done. See
 [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md)
 Sprint `8.19` Closure Notes for the full measurement table.
 
+**2026-06-03 — Phase 9 hostbootstrap adoption opens.** Phase 9 introduces
+`hostbootstrap` as the host-installed orchestrator, the typed
+`hostbootstrap.dhall` project config, and the
+`FROM ${BASE_IMAGE}` Dockerfile inheritance pattern; Sprint `9.1` is
+`🔄 Active` and lands the doctrine; Sprints `9.2` (code-side migration)
+and `9.3` (post-migration rebaseline) are `📋 Planned`. Phase `1`
+reopens on three narrow sub-surfaces — Sprint `1.14` (toolchain pin
+update to GHC `9.12.4` + Cabal `3.16.1.0`), Sprint `1.15` (canonical
+invocation shape `hostbootstrap run mcts <command>` replaces
+`docker compose run --rm mcts mcts <command>`), and Sprint `1.16`
+(lint stack — formatter-tools GHC unified with project GHC); each is
+`🔄 Active`. Phase `0` reopens on the planning-baseline sub-surface
+via Sprint `0.5` (`🔄 Active`). Phases `2`–`8` remain closed on their
+owned surfaces. The overall MCTS handoff is incomplete pending Sprint
+`9.2` and Sprint `9.3`; the worktree-vs-doctrine gap is tracked as four
+Pending-Removal rows in
+[legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md).
+See [phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md),
+[phase-1-haskell-cli-surface.md](phase-1-haskell-cli-surface.md)
+Sprints `1.14`–`1.16`, and
+[phase-0-planning-documentation.md](phase-0-planning-documentation.md)
+Sprint `0.5` for the doctrine.
+
 ## Target Outcome
 
-One `mcts` Haskell CLI binary, built by Cabal under GHC `9.14.1` and Cabal
-`3.16.1.0`, drives all five backend slots behind a uniform command surface.
+One `mcts` Haskell CLI binary, built by Cabal under GHC `9.12.4` and Cabal
+`3.16.1.0` (Phase 1 reopen Sprint `1.14`; see
+[phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md) for the
+hostbootstrap base image whose warm Cabal store this pin matches), drives all
+five backend slots behind a uniform command surface.
 Backend (i) `cpp-legacy/` is a strictly verbatim re-port of `MCTS_legacy` used
 for legacy compatibility and Q6 legacy-envelope evidence. Backend (ii)
 `cpp-imperative/` is the maximally-tuned imperative C++23 performance ceiling;
@@ -547,12 +574,16 @@ sprint may schedule adoption of an out-of-scope section.
   `fourmolu.yaml` at repo root with the twelve doctrine-mandated settings
   (`indentation`, `column-limit`, `function-arrows`, `comma-style`,
   `import-export-style`, `indent-wheres`, `record-brace-space`,
-  `newlines-between-decls`, `haddock-style`, `let-style`, `in-style`, `unicode`); the
+  `newlines-between-decls`, `haddock-style`, `let-style`, `in-style`, `unicode`).
+  Under Phase 1 reopen Sprint `1.16` the formatter-tools GHC is the project GHC
+  (`9.12.4` per Sprint `1.14`); the legacy separate `STYLE_GHC_VERSION`
+  arrangement is residue tracked in
+  [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md). The
   `mcts-haskell-style` test-suite enforces all three plus the `cabal format` temp-file
-  round-trip byte-equality compare. Fourmolu and HLint are installed with a separate
-  pinned formatter-tools GHC `9.12.4` into `/opt/mcts-style-tools/bin/` inside the
-  container; the project compiler remains GHC `9.14.1`. Ambient host fallback is
-  not supported.
+  round-trip byte-equality compare. Fourmolu and HLint are installed into
+  `/opt/mcts-style-tools/bin/` inside the container against the project GHC
+  `9.12.4` (Phase 1 reopen Sprints `1.14` + `1.16`); the formatter tools share
+  the single project GHC. Ambient host fallback is not supported.
 - Testing Doctrine and Test Organization — six live Cabal stanzas, each
   `type: exitcode-stdio-1.0`, each with its own `tasty` tree; a single `tasty` tree
   spanning all tiers is forbidden. Parser tests use `execParserPure`. Canonical property
@@ -602,10 +633,26 @@ sprint may schedule adoption of an out-of-scope section.
   pointer to the `GeneratedSectionRule` registry, "How to regenerate" naming
   `mcts docs generate`, per-file `**Generated sections**:` metadata field with lint
   contract, five-step extension protocol, fully-generated do-not-hand-edit rule.
-- Toolchain pinning — GHC `9.14.1`, Cabal `3.16.1.0`; `mcts.cabal` declares
-  `tested-with: ghc ==9.14.1`; `cabal.project` declares `with-compiler: ghc-9.14.1`.
+- Toolchain pinning — GHC `9.12.4`, Cabal `3.16.1.0` (Phase 1 reopen Sprint
+  `1.14`); `mcts.cabal` declares `tested-with: ghc ==9.12.4`; `cabal.project`
+  declares `with-compiler: ghc-9.12.4`. The pin matches the warm Cabal store
+  baked into the hostbootstrap base image (see
+  [phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md)).
 - Project Structure (library-first layout) — `app/Main.hs` thin, logic under
   `src/MCTS/`.
+- hostbootstrap adoption (Phase 9) — `hostbootstrap` as the host-installed
+  Python CLI orchestrating substrate detection, prerequisite validation,
+  base-image pull, project-image build, and `mcts <command>` dispatch in a
+  one-shot `docker run --rm` container; typed `hostbootstrap.dhall` at repo
+  root declaring one `LinuxCpu` substrate with the `Container` model;
+  `docker/Dockerfile` inheriting `FROM ${BASE_IMAGE}` from the prebuilt
+  base image `docker.io/tuee22/hostbootstrap:basecontainer-cpu-<arch>`,
+  adding only what the base does not ship (`clang-19`,
+  `libclang-rt-19-dev`, pinned Rust `1.95.0`, pinned formatter tools,
+  source build, foreign-backend builds). See
+  [phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md);
+  the canonical invocation shape (`hostbootstrap run mcts <command>`) is
+  Phase 1 reopen Sprint `1.15`'s doctrine.
 
 **Out of scope (informational only — no sprint may schedule adoption):**
 
@@ -708,8 +755,11 @@ referenceability.
     (integer, order-independent) only. Float drift across the Q3 verification cohort
     `(ii)..(v)` that changes UCT child selection or the final highest-visit root action
     surfaces as a visit-count mismatch on the next move and is caught by `mcts verify`.
-16. The toolchain is pinned at GHC `9.14.1` and Cabal `3.16.1.0`. `mcts.cabal` declares
-    `tested-with: ghc ==9.14.1`; `cabal.project` declares `with-compiler: ghc-9.14.1`.
+16. The toolchain is pinned at GHC `9.12.4` and Cabal `3.16.1.0` (Phase 1 reopen
+    Sprint `1.14`). `mcts.cabal` declares `tested-with: ghc ==9.12.4`;
+    `cabal.project` declares `with-compiler: ghc-9.12.4`. The pin matches the
+    warm Cabal store baked into the hostbootstrap base image (see
+    [phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md)).
 17. Backend (i) `cpp-legacy/` is strictly verbatim from `~/MCTS_legacy/backend/`. Only
     FFI shims are permitted around the imported legacy source. The build flags are
     `-std=c++17 -O3 -fPIC -Wall`.
@@ -792,9 +842,13 @@ referenceability.
     runtime stanza execution does not compile or link on first use.
 28. `fourmolu.yaml` at repo root pins the twelve doctrine-mandated settings; the
     `mcts-haskell-style` stanza enforces them plus `cabal format` temp-file round-trip
-    byte-equality through the separate formatter-tools install (`ghc-9.12.4`,
-    `fourmolu-0.19.0.1`, `hlint-3.10`) under `/opt/mcts-style-tools/bin/` inside the
-    container. Host `PATH` fallback is never allowed.
+    byte-equality through the formatter-tools install (`fourmolu-0.19.0.1`,
+    `hlint-3.10`) under `/opt/mcts-style-tools/bin/` inside the container. Under
+    Phase 1 reopen Sprint `1.16` the formatter tools share the project GHC
+    `9.12.4` (Sprint `1.14`); the legacy separate `STYLE_GHC_VERSION` install
+    layer is residue tracked in
+    [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md). Host
+    `PATH` fallback is never allowed.
 29. Report-card live workload constants are implemented in `MCTS.CLI.Test` and
     mirrored in `cabal.project` comments: `N_PRIM = 20_000`, `P_MAX = 60`,
     `G_R = 1_000`, `G_S = 4`, `G_V = 4`, `G_LP = 2`, `S_BENCH = 500`,
@@ -804,16 +858,28 @@ referenceability.
     report-card schemas, and renderer snapshots are not part of the normal validation
     surface; evidence is generated in memory, in temporary roots, or through explicit
     operator-provided artifact directories.
-31. The Docker development environment provides a single LLVM pinned in
-    `docker/Dockerfile` shared by GHC's `-fllvm` backend and BOLT post-link. The base
-    is `ubuntu:24.04`; the C++ toolchain is GCC (latest stable on 24.04); Rust is
-    `rustup`-installed with a pinned minor version; Haskell is `ghcup`-managed and
-    pinned to GHC `9.14.1` and Cabal `3.16.1.0`; Haskell style tools use a separate
-    pinned GHC `9.12.4` and do not alter the project compiler. Root-level
-    `compose.yaml` supports only `docker compose run --rm mcts mcts <command>` as the
-    host entrypoint. There is no long-running daemon container, bind-mounted workspace,
-    Compose-level environment-variable block, repository `.sh` workflow wrapper, or
-    `bootstrap/` helper; host-level `.build/` artefacts are unsupported.
+31. The Docker development environment inherits the hostbootstrap base image
+    `docker.io/tuee22/hostbootstrap:basecontainer-cpu-<arch>` (see
+    [phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md)),
+    which provides the single LLVM `19` shared by GHC's `-fllvm` backend and
+    BOLT post-link, GHC `9.12.4` and Cabal `3.16.1.0` (Phase 1 reopen Sprint
+    `1.14`) with a warm Cabal store, fourmolu, hlint, and Rust via `rustup`
+    (channel `stable`). The slim project `docker/Dockerfile` adds `clang-19`,
+    `libclang-rt-19-dev`, pinned Rust `1.95.0`, pinned `fourmolu-0.19.0.1` and
+    `hlint-3.10` at `/opt/mcts-style-tools/bin/` (Sprint `1.16` — sharing the
+    project GHC), the `${BOLT_RT_INSTR_LIB}` symlink, the source copy, the
+    Cabal exe installs, and the foreign-backend builds. Root-level
+    `hostbootstrap.dhall` is the typed project config (Phase 9 Sprint `9.1`);
+    `hostbootstrap run mcts <command>` is the canonical host-side invocation
+    (Phase 1 reopen Sprint `1.15`). Until Phase 9 Sprint `9.2` ships the new
+    `hostbootstrap.dhall` and the slim Dockerfile and deletes `compose.yaml`,
+    the worktree still ships `compose.yaml` and supports
+    `docker compose run --rm mcts mcts <command>` for validation; that file
+    is Pending-Removal residue per
+    [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md). There
+    is no long-running daemon container, bind-mounted workspace, repository
+    `.sh` workflow wrapper, or `bootstrap/` helper; host-level `.build/`
+    artefacts are unsupported.
 32. Move notation matches the legacy engine: `*(x,y)` for pawn moves, `H(x,y)` for
     horizontal walls, `V(x,y)` for vertical walls, x,y ∈ [0,8] for pawns and ∈ [0,7]
     for walls. `inspect show` / `inspect replay` and the `play` TUI render in this
@@ -957,11 +1023,11 @@ Phase `1` Sprint `1.13` has reclosed self-describing CLI introspection.
 
 | Surface | Current Repo State | Intended End State |
 |---------|--------------------|--------------------|
-| Repository layout | `app/`, `src/MCTS/`, `src/MCTS/Generated/`, `cpp-legacy/`, `cpp-imperative/`, `cpp-functional/`, `rust/`, `bench/`, `test/`, `docker/`, root `compose.yaml`, `cabal.project`, `fourmolu.yaml`, `.hlint.yaml`, `.gitignore`, `.dockerignore`, `mcts.cabal`, generated-artefact targets `documents/cli/commands.md`, `share/man/man1/mcts.1`, and `share/completion/{bash,zsh,fish}/` | Same layout, with no generated validation data required under `test/` and no checked-in PGO/BOLT profile snapshots |
+| Repository layout | `app/`, `src/MCTS/`, `src/MCTS/Generated/`, `cpp-legacy/`, `cpp-imperative/`, `cpp-functional/`, `rust/`, `bench/`, `test/`, `docker/`, root `compose.yaml` (Pending-Removal residue per Phase 1 reopen Sprint `1.15`, retired by Phase 9 Sprint `9.2` in favor of root `hostbootstrap.dhall`), `cabal.project`, `fourmolu.yaml`, `.hlint.yaml`, `.gitignore`, `.dockerignore`, `mcts.cabal`, generated-artefact targets `documents/cli/commands.md`, `share/man/man1/mcts.1`, and `share/completion/{bash,zsh,fish}/` | Same layout with `compose.yaml` retired and root `hostbootstrap.dhall` introduced per [phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md); no generated validation data required under `test/` and no checked-in PGO/BOLT profile snapshots |
 | Build artefacts | `mcts.cabal` declares the `mcts` binary, live Haskell test stanzas, benchmark stanza, and the doctrine-standard dependency envelope; host validation enters through `docker compose run --rm mcts mcts check-code` under the pinned toolchain. The foreign backend tree is live for `cpp-legacy/`, `cpp-imperative`, `cpp-functional`, and `rust`; Dockerfile invokes the C++ and Rust PGO/BOLT Plan/Apply build recipes during image construction, and those recipes fail closed on missing profile data, missing `.fdata`, failed BOLT output, or a crashing installed bolted library. PGO/BOLT training uses the bounded metric-suite profile suite owned by Sprints `8.10` and `8.11`, including terminal playout, search-iteration, legacy played-game rollout, and self-play workloads; Sprint `5.7` retuned backend `(ii)` training after the action-only/SoA kernel rewrite. | Container-image `mcts` binary, installed Cabal test-suite executables, installed `mcts-criterion` benchmark executable, and image-local shared libraries for `cpp-legacy`, optimized `cpp-imperative`, optimized `cpp-functional`, and `rust` produced by `docker/Dockerfile`; runtime validation consumes those artefacts without rebuilding them, and steelman shared libraries exist only after successful Dockerfile-time PGO+BOLT trained on an accepted profile suite |
 | CLI surface | The complete command family is wired: `bench`, `verify`, `verify legacy-parity`, `inspect`, `test`, `lint`, `docs`, `commands`, `help`, `check-code`, `build`, and `play`. Generated command docs are checked against the renderer, tracked generated-file drift fails `mcts lint files`, generated path/section registries live under `src/MCTS/Generated/`, parser topology is rendered from enriched `CommandSpec` metadata with explicit semantic leaf option parsers, and `mcts test all` routes recursive CLI calls through the installed image-local `mcts` binary. Sprint `1.13` closed the self-describing introspection surface: every leaf command exposes required inputs, defaults, accepted values, examples, parse-error remedies, JSON schema data, manpage data, and shell completions from one choice-aware registry. | Same surface backed by real C++/Rust/Haskell engines and fully self-describing introspection: bench/play/inspect dispatch through selected foreign backends when their shared libraries are present and the relevant ABI path can represent the run, Q3 covers `(ii)..(v)`, Q6 covers all five, Dockerfile-invoked build recipes exist for `cpp-legacy`, `cpp-imperative`, `cpp-functional`, and `rust`, `legacy-fixtures` remains explicit external audit-fixture generation, and every leaf command exposes required inputs, defaults, accepted values, examples, parse-error remedies, JSON schema data, manpage data, and shell completions from one choice-aware registry |
 | Test stanzas | Six live Cabal stanzas currently exist: `mcts-unit`, `mcts-integration`, `mcts-cross-backend`, `mcts-legacy-parity`, `mcts-semantic-parity`, and `mcts-haskell-style`. Each stanza has its own `tasty` runner, Dockerfile prebuilds every test executable, `mcts-cross-backend` invokes real `mcts verify` subprocesses serially around the process-pinned dynamic-library and shared C++ RNG bridge path, and `docker compose run --rm mcts mcts test all` is the host validation gate under the pinned container toolchain. `mcts-unit` uses semantic/property/temp-dir checks instead of `tasty-golden`. | Keep all validation data generated in memory or temporary directories during the run, so clean-clone validation has no `test/golden/` prerequisite and no runtime test-stanza compilation |
-| Toolchain | `mcts.cabal` pins `tested-with: ghc ==9.14.1`; `cabal.project` pins `with-compiler: ghc-9.14.1` and mirrors the report-card constants as comments. The style-tool policy pins GHC `9.12.4` only for Fourmolu/HLint installation inside the container. | GHC `9.14.1`, Cabal `3.16.1.0`, style GHC `9.12.4` for `fourmolu-0.19.0.1` / `hlint-3.10`, `clang++-19` for C++ backends `(i)`, `(ii)`, and `(iii)` (Sprints `4.6`, `5.9`, `6.11`), `llvm-profdata-19` for `(ii)`/`(iii)` LLVM PGO, Rust `1.95.0`, LLVM/BOLT `19`, and no first-class GCC backend build path after Sprint `4.7` |
+| Toolchain | `mcts.cabal` pins `tested-with: ghc ==9.14.1`; `cabal.project` pins `with-compiler: ghc-9.14.1` and mirrors the report-card constants as comments (Pending-Removal residue per Phase 1 reopen Sprint `1.14`, retired by Phase 9 Sprint `9.2` in favor of GHC `9.12.4`). The style-tool policy currently pins GHC `9.12.4` only for Fourmolu/HLint installation inside the container; Sprint `1.16` unifies the formatter-tools GHC with the project GHC under Sprint `1.14`'s pin. | GHC `9.12.4`, Cabal `3.16.1.0` (Phase 1 reopen Sprint `1.14`), formatter tools (`fourmolu-0.19.0.1`, `hlint-3.10`) sharing the project GHC `9.12.4` at `/opt/mcts-style-tools/bin/` (Sprint `1.16`), `clang++-19` for C++ backends `(i)`, `(ii)`, and `(iii)` (Sprints `4.6`, `5.9`, `6.11`), `llvm-profdata-19` for `(ii)`/`(iii)` LLVM PGO, Rust `1.95.0`, LLVM/BOLT `19`, and no first-class GCC backend build path after Sprint `4.7`. The toolchain layers are inherited from the hostbootstrap base image `docker.io/tuee22/hostbootstrap:basecontainer-cpu-<arch>` per [phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md); the project Dockerfile adds only what the base does not ship. |
 | Determinism contract | Live C++ and Rust foreign backends dispatch through real FFI engines under `bench`, `play`, `inspect divergence`, Q3 `verify` when shared libraries are present and the fixed search-horizon ABI can represent the run, and Q6 `verify legacy-parity`; the integration stanza's direct live-FFI smoke cases are Rust-specific, with C++ live coverage carried by Q3/Q6/report-card surfaces. Transcript codec, full v1 envelope, process-pinned envelope and C++ RNG dynamic handles, SHA-256 content addressing, cache root resolution, prefix lookup, binary `MEQ1` equity sidecars, layered envelope checks, `divergenceVsEqStream`, compact foreign recompute/read-visits evidence surfaces, canonical search-side 12-wall child caps across the current live cohort, decoded real-binary transcript determinism, and hard-fail `VerifyMismatch` rollout/self-play cohorts in `mcts-cross-backend` are implemented. Sprints `2.8` and `7.6` tighten version handling and sidecar/recompute labeling. | Enforced by live-FFI-capable cross-backend `mcts verify {rollouts,selfplay}` over `(ii)..(v)`, decoded same-backend transcript checks, Rust live FFI-envelope cases under `mcts-integration`, and Q6 legacy-envelope checks across all five |
 | Performance parity | Historical evidence is retained by sprint, but the current implementation has moved beyond the Sprint `8.15` `52.3%` rebaseline: Sprint `8.16` recorded the post-`5.8` backend `(ii)` measurement (`57.1%`), Sprint `8.17` measured and rejected the `MutableByteArray#` arena migration (`62.7%` aggregate after revert), Sprint `8.18` accepted `unsafeRead`/`unsafeWrite` Arena helpers and recorded cross-host evidence (`85.6%` on Apple Silicon Docker arm64, `29.5%` on caledon amd64), Sprint `8.19` measured and rejected the Dockerfile-level `-mcpu=apple-m1` unblock after a `-51%` Haskell Q1b ST regression, and the post-`4.7` unified-clang aggregate recorded `Verdict: Trails parity band by 69.1%`. All accepted aggregate runs keep Q3/Q4/Q6/Q7 PASS with `normalized_divergence_score=0.0000`; the verdict line remains an informational measurement label. | Honest Q1a/Q1b/Q2 measurement of Haskell (v) against fully-optimised live C++ (ii) recorded per [Performance Measurement Doctrine](../documents/engineering/compiler_runtime_tuning.md#performance-measurement-doctrine), single-threaded and on 8 workers where applicable, without checked-in generated throughput anchors. The apples-to-apples invariants Q3/Q4/Q6/Q7 plus a non-pending measurement are the sole closure gate; matching the parity band is not required for closure. |
 

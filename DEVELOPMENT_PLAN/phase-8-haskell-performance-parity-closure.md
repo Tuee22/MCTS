@@ -330,8 +330,14 @@ docker compose run --rm --build mcts mcts test all
 The focused parity-anchor surface is validated by:
 
 ```bash
-docker compose run --rm mcts mcts test parity-anchor cpp-imperative haskell --dry-run
+hostbootstrap run mcts test parity-anchor cpp-imperative haskell --dry-run
 ```
+
+(Phase 1 reopen Sprint `1.15` canonical invocation; until Phase 9 Sprint `9.2`
+ships `hostbootstrap.dhall` and deletes `compose.yaml`, the legacy invocation
+`docker compose run --rm mcts mcts test parity-anchor cpp-imperative haskell --dry-run`
+remains functional. See
+[phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md).)
 
 ### Current Validation State
 
