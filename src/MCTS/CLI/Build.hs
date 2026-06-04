@@ -391,7 +391,7 @@ rustPgoBoltPlan =
         Nothing
         Nothing
     , -- 1. Instrumented build: rustc -Cprofile-generate. The profile
-      -- directory is absolute inside the pinned Compose workspace so
+      -- directory is absolute inside the pinned container workspace so
       -- the loaded cdylib writes `.profraw` beside the Rust backend
       -- even though the training `mcts` process runs from the repo root.
       cargoBuild "pgo-profile" "generate"
@@ -521,6 +521,10 @@ rustPgoBoltPlan =
             ["build", "--release"]
             ( Just
                 [
+                    ( "CARGO_TARGET_DIR"
+                    , "target"
+                    )
+                ,
                     ( "RUSTFLAGS"
                     , rustPgoFlags mode profileDir
                     )

@@ -43,15 +43,15 @@ example:
 hostbootstrap run mcts check-code
 ```
 
-Until Phase 9 Sprint `9.2` ships the new `hostbootstrap.dhall` and the slim
-Dockerfile and deletes `compose.yaml`, the legacy invocation
-`docker compose run --rm mcts mcts check-code` remains functional. See
-[../../DEVELOPMENT_PLAN/phase-9-hostbootstrap-adoption.md](../../DEVELOPMENT_PLAN/phase-9-hostbootstrap-adoption.md).
+The host `hostbootstrap` command is installed with `pipx` per the repository
+[README](../../README.md#supported-workflow) and
+[Phase 9 doctrine](../../DEVELOPMENT_PLAN/phase-9-hostbootstrap-adoption.md).
+Direct `pip` installs and project-virtualenv installs are not supported.
 
 Ambient host-level tool fallback is unsupported. Fourmolu and HLint must come from
 the short-lived container's pinned style-tool install, not from the host `PATH`.
 Repository shell-script wrappers are unsupported for the same reason: project
-work must enter through `docker compose run --rm mcts mcts <command>`.
+work must enter through `hostbootstrap run mcts <command>`.
 
 Running `mcts check-code` dispatches, in order:
 
@@ -99,11 +99,11 @@ one canonical `mcts` operator surface:
   `cpp-functional/`, and per-backend `Cargo.toml` under `rust/` are allowed and
   expected.
 - Host-level `.build/` — canonical foreign backend artefacts belong inside the
-  Compose-built image; runtime caches and temporary outputs belong inside the
+  hostbootstrap-built image; runtime caches and temporary outputs belong inside the
   short-lived container filesystem or explicit operator-provided artifact roots.
 - `bootstrap/` and repository `.sh` scripts — shell-script wrappers are refused
   because the single supported host entrypoint is
-  `docker compose run --rm mcts mcts <command>`.
+  `hostbootstrap run mcts <command>`.
 
 ### Generated Sections
 
@@ -186,9 +186,7 @@ The `mcts-haskell-style` Cabal stanza in `test/haskell-style/Main.hs` enforces t
 `cabal format` round-trip through a system temp file on every run. The project policy is to
 install `fourmolu-0.19.0.1` and `hlint-3.10` into `/opt/mcts-style-tools/bin/`
 inside the container against the project GHC `9.12.4` (Phase 1 reopen
-Sprints `1.14` + `1.16`); the formatter tools share the project GHC. The
-legacy separate `STYLE_GHC_VERSION` arrangement is residue tracked in
-[../../DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md](../../DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md).
+Sprints `1.14` + `1.16`); the formatter tools share the project GHC.
 The style stanza invokes only those pinned container paths and does not honour
 environment-variable overrides. If they are absent, the check fails with a remedy
 pointing at `hostbootstrap run mcts check-code`; it must not skip the tools

@@ -8,17 +8,11 @@
 > **Purpose**: Single Source of Truth (SSoT) for writing and maintaining documentation
 > across the MCTS repository.
 
-> **Phase 9 transitional note (2026-06-03):** The canonical invocation shape
-> for every host-runnable command example below is
-> `hostbootstrap run mcts <command>` (Phase 1 reopen Sprint `1.15`; see
+> **Phase 9 note (2026-06-04):** The canonical invocation shape for every
+> host-runnable command example below is `hostbootstrap run mcts <command>`
+> (Phase 1 reopen Sprint `1.15`; see
 > [../DEVELOPMENT_PLAN/phase-9-hostbootstrap-adoption.md](../DEVELOPMENT_PLAN/phase-9-hostbootstrap-adoption.md)).
-> Until Phase 9 Sprint `9.2` ships `hostbootstrap.dhall` and deletes
-> `compose.yaml`, the legacy
-> `docker compose run --rm mcts <command>` form remains functional and is
-> still used in the example bodies below; both invocation shapes apply
-> identical semantics through the same container image. New examples added
-> after Phase 9 Sprint `9.2` closes must use only the
-> `hostbootstrap run mcts <command>` form.
+> Compose entrypoints are no longer a supported project workflow.
 
 ---
 
@@ -194,10 +188,10 @@ Code examples must not use:
 - stale commands that bypass the public `mcts` surface.
 - host-level validation fallbacks. Supported project work, including
   Fourmolu/HLint execution, enters through
-  `docker compose run --rm mcts mcts <command>`; examples must not tell
-  contributors to run `docker compose up`, `docker compose exec`, or ambient host
-  toolchains as a fallback, and must not route project work through `.sh`
-  scripts or `bootstrap/` helpers.
+  `hostbootstrap run mcts <command>`; examples must not tell
+  contributors to run `docker compose up`, `docker compose exec`, Compose
+  one-shot commands, or ambient host toolchains as a fallback, and must
+  not route project work through `.sh` scripts or `bootstrap/` helpers.
 - application-specific environment-variable configuration for the `mcts` binary.
   Document CLI flags instead.
 
@@ -260,7 +254,7 @@ flowchart TB
 
 - BAD: `See the old host-side bootstrap script`.
 - GOOD: `Run the supported CLI through
-  docker compose run --rm mcts mcts <command>`.
+  hostbootstrap run mcts <command>`.
 
 ---
 
@@ -328,17 +322,17 @@ currently scheduled registry entries are:
 
 ### How to Regenerate
 
-Run `docker compose run --rm mcts mcts docs generate` to splice the current renderer
+Run `hostbootstrap run mcts docs generate` to splice the current renderer
 output between every marker pair declared in the registry. Hand edits between markers
 are reverted on the next regenerate and fail
-`docker compose run --rm mcts mcts docs check` until reverted.
+`hostbootstrap run mcts docs check` until reverted.
 
 The check command emits the doctrine's three-element error message on drift:
 
 1. The file path that drifted.
 2. The marker key (so the contributor knows which renderer is responsible).
 3. A literal remedy hint:
-   `` run `docker compose run --rm mcts mcts docs generate` ``
+   `` run `hostbootstrap run mcts docs generate` ``
 
 ### How to Add a New Generated Section
 
@@ -349,9 +343,9 @@ The doctrine's five-step extension protocol:
 2. Add the marker pair to the target file using the conventions above.
 3. Register a new `GeneratedSectionRule` or `TrackedGeneratedPath` entry in the
    in-code registry.
-4. Run `docker compose run --rm mcts mcts docs generate` to populate the section.
-5. Confirm `docker compose run --rm mcts mcts docs check` and
-   `docker compose run --rm mcts mcts test all` pass.
+4. Run `hostbootstrap run mcts docs generate` to populate the section.
+5. Confirm `hostbootstrap run mcts docs check` and
+   `hostbootstrap run mcts test all` pass.
 
 ### Fully Generated, Do-Not-Hand-Edit Paths
 

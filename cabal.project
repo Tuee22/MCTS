@@ -1,6 +1,6 @@
 packages: .
 
-with-compiler: ghc-9.14.1
+with-compiler: ghc-9.12.4
 
 -- Sprint 7.4: relax the upper bounds on `config-ini`'s `containers`
 -- and `base` so `brick` 2.12 + `vty` 6.5 can resolve under

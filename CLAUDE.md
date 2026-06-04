@@ -22,15 +22,23 @@ hostbootstrap run mcts <command>   # Phase 1 reopen Sprint 1.15 canonical shape
 
 `hostbootstrap run` is the canonical host-side entrypoint. It reads `hostbootstrap.dhall` at the repo root, idempotently builds the project image against the pinned base (`docker.io/tuee22/hostbootstrap:basecontainer-cpu-<arch>`), and dispatches `mcts <command>` inside a one-shot `docker run --rm` container. The base image owns GHC `9.12.4` (Phase 1 reopen Sprint `1.14`), Cabal `3.16.1.0`, LLVM `19` + BOLT, fourmolu, hlint, and the warm Cabal store; the project Dockerfile owns clang-19, Rust `1.95.0`, the pinned style-tool versions (Phase 1 reopen Sprint `1.16`), the MCTS source build, and the four foreign backend `.so` artifacts.
 
-**Transitional note (Phase 9):** until Phase 9 Sprint `9.2` ships the new `hostbootstrap.dhall` + slim Dockerfile and deletes `compose.yaml`, the worktree still supports the prior entrypoint `docker compose run --rm mcts mcts <command>` for validation. The doctrine above is authoritative; `compose.yaml` is residue tracked in [`DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md`](DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md).
-
 Install `hostbootstrap` once per host:
 
 ```bash
-python -m pip install \
-  "git+https://github.com/tuee22/hostbootstrap.git#egg=hostbootstrap"
+# Apple Silicon / macOS
+brew install pipx
+pipx ensurepath
+
+# Ubuntu 24.04
+sudo apt update
+sudo apt install -y pipx
+pipx ensurepath
+
+pipx install "git+https://github.com/tuee22/hostbootstrap.git#egg=hostbootstrap"
 hostbootstrap doctor
 ```
+
+Use `pipx` for `hostbootstrap`; do not install it with direct `pip`, and do not install it inside any project virtualenv. For local development changes on this machine, reinstall the checkout with `pipx install --force /Users/matthewnowak/hostbootstrap`.
 
 Do not run project commands directly on the host with ambient toolchains or host-installed binaries. In particular, do not use host `cabal run`, `cabal exec`, `cargo`, `cmake`, `make`, `fourmolu`, `hlint`, or similar commands as a fallback for project work. The `hostbootstrap` Python CLI itself is the one allowed host-installed orchestrator.
 

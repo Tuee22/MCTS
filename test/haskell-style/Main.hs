@@ -65,7 +65,7 @@ styleToolPath tool = do
             error
                 ( "required pinned style tool is missing: "
                     <> pinned
-                    <> "\nRun validation via `docker compose run --rm mcts mcts check-code`; host PATH fallback is not supported."
+                    <> "\nRun validation via `hostbootstrap run mcts check-code`; host PATH fallback is not supported."
                 )
 
 runCabalFormatRoundTrip :: IO ()

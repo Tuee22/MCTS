@@ -76,7 +76,7 @@ The MCTS commands that consume the `Plan / Apply` pattern are:
 - `mcts inspect cache prune` — Plan/Apply over equity-sidecar deletion plans.
 
 Host invocations wrap these logical commands as
-`docker compose run --rm mcts mcts <command>`.
+`hostbootstrap run mcts <command>`.
 
 `mcts bench` and `mcts verify` are not Plan/Apply commands — they do not mutate
 external state (only the transcript cache, which they own), so the
@@ -338,7 +338,7 @@ first.
 ## Editor / IDE Setup
 
 The project's build doctrine routes all supported builds, tests, lints, and
-codegen through `docker compose run --rm mcts mcts <command>`. Host editor
+codegen through `hostbootstrap run mcts <command>`. Host editor
 integration is personal convenience only; it is not a supported validation,
 build, formatting, linting, documentation-generation, test, benchmark, or
 backend-build workflow.
@@ -346,7 +346,7 @@ backend-build workflow.
 - **Haskell Language Server may run on the host.** The VS Code / code-server
   Haskell extension launches `haskell-language-server-wrapper` as a host
   subprocess of the editor, so it cannot see anything that lives only inside
-  the Compose service.
+  the hostbootstrap-built container image.
 - **The host's `~/.cabal/store/<ghc-ver>/` and the project's `dist-newstyle/`
   are treated as IDE-only caches.** They are never consumed by CI, release
   artifacts, or any `mcts <command>` workflow. Both are already gitignored or

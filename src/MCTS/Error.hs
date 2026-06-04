@@ -121,7 +121,7 @@ renderError err =
                 <> path
                 <> " marker="
                 <> key
-                <> "; run `docker compose run --rm mcts mcts docs generate`"
+                <> "; run `hostbootstrap run mcts docs generate`"
         UnknownCommand command ->
             "unknown command: " <> command
         InvalidMove raw ->

@@ -4,7 +4,7 @@ version:       0.1.0.0
 license-file:  LICENCE
 maintainer:    matt
 author:        MCTS contributors
-tested-with:   ghc ==9.14.1
+tested-with:   ghc ==9.12.4
 build-type:    Simple
 
 library

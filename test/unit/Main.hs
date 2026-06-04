@@ -1237,7 +1237,7 @@ exercisePrerequisiteClosure = do
     let lldClosure = map nodeId (transitiveClosure prerequisiteRegistry ["lld-linker"])
     assert "lld linker prerequisite includes llvm" ("llvm" `elem` lldClosure)
     let testClosure = map nodeId prerequisitesForTest
-    assert "test prerequisite closure includes ghc" ("ghc-9.14.1" `elem` testClosure)
+    assert "test prerequisite closure includes ghc" ("ghc-9.12.4" `elem` testClosure)
     assert "test prerequisite closure includes cabal" ("cabal-3.16.1.0" `elem` testClosure)
     assert "test prerequisite closure includes ghcup dependency" ("ghcup" `elem` testClosure)
     assert "test prerequisite closure includes installed mcts" ("mcts-installed" `elem` testClosure)
@@ -2829,7 +2829,7 @@ exerciseErrorRenderings = do
     assert "TranscriptNotFound mentions the ref" ("abc" `inText` renderError (TranscriptNotFound "abc"))
     assert
         "DocsCheckDrift mentions the remedy"
-        ("docker compose run --rm mcts mcts docs generate" `inText` renderError (DocsCheckDrift "x" "y"))
+        ("hostbootstrap run mcts docs generate" `inText` renderError (DocsCheckDrift "x" "y"))
     assert
         "PrerequisiteUnmet mentions the remedy"
         ("install ghcup" `inText` renderError (PrerequisiteUnmet "ghc" "GHC" "install ghcup"))

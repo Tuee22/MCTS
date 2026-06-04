@@ -1,5 +1,0 @@
-services:
-  mcts:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile

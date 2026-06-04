@@ -143,13 +143,13 @@ forbiddenPathRegistry =
         "Top-level Makefile competes with mcts build/test; backends keep their own per-backend Makefile under cpp-*/"
     , ForbiddenPath
         ".build"
-        "Host-level .build/ is unsupported; build artefacts live inside the Compose-built container image"
+        "Host-level .build/ is unsupported; build artefacts live inside the hostbootstrap-built container image"
     , ForbiddenPath
         "bootstrap"
-        "Bootstrap directories invite host-side orchestration; project work enters through docker compose run --rm mcts mcts <command>"
+        "Bootstrap directories invite host-side orchestration; project work enters through hostbootstrap run mcts <command>"
     , ForbiddenPath
         "*.sh"
-        "Shell-script wrappers duplicate the mcts command surface and bypass the Compose-only doctrine"
+        "Shell-script wrappers duplicate the mcts command surface and bypass the hostbootstrap doctrine"
     , ForbiddenPath "justfile" "Justfile duplicates mcts test/lint commands"
     , ForbiddenPath "Taskfile.yml" "Taskfile duplicates mcts test/lint commands"
     ]

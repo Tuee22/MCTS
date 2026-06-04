@@ -134,9 +134,7 @@ from normal `mcts test all`.
 The doctrine-mandatory canonical test command. Phase 7 Sprint 7.3 owns the
 implementation. From the host, run it as
 `hostbootstrap run mcts test all` (Phase 1 reopen Sprint `1.15` canonical
-invocation; until Phase 9 Sprint `9.2` ships `hostbootstrap.dhall` and deletes
-`compose.yaml`, the legacy invocation
-`docker compose run --rm mcts mcts test all` remains functional — see
+invocation; see
 [../../DEVELOPMENT_PLAN/phase-9-hostbootstrap-adoption.md](../../DEVELOPMENT_PLAN/phase-9-hostbootstrap-adoption.md));
 the first run builds the image when needed. Image construction compiles the `mcts` executable with tests and benchmarks
 enabled, installs the `mcts-criterion` benchmark executable, installs all six Cabal
@@ -161,9 +159,7 @@ is a typed `[Subprocess]` sequence run via `Plan / Apply`:
    `/opt/mcts-style-tools/bin/hlint --with-group=default --with-group=extra`
    with only `Error:` findings blocking, and the source-walker guard). The
    style tools are installed inside the container against the project GHC
-   `9.12.4` (Phase 1 reopen Sprints `1.14` + `1.16`; the legacy separate
-   `STYLE_GHC_VERSION` arrangement is residue tracked in
-   [../../DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md](../../DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md));
+   `9.12.4` (Phase 1 reopen Sprints `1.14` + `1.16`);
    ambient host tools are never used as a fallback.
 4. Inside the container, run the installed `mcts-unit` executable.
 5. Inside the container, run the installed `mcts-integration` executable.

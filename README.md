@@ -24,12 +24,22 @@ hostbootstrap run mcts <command>   # Phase 1 reopen Sprint 1.15 canonical shape
 Install `hostbootstrap` once per host:
 
 ```bash
-python -m pip install \
-  "git+https://github.com/tuee22/hostbootstrap.git#egg=hostbootstrap"
+# Apple Silicon / macOS
+brew install pipx
+pipx ensurepath
+
+# Ubuntu 24.04
+sudo apt update
+sudo apt install -y pipx
+pipx ensurepath
+
+pipx install "git+https://github.com/tuee22/hostbootstrap.git#egg=hostbootstrap"
 hostbootstrap doctor
 ```
 
-**Transitional note (Phase 9):** until Phase 9 Sprint `9.2` ships the new `hostbootstrap.dhall` and the slim Dockerfile and deletes `compose.yaml`, the worktree still supports the legacy invocation `docker compose run --rm mcts mcts <command>` for validation. `compose.yaml` is residue tracked in [`DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md`](DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md).
+Use `pipx` for `hostbootstrap`; do not install it with direct `pip`, and do not
+install it in any project virtualenv. `pipx` keeps the host CLI in its own
+isolated app environment while exposing the `hostbootstrap` command on `PATH`.
 
 Do not use host `cabal`, `cargo`, `cmake`, `make`, `fourmolu`, `hlint`, repository shell wrappers, or direct `docker build` / `docker run` against the project image as project workflows.
 
@@ -62,22 +72,21 @@ throughput with one search iteration per move, not terminal `playouts/s`.
 Played-game benchmark output uses `games/s` only. The metric taxonomy and Q1-Q7 mapping live in
 [benchmark_metrics.md](documents/engineering/benchmark_metrics.md).
 
-The post-Sprint-`5.8` `hostbootstrap run mcts test all` (Phase 1 reopen Sprint `1.15` canonical invocation; the legacy `docker compose run --rm --build mcts mcts test all` remains functional until Phase 9 Sprint `9.2` ships `hostbootstrap.dhall` and deletes `compose.yaml`)
+The post-migration `hostbootstrap run mcts test all` (Phase 1 reopen Sprint `1.15` canonical invocation)
 under the [Performance Measurement Doctrine](documents/engineering/compiler_runtime_tuning.md#performance-measurement-doctrine)
 exits 0 with all four apples-to-apples invariants Q3/Q4/Q6/Q7 PASS, all six
 Cabal stanzas PASS, zero live-cohort divergence
-(`normalized_divergence_score=0.0000`), and the labelled measurement
-`Verdict: Trails parity band by 57.1% (measurement recorded; see PGO
-Asymmetry in compiler_runtime_tuning.md)`. Backend `(ii)`/Haskell ratios
-against the fully steelmanned-and-residual-squeezed Sprint `5.8` `(ii)`
-target: Q1a `1.51x` ST / `1.50x` MT8, Q1b `1.53x` ST / `1.56x` MT8, Q2
-`1.41x` ST / `1.57x` MT8; Q5 scaling Haskell search `7.16x` vs backend
-`(ii)` search `7.31x`, Haskell self-play `3.28x` vs backend `(ii)`
-self-play `3.66x`. The earlier Sprint `8.15` post-`5.7` measurement
+(`normalized_divergence_score=0.0000`), and a non-pending labelled
+measurement verdict. The live report card printed by `mcts test all` is
+the source of truth for current post-migration Q1/Q2/Q5 rates; README
+and `DEVELOPMENT_PLAN/` intentionally do not hardcode new Phase 9
+per-architecture throughput anchors.
+Sprint `9.3` in [DEVELOPMENT_PLAN/phase-9-hostbootstrap-adoption.md](DEVELOPMENT_PLAN/phase-9-hostbootstrap-adoption.md)
+closes the post-migration report-card surface without requiring matching
+arm64/amd64 evidence blocks. The earlier Sprint `8.15` post-`5.7` measurement
 (Q1a `1.42x`/`1.51x`, Q1b `1.45x`/`1.52x`, Q2 `1.35x`/`1.48x`, verdict
-`52.3%`) is historical against the pre-`5.8` `(ii)` artefact; the
-~5-percentage-point widening reflects the ~2–6% Sprint `5.8`
-improvement on backend `(ii)`, not a Haskell regression.
+`52.3%`) and the Sprint `8.16` post-`5.8` `57.1%` measurement are
+historical pre-hostbootstrap baselines.
 
 The Sprint `8.16` numbers above are the pre-cohort-shape-audit
 measurement. On 2026-05-29 the functional-cohort shape audit reopened
@@ -213,8 +222,6 @@ hostbootstrap run mcts check-code
 hostbootstrap run mcts test all
 ```
 
-(Until Phase 9 Sprint `9.2` ships `hostbootstrap.dhall` and deletes `compose.yaml`, the legacy `docker compose run --rm --build mcts mcts test all` remains functional.)
-
 ## Determinism
 
 The project separates performance runs from logical-equivalence verification:
@@ -235,7 +242,7 @@ Transcripts are local operator cache files under `.mcts-cache/` by default. They
 
 ## Validation
 
-Use the smallest Compose gate that covers the change, then close with the aggregate gate when touching cross-cutting code or docs:
+Use the smallest hostbootstrap gate that covers the change, then close with the aggregate gate when touching cross-cutting code or docs:
 
 ```bash
 hostbootstrap run mcts docs check
@@ -245,8 +252,6 @@ hostbootstrap run mcts test mcts-unit
 hostbootstrap run mcts check-code
 hostbootstrap run mcts test all
 ```
-
-(Until Phase 9 Sprint `9.2` ships `hostbootstrap.dhall` and deletes `compose.yaml`, the legacy aggregate gate `docker compose run --rm --build mcts mcts test all` remains functional.)
 
 Normal tests do not depend on checked-in generated transcripts, throughput anchors, renderer snapshots, or report-card fixtures. Generated documentation files are the tracked exception and are governed by [documentation_standards.md](documents/documentation_standards.md).
 

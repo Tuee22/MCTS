@@ -33,11 +33,11 @@ doctrine-owned; the per-backend tuning stacks are project-specific.
   `--plan-file <path>` for Dockerfile use and focused diagnostics.
 
 Normal host validation enters through
-`docker compose run --rm mcts mcts <command>` and consumes Dockerfile-built Cabal
-components plus backend artefacts. Rebuild the image with the same one-shot Compose
-shape, for example
-`docker compose run --rm --build mcts mcts test all --dry-run`. Direct host
-toolchain use is unsupported.
+`hostbootstrap run mcts <command>` and consumes Dockerfile-built Cabal
+components plus backend artefacts. `hostbootstrap run` idempotently rebuilds
+the image when needed; use the same shape for dry-run diagnostics, for example
+`hostbootstrap run mcts test all --dry-run`. Direct host toolchain use is
+unsupported.
 
 ## PGO/BOLT Training Workload Doctrine
 
@@ -790,7 +790,7 @@ Closure Notes for the full validation/measurement record.
 
 The historical `mcts-criterion` benchmark stanza in `mcts.cabal` records per-call
 cost for the four hot primitives. Normal supported benchmarking enters through the
-Compose-wrapped `mcts bench` command surface.
+hostbootstrap-wrapped `mcts bench` command surface.
 
 | Round | Date | Change | Module | Before (μs/op) | After (μs/op) | Outcome |
 |-------|------|--------|--------|---------------:|--------------:|---------|

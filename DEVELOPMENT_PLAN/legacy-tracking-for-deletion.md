@@ -208,42 +208,27 @@ and root-cause attribution stand; the deferral now has two
 load-bearing reasons instead of one. Sprint `1.13` later closed the
 CLI-introspection residue on 2026-06-03.
 
-**2026-06-03 — Phase 9 hostbootstrap adoption opens.** Four
-Pending-Removal rows added, one owned by each of the four active
-reopen/new sprints: Sprint `1.14` (toolchain pin source surfaces),
-Sprint `1.15` (`compose.yaml`), Sprint `1.16` (separate
-`STYLE_GHC_VERSION` install layer), Sprint `9.1` (heavy
-multi-language toolchain layers in `docker/Dockerfile`). The doctrine
-has landed across the governed documentation
-([`phase-9-hostbootstrap-adoption.md`](phase-9-hostbootstrap-adoption.md),
-[`phase-1-haskell-cli-surface.md`](phase-1-haskell-cli-surface.md) Sprints
-`1.14`–`1.16`, [`phase-0-planning-documentation.md`](phase-0-planning-documentation.md)
-Sprint `0.5`, `CLAUDE.md`, `AGENTS.md`, `HASKELL_CLI_TOOL.md`,
-`README.md`, and the named governed engineering docs); closure of each
-row is bound to its owning sprint's implementation deliverable per §I.
-Sprint `9.2` consolidates the code-side migration: the new
-`hostbootstrap.dhall` at repo root, the slim `docker/Dockerfile`
-inheriting `FROM ${BASE_IMAGE}`, the deletion of `compose.yaml`, the
-flip of `ARG GHC_VERSION` to `9.12.4`, the unification of the formatter
-tools with the project GHC, and the source-default pin edits coordinated
-with Sprint `1.14`. Rows move to `Completed` only after
-`hostbootstrap run mcts test all` exits 0 with Q3/Q4/Q6/Q7 PASS and
-`normalized_divergence_score = 0.0000` per the ledger's standing closure
-criteria.
+**2026-06-04 — Phase 9 hostbootstrap implementation closes.** The four
+Phase 9 / Phase 1 reopen Pending-Removal rows moved to Completed after
+Sprint `9.2` landed `hostbootstrap.dhall`, rewrote `docker/Dockerfile`
+to inherit `FROM ${BASE_IMAGE}`, deleted `compose.yaml`, updated source
+pins to GHC `9.12.4`, and removed the separate formatter-tools GHC
+install layer. `hostbootstrap run mcts test all` exited 0 with
+Q3/Q4/Q6/Q7 PASS and `normalized_divergence_score = 0.0000`. Sprint
+`9.3` closed without checked-in arm64/amd64 throughput anchors; the
+live report card remains the source of truth for current performance
+measurements.
 
 | Item | Owner | Notes |
 |------|-------|-------|
-| Project Haskell toolchain pinned at GHC `9.14.1` in `mcts.cabal:7` (`tested-with`), `cabal.project:3` (`with-compiler`), `src/MCTS/Prerequisite.hs:33-37, :235` (registry id + remedy + seed list), `src/MCTS/ReportCard.hs` (`reportGhc` default), `src/MCTS/Engine/Envelope.hs` (`envelopeCompilerVersion` default), `test/unit/Main.hs:1240` (closure-assertion literal), `docker/Dockerfile:3` (`ARG GHC_VERSION`) | Sprint `1.14` | Sprint `1.14` declares the project Haskell pin to be GHC `9.12.4` + Cabal `3.16.1.0` to match the warm Cabal store baked into the hostbootstrap base image (Sprint `9.1`). The doctrine has landed across `phase-1-haskell-cli-surface.md` Sprint `1.14`, `phase-0-planning-documentation.md` Sprint `0.5`, the governed engineering docs (`code_quality.md`, `compiler_runtime_tuning.md`, `haskell_code_guide.md`), `HASKELL_CLI_TOOL.md`, `CLAUDE.md`, `AGENTS.md`, and `README.md`. The worktree source files still pin `9.14.1`; closure requires the seven code edits land and `docker compose run --rm --build mcts mcts test all` exits 0 under the GHC-only-flipped legacy Dockerfile (the isolation gate that proves source compatibility before the base-image switch). MCTS uses no GHC 9.14-specific language features; `base >=4.20 && <5` is satisfied by GHC 9.12.4's `base-4.21`; the `allow-newer: config-ini:containers, config-ini:base` line added in Sprint `7.4` is preserved as a documented no-op under `containers-0.7` / `base-4.21`. |
-| Root `compose.yaml` | Sprint `1.15` | Sprint `1.15` declares the canonical project invocation shape to be `hostbootstrap run mcts <command>` in place of `docker compose run --rm mcts mcts <command>`. The doctrine has landed across `phase-1-haskell-cli-surface.md` Sprint `1.15`, the governed engineering docs (`code_quality.md` entrypoint example, `unit_testing_policy.md` entrypoint references), `CLAUDE.md`, `AGENTS.md`, `HASKELL_CLI_TOOL.md`, and `README.md`. The worktree still ships `compose.yaml` and the Compose entrypoint remains functional as the Sprint `9.3` validation gate; closure requires the file be deleted alongside the new `hostbootstrap.dhall` (Sprint `9.2` consolidates) and `hostbootstrap run mcts test all` exits 0 with Q3/Q4/Q6/Q7 PASS and `normalized_divergence_score = 0.0000`. |
-| Separate formatter-tools GHC install in `docker/Dockerfile` (`ARG STYLE_GHC_VERSION=9.12.4` at line 5, the `ghcup install ghc ${STYLE_GHC_VERSION}` step, and the subsequent `cabal install fourmolu-${FOURMOLU_VERSION} hlint-${HLINT_VERSION} --with-compiler ghc-${STYLE_GHC_VERSION}` step) | Sprint `1.16` | Sprint `1.16` declares the formatter-tools GHC to be the project GHC (`9.12.4` under Sprint `1.14`). The doctrine has landed across `phase-1-haskell-cli-surface.md` Sprint `1.16`, `documents/engineering/code_quality.md`, `documents/engineering/unit_testing_policy.md`, and `00-overview.md`. The legacy Dockerfile still carries the separate `STYLE_GHC_VERSION` ARG and its install step; closure requires the ARG and step be removed and replaced with a single `cabal install fourmolu-0.19.0.1 hlint-3.10 --installdir /opt/mcts-style-tools/bin` against the project GHC, paired with Sprint `9.2`. The `mcts-haskell-style` test stanza path (`/opt/mcts-style-tools/bin/{fourmolu,hlint}`) is unchanged. |
-| Heavy multi-language toolchain layers in `docker/Dockerfile` (ghcup installer + GHC + Cabal install, full `rustup` install-from-scratch, the LLVM 19 apt block including `bolt-19` / `lld-19` / `llvm-19` / `llvm-19-dev`, the `/usr/local/bin/{llvm-config,llvm-bolt}` symlink RUN block, the `LANG`/`LC_ALL`/`PATH` ENV block, and the apt deps `build-essential` / `ca-certificates` / `curl` / `git` / `libffi-dev` / `libgmp-dev` / `libmimalloc-dev` / `pkg-config` / `xz-utils`) | Sprint `9.1` | Sprint `9.1` declares the project Dockerfile inherits `FROM ${BASE_IMAGE}` (the hostbootstrap base image at `docker.io/tuee22/hostbootstrap:basecontainer-cpu-<arch>`), which owns all of the above layers. The doctrine has landed across `phase-9-hostbootstrap-adoption.md` Sprint `9.1` and `system-components.md` line 301. The legacy Dockerfile still installs all layers explicitly; closure requires the rewrite (Sprint `9.2`) so the project Dockerfile adds only what the base does not ship: `clang-19`, `libclang-rt-19-dev`, pinned Rust `1.95.0`, pinned `fourmolu-0.19.0.1` + `hlint-3.10` at `/opt/mcts-style-tools/bin/`, the `${BOLT_RT_INSTR_LIB}` → `/usr/local/lib/libbolt_rt_instr.a` symlink, the source copy, the seven Cabal exe builds, and the four `mcts build <backend>` invocations. |
+| _None_ | _n/a_ | No cleanup-removal rows are pending. |
 
 ## Pending Removal Notes
 
 Pending-removal rows move to `Completed` only after the corrected surface is
 implemented, governed docs are aligned, generated docs are regenerated or checked,
 and the canonical validation command for that surface passes through
-`docker compose run --rm mcts mcts <command>`. For PGO/BOLT failover rows,
+`hostbootstrap run mcts <command>`. For PGO/BOLT failover rows,
 closure also requires a Dockerfile build that exits non-zero on missing profile
 data instead of publishing a fallback shared library.
 
@@ -251,6 +236,10 @@ data instead of publishing a fallback shared library.
 
 | Item | Removed In | Notes |
 |------|------------|-------|
+| Heavy multi-language toolchain layers in `docker/Dockerfile` | Sprint `9.2`, 2026-06-04 | The project Dockerfile now inherits `FROM ${BASE_IMAGE}` from the hostbootstrap base image instead of explicitly installing ghcup, GHC, Cabal, the full LLVM/BOLT 19 stack, base Rust machinery, and base apt dependencies. The slim overlay adds `clang-19`, `libclang-rt-19-dev`, pinned Rust `1.95.0`, pinned `fourmolu-0.19.0.1` and `hlint-3.10`, the BOLT runtime symlink, Cabal executable/test/benchmark installs, and the four Dockerfile-time foreign backend builds. `hostbootstrap build` and `hostbootstrap run mcts test all` passed on Apple Silicon / arm64. |
+| Separate formatter-tools GHC install in `docker/Dockerfile` | Sprint `1.16` + Sprint `9.2`, 2026-06-04 | Removed the `STYLE_GHC_VERSION` ARG, the separate `ghcup install ghc ${STYLE_GHC_VERSION}` step, and the `--with-compiler ghc-${STYLE_GHC_VERSION}` formatter install. Fourmolu `0.19.0.1` and HLint `3.10` now install into `/opt/mcts-style-tools/bin/` with the project GHC `9.12.4`. |
+| Root `compose.yaml` | Sprint `1.15` + Sprint `9.2`, 2026-06-04 | Deleted the root Compose workflow file. The canonical host-side invocation is `hostbootstrap run mcts <command>` through root `hostbootstrap.dhall`; direct Compose entrypoints are no longer a supported project workflow. |
+| Project Haskell toolchain pinned at GHC `9.14.1` in source surfaces | Sprint `1.14` + Sprint `9.2`, 2026-06-04 | `mcts.cabal`, `cabal.project`, `src/MCTS/Prerequisite.hs`, `src/MCTS/ReportCard.hs`, `src/MCTS/Engine/Envelope.hs`, and `test/unit/Main.hs` now pin or assert GHC `9.12.4`. Historical GHC `9.14.1` references remain only in dated evidence or compatibility notes. |
 | Pointer-only help and missing enum-value introspection | Sprint `1.13`, 2026-06-03 | `src/MCTS/CLI/Spec.hs` now carries enriched command, option, positional, default, choice, list-syntax, note, example, and completion metadata; `src/MCTS/CLI/Parser.hs` consumes the same value sets for enum readers and renders focused `optparse-applicative` help for `mcts help <path>` and explicit `--help` requests; invalid enum/list parse errors name accepted values and Q3's `cpp-legacy` rejection points to `mcts verify legacy-parity`; `mcts commands --json`, generated Markdown/manpage output, and shell completions expose the enriched registry data. Validation passed `mcts-unit`, `docs check`, `lint haskell`, `lint docs`, `lint files`, `check-code`, `play --help`, `help play`, `commands --json`, the expected exit-2 invalid-backend probe, and `git diff --check` through the Compose workflow. |
 | Deferred `-optlo-mcpu=native` / `-optlc-mcpu=native` on aarch64 | Sprint `8.19`, 2026-05-30 (measured but rejected) | Sprint `8.18` Stage 2 root-caused the deferral to binutils-2.42 LSE rejection. Sprint `8.19` Approach A worked around that with a 7-line `/usr/local/bin/clang-19-aarch64-apple-m1` wrapper exec'ing `clang-19 -mcpu=apple-m1`, GHC `settings` patched so both `("C compiler command", ...)` and `("LLVM llvm-as command", ...)` route through the wrapper (the second sed was load-bearing — GHC's `-fllvm` LLVM-assembler stage uses `LLVM llvm-as command`, not `pgm_c`, and ignores `-opta-*` flags). Build completed; Q3/Q4/Q6/Q7 PASS; `normalized_divergence_score=0.0000`. **Measurement rejected:** arm64 `mcts test all` verdict regressed `85.6% → 268.7%`; Haskell Q1b ST `~24779 → 12195.2` search-iters/s (`-51%`); Q1a/Q1b/Q2 ratios all roughly doubled. Cohort C++/Rust rates within ±3% (rules out broader toolchain side-effects); the regression is Haskell-only. Root cause: LSE/`rcpc-immo` atomics emitted by `llc-19 -mcpu=apple-m1` execute slower than baseline ARMv8 LL/SC atomics GHC's RTS was tuned against on Docker-on-Apple-Silicon. The deferral now stands on two load-bearing grounds: (a) the original binutils-2.42 assembler rejection (toolchain-fixable), and (b) the Haskell-specific runtime regression from LSE/`rcpc-immo` (not toolchain-fixable from this project's side). `docker/Dockerfile` and `mcts.cabal` reverted to byte-identical pre-`8.19` state. See `phase-8-haskell-performance-parity-closure.md` Sprint `8.19` Closure Notes for the full measurement table. |
 | `docker/Dockerfile` aarch64 build path emits baseline ARMv8 instructions while clang/rustc emit ARMv8.5+ | Sprint `8.19`, 2026-05-30 (measured but rejected) | Same root cause as the row above. Sprint `8.19` proved the toolchain shape gap is not recoverable on this hardware: enabling `-mcpu=apple-m1` for GHC's `-fllvm` pipeline produces correct code (Q3/Q4/Q6/Q7 PASS, bit-identical visit payloads) but slower (-51% Haskell-only). The arm64 baseline ARMv8 codegen, while slower in instruction selection than clang/rustc's ARMv8.5+, runs faster overall because GHC RTS atomics are tuned to LL/SC. |

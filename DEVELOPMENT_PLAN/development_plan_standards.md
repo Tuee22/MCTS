@@ -58,14 +58,10 @@ management summaries.
 - Host-runnable command examples must use the canonical invocation
   `hostbootstrap run mcts <command>` (Phase 1 reopen Sprint `1.15`; see
   [phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md)).
-  Until Phase 9 Sprint `9.2` ships `hostbootstrap.dhall` and deletes
-  `compose.yaml`, the legacy invocation
-  `docker compose run --rm mcts mcts <command>` remains functional for
-  examples that explicitly document the transitional gap. Bare
-  `mcts <command>` may be used only when naming the CLI surface rather
-  than giving a host command to run. Do not document `.sh` scripts,
-  `bootstrap/` helpers, or other host-side wrappers as supported project
-  workflows.
+  Bare `mcts <command>` may be used only when naming the CLI surface
+  rather than giving a host command to run. Do not document `.sh`
+  scripts, `bootstrap/` helpers, Compose entrypoints, or other
+  host-side wrappers as supported project workflows.
 - Backend identifiers are `cpp-legacy`, `cpp-imperative`, `cpp-functional`, `rust`,
   `haskell` on the CLI and the Roman numerals `(i)`, `(ii)`, `(iii)`, `(iv)`, `(v)` in
   prose.
@@ -155,6 +151,9 @@ validation data to run its normal test suite.
 - Runtime/operator caches live under ignored cache roots such as `.mcts-cache/`.
 - Historical audit evidence may be described in docs or stored as optional external/ignored
   artifacts, but it is not a clean-clone test prerequisite.
+- Current closure docs should record report-card invariants and whether the live
+  measurement is non-pending; they should not require checked-in per-architecture
+  throughput anchors or hardcoded arm64/amd64 rate tables as a condition of closure.
 - Generated documentation artefacts are the exception owned by the generated-section and
   tracked-generated-path registries; they are deterministic source documentation, not
   validation fixtures.
@@ -253,11 +252,9 @@ If a change adds or edits a Mermaid block in this directory, closure requires:
 2. Failing the change on any render error.
 3. Verifying the edited diagram in the repository's target Markdown viewer.
 4. Running `hostbootstrap run mcts check-code` after the documentation
-   change (Phase 1 reopen Sprint `1.15`; the legacy
-   `docker compose run --rm mcts mcts check-code` remains functional until
-   Phase 9 Sprint `9.2` ships `hostbootstrap.dhall` and deletes
-   `compose.yaml`). The lint stack must run inside the short-lived
-   container through the pinned Fourmolu / HLint binaries and `cabal format`.
+   change (Phase 1 reopen Sprint `1.15`). The lint stack must run
+   inside the short-lived container through the pinned Fourmolu / HLint
+   binaries and `cabal format`.
 
 This standards document describes Mermaid rules with prose, inline code, or `markdown`
 examples only. Do not add live Mermaid blocks here.
@@ -314,12 +311,9 @@ registry`, `Test Organization`, `Output Rules`, `Error Handling`, `Toolchain pin
 3. Update the governed engineering docs listed in `Docs to update`.
 4. Update [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md) whenever
    cleanup scope changes.
-5. Run `hostbootstrap run mcts check-code` before closing the work (Phase 1
-   reopen Sprint `1.15`; the legacy
-   `docker compose run --rm mcts mcts check-code` remains functional until
-   Phase 9 Sprint `9.2` ships `hostbootstrap.dhall` and deletes
-   `compose.yaml`). The pinned Fourmolu / HLint binaries and `cabal format`
-   must run inside the short-lived container. Host-level validation fallback
-   is never a closure gate.
+5. Run `hostbootstrap run mcts check-code` before closing the work
+   (Phase 1 reopen Sprint `1.15`). The pinned Fourmolu / HLint binaries
+   and `cabal format` must run inside the short-lived container.
+   Host-level validation fallback is never a closure gate.
 6. If the change touched Mermaid, render every Mermaid block in `DEVELOPMENT_PLAN/` and
    verify the edited diagram in the target viewer before closing the work.

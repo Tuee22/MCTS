@@ -30,17 +30,17 @@ prerequisiteRegistry =
         []
         "ghcup"
     , versionNode
-        "ghc-9.14.1"
-        "GHC 9.14.1 on PATH or under ghcup"
-        "export PATH=$HOME/.ghcup/bin:$PATH and run ghcup install ghc 9.14.1"
+        "ghc-9.12.4"
+        "GHC 9.12.4 on PATH or under ghcup"
+        "install hostbootstrap and rebuild the project image; the base image provides GHC 9.12.4"
         ["ghcup"]
-        "ghc-9.14.1"
+        "ghc-9.12.4"
         ["--numeric-version"]
-        "9.14.1"
+        "9.12.4"
     , versionNode
         "cabal-3.16.1.0"
         "Cabal 3.16.1.0 on PATH or under ghcup"
-        "export PATH=$HOME/.ghcup/bin:$PATH and run ghcup install cabal 3.16.1.0"
+        "install hostbootstrap and rebuild the project image; the base image provides Cabal 3.16.1.0"
         ["ghcup"]
         "cabal"
         ["--numeric-version"]
@@ -122,55 +122,55 @@ prerequisiteRegistry =
     , PrerequisiteNode
         "logical-backends"
         "The logical in-process backend cohort is available"
-        "run docker compose run --rm mcts mcts check-code"
+        "run hostbootstrap run mcts check-code"
         []
         (pure True)
     , executableNode
         "mcts-installed"
         "installed image-local CLI executable"
-        "rebuild the Compose image so Dockerfile installs /usr/local/bin/mcts"
+        "run hostbootstrap run mcts commands so Dockerfile installs /usr/local/bin/mcts"
         []
         "mcts"
     , executableNode
         "mcts-haskell-style-installed"
         "installed mcts-haskell-style test executable"
-        "rebuild the Compose image so Dockerfile installs /usr/local/bin/mcts-haskell-style"
+        "run hostbootstrap run mcts check-code so Dockerfile installs /usr/local/bin/mcts-haskell-style"
         []
         "mcts-haskell-style"
     , executableNode
         "mcts-unit-installed"
         "installed mcts-unit test executable"
-        "rebuild the Compose image so Dockerfile installs /usr/local/bin/mcts-unit"
+        "run hostbootstrap run mcts test all so Dockerfile installs /usr/local/bin/mcts-unit"
         []
         "mcts-unit"
     , executableNode
         "mcts-integration-installed"
         "installed mcts-integration test executable"
-        "rebuild the Compose image so Dockerfile installs /usr/local/bin/mcts-integration"
+        "run hostbootstrap run mcts test all so Dockerfile installs /usr/local/bin/mcts-integration"
         []
         "mcts-integration"
     , executableNode
         "mcts-cross-backend-installed"
         "installed mcts-cross-backend test executable"
-        "rebuild the Compose image so Dockerfile installs /usr/local/bin/mcts-cross-backend"
+        "run hostbootstrap run mcts test all so Dockerfile installs /usr/local/bin/mcts-cross-backend"
         []
         "mcts-cross-backend"
     , executableNode
         "mcts-legacy-parity-installed"
         "installed mcts-legacy-parity test executable"
-        "rebuild the Compose image so Dockerfile installs /usr/local/bin/mcts-legacy-parity"
+        "run hostbootstrap run mcts test all so Dockerfile installs /usr/local/bin/mcts-legacy-parity"
         []
         "mcts-legacy-parity"
     , executableNode
         "mcts-semantic-parity-installed"
         "installed mcts-semantic-parity test executable"
-        "rebuild the Compose image so Dockerfile installs /usr/local/bin/mcts-semantic-parity"
+        "run hostbootstrap run mcts test all so Dockerfile installs /usr/local/bin/mcts-semantic-parity"
         []
         "mcts-semantic-parity"
     , executableNode
         "mcts-criterion-installed"
         "installed mcts-criterion benchmark executable"
-        "rebuild the Compose image so Dockerfile installs /usr/local/bin/mcts-criterion"
+        "run hostbootstrap run mcts test all so Dockerfile installs /usr/local/bin/mcts-criterion"
         []
         "mcts-criterion"
     , PrerequisiteNode
@@ -232,7 +232,7 @@ prerequisitesForTest :: [PrerequisiteNode]
 prerequisitesForTest =
     transitiveClosure
         prerequisiteRegistry
-        [ "ghc-9.14.1"
+        [ "ghc-9.12.4"
         , "cabal-3.16.1.0"
         , "logical-backends"
         , "mcts-installed"

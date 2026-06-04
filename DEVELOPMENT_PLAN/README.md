@@ -588,9 +588,8 @@ historical against the older backend (ii) artefact.
 
 The last validated implementation baseline includes:
 a Cabal package with the
-pinned GHC `9.12.4` / Cabal `3.16.1.0` (Phase 1 reopen Sprint `1.14`; worktree
-source-file pin update tracked as Pending-Removal residue per
-[legacy-tracking-for-deletion.md](./legacy-tracking-for-deletion.md))
+pinned GHC `9.12.4` / Cabal `3.16.1.0` (Phase 1 reopen Sprint `1.14`;
+source-file pin update landed with Phase 9 Sprint `9.2`)
 toolchain plus the doctrine-standard dependency envelope in `mcts.cabal`;
 Sprint `6.3` closed on 2026-05-16 with the Rust Corridors gameplay port
 (8x8 bitfield walls, iterative BFS escapability, post-move 180-degree flip
@@ -687,9 +686,7 @@ Host-level fallback to ambient toolchains or style binaries is never allowed.
 The baseline uses semantic/property/temp-dir tests for transcript, renderer,
 report-card, and backend-equivalence evidence; no checked-in generated
 validation data is a normal test input. The validation gate for this baseline
-is `hostbootstrap run mcts test all` (Phase 1 reopen Sprint `1.15`; the legacy
-`docker compose run --rm mcts mcts test all` remains functional until Phase 9
-Sprint `9.2` ships `hostbootstrap.dhall` and deletes `compose.yaml`) under the
+is `hostbootstrap run mcts test all` (Phase 1 reopen Sprint `1.15`) under the
 pinned GHC `9.12.4` toolchain.
 
 The 2026-05-29 compiler-stack audit reopened Phase `5` for Sprints `5.9` and
@@ -711,40 +708,28 @@ was `+1.8%` (below the planned `+3%` threshold), but the per-cell picture
 justified keeping the pipeline — Q1a MT8 `+13.8%` and Q1b MT8 `+7.5%`
 (comfortably above noise) on the parallel hot paths, with ST/Q2 cells
 within ±5% measurement-noise floor. Phases `4` and `6` remain closed on
-their owned surfaces; backend (i) cpp-legacy and (iii) cpp-functional
-clang pivots and full `gcc`/`g++` removal from `docker/Dockerfile` are
-tracked as Pending Removal rows in
-[legacy-tracking-for-deletion.md](./legacy-tracking-for-deletion.md)
-owned by future sprints, so the (ii) pilot validates the orchestration
-before it propagates.
+their owned surfaces. The backend (i) cpp-legacy and (iii) cpp-functional
+clang pivots plus full `gcc`/`g++` removal from `docker/Dockerfile` later
+closed through Sprints `4.6`, `6.11`, and `4.7`, validating that the
+(ii) pilot propagated cleanly.
 
-**Phase 9 — hostbootstrap adoption (Open, 2026-06-03):** Phase 9 opens with
-Sprint `9.1` (`hostbootstrap` as host-side orchestrator + typed
-`hostbootstrap.dhall` project config + `FROM ${BASE_IMAGE}` Dockerfile
-inheritance pattern) `🔄 Active`; Sprints `9.2` (implementation — code-side
-migration) and `9.3` (post-migration evidence rebaseline) `📋 Planned`. Phase
-`1` is reopened on three narrow sub-surfaces via Sprints `1.14` (toolchain
-pin doctrine update to GHC `9.12.4` + Cabal `3.16.1.0`), `1.15` (canonical
-invocation shape — `hostbootstrap run mcts <command>` replaces
-`docker compose run --rm mcts mcts <command>`), and `1.16` (lint stack —
-formatter-tools GHC unified with project GHC); each is `🔄 Active`. Phase
-`1`'s CLI surface, `CommandSpec`, and self-describing-introspection
-surfaces (Sprints `1.1`–`1.13`) remain closed. Phase `0` is reopened on its
-planning-baseline sub-surface via Sprint `0.5` (`🔄 Active`); Phase `0`'s
-documentation-topology and README-authority surfaces (Sprints `0.1`–`0.4`)
-remain closed. Phases `2`, `3`, `4`, `5`, `6`, `7`, `8` remain closed on
-their owned surfaces. The overall MCTS handoff is incomplete pending Sprint
-`9.2` (which consolidates the code-side implementation of Sprints `1.14`,
-`1.15`, `1.16`, and `9.1`: source pin edits, `compose.yaml` deletion, new
-`hostbootstrap.dhall` at repo root, slim `docker/Dockerfile` rewrite, and
-removal of the separate `STYLE_GHC_VERSION` install layer) and Sprint `9.3`
-(the post-migration rebaseline on amd64 + arm64 substrates). Four
-Pending-Removal rows in
-[legacy-tracking-for-deletion.md](./legacy-tracking-for-deletion.md) bind
-each worktree-vs-doctrine gap to its owning sprint: `compose.yaml` (Sprint
-`1.15`), heavy multi-language toolchain layers in `docker/Dockerfile`
-(Sprint `9.1`), GHC `9.14.1` source defaults (Sprint `1.14`), and the
-separate `STYLE_GHC_VERSION` install layer (Sprint `1.16`). See
+**Phase 9 — hostbootstrap adoption (Done, 2026-06-04):**
+Sprints `9.1` and `9.2` are `✅ Done`: `hostbootstrap` is the host-side
+orchestrator installed with `pipx`, `hostbootstrap.dhall` maps
+`AppleSilicon`, `LinuxCpu`, and
+`LinuxGpu` to the short-lived container model, `docker/Dockerfile` inherits
+`FROM ${BASE_IMAGE}`, and `compose.yaml` is deleted. Sprint `9.3` is also
+`✅ Done`: the post-migration `hostbootstrap run mcts test all` gate emits a
+non-pending report-card measurement and passes Q3/Q4/Q6/Q7 without requiring
+checked-in arm64/amd64 throughput anchors. Phase `1` reclosed Sprints `1.14`
+(toolchain pin update to GHC `9.12.4` + Cabal `3.16.1.0`), `1.15`
+(canonical invocation shape — `hostbootstrap run mcts <command>`), and `1.16`
+(lint stack — formatter-tools GHC unified with project GHC). Phase `0`
+reclosed Sprint `0.5`. Phases `2`, `3`, `4`, `5`, `6`, `7`, and `8` remain
+closed on their owned surfaces. The implementation handoff is complete.
+The Pending Removal table in
+[legacy-tracking-for-deletion.md](./legacy-tracking-for-deletion.md) is empty.
+See
 [phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md),
 [phase-1-haskell-cli-surface.md](phase-1-haskell-cli-surface.md) Sprints
 `1.14`–`1.16`, and
@@ -753,9 +738,13 @@ Sprint `0.5` for the doctrine.
 
 ## Current Validation Boundary
 
-After the 2026-05-18 Compose-only operator-surface doctrine edit, the
-selected-backend `mcts play` AI dispatch and the 2026-05-19 Q6 legacy-envelope
-respec, focused validation passed through the canonical Compose entrypoint. Sprint
+Phase 9 moved the current host validation boundary to
+`hostbootstrap run mcts <command>`; see
+[phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md) for the
+hostbootstrap closure evidence. The
+older 2026-05-18 Compose-only operator-surface doctrine edit, selected-backend
+`mcts play` AI dispatch, and 2026-05-19 Q6 legacy-envelope respec remain
+historical audit evidence from the then-canonical Compose entrypoint. Sprint
 `7.6` revalidated replay cache-miss originator/foreign labeling. The selected-backend
 ABI changes pass the per-backend build entries, and the focused Cabal stanzas
 pass: `mcts-unit` (28 cases including `tasty-quickcheck`, C++ PGO/BOLT plan checks,
@@ -847,7 +836,7 @@ A sprint can move to `Done` only when all of the following are true:
 | 6 | Backends (iii) C++ Functional-Core and (iv) Rust | ✅ Done (Sprint `6.11` closed 2026-05-30: backend (iii) cpp-functional compiler pivot to `clang++-19` + LLVM `.profraw` PGO flow, mirroring backend (ii) Sprint `5.9`. Sprints `6.1`–`6.10` remain closed for their delivered surfaces; cohort ranking is `rust ≥ cpp-functional ≈ cpp-imperative > haskell`) | [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md) |
 | 7 | Cross-Backend Verify, Test Stanzas, POC Report Card | ✅ Done (Sprint `7.11` Q7 semantic parity and normalized divergence score closed) | [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md) |
 | 8 | Haskell Performance Parity Closure and Five-Backend Restoration | ✅ Done (Sprint `8.19` closed 2026-05-30 with the Dockerfile-level aarch64 `-mcpu=apple-m1` unblock `measured but rejected`; Sprint `8.18` accepted `unsafeRead`/`unsafeWrite` arena helpers and recorded arm64 `85.6%` / amd64 `29.5%` cross-host evidence; the post-`4.7` unified-clang aggregate recorded `Verdict: Trails parity band by 69.1%`. Q3/Q4/Q6/Q7 PASS throughout with `normalized_divergence_score=0.0000`; Sprints `8.1`–`8.19` are closed for their delivered surfaces) | [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md) |
-| 9 | hostbootstrap Adoption | 🔄 Open (Sprint `9.1` 🔄 Active 2026-06-03: `hostbootstrap` as host-side orchestrator, typed `hostbootstrap.dhall`, base-image inheritance for `docker/Dockerfile`. Sprints `9.2` and `9.3` 📋 Planned. Phase `1` reopened on three narrow sub-surfaces via Sprints `1.14`, `1.15`, `1.16`; Phase `0` reopened on planning-baseline sub-surface via Sprint `0.5`. Phases `2`–`8` remain closed on their owned surfaces.) | [phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md) |
+| 9 | hostbootstrap Adoption | ✅ Done (Sprints `9.1`, `9.2`, and `9.3` closed 2026-06-04: hostbootstrap orchestrator, root `hostbootstrap.dhall`, slim `FROM ${BASE_IMAGE}` Dockerfile, deleted `compose.yaml`, and post-migration `hostbootstrap run mcts test all` report-card closure without checked-in arm64/amd64 throughput anchors. Phase `1` Sprints `1.14`, `1.15`, `1.16` and Phase `0` Sprint `0.5` reclosed. Phases `2`–`8` remain closed on their owned surfaces.) | [phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md) |
 
 ## Current Plan Status
 
@@ -1265,15 +1254,16 @@ This plan is complete only when all of the following are true:
     Same-backend originator recompute checks chosen actions and visits under
     `--rng cpp` before writing a sidecar. Cross-backend equity equality is not
     asserted, only Q3 cross-backend visit-count equality for `(ii)..(v)`.
-24. The Docker development environment provides a single LLVM pinned in
-    `docker/Dockerfile` shared by GHC `-fllvm` and BOLT; the canonical host
-    entrypoint is `docker compose run --rm mcts mcts <command>`. There is no
-    long-running daemon container, no bind-mounted workspace, no Compose-level
-    environment-variable block, and no `sleep infinity` placeholder. The first
-    `docker compose run --rm` call builds the image when it is absent, including
-    the prebuilt Cabal component cache and the four foreign backend shared
-    libraries. All supported runtime project work happens through this short-lived
-    container entrypoint and consumes those Dockerfile-built artefacts without
+24. The Docker development environment inherits the hostbootstrap base image
+    through `FROM ${BASE_IMAGE}` and provides one LLVM 19 stack shared by GHC
+    `-fllvm` and BOLT; the canonical host entrypoint is
+    `hostbootstrap run mcts <command>`. There is no long-running daemon
+    container, no bind-mounted workspace, no Compose-level environment-variable
+    block, and no `sleep infinity` placeholder. `hostbootstrap run`
+    idempotently builds the image when needed, including the prebuilt Cabal
+    component cache and the four foreign backend shared libraries. All supported
+    runtime project work happens through this short-lived container entrypoint
+    and consumes those Dockerfile-built artefacts without
     rebuilding them. Host-level `.build/` artefacts, repository `.sh` scripts, and
     `bootstrap/` helpers are unsupported.
 25. [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md) tracks the
