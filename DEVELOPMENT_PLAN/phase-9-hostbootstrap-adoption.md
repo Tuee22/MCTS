@@ -66,14 +66,9 @@ on their owned surfaces.
 - `docker/Dockerfile` inherits `FROM ${BASE_IMAGE}` — the CLI passes the
   arch-specific tag
   `docker.io/tuee22/hostbootstrap:basecontainer-cpu-<arch>` — and adds
-  only the project-specific layers: `clang-19` and `libclang-rt-19-dev`
-  via apt; pinned Rust `1.95.0` via `rustup toolchain install` over the
-  base's `stable`; the `${BOLT_RT_INSTR_LIB}` →
-  `/usr/local/lib/libbolt_rt_instr.a` symlink; pinned
-  `fourmolu-0.19.0.1` and `hlint-3.10` at `/opt/mcts-style-tools/bin/`
-  via `cabal install` against the base's GHC; source copy; the seven
-  Cabal exe builds; and the four `mcts build <backend>` invocations
-  that produce the foreign backend `.so` artifacts.
+  only the project-specific layers: source copy, the seven Cabal exe
+  builds, and the four `mcts build <backend>` invocations that produce
+  the foreign backend `.so` artifacts.
 - MCTS uses the same CPU container model on every declared substrate.
   Apple Silicon developers run the `apple-silicon` substrate against
   Docker's `linux/arm64` base image; Linux CPU/GPU hosts run the
@@ -194,12 +189,7 @@ formatter-tools GHC install is collapsed into the project GHC.
         }
   ```
 - `docker/Dockerfile` rewritten per the Sprint 9.1 inheritance pattern:
-  `FROM ${BASE_IMAGE}`; apt-installs `clang-19` + `libclang-rt-19-dev`;
-  symlinks `${BOLT_RT_INSTR_LIB}` → `/usr/local/lib/libbolt_rt_instr.a`;
-  pins Rust `1.95.0` via rustup over the base's `stable`; pins
-  `fourmolu-0.19.0.1` + `hlint-3.10` at `/opt/mcts-style-tools/bin/`
-  via `cabal install` against the base's GHC `9.12.4` and warm Cabal
-  store; copies source; builds the seven Cabal exes
+  `FROM ${BASE_IMAGE}`; copies source; builds the seven Cabal exes
   (`mcts-haskell-style`, `mcts-unit`, `mcts-integration`,
   `mcts-cross-backend`, `mcts-legacy-parity`, `mcts-semantic-parity`,
   `mcts-criterion`, `mcts`) and installs them to `/usr/local/bin`;

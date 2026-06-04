@@ -59,7 +59,7 @@ runStyleWrite = do
         liftIO
             ( runStreaming
                 ( Subprocess
-                    "/opt/mcts-style-tools/bin/fourmolu"
+                    "/opt/hostbootstrap/haskell-style/bin/fourmolu"
                     ["--mode", "inplace", "app", "src", "test"]
                     Nothing
                     Nothing

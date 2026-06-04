@@ -155,11 +155,11 @@ is a typed `[Subprocess]` sequence run via `Plan / Apply`:
    generated-section drift on the `GeneratedSectionRule` registry).
 3. Inside the container, run the installed `mcts-haskell-style` executable
    (`cabal format` temp-file round-trip,
-   `/opt/mcts-style-tools/bin/fourmolu --mode check`,
-   `/opt/mcts-style-tools/bin/hlint --with-group=default --with-group=extra`
+   `/opt/hostbootstrap/haskell-style/bin/fourmolu --mode check`,
+   `/opt/hostbootstrap/haskell-style/bin/hlint --with-group=default --with-group=extra`
    with only `Error:` findings blocking, and the source-walker guard). The
-   style tools are installed inside the container against the project GHC
-   `9.12.4` (Phase 1 reopen Sprints `1.14` + `1.16`);
+   style tools are installed by the hostbootstrap base image against the
+   project GHC `9.12.4` (Phase 1 reopen Sprints `1.14` + `1.16`);
    ambient host tools are never used as a fallback.
 4. Inside the container, run the installed `mcts-unit` executable.
 5. Inside the container, run the installed `mcts-integration` executable.

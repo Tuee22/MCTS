@@ -125,15 +125,11 @@ the reproducible Docker development environment that every later sprint builds o
   `hostbootstrap` CLI passes the arch-specific tag
   `docker.io/tuee22/hostbootstrap:basecontainer-cpu-<arch>`), which ships GHC
   `9.12.4` and Cabal `3.16.1.0`, one LLVM version shared by GHC's `-fllvm`
-  backend and BOLT post-link (`19`), `rustup` with the channel `stable` (a
-  pinned Rust `1.95.0` toolchain is installed over it by the project Dockerfile
-  per Sprint 9.2), `mimalloc`, fourmolu, hlint, and the warm Cabal store. The
-  project Dockerfile adds only what the base does not ship: `clang-19`,
-  `libclang-rt-19-dev`, pinned Rust `1.95.0`, pinned `fourmolu-0.19.0.1` plus
-  `hlint-3.10` at `/opt/mcts-style-tools/bin/` (installed via `cabal install`
-  against the base's project GHC `9.12.4` per Sprint `1.16`), the
-  `${BOLT_RT_INSTR_LIB}` → `/usr/local/lib/libbolt_rt_instr.a` symlink, the
-  source copy, the seven Cabal exe builds, and the four `mcts build <backend>`
+  backend and BOLT post-link (`19`), `clang-19`,
+  `libclang-rt-19-dev`, Rust `1.95.0`, `mimalloc`, fourmolu `0.19.0.1`,
+  hlint `3.10`, and the warm Cabal store. The project Dockerfile adds
+  only what the base does not ship: the source copy, the seven Cabal exe
+  builds, and the four `mcts build <backend>`
   invocations. The lint stack uses the single project GHC `9.12.4`. The
   Dockerfile prebuilds the executable with tests and benchmarks enabled,
   installs all Cabal test-suite executables plus the `mcts-criterion`
@@ -173,10 +169,10 @@ the reproducible Docker development environment that every later sprint builds o
   (per [phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md))
   and the slim project `docker/Dockerfile` overlay: GHC `9.12.4` and Cabal
   `3.16.1.0` (Sprint `1.14`) come from the base image's warm Cabal store;
-  LLVM/BOLT `19`, fourmolu, and hlint runtime come from the base image;
-  `clang-19`, `libclang-rt-19-dev`, Rust `1.95.0`, `mimalloc`, and the pinned
-  `fourmolu-0.19.0.1` + `hlint-3.10` at `/opt/mcts-style-tools/bin/` come from
-  the project Dockerfile overlay. The formatter tools share the single project
+  LLVM/BOLT `19`, `clang-19`, `libclang-rt-19-dev`, Rust `1.95.0`,
+  `mimalloc`, and the pinned `fourmolu-0.19.0.1` + `hlint-3.10` at
+  `/opt/hostbootstrap/haskell-style/bin/` come from the base image. The
+  formatter tools share the single project
   GHC `9.12.4` (Sprint `1.16`).
   Root-level `hostbootstrap.dhall` is the canonical project config (Sprint
   `1.15` + [phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md));
@@ -660,7 +656,7 @@ forbidden-symbol HLint rules behind the `mcts-haskell-style` test stanza plus th
   asserts every entry carries a non-empty reason.
 - The `mcts-haskell-style` stanza now runs `cabal format` through a temp-file
   round-trip unconditionally and requires
-  `/opt/mcts-style-tools/bin/fourmolu` and `/opt/mcts-style-tools/bin/hlint`
+  `/opt/hostbootstrap/haskell-style/bin/fourmolu` and `/opt/hostbootstrap/haskell-style/bin/hlint`
   from the container image. Host `PATH` fallback and skipped external style
   tools are not supported closure paths. The project compiler and the
   formatter tools share GHC `9.12.4` (Phase 1 reopen Sprints `1.14` +
@@ -698,7 +694,7 @@ forbidden-symbol HLint rules behind the `mcts-haskell-style` test stanza plus th
   separate `STYLE_GHC_VERSION` install layer after the Phase 1 project GHC
   moved to `9.12.4` (Sprint `1.14`); the formatter tools
   (`fourmolu-0.19.0.1`, `hlint-3.10`) install at
-  `/opt/mcts-style-tools/bin/` against the single project GHC. The Sprint
+  `/opt/hostbootstrap/haskell-style/bin/` against the single project GHC. The Sprint
   `1.4` closure prose above is preserved as historical
   narrative per [development_plan_standards.md → §D Declarative Plan
   Language](development_plan_standards.md); the Sprint `1.16` doctrine portion
@@ -1441,8 +1437,8 @@ None.
 Collapse the lint stack's separate formatter-tools GHC into the project
 GHC. Under Sprint `1.14`'s pin both are GHC `9.12.4` — the single GHC
 the hostbootstrap base image ships. The formatter tools
-(`fourmolu-0.19.0.1`, `hlint-3.10`) install at
-`/opt/mcts-style-tools/bin/` against the project GHC. The
+(`fourmolu-0.19.0.1`, `hlint-3.10`) are installed by the base image at
+`/opt/hostbootstrap/haskell-style/bin/` against the project GHC. The
 `mcts-haskell-style` test stanza is unchanged; it still resolves the
 tools by absolute path. The `fourmolu.yaml` twelve-settings file and
 `.hlint.yaml` are unchanged.

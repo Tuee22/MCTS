@@ -1,6 +1,6 @@
 -- | Manual `mcts-haskell-style` stanza. The supported path runs inside the
 -- project container and requires pinned Fourmolu / HLint binaries under
--- `/opt/mcts-style-tools/bin`. Host-level fallback is deliberately unsupported.
+-- `/opt/hostbootstrap/haskell-style/bin`. Host-level fallback is deliberately unsupported.
 module Main where
 
 import Data.List (isInfixOf, isPrefixOf, isSuffixOf)
@@ -57,7 +57,7 @@ hardHlintFailure out err =
 
 styleToolPath :: String -> IO FilePath
 styleToolPath tool = do
-    let pinned = "/opt/mcts-style-tools/bin" </> tool
+    let pinned = "/opt/hostbootstrap/haskell-style/bin" </> tool
     pinnedExists <- doesFileExist pinned
     if pinnedExists
         then pure pinned

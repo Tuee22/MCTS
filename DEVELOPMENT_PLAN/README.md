@@ -678,10 +678,11 @@ inside `documents/engineering/cli_command_surface.md`; the full
 forbidden-symbol set in `.hlint.yaml` plus the conservative
 `mcts-haskell-style` source-walker guard, an unconditional `cabal format`
 temp-file round-trip, and mandatory container-owned `fourmolu`/`hlint`
-execution. Phase `1` adopts the formatter-tools compiler policy by
-building `fourmolu-0.19.0.1` and `hlint-3.10` into
-`/opt/mcts-style-tools/bin/` against the project GHC `9.12.4` (Phase 1 reopen
-Sprints `1.14` + `1.16`); the formatter tools share the single project GHC.
+execution. Phase `1` adopts the formatter-tools compiler policy by requiring
+the hostbootstrap base image's `fourmolu-0.19.0.1` and `hlint-3.10` install at
+`/opt/hostbootstrap/haskell-style/bin/` against the project GHC `9.12.4`
+(Phase 1 reopen Sprints `1.14` + `1.16`); the formatter tools share the
+single project GHC.
 Host-level fallback to ambient toolchains or style binaries is never allowed.
 The baseline uses semantic/property/temp-dir tests for transcript, renderer,
 report-card, and backend-equivalence evidence; no checked-in generated
@@ -1006,10 +1007,10 @@ Implemented in the worktree:
   conservative forbidden-symbol subset it can check textually; it also runs
   `cabal format` through a temp-file round-trip and invokes the mandatory
   container-installed `fourmolu` / `hlint` binaries from
-  `/opt/mcts-style-tools/bin/`. The mandatory external formatter path is closed by
-  pinning a separate formatter-tools GHC `9.12.4` and installing
-  `fourmolu-0.19.0.1` plus `hlint-3.10` into the container; the fuller hard-error
-  rule set lives in `.hlint.yaml` for that external `hlint` path.
+  `/opt/hostbootstrap/haskell-style/bin/`. The mandatory external formatter
+  path is closed by the base image's single-GHC formatter install
+  (`fourmolu-0.19.0.1`, `hlint-3.10`); the fuller hard-error rule set lives in
+  `.hlint.yaml` for that external `hlint` path.
 - `mcts lint files` fails on tracked generated-file drift, `mcts lint haskell`
   runs the installed `mcts-haskell-style` test executable, and `mcts check-code`
   runs the lint/docs/style gates through the dedicated `MCTS.CheckCode` module.
@@ -1233,9 +1234,9 @@ This plan is complete only when all of the following are true:
     `import-export-style`, `indent-wheres`, `record-brace-space`,
     `newlines-between-decls`, `haddock-style`, `let-style`, `in-style`, `unicode`); the
     `mcts-haskell-style` stanza enforces them plus the `cabal format` temp-file
-    round-trip byte-equality check through a separate pinned formatter-tools GHC
-    install (`ghc-9.12.4`, `fourmolu-0.19.0.1`, `hlint-3.10`) under
-    `/opt/mcts-style-tools/bin/` inside the container. Host-level fallback is
+    round-trip byte-equality check through the base image's pinned
+    formatter-tools install (`ghc-9.12.4`, `fourmolu-0.19.0.1`, `hlint-3.10`) under
+    `/opt/hostbootstrap/haskell-style/bin/` inside the container. Host-level fallback is
     not allowed.
 21. The transcript wire format is little-endian binary with no schema-library
     dependency: one-game files, header carrying the backend-specific run config,

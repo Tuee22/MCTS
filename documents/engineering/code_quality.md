@@ -163,7 +163,7 @@ pinned by [unit_testing_policy.md → Test Stanza Layout](./unit_testing_policy.
 
 ```bash
 # Example: hlint invocation pinned by mcts-haskell-style
-/opt/mcts-style-tools/bin/hlint --with-group=default --with-group=extra
+/opt/hostbootstrap/haskell-style/bin/hlint --with-group=default --with-group=extra
 ```
 
 `.hlint.yaml` is picked up automatically from the repo root. The `default` and
@@ -183,10 +183,11 @@ defeats the readability proxy), and the committed value is the project's chosen
 ceiling.
 
 The `mcts-haskell-style` Cabal stanza in `test/haskell-style/Main.hs` enforces the
-`cabal format` round-trip through a system temp file on every run. The project policy is to
-install `fourmolu-0.19.0.1` and `hlint-3.10` into `/opt/mcts-style-tools/bin/`
-inside the container against the project GHC `9.12.4` (Phase 1 reopen
-Sprints `1.14` + `1.16`); the formatter tools share the project GHC.
+`cabal format` round-trip through a system temp file on every run. The
+hostbootstrap base image installs `fourmolu-0.19.0.1` and `hlint-3.10` into
+`/opt/hostbootstrap/haskell-style/bin/` against the project GHC `9.12.4`
+(Phase 1 reopen Sprints `1.14` + `1.16`); the formatter tools share the
+project GHC.
 The style stanza invokes only those pinned container paths and does not honour
 environment-variable overrides. If they are absent, the check fails with a remedy
 pointing at `hostbootstrap run mcts check-code`; it must not skip the tools

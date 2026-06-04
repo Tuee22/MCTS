@@ -1393,8 +1393,7 @@ pinning](../../HASKELL_CLI_TOOL.md) and
 - **LLVM** — pinned version shared by GHC's `-fllvm` backend and BOLT
   post-link. The Dockerfile carries one LLVM version regardless of which
   language is being compiled.
-- **Rust** — latest stable, installed via `rustup` with the minor version
-  pinned in `docker/Dockerfile`.
+- **Rust** — `1.95.0`, installed via `rustup` in the hostbootstrap base image.
 - **`mimalloc`** — Ubuntu `libmimalloc-dev` in the pinned container; C++ links the
   system library and Rust uses a local `GlobalAlloc` wrapper over the same system
   library.

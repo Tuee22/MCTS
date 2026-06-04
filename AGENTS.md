@@ -20,7 +20,7 @@ All supported project build, run, validation, formatting, linting, documentation
 hostbootstrap run mcts <command>   # Phase 1 reopen Sprint 1.15 canonical shape
 ```
 
-`hostbootstrap run` is the canonical host-side entrypoint. It reads `hostbootstrap.dhall` at the repo root, idempotently builds the project image against the pinned base (`docker.io/tuee22/hostbootstrap:basecontainer-cpu-<arch>`), and dispatches `mcts <command>` inside a one-shot `docker run --rm` container. The base image owns GHC `9.12.4` (Phase 1 reopen Sprint `1.14`), Cabal `3.16.1.0`, LLVM `19` + BOLT, fourmolu, hlint, and the warm Cabal store; the project Dockerfile owns clang-19, Rust `1.95.0`, the pinned style-tool versions (Phase 1 reopen Sprint `1.16`), the MCTS source build, and the four foreign backend `.so` artifacts.
+`hostbootstrap run` is the canonical host-side entrypoint. It reads `hostbootstrap.dhall` at the repo root, idempotently builds the project image against the pinned base (`docker.io/tuee22/hostbootstrap:basecontainer-cpu-<arch>`), and dispatches `mcts <command>` inside a one-shot `docker run --rm` container. The base image owns GHC `9.12.4` (Phase 1 reopen Sprint `1.14`), Cabal `3.16.1.0`, LLVM `19` + BOLT, clang-19, Rust `1.95.0`, fourmolu `0.19.0.1`, hlint `3.10`, and the warm Cabal store; the project Dockerfile owns the MCTS source build and the four foreign backend `.so` artifacts.
 
 Install `hostbootstrap` once per host:
 
