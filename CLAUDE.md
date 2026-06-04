@@ -53,3 +53,4 @@ Host-side file inspection and bookkeeping commands such as `rg`, `sed`, `git dif
 - [`DEVELOPMENT_PLAN/phase-9-hostbootstrap-adoption.md`](DEVELOPMENT_PLAN/phase-9-hostbootstrap-adoption.md) — hostbootstrap orchestrator doctrine, `hostbootstrap.dhall` schema, `FROM ${BASE_IMAGE}` inheritance pattern.
 - [`HASKELL_CLI_TOOL.md`](HASKELL_CLI_TOOL.md) — authoritative CLI doctrine.
 - [`documents/documentation_standards.md`](documents/documentation_standards.md) — authoritative documentation-topology rules (SSoT, bidirectional links, generated sections).
+- `~/hostbootstrap/documents/engineering/derived_project_standards.md` — the five rules every derived project follows (Dockerfile constraints, warm-store cache-hit contract, build-time `mcts check-code`, static-link/`-O2` policy, no redundant rebuilds). MCTS is the reference compliant project.

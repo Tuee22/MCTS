@@ -23,6 +23,11 @@ RUN cabal build --enable-tests --enable-benchmarks all \
     && install -m 0755 "$(cabal list-bin --enable-tests --enable-benchmarks bench:mcts-criterion)" /usr/local/bin/mcts-criterion \
     && install -m 0755 "$(cabal list-bin --enable-tests --enable-benchmarks exe:mcts)" /usr/local/bin/mcts
 
+# Fail-fast code-quality guardrail per hostbootstrap's code_check_doctrine.md.
+# Runs before the foreign-backend builds so style/lint violations abort the
+# image build in seconds, not after the multi-minute PGO/BOLT pipelines.
+RUN mcts check-code
+
 RUN mcts build cpp-legacy \
     && mcts build cpp-imperative \
     && mcts build cpp-functional \

@@ -2,6 +2,21 @@ packages: .
 
 with-compiler: ghc-9.12.4
 
+-- The warm-store freeze is the single source of truth for transitive
+-- package versions; importing it from the base image guarantees the
+-- resolver lands on the versions baked into /opt/cache/cabal, so the
+-- third-party closure is reused with zero rebuilds. See hostbootstrap's
+-- documents/engineering/warm_store.md.
+import: /opt/basecontainer/haskell-deps/cabal.project.freeze
+
+-- Match the warm-store flag set; Cabal store keys include these flags, so
+-- deviating triggers silent rebuilds.
+tests: True
+benchmarks: True
+shared: True
+
+optimization: 2
+
 -- Sprint 7.4: relax the upper bounds on `config-ini`'s `containers`
 -- and `base` so `brick` 2.12 + `vty` 6.5 can resolve under
 -- GHC 9.14.1 (which ships `containers 0.8` / `base 4.22`).
