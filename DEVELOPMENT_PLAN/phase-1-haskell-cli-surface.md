@@ -19,7 +19,7 @@
 
 ## Phase Status
 
-🔄 **Reopened on three narrow sub-surfaces.** A Cabal package, thin `app/Main.hs`,
+✅ **Done after focused reclosures.** A Cabal package, thin `app/Main.hs`,
 `src/MCTS/` library layout, manual `CommandSpec` registry, parser, output/error
 boundary, typed `Subprocess` wrapper, Plan/Apply helpers, prerequisite skeleton,
 lint/docs commands, and `mcts-haskell-style` stanza exist;
@@ -48,9 +48,17 @@ Sprint `1.15` replaced the canonical invocation shape
 deleted `compose.yaml`; Sprint `1.16` collapsed the lint stack's
 separate formatter-tools GHC into the project GHC. All three sprints
 reclosed on 2026-06-04 after `hostbootstrap run test all` passed.
-Sprints `1.1` through `1.13` remain closed on their owned CLI surface,
-`CommandSpec`, self-describing introspection, lint stack, and
-toolchain-baseline surfaces; their closure narratives are preserved.
+Phase `1` reopened again on 2026-06-04 for Sprint `1.17` after operator use
+showed that the play substrate was still not fully self-describing in the
+command-use sense: `BACKEND` metavars appeared without enough operational text,
+`mcts play` did not clearly teach human-vs-AI versus AI-vs-AI spectator mode,
+and generated command docs listed flags without enough command workflow
+description. Sprint `1.17` reclosed the same day after adding action-oriented
+leaf-command descriptions, play examples, notes, parser-help text, generated docs,
+README guidance, and semantic renderer/help tests. Sprints `1.1` through `1.17`
+remain closed on their owned CLI surface, `CommandSpec`, self-describing
+introspection, command-use text, lint stack, and toolchain-baseline surfaces;
+their closure narratives are preserved.
 
 ## Phase Summary
 
@@ -62,8 +70,11 @@ command schema. Sprint `1.13` extends that registry with typed choice/default/no
 metadata and makes the explicit leaf option parsers consume the same value sets, so
 `optparse-applicative` remains the parser implementation while the CLI becomes
 fully introspectable through `--help`, `mcts help`, `mcts commands --json`,
-generated docs, and completions. `Parser.hs` renders the top-level/subcommand
-topology from that registry while retaining explicit semantic parsers for leaf options.
+generated docs, and completions. Sprint `1.17` makes the same surfaces
+action-oriented: command descriptions explain how to use a command, not only which
+flags exist, with the `mcts play` human/spectator substrate as the forcing case.
+`Parser.hs` renders the top-level/subcommand topology from that registry while
+retaining explicit semantic parsers for leaf options.
 The phase adopts
 every in-scope doctrine surface — `CommandSpec`
 + Generated Artifacts, Progressive Introspection, `Subprocess` as typed values,
@@ -1483,6 +1494,76 @@ stanza); the lint-stack regression surface is zero.
 
 None.
 
+## Sprint 1.17: Action-Oriented Command-Use Text ✅
+
+**Status**: Done
+**Implementation**: `src/MCTS/CLI/Spec.hs`, `src/MCTS/CLI/Parser.hs`,
+`test/unit/Main.hs`, `documents/cli/commands.md`, `share/man/man1/mcts.1`,
+`share/completion/bash/mcts`, `share/completion/zsh/_mcts`,
+`share/completion/fish/mcts.fish`
+**Docs to update**: `README.md`, `documents/documentation_standards.md`,
+`documents/engineering/README.md`, `documents/engineering/cli_command_surface.md`,
+`DEVELOPMENT_PLAN/README.md`, `DEVELOPMENT_PLAN/00-overview.md`,
+`DEVELOPMENT_PLAN/system-components.md`, `DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md`
+
+### Objective
+
+Make every leaf command surface self-describing in the operator workflow sense, not
+only the accepted-value sense. The immediate failure case is `mcts play`: help and
+generated docs exposed `BACKEND` metavars and backend values, but did not clearly
+teach which backend controls which side, how a human plays the opposite side, or
+how `--vs` turns the TUI into AI-vs-AI spectator mode.
+
+### Deliverables
+
+- `src/MCTS/CLI/Spec.hs` carries action-oriented descriptions for every leaf
+  command instead of falling back to terse summaries. For `mcts play`, examples
+  and notes spell out the valid backend identifiers, human-vs-AI mode, spectator
+  mode, and Space-to-advance behavior in the typed registry that renders generated
+  docs, JSON, manpages, and completions.
+- `src/MCTS/CLI/Parser.hs` uses matching `optparse-applicative` help text for
+  `--backend`, `--side`, and `--vs`, including accepted backend values and the
+  side-control semantics. `BACKEND` remains the metavar, but it is no longer the
+  only explanation.
+- `test/unit/Main.hs` asserts that every leaf description is action-oriented and
+  that focused help plus generated command Markdown include accepted backend values
+  and human/spectator-mode text, preserving the Sprint `1.13` value-discovery tests.
+- `documents/engineering/cli_command_surface.md` strengthens the
+  Self-Describing CLI Contract: every leaf command must explain how to use the
+  command, not merely list flags; metavars such as `BACKEND` require accepted
+  values and behavior-specific explanation.
+- `documents/documentation_standards.md` records the generated-CLI-doc rule that
+  command pages must be action-oriented and include accepted closed-set values,
+  minimal invocations, and side effects or interactive controls.
+- `README.md` keeps a concise operator play walkthrough with the full backend
+  identifier set and points to focused help / command JSON as the self-describing
+  surfaces.
+- The stale command-use residue is recorded in
+  [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md) and moved to
+  Completed with this sprint.
+
+### Validation
+
+- `hostbootstrap run docs generate`
+- `hostbootstrap run docs check`
+- `hostbootstrap run test mcts-unit`
+- `hostbootstrap run check-code`
+- `git diff --check`
+
+### Remaining Work
+
+None.
+
+### Closure Notes
+
+- Closed on 2026-06-04 after every leaf command carried action-oriented registry
+  text, and the play leaf plus parser help described valid backends,
+  human-vs-AI side ownership, AI-vs-AI spectator mode, and the Space-to-advance
+  interaction through the same registry-backed surfaces.
+- Phases `2` through `8` remain closed on their owned backend, transcript,
+  verification, report-card, and performance surfaces; the reopening touched only
+  Phase `1` command metadata, help, generated command artefacts, and governed docs.
+
 ## Documentation Requirements
 
 **Engineering docs to create/update:**
@@ -1501,14 +1582,15 @@ None.
   `Subprocess`, `Plan / Apply`, `prerequisiteRegistry`, `Env`, and `AppError`; defer
   to the doctrine on each pattern.
 - `documents/documentation_standards.md` — align the generated-section metadata rule with
-  the Sprint `1.10` implementation.
+  the Sprint `1.10` implementation and the Sprint `1.17` action-oriented generated CLI
+  doc rule.
 - `documents/engineering/README.md` — index the self-describing CLI contract and record
-  Sprint `1.13` as closed.
+  Sprint `1.13` / Sprint `1.17` as closed.
 
 **Product docs to create/update:**
 
 - `README.md` — link operators to the implemented self-describing CLI contract plus the
-  current backend identifier table.
+  current backend identifier table and the `mcts play` human/spectator workflow.
 
 **Cross-references to add:**
 
@@ -1518,6 +1600,8 @@ None.
   until the generated-doc and style contracts are reclosed.
 - `legacy-tracking-for-deletion.md` records the pointer-only help / missing enum-value
   metadata row as completed by Sprint `1.13`.
+- `legacy-tracking-for-deletion.md` records the thin play command-use text row as
+  completed by Sprint `1.17`.
 
 ## Related Documents
 

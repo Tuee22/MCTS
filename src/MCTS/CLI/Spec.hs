@@ -183,6 +183,7 @@ commandSpec =
                 "rollouts"
                 "Legacy played-game benchmark"
                 "mcts bench rollouts --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell --threading single --rng native --games 100000 --seed 42"
+                `withDescription` "Run the legacy-named played-game benchmark across an explicit backend cohort. Provide a comma-separated --backend list plus --games and --seed; use bench terminal-playouts for raw terminal playout throughput."
                 `withOptions` runOptions True backendChoices "native" "multi" "10000" []
                 `withNotes` [ "The legacy-named rollouts benchmark measures played games with one search iteration per real move."
                             ]
@@ -190,17 +191,20 @@ commandSpec =
                 "selfplay"
                 "Self-play benchmark"
                 "mcts bench selfplay --backend haskell --rng native --games 1000 --seed 42 --sims 10000"
+                `withDescription` "Run full UCT self-play games for one or more backends. Provide --backend, --games, and --seed; --sims controls the per-move search budget and --workers controls multi-threaded dispatch."
                 `withExample` "mcts bench selfplay --backend haskell --rng native --workers 32 --games 1000 --seed 42 --sims 10000"
                 `withOptions` runOptions True backendChoices "native" "multi" "10000" []
             , leaf
                 "terminal-playouts"
                 "Terminal playout throughput"
                 "mcts bench terminal-playouts --backend haskell --rng native --count 1000 --seed 42"
+                `withDescription` "Measure direct random playout throughput without building a search tree. Provide --backend, --count, and --seed; output reports playouts/s rather than games/s."
                 `withOptions` primitiveBenchOptions
             , leaf
                 "search-iters"
                 "Search-iteration throughput"
                 "mcts bench search-iters --backend haskell --rng native --count 1000 --seed 42"
+                `withDescription` "Measure direct UCT search-iteration throughput for the selected backend cohort. Provide --backend, --count, and --seed; output reports search-iters/s."
                 `withOptions` primitiveBenchOptions
             ]
         , node
@@ -210,11 +214,13 @@ commandSpec =
                 "rollouts"
                 "Verify rollout visit counts"
                 "mcts verify rollouts --backend cpp-imperative,cpp-functional,rust,haskell --games 2 --seed 42"
+                `withDescription` "Run the Q3 rollout verifier over at least two non-legacy backends. Provide a comma-separated --backend list, --games, and --seed; verification uses the cpp RNG path and rejects cpp-legacy."
                 `withOptions` verifyOptions
             , leaf
                 "selfplay"
                 "Verify self-play visit counts"
                 "mcts verify selfplay --backend cpp-imperative,cpp-functional,rust,haskell --threading single --games 50 --seed 42 --max-plies 200 --sims 10000"
+                `withDescription` "Run the Q3 self-play verifier over at least two non-legacy backends. Provide --backend, --games, and --seed; --sims controls per-move search and verification uses the cpp RNG path."
                 `withOptions` verifyOptions
             , node
                 "legacy-parity"
@@ -223,26 +229,41 @@ commandSpec =
                     "rollouts"
                     "Verify legacy-envelope rollout liveness"
                     "mcts verify legacy-parity rollouts --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell --games 2 --seed 42"
+                    `withDescription` "Check Q6 legacy-envelope rollout liveness across all five backend slots. Provide each backend identifier exactly once in --backend plus --games and --seed."
                     `withOptions` legacyParityOptions
                 , leaf
                     "selfplay"
                     "Verify legacy-envelope self-play liveness"
                     "mcts verify legacy-parity selfplay --backend cpp-legacy,cpp-imperative,cpp-functional,rust,haskell --games 2 --seed 42 --sims 4"
+                    `withDescription` "Check Q6 legacy-envelope self-play liveness across all five backend slots. Provide each backend identifier exactly once in --backend; --sims sets the small per-move search budget."
                     `withOptions` legacyParityOptions
                 ]
             ]
         , leaf
             "play"
             "Play or spectate a game"
-            "mcts play --backend haskell --side hero --rng native --max-plies 200 --sims 10000"
-            `withExample` "mcts play --backend haskell --side villain --vs rust --rng native --max-plies 200 --sims 10000"
+            "mcts play --backend haskell --side villain --rng native --max-plies 200 --sims 1000"
+            `withDescription` "Open the interactive Brick TUI. Without --vs, --backend controls the side named by --side and the human plays the opposite side. With --vs, --backend controls --side, --vs controls the other side, and the operator spectates AI-vs-AI play from the terminal."
+            `withExamples` [ Example
+                                "mcts play --backend haskell --side villain --rng native --max-plies 200 --sims 1000"
+                                "Human plays Hero; haskell controls Villain."
+                           , Example
+                                "mcts play --backend haskell --side hero --vs rust --rng native --max-plies 200 --sims 1000"
+                                "Watch Haskell Hero vs Rust Villain in spectator mode."
+                           ]
             `withOptions` playOptions
+            `withNotes` [ "Accepted backend values are cpp-legacy, cpp-imperative, cpp-functional, rust, and haskell."
+                        , "For human-vs-AI play, omit --vs; the selected backend controls --side and the human controls the other side."
+                        , "For AI-vs-AI spectating, pass --vs BACKEND; press Space in the TUI to advance AI turns when prompted."
+                        ]
         , node
             "inspect"
             "Inspect transcript cache"
             [ leaf "list" "List cached transcripts" "mcts inspect list"
+                `withDescription` "List transcripts in the selected cache root with backend, seed, games, threading, sims, move count, mtime, and path metadata."
                 `withOptions` [cacheDirOption]
             , leaf "show" "Show one transcript" "mcts inspect show 7a2f --top 10 --with-equity"
+                `withDescription` "Resolve a transcript hash prefix and print its move history. Use --top to limit displayed candidate moves, --with-equity for originator equity evidence, and --envelope for v1 envelope fields."
                 `withPositionals` [hashPrefixArgument]
                 `withOptions` [ topOption
                               , flagOption "with-equity" "Recompute and render equity sidecar values"
@@ -250,6 +271,7 @@ commandSpec =
                               , cacheDirOption
                               ]
             , leaf "replay" "Replay one transcript" "mcts inspect replay 7a2f --top 15"
+                `withDescription` "Open the interactive replay TUI for a transcript hash prefix. Navigate forward and backward through recorded moves while viewing multi-backend equity overlays when sidecars or live recompute paths are available."
                 `withPositionals` [hashPrefixArgument]
                 `withOptions` [ topOption
                               , option "cache-states" Nothing (Just "N") "Replay state cache size" False (Just "20") [] Nothing []
@@ -259,11 +281,14 @@ commandSpec =
                 "cache"
                 "Inspect sidecar cache"
                 [ leaf "list" "List sidecars" "mcts inspect cache list"
+                    `withDescription` "List transcript equity sidecar entries under the cache root, including backend/build slots and envelope neighbours."
                     `withOptions` [cacheDirOption]
                 , leaf "prune" "Prune stale sidecars" "mcts inspect cache prune --keep-current --dry-run"
+                    `withDescription` "Plan or delete stale equity sidecars. Use --dry-run to review the deletion plan first; --keep-current keeps the logical current backend/build slot."
                     `withOptions` ([flagOption "keep-current" "Keep current backend/build sidecars", cacheDirOption] <> planOptions)
                 ]
             , leaf "divergence" "Show divergence matrix" "mcts inspect divergence 7a2f"
+                `withDescription` "Resolve one transcript and render a divergence matrix from cached sidecars plus any live foreign recompute rows available in the image."
                 `withPositionals` [hashPrefixArgument]
                 `withOptions` [cacheDirOption]
             ]
@@ -271,67 +296,92 @@ commandSpec =
             "test"
             "Run tests"
             [ leaf "all" "Run full suite and report card" "mcts test all --dry-run"
+                `withDescription` "Run the aggregate Plan/Apply validation gate over generated-doc checks, prebuilt Cabal test stanzas, live verification cohorts, and the report-card workload. Use --dry-run or --plan-file to inspect the plan."
                 `withOptions` planOptions
             , leaf
                 "parity-anchor"
                 "Measure backend parity anchor"
                 "mcts test parity-anchor rust haskell --format json"
+                `withDescription` "Measure a focused Q1/Q2 parity anchor between two explicit backend identifiers. Use --dry-run or --plan-file to inspect the planned benchmark and verification steps."
                 `withPositionals` [ ArgumentSpec "BASELINE" "Baseline backend" True backendChoices
                                   , ArgumentSpec "CANDIDATE" "Candidate backend" True backendChoices
                                   ]
                 `withOptions` planOptions
             , leaf "<stanza>" "Run one prebuilt test stanza" "mcts test mcts-unit"
+                `withDescription` "Run one Dockerfile-prebuilt Cabal test-suite executable by stanza name. Accepted stanza values are listed in help and command JSON."
                 `withPositionals` [ArgumentSpec "STANZA" "Prebuilt Cabal test-suite executable" True testStanzaChoices]
             ]
         , node
             "lint"
             "Run lint gates"
             [ leaf "files" "Lint files" "mcts lint files"
+                `withDescription` "Check file hygiene, forbidden workflow paths, and tracked generated-file drift. Pass --write to apply supported rewrites for this lint surface."
                 `withOptions` [writeOption]
             , leaf "docs" "Lint docs" "mcts lint docs"
+                `withDescription` "Check generated documentation sections and tracked generated command artefacts for drift. Pass --write to regenerate before rechecking."
                 `withOptions` [writeOption]
             , leaf "haskell" "Lint Haskell" "mcts lint haskell"
+                `withDescription` "Run the Haskell style gate through the pinned container toolchain: Fourmolu, HLint, and the Cabal-format round trip. Pass --write for formatter-supported rewrites."
                 `withOptions` [writeOption]
             , leaf "all" "Run all linters" "mcts lint all"
+                `withDescription` "Run every lint gate in the supported order: file hygiene, generated docs, and Haskell style."
             ]
         , node
             "docs"
             "Generated docs"
             [ leaf "check" "Check generated docs" "mcts docs check"
+                `withDescription` "Compare every registered generated section and tracked generated path with the current renderer output. Fails with the drifted path, marker key, and regenerate remedy."
             , leaf "generate" "Generate docs" "mcts docs generate"
+                `withDescription` "Regenerate marker-delimited docs and fully generated command artefacts from the typed registries. Use --dry-run or --plan-file to inspect the generation plan."
                 `withOptions` docsGenerateOptions
             ]
         , leaf "commands" "Show command registry" "mcts commands --tree"
+            `withDescription` "Print the command registry. Use --tree for a compact topology view or --json for the stable schema consumed by tools and generated docs."
             `withOptions` [ flagOption "tree" "Render command tree"
                           , flagOption "json" "Render enriched command schema as JSON"
                           ]
         , leaf "help" "Focused help" "mcts help bench selfplay"
+            `withDescription` "Render focused parser help for a command path such as play or verify selfplay. Unknown targets report the nearest valid command-tree context."
             `withPositionals` [ArgumentSpec "COMMAND" "Command path such as play or verify selfplay" False []]
         , leaf "check-code" "Run code-quality gate" "mcts check-code"
+            `withDescription` "Run the project code-quality gate that combines doctrine alignment, generated-doc checks, Haskell style, and forbidden-surface linting."
         , node
             "build"
             "Backend artefact recipes"
             [ leaf "cpp-legacy" "C++ legacy backend build recipe" "mcts build cpp-legacy --dry-run"
+                `withDescription` "Plan or run the C++ legacy backend build recipe used by the Dockerfile. Use --dry-run or --plan-file to inspect subprocesses before execution."
                 `withOptions` planOptions
             , leaf "cpp-imperative" "C++ imperative backend build recipe" "mcts build cpp-imperative --dry-run"
+                `withDescription` "Plan or run the C++ imperative steelman backend recipe, including the mandatory PGO/BOLT path. Use --dry-run or --plan-file to inspect subprocesses."
                 `withOptions` planOptions
             , leaf "cpp-functional" "C++ functional backend build recipe" "mcts build cpp-functional --dry-run"
+                `withDescription` "Plan or run the C++ functional-core backend recipe, including the shared C++ PGO/BOLT flow. Use --dry-run or --plan-file to inspect subprocesses."
                 `withOptions` planOptions
             , leaf "rust" "Rust backend build recipe" "mcts build rust --dry-run"
+                `withDescription` "Plan or run the Rust cdylib backend recipe, including the mandatory PGO/BOLT path. Use --dry-run or --plan-file to inspect subprocesses."
                 `withOptions` planOptions
             , leaf
                 "legacy-fixtures"
                 "Generate external legacy audit fixtures"
                 "mcts build legacy-fixtures --output-dir /tmp/mcts-legacy-fixtures --seed 42 --games 10 --sims 10000 --dry-run"
+                `withDescription` "Generate optional external legacy audit fixtures under an explicit output directory. The output is not a normal validation input; use --dry-run or --plan-file to inspect the recipe."
                 `withOptions` (legacyFixtureOptions <> planOptions)
             ]
         ]
   where
     node n s cs = CommandSpec n s s cs [] [] [] []
     leaf n s ex = CommandSpec n s s [] [] commonOptions [Example ex s] []
+    withDescription :: CommandSpec -> String -> CommandSpec
+    withDescription (CommandSpec n s _ cs ps os es ns) desc = CommandSpec n s desc cs ps os es ns
+    withExamples :: CommandSpec -> [Example] -> CommandSpec
+    withExamples spec xs = spec{examples = xs}
+    withExample :: CommandSpec -> String -> CommandSpec
     withExample spec ex = spec{examples = examples spec <> [Example ex (summary spec)]}
+    withOptions :: CommandSpec -> [OptionSpec] -> CommandSpec
     withOptions spec extra = spec{options = options spec <> extra}
+    withPositionals :: CommandSpec -> [ArgumentSpec] -> CommandSpec
     withPositionals spec extra = spec{positionals = positionals spec <> extra}
+    withNotes :: CommandSpec -> [String] -> CommandSpec
     withNotes spec extra = spec{notes = notes spec <> extra}
 
 commonOptions :: [OptionSpec]
@@ -541,17 +591,17 @@ playOptions =
         "backend"
         Nothing
         (Just "BACKEND")
-        "Backend controlled by --side"
+        "AI backend that controls the side named by --side"
         True
         Nothing
         backendChoices
         Nothing
-        []
+        ["Omit --vs for human play; the human controls the opposite side."]
     , option
         "side"
         Nothing
         (Just "hero|villain")
-        "Side controlled by --backend"
+        "Side controlled by --backend; the human plays the opposite side unless --vs is set"
         True
         Nothing
         sideChoices
@@ -561,12 +611,12 @@ playOptions =
         "vs"
         Nothing
         (Just "BACKEND")
-        "Opponent backend for AI-vs-AI spectator mode"
+        "Second AI backend for spectator mode; controls the side opposite --side"
         False
         Nothing
         backendChoices
         Nothing
-        []
+        ["When --vs is set, the operator watches instead of entering human moves."]
     , option "rng" Nothing (Just "native|cpp") "RNG source" False (Just "native") rngChoices Nothing []
     , option
         "sims"
@@ -743,10 +793,10 @@ renderCommandMarkdown =
           ]
             <> concatMap markdownRow commandRows
   where
-    markdownRow (path, spec) =
+    markdownRow (path, spec@CommandSpec{description = commandDescription}) =
         [ "## `" <> path <> "`"
         , ""
-        , summary spec
+        , commandDescription
         , ""
         , "**Usage**: `" <> usageFor path spec <> "`"
         , ""

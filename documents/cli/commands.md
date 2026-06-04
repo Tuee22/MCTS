@@ -9,7 +9,7 @@
 
 ## `mcts bench rollouts`
 
-Legacy played-game benchmark
+Run the legacy-named played-game benchmark across an explicit backend cohort. Provide a comma-separated --backend list plus --games and --seed; use bench terminal-playouts for raw terminal playout throughput.
 
 **Usage**: `mcts bench rollouts [options]`
 
@@ -44,7 +44,7 @@ Legacy played-game benchmark
 
 ## `mcts bench selfplay`
 
-Self-play benchmark
+Run full UCT self-play games for one or more backends. Provide --backend, --games, and --seed; --sims controls the per-move search budget and --workers controls multi-threaded dispatch.
 
 **Usage**: `mcts bench selfplay [options]`
 
@@ -81,7 +81,7 @@ Self-play benchmark
 
 ## `mcts bench terminal-playouts`
 
-Terminal playout throughput
+Measure direct random playout throughput without building a search tree. Provide --backend, --count, and --seed; output reports playouts/s rather than games/s.
 
 **Usage**: `mcts bench terminal-playouts [options]`
 
@@ -110,7 +110,7 @@ Terminal playout throughput
 
 ## `mcts bench search-iters`
 
-Search-iteration throughput
+Measure direct UCT search-iteration throughput for the selected backend cohort. Provide --backend, --count, and --seed; output reports search-iters/s.
 
 **Usage**: `mcts bench search-iters [options]`
 
@@ -139,7 +139,7 @@ Search-iteration throughput
 
 ## `mcts verify rollouts`
 
-Verify rollout visit counts
+Run the Q3 rollout verifier over at least two non-legacy backends. Provide a comma-separated --backend list, --games, and --seed; verification uses the cpp RNG path and rejects cpp-legacy.
 
 **Usage**: `mcts verify rollouts [options]`
 
@@ -171,7 +171,7 @@ Verify rollout visit counts
 
 ## `mcts verify selfplay`
 
-Verify self-play visit counts
+Run the Q3 self-play verifier over at least two non-legacy backends. Provide --backend, --games, and --seed; --sims controls per-move search and verification uses the cpp RNG path.
 
 **Usage**: `mcts verify selfplay [options]`
 
@@ -203,7 +203,7 @@ Verify self-play visit counts
 
 ## `mcts verify legacy-parity rollouts`
 
-Verify legacy-envelope rollout liveness
+Check Q6 legacy-envelope rollout liveness across all five backend slots. Provide each backend identifier exactly once in --backend plus --games and --seed.
 
 **Usage**: `mcts verify legacy-parity rollouts [options]`
 
@@ -235,7 +235,7 @@ Verify legacy-envelope rollout liveness
 
 ## `mcts verify legacy-parity selfplay`
 
-Verify legacy-envelope self-play liveness
+Check Q6 legacy-envelope self-play liveness across all five backend slots. Provide each backend identifier exactly once in --backend; --sims sets the small per-move search budget.
 
 **Usage**: `mcts verify legacy-parity selfplay [options]`
 
@@ -267,7 +267,7 @@ Verify legacy-envelope self-play liveness
 
 ## `mcts play`
 
-Play or spectate a game
+Open the interactive Brick TUI. Without --vs, --backend controls the side named by --side and the human plays the opposite side. With --vs, --backend controls --side, --vs controls the other side, and the operator spectates AI-vs-AI play from the terminal.
 
 **Usage**: `mcts play [options]`
 
@@ -278,32 +278,38 @@ Play or spectate a game
 | `--format json|table|plain` | no | plain when stdout is not a TTY; table when stdout is a TTY | `json`, `table`, `plain` | Output format Global option parsed before command dispatch. |
 | `--color auto|always|never` | no | auto | `auto`, `always`, `never` | Color mode Global option parsed before command dispatch. |
 | `--no-color` | no | - | - | Alias for --color never |
-| `--backend BACKEND` | yes | - | `cpp-legacy`, `cpp-imperative`, `cpp-functional`, `rust`, `haskell` | Backend controlled by --side |
-| `--side hero|villain` | yes | - | `hero`, `villain` | Side controlled by --backend |
-| `--vs BACKEND` | no | - | `cpp-legacy`, `cpp-imperative`, `cpp-functional`, `rust`, `haskell` | Opponent backend for AI-vs-AI spectator mode |
+| `--backend BACKEND` | yes | - | `cpp-legacy`, `cpp-imperative`, `cpp-functional`, `rust`, `haskell` | AI backend that controls the side named by --side Omit --vs for human play; the human controls the opposite side. |
+| `--side hero|villain` | yes | - | `hero`, `villain` | Side controlled by --backend; the human plays the opposite side unless --vs is set |
+| `--vs BACKEND` | no | - | `cpp-legacy`, `cpp-imperative`, `cpp-functional`, `rust`, `haskell` | Second AI backend for spectator mode; controls the side opposite --side When --vs is set, the operator watches instead of entering human moves. |
 | `--rng native|cpp` | no | native | `native`, `cpp` | RNG source |
 | `--sims N|A:B` | no | 1000 | - | Simulation budget Syntax: N for fixed sims, A:B for ramped sims. |
 | `--seed U64` | no | - | - | Master seed; omitted means fresh random |
 | `--max-plies N` | no | 200 | - | Maximum plies per game |
 | `--cache-dir DIR` | no | .mcts-cache | - | Transcript cache root |
 
+**Notes**
+
+- Accepted backend values are cpp-legacy, cpp-imperative, cpp-functional, rust, and haskell.
+- For human-vs-AI play, omit --vs; the selected backend controls --side and the human controls the other side.
+- For AI-vs-AI spectating, pass --vs BACKEND; press Space in the TUI to advance AI turns when prompted.
+
 **Examples**
 
-- Play or spectate a game
+- Human plays Hero; haskell controls Villain.
 
   ```bash
-  mcts play --backend haskell --side hero --rng native --max-plies 200 --sims 10000
+  mcts play --backend haskell --side villain --rng native --max-plies 200 --sims 1000
   ```
 
-- Play or spectate a game
+- Watch Haskell Hero vs Rust Villain in spectator mode.
 
   ```bash
-  mcts play --backend haskell --side villain --vs rust --rng native --max-plies 200 --sims 10000
+  mcts play --backend haskell --side hero --vs rust --rng native --max-plies 200 --sims 1000
   ```
 
 ## `mcts inspect list`
 
-List cached transcripts
+List transcripts in the selected cache root with backend, seed, games, threading, sims, move count, mtime, and path metadata.
 
 **Usage**: `mcts inspect list [options]`
 
@@ -326,7 +332,7 @@ List cached transcripts
 
 ## `mcts inspect show`
 
-Show one transcript
+Resolve a transcript hash prefix and print its move history. Use --top to limit displayed candidate moves, --with-equity for originator equity evidence, and --envelope for v1 envelope fields.
 
 **Usage**: `mcts inspect show <HASH-PREFIX> [options]`
 
@@ -358,7 +364,7 @@ Show one transcript
 
 ## `mcts inspect replay`
 
-Replay one transcript
+Open the interactive replay TUI for a transcript hash prefix. Navigate forward and backward through recorded moves while viewing multi-backend equity overlays when sidecars or live recompute paths are available.
 
 **Usage**: `mcts inspect replay <HASH-PREFIX> [options]`
 
@@ -389,7 +395,7 @@ Replay one transcript
 
 ## `mcts inspect cache list`
 
-List sidecars
+List transcript equity sidecar entries under the cache root, including backend/build slots and envelope neighbours.
 
 **Usage**: `mcts inspect cache list [options]`
 
@@ -412,7 +418,7 @@ List sidecars
 
 ## `mcts inspect cache prune`
 
-Prune stale sidecars
+Plan or delete stale equity sidecars. Use --dry-run to review the deletion plan first; --keep-current keeps the logical current backend/build slot.
 
 **Usage**: `mcts inspect cache prune [options]`
 
@@ -438,7 +444,7 @@ Prune stale sidecars
 
 ## `mcts inspect divergence`
 
-Show divergence matrix
+Resolve one transcript and render a divergence matrix from cached sidecars plus any live foreign recompute rows available in the image.
 
 **Usage**: `mcts inspect divergence <HASH-PREFIX> [options]`
 
@@ -467,7 +473,7 @@ Show divergence matrix
 
 ## `mcts test all`
 
-Run full suite and report card
+Run the aggregate Plan/Apply validation gate over generated-doc checks, prebuilt Cabal test stanzas, live verification cohorts, and the report-card workload. Use --dry-run or --plan-file to inspect the plan.
 
 **Usage**: `mcts test all [options]`
 
@@ -491,7 +497,7 @@ Run full suite and report card
 
 ## `mcts test parity-anchor`
 
-Measure backend parity anchor
+Measure a focused Q1/Q2 parity anchor between two explicit backend identifiers. Use --dry-run or --plan-file to inspect the planned benchmark and verification steps.
 
 **Usage**: `mcts test parity-anchor <BASELINE> <CANDIDATE> [options]`
 
@@ -522,7 +528,7 @@ Measure backend parity anchor
 
 ## `mcts test <stanza>`
 
-Run one prebuilt test stanza
+Run one Dockerfile-prebuilt Cabal test-suite executable by stanza name. Accepted stanza values are listed in help and command JSON.
 
 **Usage**: `mcts test <stanza> <STANZA> [options]`
 
@@ -550,7 +556,7 @@ Run one prebuilt test stanza
 
 ## `mcts lint files`
 
-Lint files
+Check file hygiene, forbidden workflow paths, and tracked generated-file drift. Pass --write to apply supported rewrites for this lint surface.
 
 **Usage**: `mcts lint files [options]`
 
@@ -573,7 +579,7 @@ Lint files
 
 ## `mcts lint docs`
 
-Lint docs
+Check generated documentation sections and tracked generated command artefacts for drift. Pass --write to regenerate before rechecking.
 
 **Usage**: `mcts lint docs [options]`
 
@@ -596,7 +602,7 @@ Lint docs
 
 ## `mcts lint haskell`
 
-Lint Haskell
+Run the Haskell style gate through the pinned container toolchain: Fourmolu, HLint, and the Cabal-format round trip. Pass --write for formatter-supported rewrites.
 
 **Usage**: `mcts lint haskell [options]`
 
@@ -619,7 +625,7 @@ Lint Haskell
 
 ## `mcts lint all`
 
-Run all linters
+Run every lint gate in the supported order: file hygiene, generated docs, and Haskell style.
 
 **Usage**: `mcts lint all [options]`
 
@@ -641,7 +647,7 @@ Run all linters
 
 ## `mcts docs check`
 
-Check generated docs
+Compare every registered generated section and tracked generated path with the current renderer output. Fails with the drifted path, marker key, and regenerate remedy.
 
 **Usage**: `mcts docs check [options]`
 
@@ -663,7 +669,7 @@ Check generated docs
 
 ## `mcts docs generate`
 
-Generate docs
+Regenerate marker-delimited docs and fully generated command artefacts from the typed registries. Use --dry-run or --plan-file to inspect the generation plan.
 
 **Usage**: `mcts docs generate [options]`
 
@@ -687,7 +693,7 @@ Generate docs
 
 ## `mcts commands`
 
-Show command registry
+Print the command registry. Use --tree for a compact topology view or --json for the stable schema consumed by tools and generated docs.
 
 **Usage**: `mcts commands [options]`
 
@@ -711,7 +717,7 @@ Show command registry
 
 ## `mcts help`
 
-Focused help
+Render focused parser help for a command path such as play or verify selfplay. Unknown targets report the nearest valid command-tree context.
 
 **Usage**: `mcts help [COMMAND...] [options]`
 
@@ -739,7 +745,7 @@ Focused help
 
 ## `mcts check-code`
 
-Run code-quality gate
+Run the project code-quality gate that combines doctrine alignment, generated-doc checks, Haskell style, and forbidden-surface linting.
 
 **Usage**: `mcts check-code [options]`
 
@@ -761,7 +767,7 @@ Run code-quality gate
 
 ## `mcts build cpp-legacy`
 
-C++ legacy backend build recipe
+Plan or run the C++ legacy backend build recipe used by the Dockerfile. Use --dry-run or --plan-file to inspect subprocesses before execution.
 
 **Usage**: `mcts build cpp-legacy [options]`
 
@@ -785,7 +791,7 @@ C++ legacy backend build recipe
 
 ## `mcts build cpp-imperative`
 
-C++ imperative backend build recipe
+Plan or run the C++ imperative steelman backend recipe, including the mandatory PGO/BOLT path. Use --dry-run or --plan-file to inspect subprocesses.
 
 **Usage**: `mcts build cpp-imperative [options]`
 
@@ -809,7 +815,7 @@ C++ imperative backend build recipe
 
 ## `mcts build cpp-functional`
 
-C++ functional backend build recipe
+Plan or run the C++ functional-core backend recipe, including the shared C++ PGO/BOLT flow. Use --dry-run or --plan-file to inspect subprocesses.
 
 **Usage**: `mcts build cpp-functional [options]`
 
@@ -833,7 +839,7 @@ C++ functional backend build recipe
 
 ## `mcts build rust`
 
-Rust backend build recipe
+Plan or run the Rust cdylib backend recipe, including the mandatory PGO/BOLT path. Use --dry-run or --plan-file to inspect subprocesses.
 
 **Usage**: `mcts build rust [options]`
 
@@ -857,7 +863,7 @@ Rust backend build recipe
 
 ## `mcts build legacy-fixtures`
 
-Generate external legacy audit fixtures
+Generate optional external legacy audit fixtures under an explicit output directory. The output is not a normal validation input; use --dry-run or --plan-file to inspect the recipe.
 
 **Usage**: `mcts build legacy-fixtures [options]`
 

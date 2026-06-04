@@ -41,9 +41,11 @@ and
 [Automatically Generated Documentation](../../HASKELL_CLI_TOOL.md#automatically-generated-documentation)
 sections:
 
-- Every leaf `mcts <path> --help` shows required inputs, optional flags, defaults,
-  accepted enum values, comma-list syntax, examples, and command-specific side
-  effects.
+- Every leaf `mcts <path> --help` shows an action-oriented description of how to use
+  the command, required inputs, optional flags, defaults, accepted enum values,
+  comma-list syntax, examples, and command-specific side effects. Metavars such as
+  `BACKEND` are not sufficient unless the same help surface also names the accepted
+  values and explains how the value changes command behavior.
 - `mcts help <path>` renders the same focused `optparse-applicative` help as the
   command's own `--help`, so operators do not need to know both forms.
 - `mcts commands --json` exposes the command tree plus option metadata, positional
@@ -55,13 +57,18 @@ sections:
   that backs parser readers, help, JSON, manpages, and Markdown command docs.
 - Generated docs and generated command artefacts are derived from the same typed registry
   that constructs parser topology; examples carried by that registry must parse in tests.
+- Generated Markdown/manpage command docs carry the same action-oriented descriptions
+  and examples as focused help; a generated page that lists flags without explaining the
+  command's operator workflow is stale.
 
 The current implementation satisfies this contract through the enriched
 `CommandSpec` registry and explicit semantic parsers in `src/MCTS/CLI/Parser.hs`.
-`OptionSpec` carries choice sets, defaults, positional arguments, list semantics, notes,
-and completion metadata; enum readers consume the same value sets that appear in help,
-JSON, manpages, Markdown, completions, and parse-error diagnostics. Phase `1`
-Sprint `1.13` closed this surface on 2026-06-03.
+`CommandSpec` carries action-oriented leaf descriptions and parseable examples;
+`OptionSpec` carries choice sets, defaults, positional arguments, list semantics,
+notes, and completion metadata; enum readers consume the same value sets that appear
+in help, JSON, manpages, Markdown, completions, and parse-error diagnostics. Phase `1`
+Sprint `1.13` closed the value-discovery and focused-help surface on 2026-06-03;
+Sprint `1.17` closed the follow-up command-use narrative surface on 2026-06-04.
 
 ## Command Matrix
 
@@ -240,6 +247,32 @@ json|table|plain` (default `table` on TTY, `plain` otherwise) and `--color
 auto|always|never` / `--no-color` apply to every non-TUI command. The TUI commands
 (`mcts play`, `mcts inspect replay`) own their own rendering and ignore both flag
 families; the `CommandSpec` declares this asymmetry.
+
+## `mcts play` Usage Modes
+
+`mcts play` opens the interactive `brick` TUI. The valid `--backend` and `--vs`
+values are the five backend identifiers above: `cpp-legacy`, `cpp-imperative`,
+`cpp-functional`, `rust`, and `haskell`.
+
+For human-vs-AI play, omit `--vs`. `--backend <backend> --side <side>` means the
+selected backend controls the named side and the human controls the opposite side.
+To play Hero against the Haskell engine controlling Villain:
+
+```bash
+hostbootstrap run play --backend haskell --side villain --rng native --max-plies 200 --sims 1000
+```
+
+For AI-vs-AI spectating, pass `--vs <backend>`. The `--backend` value controls
+`--side`, and `--vs` controls the other side. To watch Haskell Hero vs Rust Villain:
+
+```bash
+hostbootstrap run play --backend haskell --side hero --vs rust --rng native --max-plies 200 --sims 1000
+```
+
+In spectator mode the operator watches rather than enters moves; press Space in the
+TUI to advance AI turns when prompted. The focused help surface
+`hostbootstrap run help play`, generated command reference, `mcts commands --json`,
+manpage, and completions must expose this same backend list and mode semantics.
 
 ## `mcts play` Transcript Saves
 

@@ -397,20 +397,32 @@ playParser =
             backendReader
             ( OA.long "backend"
                 <> OA.metavar "BACKEND"
-                <> OA.help (choiceHelp "Backend controlled by --side" Spec.backendChoices)
+                <> OA.help
+                    ( choiceHelp
+                        "AI backend that controls the side named by --side; omit --vs for human play"
+                        Spec.backendChoices
+                    )
             )
         <*> OA.option
             sideReader
             ( OA.long "side"
                 <> OA.metavar "hero|villain"
-                <> OA.help (choiceHelp "Side controlled by --backend" Spec.sideChoices)
+                <> OA.help
+                    ( choiceHelp
+                        "Side controlled by --backend; the human plays the opposite side unless --vs is set"
+                        Spec.sideChoices
+                    )
             )
         <*> OA.optional
             ( OA.option
                 backendReader
                 ( OA.long "vs"
                     <> OA.metavar "BACKEND"
-                    <> OA.help (choiceHelp "Opponent backend" Spec.backendChoices)
+                    <> OA.help
+                        ( choiceHelp
+                            "Second AI backend for spectator mode; controls the side opposite --side"
+                            Spec.backendChoices
+                        )
                 )
             )
         <*> rngOption NativeRng True

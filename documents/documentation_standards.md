@@ -48,7 +48,10 @@ competing status ledgers.
 - **Engineering docs** (`engineering/`): architecture, design decisions, patterns,
   verification boundaries.
 - **CLI docs** (generated under `cli/`): API documentation, command schema,
-  generated tables, manpages, completion scripts.
+  generated tables, manpages, completion scripts. Each command description must
+  be action-oriented: it explains the mode of use, required choices, accepted
+  closed-set values behind metavars such as `BACKEND`, one minimal invocation,
+  and command-specific side effects or interactive controls.
 - **Reference docs** (the doctrine, the development plan): authoritative rules.
 
 ---

@@ -40,9 +40,12 @@ doctrine topology intact, and moving the stale-reference cleanup row to
 Completed. Sprint `0.1` (plan-suite bootstrap) and Sprint `0.2`
 (doctrine-driven scheduling audit) remain historical `Done` records. Later
 implementation phases remain closed on their owned code and evidence surfaces.
-Phase `1` Sprint `1.13` reclosed on 2026-06-03 after the CLI introspection surface
-became self-describing through focused help, enriched command metadata, generated docs,
-and completions.
+Phase `1` Sprint `1.17` reclosed on 2026-06-04 after the CLI command-use surface
+became self-describing in operator terms: every leaf command has action-oriented
+registry text, `mcts play` now explains valid backend identifiers, human-vs-AI
+side ownership, AI-vs-AI spectating with `--vs`, and the same text flows through
+focused help, enriched command metadata, generated docs, and completions. Sprint
+`1.13` remains the earlier value-introspection closure from 2026-06-03.
 The 2026-05-21 evidence-surface audit reopened the phases whose governed docs
 or code overclaimed the implementation. Phase `1` reclosed Sprint `1.10` on
 2026-05-21 after generated-document metadata and lint/code-quality contract
@@ -829,7 +832,7 @@ A sprint can move to `Done` only when all of the following are true:
 | Phase | Name | Status | Document |
 |-------|------|--------|----------|
 | 0 | Planning and Documentation Topology | ✅ Done (Sprint `0.4` README-authority citation cleanup closed 2026-05-27) | [phase-0-planning-documentation.md](phase-0-planning-documentation.md) |
-| 1 | Haskell CLI Surface, `CommandSpec`, Lint Stack | ✅ Done (Sprint `1.13` self-describing CLI introspection closed 2026-06-03: enum values, focused help, enriched command JSON/docs/completions) | [phase-1-haskell-cli-surface.md](phase-1-haskell-cli-surface.md) |
+| 1 | Haskell CLI Surface, `CommandSpec`, Lint Stack | ✅ Done (Sprint `1.17` action-oriented leaf command-use text closed 2026-06-04 after Sprint `1.13` enum values/focused help closure) | [phase-1-haskell-cli-surface.md](phase-1-haskell-cli-surface.md) |
 | 2 | Transcript Codec, RNG, and Determinism Contract | ✅ Done (Sprint `2.9` transcript/envelope doctrine realignment closed 2026-05-24) | [phase-2-transcript-codec-and-determinism.md](phase-2-transcript-codec-and-determinism.md) |
 | 3 | Backend (v) Haskell Engine | ✅ Done (Sprint `3.8` benchmark metric primitives closed 2026-05-24) | [phase-3-haskell-engine.md](phase-3-haskell-engine.md) |
 | 4 | Backend (i) C++ Legacy Port and FFI Bridge | ✅ Done (Sprint `4.7` Dockerfile gcc/g++ scrub closed 2026-05-30 after Sprint `4.6` cpp-legacy compiler pivot to `clang++-19` closed the same day; Sprints `4.1`–`4.5` remain closed for their delivered surfaces) | [phase-4-cpp-legacy-port-and-ffi-bridge.md](phase-4-cpp-legacy-port-and-ffi-bridge.md) |
@@ -903,8 +906,12 @@ Phase `1` Sprint `1.12` removed the generated `bench rollouts` summary drift so 
 command registry and generated docs match the implemented played-game workload. Sprint
 `1.13` reclosed the self-describing introspection gap: accepted values, defaults,
 examples, parse-error remedies, command JSON, manpages, completions, and focused help are
-discoverable from the CLI itself. This topology and generated-text reopening did not
-reopen Phases `2`–`8` on their implementation-owned surfaces.
+discoverable from the CLI itself. Sprint `1.17` reclosed the follow-up command-use
+gap: generated command docs now carry action-oriented descriptions for every leaf,
+and focused help explains how to use `mcts play`, including valid backend identifiers,
+side ownership, and spectator mode. This topology and generated-text reopening did
+not reopen Phases `2`–`8` on their
+implementation-owned surfaces.
 Implemented in the worktree:
 
 - `mcts.cabal`, `cabal.project`, `app/Main.hs`, `src/MCTS/**`, `test/**`,
@@ -1210,7 +1217,8 @@ This plan is complete only when all of the following are true:
 14. `mcts.cabal` declares the current six live test-suite stanzas, including
     `mcts-semantic-parity`, with
     `type: exitcode-stdio-1.0` and `tasty` as the in-stanza runner.
-15. `CommandSpec` is the source of truth for command topology, command tree
+15. `CommandSpec` is the source of truth for command topology, action-oriented
+    command-use descriptions, command tree
     (`mcts commands --tree`), JSON schema (`mcts commands --json`), markdown command
     reference, manpage command list, shell completion metadata, and examples.
     `Parser.hs` renders topology from the spec while retaining explicit semantic leaf

@@ -283,19 +283,39 @@ exerciseCommandParserSurface = do
     assert "command tree mentions verify" ("verify" `contains` renderCommandTree)
     assert "command json is object" (take 1 renderCommandJson == "{")
     assert "all leaves have examples" (all (not . null . examples) (leafSpecs commandSpec))
+    assert
+        "all leaves have action-oriented descriptions"
+        (all leafDescriptionIsActionable (leafSpecs commandSpec))
     assert "all registered examples parse" (all exampleParses registeredExampleInvocations)
     assert
         "play help enumerates backend choices"
         ( focusedHelpContains
             ["play"]
-            ["--backend BACKEND", "cpp-legacy", "cpp-imperative", "cpp-functional", "rust", "haskell"]
+            [ "--backend BACKEND"
+            , "cpp-legacy"
+            , "cpp-imperative"
+            , "cpp-functional"
+            , "rust"
+            , "haskell"
+            , "omit --vs for human play"
+            , "spectator mode"
+            ]
         )
     assert
         "focused help matches leaf --help surface"
         ( case parseCommand ["play", "--help"] of
             Right (RenderHelp helpText) ->
-                all (`contains` helpText) ["--backend BACKEND", "--side hero|villain", "cpp-imperative"]
-                    && focusedHelpContains ["play"] ["--backend BACKEND", "--side hero|villain", "cpp-imperative"]
+                all
+                    (`containsRenderedText` helpText)
+                    [ "--backend BACKEND"
+                    , "--side hero|villain"
+                    , "cpp-imperative"
+                    , "human plays the opposite side"
+                    , "spectator mode"
+                    ]
+                    && focusedHelpContains
+                        ["play"]
+                        ["--backend BACKEND", "--side hero|villain", "cpp-imperative", "spectator mode"]
             _ -> False
         )
     assert
@@ -717,10 +737,15 @@ exampleParses invocation =
         "mcts" : args -> isRight (parseCommand args)
         _ -> False
 
+leafDescriptionIsActionable :: CommandSpec -> Bool
+leafDescriptionIsActionable CommandSpec{description = commandDescription, summary = commandSummary} =
+    commandDescription /= commandSummary
+        && length (words commandDescription) >= 8
+
 focusedHelpContains :: [String] -> [String] -> Bool
 focusedHelpContains target needles =
     case renderFocusedHelp target of
-        Right helpText -> all (`contains` helpText) needles
+        Right helpText -> all (`containsRenderedText` helpText) needles
         Left _ -> False
 
 parseErrorContains :: Either AppError Command -> [String] -> Bool
@@ -731,6 +756,11 @@ parseErrorContains parsed needles =
 
 contains :: String -> String -> Bool
 contains needle haystack = any (needle `prefixOf`) (tails haystack)
+
+containsRenderedText :: String -> String -> Bool
+containsRenderedText needle haystack = normalize needle `contains` normalize haystack
+  where
+    normalize = unwords . words
 
 prefixOf :: String -> String -> Bool
 prefixOf prefix value = take (length prefix) value == prefix
@@ -2403,6 +2433,13 @@ exerciseCommandRenderers = do
         "generated command docs include accepted backend values"
         ( "`--backend BACKENDS`" `contains` renderCommandMarkdown
             && "`cpp-legacy`, `cpp-imperative`" `contains` renderCommandMarkdown
+        )
+    assert
+        "generated play docs explain human and spectator modes"
+        ( "Human plays Hero; haskell controls Villain." `contains` renderCommandMarkdown
+            && "Accepted backend values are cpp-legacy, cpp-imperative, cpp-functional, rust, and haskell."
+                `contains` renderCommandMarkdown
+            && "press Space in the TUI to advance AI turns" `contains` renderCommandMarkdown
         )
     assert
         "generated command docs do not call rollouts random-rollout"

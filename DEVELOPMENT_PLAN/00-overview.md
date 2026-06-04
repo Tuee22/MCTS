@@ -116,6 +116,13 @@ reopen backend, transcript, verification, or performance surfaces. The operator-
 contract is
 defined in
 [cli_command_surface.md → Self-Describing CLI Contract](../documents/engineering/cli_command_surface.md#self-describing-cli-contract).
+Phase `1` reopened again on 2026-06-04 for Sprint `1.17` after leaf-command
+descriptions still leaned on terse summaries, with `mcts play` as the concrete
+operator failure: `BACKEND` metavars needed explicit backend identifiers, and
+help/generated docs needed to explain human-vs-AI side ownership and AI-vs-AI
+spectator mode. Sprint `1.17` reclosed the same day with action-oriented registry
+descriptions, parser-help text, generated docs, README guidance, and semantic tests.
+Phases `2` through `8` remain closed on their owned surfaces.
 
 The 2026-05-19 report card remains useful smoke-baseline audit evidence, and the
 2026-05-21 optimized-C++ report-card refresh remains historical evidence against
@@ -398,10 +405,11 @@ temporary or operator-provided roots.
 ## Architecture Overview
 
 - **Haskell CLI surface.** One binary `mcts`. `CommandSpec` owns the command tree,
-  examples, generated command reference, manpage command list, JSON/tree/list
-  introspection, and tracked shell-completion artefacts. `MCTS.CLI.Parser` renders the
-  topology from that registry, while the leaf option parsers remain explicit semantic
-  parsers in `Parser.hs`; the parser is therefore not a competing CLI source of truth.
+  action-oriented command descriptions, examples, generated command reference, manpage
+  command list, JSON/tree/list introspection, and tracked shell-completion artefacts.
+  `MCTS.CLI.Parser` renders the topology from that registry, while the leaf option
+  parsers remain explicit semantic parsers in `Parser.hs`; the parser is therefore not
+  a competing CLI source of truth.
   The library-first layout puts `app/Main.hs` thin and logic in `src/MCTS/`.
   Owned by [phase-1-haskell-cli-surface.md](phase-1-haskell-cli-surface.md).
 - **Transcript codec, RNG, determinism contract.** The transcript wire format is
@@ -548,7 +556,8 @@ sprint may schedule adoption of an out-of-scope section.
 - Command Topology — commands as ordinary Haskell ADTs.
 - `CommandSpec` + Generated Artifacts — marker discipline, paired `mcts docs check` /
   `mcts docs generate`, `forbiddenPathRegistry`, generated-section registry,
-  `trackingGeneratedPaths` for fully-generated files (manpages, shell completions).
+  `trackingGeneratedPaths` for fully-generated files (manpages, shell completions),
+  and action-oriented command-use text.
 - Progressive Introspection — `mcts commands [--tree|--json]`, `mcts help <subcommand>`.
 - Subprocesses as Typed Values — `Subprocess` ADT with `subprocessPath`,
   `subprocessArguments`, `subprocessEnvironment`, `subprocessWorkingDirectory`;
@@ -811,11 +820,11 @@ referenceability.
     `-optlo-mcpu=native` / `-optlc-mcpu=native` is deferred on aarch64 until
     the assembler target accepts the emitted LSE instructions.
 21. Library-first layout: `app/Main.hs` is thin; logic lives under `src/MCTS/`.
-22. `CommandSpec` is the source of truth for the command topology, examples, generated
-    command reference, manpage command list, command-tree rendering, JSON
-    introspection, and tracked shell-completion artefacts. `MCTS.CLI.Parser` renders
-    subcommand topology from the registry and keeps leaf option parsing as explicit
-    typed semantic parsers.
+22. `CommandSpec` is the source of truth for the command topology, action-oriented
+    command-use descriptions, examples, generated command reference, manpage command
+    list, command-tree rendering, JSON introspection, and tracked shell-completion
+    artefacts. `MCTS.CLI.Parser` renders subcommand topology from the registry and
+    keeps leaf option parsing as explicit typed semantic parsers.
 23. `Subprocess` is the only IO boundary for subprocess execution. `callProcess`,
     `readCreateProcess`, `System.Process` constructors, and `typed-process` smart
     constructors are hlint-forbidden outside the `runStreaming` / `capture`
@@ -1006,13 +1015,14 @@ Dockerfile-level aarch64 `-mcpu=apple-m1` unblock. Sprints `4.6`, `6.11`, and
 `4.7` then unified the C++ build surface on `clang++-19`; the post-`4.7`
 aggregate recorded `Verdict: Trails parity band by 69.1%` with Q3/Q4/Q6/Q7
 PASS and `normalized_divergence_score=0.0000`.
-Phase `1` Sprint `1.13` has reclosed self-describing CLI introspection.
+Phase `1` Sprint `1.17` has reclosed self-describing CLI command-use text after
+Sprint `1.13` reclosed value introspection.
 
 | Surface | Current Repo State | Intended End State |
 |---------|--------------------|--------------------|
 | Repository layout | `app/`, `src/MCTS/`, `src/MCTS/Generated/`, `cpp-legacy/`, `cpp-imperative/`, `cpp-functional/`, `rust/`, `bench/`, `test/`, `docker/`, root `hostbootstrap.dhall`, `cabal.project`, `fourmolu.yaml`, `.hlint.yaml`, `.gitignore`, `.dockerignore`, `mcts.cabal`, generated-artefact targets `documents/cli/commands.md`, `share/man/man1/mcts.1`, and `share/completion/{bash,zsh,fish}/` | Same layout; no generated validation data required under `test/` and no checked-in PGO/BOLT profile snapshots |
 | Build artefacts | `mcts.cabal` declares the `mcts` binary, live Haskell test stanzas, benchmark stanza, and the doctrine-standard dependency envelope; host validation enters through `hostbootstrap run check-code` under the pinned toolchain. The foreign backend tree is live for `cpp-legacy/`, `cpp-imperative`, `cpp-functional`, and `rust`; Dockerfile invokes the C++ and Rust PGO/BOLT Plan/Apply build recipes during image construction, and those recipes fail closed on missing profile data, missing `.fdata`, failed BOLT output, or a crashing installed bolted library. PGO/BOLT training uses the bounded metric-suite profile suite owned by Sprints `8.10` and `8.11`, including terminal playout, search-iteration, legacy played-game rollout, and self-play workloads; Sprint `5.7` retuned backend `(ii)` training after the action-only/SoA kernel rewrite. | Container-image `mcts` binary, installed Cabal test-suite executables, installed `mcts-criterion` benchmark executable, and image-local shared libraries for `cpp-legacy`, optimized `cpp-imperative`, optimized `cpp-functional`, and `rust` produced by `docker/Dockerfile`; runtime validation consumes those artefacts without rebuilding them, and steelman shared libraries exist only after successful Dockerfile-time PGO+BOLT trained on an accepted profile suite |
-| CLI surface | The complete command family is wired: `bench`, `verify`, `verify legacy-parity`, `inspect`, `test`, `lint`, `docs`, `commands`, `help`, `check-code`, `build`, and `play`. Generated command docs are checked against the renderer, tracked generated-file drift fails `mcts lint files`, generated path/section registries live under `src/MCTS/Generated/`, parser topology is rendered from enriched `CommandSpec` metadata with explicit semantic leaf option parsers, and `mcts test all` routes recursive CLI calls through the installed image-local `mcts` binary. Sprint `1.13` closed the self-describing introspection surface: every leaf command exposes required inputs, defaults, accepted values, examples, parse-error remedies, JSON schema data, manpage data, and shell completions from one choice-aware registry. | Same surface backed by real C++/Rust/Haskell engines and fully self-describing introspection: bench/play/inspect dispatch through selected foreign backends when their shared libraries are present and the relevant ABI path can represent the run, Q3 covers `(ii)..(v)`, Q6 covers all five, Dockerfile-invoked build recipes exist for `cpp-legacy`, `cpp-imperative`, `cpp-functional`, and `rust`, `legacy-fixtures` remains explicit external audit-fixture generation, and every leaf command exposes required inputs, defaults, accepted values, examples, parse-error remedies, JSON schema data, manpage data, and shell completions from one choice-aware registry |
+| CLI surface | The complete command family is wired: `bench`, `verify`, `verify legacy-parity`, `inspect`, `test`, `lint`, `docs`, `commands`, `help`, `check-code`, `build`, and `play`. Generated command docs are checked against the renderer, tracked generated-file drift fails `mcts lint files`, generated path/section registries live under `src/MCTS/Generated/`, parser topology is rendered from enriched `CommandSpec` metadata with explicit semantic leaf option parsers, and `mcts test all` routes recursive CLI calls through the installed image-local `mcts` binary. Sprint `1.13` closed the self-describing introspection surface: every leaf command exposes required inputs, defaults, accepted values, examples, parse-error remedies, JSON schema data, manpage data, and shell completions from one choice-aware registry. Sprint `1.17` closed the follow-up command-use surface: generated docs and focused help explain how to use `mcts play`, including backend identifiers, side ownership, and spectator mode. | Same surface backed by real C++/Rust/Haskell engines and fully self-describing introspection: bench/play/inspect dispatch through selected foreign backends when their shared libraries are present and the relevant ABI path can represent the run, Q3 covers `(ii)..(v)`, Q6 covers all five, Dockerfile-invoked build recipes exist for `cpp-legacy`, `cpp-imperative`, `cpp-functional`, and `rust`, `legacy-fixtures` remains explicit external audit-fixture generation, and every leaf command exposes required inputs, defaults, accepted values, action-oriented usage descriptions, examples, parse-error remedies, JSON schema data, manpage data, and shell completions from one choice-aware registry |
 | Test stanzas | Six live Cabal stanzas currently exist: `mcts-unit`, `mcts-integration`, `mcts-cross-backend`, `mcts-legacy-parity`, `mcts-semantic-parity`, and `mcts-haskell-style`. Each stanza has its own `tasty` runner, Dockerfile prebuilds every test executable, `mcts-cross-backend` invokes real `mcts verify` subprocesses serially around the process-pinned dynamic-library and shared C++ RNG bridge path, and `hostbootstrap run test all` is the host validation gate under the pinned container toolchain. `mcts-unit` uses semantic/property/temp-dir checks instead of `tasty-golden`. | Keep all validation data generated in memory or temporary directories during the run, so clean-clone validation has no `test/golden/` prerequisite and no runtime test-stanza compilation |
 | Toolchain | `mcts.cabal` pins `tested-with: ghc ==9.12.4`; `cabal.project` pins `with-compiler: ghc-9.12.4` and mirrors the report-card constants as comments. The formatter tools share the project GHC under Sprint `1.16`. | GHC `9.12.4`, Cabal `3.16.1.0` (Phase 1 reopen Sprint `1.14`), formatter tools (`fourmolu-0.19.0.1`, `hlint-3.10`) sharing the project GHC `9.12.4` at `/opt/hostbootstrap/haskell-style/bin/` (Sprint `1.16`), `clang++-19` for C++ backends `(i)`, `(ii)`, and `(iii)` (Sprints `4.6`, `5.9`, `6.11`), `llvm-profdata-19` for `(ii)`/`(iii)` LLVM PGO, Rust `1.95.0`, LLVM/BOLT `19`, and no first-class GCC backend build path after Sprint `4.7`. The toolchain layers are inherited from the hostbootstrap base image `docker.io/tuee22/hostbootstrap:basecontainer-cpu-<arch>` per [phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md); the project Dockerfile adds only what the base does not ship. |
 | Determinism contract | Live C++ and Rust foreign backends dispatch through real FFI engines under `bench`, `play`, `inspect divergence`, Q3 `verify` when shared libraries are present and the fixed search-horizon ABI can represent the run, and Q6 `verify legacy-parity`; the integration stanza's direct live-FFI smoke cases are Rust-specific, with C++ live coverage carried by Q3/Q6/report-card surfaces. Transcript codec, full v1 envelope, process-pinned envelope and C++ RNG dynamic handles, SHA-256 content addressing, cache root resolution, prefix lookup, binary `MEQ1` equity sidecars, layered envelope checks, `divergenceVsEqStream`, compact foreign recompute/read-visits evidence surfaces, canonical search-side 12-wall child caps across the current live cohort, decoded real-binary transcript determinism, and hard-fail `VerifyMismatch` rollout/self-play cohorts in `mcts-cross-backend` are implemented. Sprints `2.8` and `7.6` tighten version handling and sidecar/recompute labeling. | Enforced by live-FFI-capable cross-backend `mcts verify {rollouts,selfplay}` over `(ii)..(v)`, decoded same-backend transcript checks, Rust live FFI-envelope cases under `mcts-integration`, and Q6 legacy-envelope checks across all five |

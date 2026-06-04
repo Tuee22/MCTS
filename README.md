@@ -78,6 +78,10 @@ wrappers, or direct project `docker build` / `docker run` commands.
 ## Play Against The Computer
 
 Use `mcts play` from a real terminal so the Brick TUI can open.
+Valid backend identifiers for play are `cpp-legacy`, `cpp-imperative`,
+`cpp-functional`, `rust`, and `haskell`; the same list appears in
+`hostbootstrap run help play`, generated command docs, command JSON, and
+shell completions.
 
 To play as Hero against the Haskell computer opponent:
 
@@ -126,6 +130,11 @@ hostbootstrap run play --backend haskell --side hero --vs rust --rng native --ma
 ```
 
 In spectator mode, press Space to advance an AI turn when prompted.
+
+Every command surface is meant to be self-describing. Use
+`hostbootstrap run help <command-path>` for focused usage text and
+`hostbootstrap run commands --json` for machine-readable command paths,
+options, defaults, accepted values, examples, and notes.
 
 ## Common Commands
 

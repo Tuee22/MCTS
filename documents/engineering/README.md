@@ -22,10 +22,11 @@ the development plan changes the supported architecture, the affected doctrine d
 must be updated in the same change so they continue to describe the implemented
 repository state.
 
-Current planning note: Phase `1` Sprint `1.13` closed the self-describing CLI
-introspection gap on 2026-06-03. The backend, transcript, verification, and
-performance surfaces were not reopened; the work was limited to parser/help,
-command-metadata introspection, generated docs, and completions.
+Current planning note: Phase `1` Sprint `1.17` closed the follow-up
+self-describing CLI command-use gap on 2026-06-04 after Sprint `1.13` had closed
+enum-value introspection on 2026-06-03. The backend, transcript, verification,
+and performance surfaces were not reopened; the work was limited to parser/help,
+leaf command-metadata descriptions, generated docs, and completions.
 
 The canonical CLI doctrine for this project lives at
 [../../HASKELL_CLI_TOOL.md](../../HASKELL_CLI_TOOL.md). The overlap docs below
