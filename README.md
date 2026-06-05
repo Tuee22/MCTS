@@ -76,6 +76,13 @@ passes arguments to the image's tini-wrapped `mcts` ENTRYPOINT. Do not repeat
 host `cabal`, `cargo`, `cmake`, `make`, formatter binaries, repository shell
 wrappers, or direct project `docker build` / `docker run` commands.
 
+MCTS is a `NoCluster` hostbootstrap project. The single root
+`hostbootstrap.dhall` declares `AppleSilicon`, `LinuxCpu`, and `LinuxGpu` entries,
+all using the same container model and the `.mcts-cache/` mount. `hostbootstrap
+cluster up/down/delete` is intentionally unsupported here; there is no project
+cluster or daemon to manage. Use `hostbootstrap run <mcts-args>` for every
+workflow.
+
 ## Play, Spectate, And Inspect
 
 The supported host command shape is `hostbootstrap run <mcts-args>`. Run

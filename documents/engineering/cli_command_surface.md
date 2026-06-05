@@ -181,12 +181,12 @@ output root, seed, game count, and simulation count as explicit flags. Its outpu
 must be directed to an external or ignored artifact root and is not a normal
 `mcts test all` input. All five backend identifiers remain first-class CLI values.
 
-Operator host path: `hostbootstrap run <mcts-args>` uses the refactored
-`hostbootstrap.dhall` target schema with one CPU target and a scoped `.mcts-cache/`
-mount. The Dockerfile labels interactive paths so hostbootstrap forwards stdin and
-allocates a TTY for `play`, no-argument `inspect`, and `inspect replay` when the
-host invocation itself has a TTY. Non-interactive commands keep ordinary stdout and
-stderr behavior.
+Operator host path: `hostbootstrap run <mcts-args>` uses the substrate-keyed
+`hostbootstrap.dhall` `NoCluster` schema: `AppleSilicon`, `LinuxCpu`, and `LinuxGpu`
+all select the same container model with a scoped `.mcts-cache/` mount. The
+Dockerfile labels interactive paths so hostbootstrap forwards stdin and allocates a
+TTY for `play`, no-argument `inspect`, and `inspect replay` when the host invocation
+itself has a TTY. Non-interactive commands keep ordinary stdout and stderr behavior.
 
 ## Typed Source of Truth
 

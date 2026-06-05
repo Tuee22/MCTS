@@ -25,7 +25,7 @@ repository state.
 Current planning note: the 2026-06-05 operator UI audit reopened and reclosed
 Phase `9` Sprint `9.4`, Phase `1` Sprint `1.18`, Phase `2` Sprint `2.10`, and
 Phase `7` Sprint `7.12`. The closure covers hostbootstrap TTY support,
-refactored `hostbootstrap.dhall` target/mount adoption, no-argument `play` and
+substrate-keyed `hostbootstrap.dhall` `NoCluster` adoption, no-argument `play` and
 `inspect`, descriptive cached-game selection, shared live/replay session status,
 recorded-position backend equity recomputation, and PTY smoke evidence. Backend
 optimization, report-card, and Q3/Q4/Q6/Q7 parity surfaces remain closed on their

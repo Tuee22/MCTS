@@ -38,10 +38,11 @@
 and runs through `hostbootstrap run <mcts-args>`. Sprint `9.3`
 closed by proving the canonical post-migration `hostbootstrap run test all` gate
 emits a non-pending report card and passes Q3/Q4/Q6/Q7 under the new image. Sprint
-`9.4` reclosed on 2026-06-05 after moving `hostbootstrap.dhall` from host-named
-entries to `targets`, using one `H.target H.Accel.Cpu` container target, adding the
-scoped `.mcts-cache/` mount supported by container models, and consuming
-hostbootstrap TTY/stdin support for interactive `play` and `inspect`. Phase 1
+`9.4` reclosed on 2026-06-05 after moving `hostbootstrap.dhall` to the
+substrate-keyed `NoCluster` schema, declaring `AppleSilicon`, `LinuxCpu`, and
+`LinuxGpu` entries that all use the same container model, adding the scoped
+`.mcts-cache/` mount supported by container models, and consuming hostbootstrap
+TTY/stdin support for interactive `play` and `inspect`. Phase 1
 Sprints `1.14`, `1.15`, and `1.16` are reclosed; Phase 0 Sprint `0.5` is
 reclosed. Phases `3`, `4`, `5`, `6`, and `8` remain closed on their owned
 backend/performance surfaces.
@@ -60,22 +61,19 @@ backend/performance surfaces.
   ensurepath`, and the same `pipx install …` command. Validated with
   `hostbootstrap doctor`.
 - Sprint `9.4` target shape for `hostbootstrap.dhall`: typed project config carrying
-  `targets = [ H.target H.Accel.Cpu container ]`, where `container` is
-  `H.Model.Container` with `service = False`, `dockerfile =
-  "docker/Dockerfile"`, and a scoped `.mcts-cache/` mount. The schema is injected
-  by the CLI as `H`; no import line. Hostbootstrap selects this CPU target on
-  Apple Silicon, Linux CPU, and Linux GPU hosts because CPU targets run on every
-  supported host capability set. MCTS does not name specific host classes in the
-  project config.
+  `substrates = [ H.entry ... (H.noCluster container) ]`, with `AppleSilicon`,
+  `LinuxCpu`, and `LinuxGpu` all selecting the same `H.Model.Container` record:
+  `dockerfile = "docker/Dockerfile"` plus a scoped `.mcts-cache/` mount. The schema
+  is injected by the CLI as `H`; no import line. MCTS has no cluster lifecycle and
+  no host daemon, so `hostbootstrap cluster ...` commands fail fast by design.
 - `docker/Dockerfile` inherits `FROM ${BASE_IMAGE}` — the CLI passes the
-  arch-specific tag
-  `docker.io/tuee22/hostbootstrap:basecontainer-cpu-<arch>` — and adds
-  only the project-specific layers: source copy, the seven Cabal exe
-  builds, and the four `mcts build <backend>` invocations that produce
-  the foreign backend `.so` artifacts.
-- MCTS uses the same CPU container model on every host. Hostbootstrap derives the
-  CPU base-image family from `H.Accel.Cpu`; the project does not request
-  GPU-specific runtime behavior.
+  hostbootstrap base image selected for the active substrate — and adds only the
+  project-specific layers: source copy, the seven Cabal exe builds, and the four
+  `mcts build <backend>` invocations that produce the foreign backend `.so`
+  artifacts.
+- MCTS uses the same container execution model on every host. Hostbootstrap selects
+  the base-image family from the selected substrate; the project does not request
+  cluster or daemon behavior.
 
 **Out of scope (owned by Phase 1 reopen sprints, or deferred):**
 
@@ -98,11 +96,11 @@ backend/performance surfaces.
 | [`../CLAUDE.md`](../CLAUDE.md), [`../AGENTS.md`](../AGENTS.md) | New paragraph naming `hostbootstrap` as the host-installed orchestrator, the `pipx` install command, and `hostbootstrap doctor` for prerequisite validation (Sprint 9.1). The canonical command shape sentence in those files is owned by Sprint 1.15; the toolchain pin sentence is owned by Sprint 1.14; the lint stack sentence is owned by Sprint 1.16. |
 | [`../HASKELL_CLI_TOOL.md`](../HASKELL_CLI_TOOL.md) | New paragraph naming `hostbootstrap` as the orchestrator and the base image as the toolchain source (Sprint 9.1). The pin block sweep is owned by Sprint 1.14. |
 | [`../README.md`](../README.md) | New onboarding lines naming `pipx install hostbootstrap` and `hostbootstrap doctor` (Sprint 9.1). Sprint `9.4` updated the operator guidance for the refactored target-schema cache mount and TTY/stdin support. The operator command syntax sweep is owned by Sprint 1.15. |
-| [`README.md`](README.md) | Phase 9 row in phase index; Phase 9 paragraph in closure-status block (Sprint 9.1). Sprint `9.4` updates the phase status and closure summary for the `targets` / `H.Accel.Cpu` config and scoped cache mount. |
-| [`00-overview.md`](00-overview.md) | Phase 9 paragraph in Current Handoff Status section; Phase 9 bullet in Doctrine Scope; line 960 layout row update to name `hostbootstrap.dhall` (Sprint 9.1). Sprint `9.4` updates those surfaces for the refactored target schema and cache mount. The entrypoint-doctrine sweep is owned by Sprint 1.15; the pin sweep is owned by Sprint 1.14; the lint stack annotation is owned by Sprint 1.16. |
-| [`system-components.md`](system-components.md) | Docker development environment row at line 301 fully rewritten to name `hostbootstrap.dhall`, the slim `docker/Dockerfile`, and the inherited base image (Sprint 9.1). Sprint `9.4` updates the row to name `targets`, `H.Accel.Cpu`, and the scoped `.mcts-cache/` mount. The toolchain-version sweep is owned by Sprint 1.14; the Rust pin annotation is owned by Sprint 9.1. |
+| [`README.md`](README.md) | Phase 9 row in phase index; Phase 9 paragraph in closure-status block (Sprint 9.1). Sprint `9.4` updates the phase status and closure summary for the substrate-keyed `NoCluster` config and scoped cache mount. |
+| [`00-overview.md`](00-overview.md) | Phase 9 paragraph in Current Handoff Status section; Phase 9 bullet in Doctrine Scope; line 960 layout row update to name `hostbootstrap.dhall` (Sprint 9.1). Sprint `9.4` updates those surfaces for the substrate-keyed `NoCluster` schema and cache mount. The entrypoint-doctrine sweep is owned by Sprint 1.15; the pin sweep is owned by Sprint 1.14; the lint stack annotation is owned by Sprint 1.16. |
+| [`system-components.md`](system-components.md) | Docker development environment row at line 301 fully rewritten to name `hostbootstrap.dhall`, the slim `docker/Dockerfile`, and the inherited base image (Sprint 9.1). Sprint `9.4` updates the row to name the `NoCluster` substrate entries and the scoped `.mcts-cache/` mount. The toolchain-version sweep is owned by Sprint 1.14; the Rust pin annotation is owned by Sprint 9.1. |
 | [`legacy-tracking-for-deletion.md`](legacy-tracking-for-deletion.md) | Completed rows for the heavy multi-language toolchain layers, deleted `compose.yaml`, source pin update, retired formatter-tools GHC install layer (Sprint 9.2 closure), and the operator host-entry config/cache gap (Sprint 9.4 closure). |
-| [`../documents/engineering/cli_command_surface.md`](../documents/engineering/cli_command_surface.md), [`../documents/engineering/README.md`](../documents/engineering/README.md) | Sprint `9.4` records hostbootstrap TTY support and the refactored `hostbootstrap.dhall` target/mount adoption without duplicating Phase 9's config doctrine. |
+| [`../documents/engineering/cli_command_surface.md`](../documents/engineering/cli_command_surface.md), [`../documents/engineering/README.md`](../documents/engineering/README.md) | Sprint `9.4` records hostbootstrap TTY support and the substrate-keyed `NoCluster` config/mount adoption without duplicating Phase 9's config doctrine. |
 
 ## Sprint 9.1: hostbootstrap as host-side orchestrator ✅
 
@@ -237,8 +235,9 @@ None.
 ## Sprint 9.4: Target Schema, TTY, and Persistent Operator Cache ✅
 
 **Status**: Done
-**Implementation**: `hostbootstrap.dhall` now uses `targets = [ H.target H.Accel.Cpu container ]`
-with a scoped `.mcts-cache/` mount; `docker/Dockerfile` labels interactive command
+**Implementation**: `hostbootstrap.dhall` now uses substrate-keyed `H.noCluster` entries for
+`AppleSilicon`, `LinuxCpu`, and `LinuxGpu`, all pointing at the same container model with a
+scoped `.mcts-cache/` mount; `docker/Dockerfile` labels interactive command
 paths; local `hostbootstrap` run behavior forwards stdin and allocates a TTY only
 for labelled interactive command paths when the host invocation itself has a TTY.
 No repository shell wrappers were added.
@@ -251,18 +250,19 @@ No repository shell wrappers were added.
 
 ### Objective
 
-Make `hostbootstrap.dhall` compatible with the refactored hostbootstrap schema and
+Make `hostbootstrap.dhall` compatible with the substrate-keyed hostbootstrap schema and
 make `hostbootstrap run play` and `hostbootstrap run inspect` usable as the
 canonical host-side interactive operator commands while preserving the one-shot
 container model and the `hostbootstrap run <mcts-args>` command shape.
 
 ### Deliverables
 
-- `hostbootstrap.dhall` declares `targets`, not host-named entries: one
-  `H.target H.Accel.Cpu` container target covers Apple Silicon, Linux CPU, and
-  Linux GPU hosts because CPU capability is available on each supported host.
-- The container target keeps `dockerfile = "docker/Dockerfile"` and
-  `service = False`.
+- `hostbootstrap.dhall` declares `substrates`, not acceleration targets:
+  `AppleSilicon`, `LinuxCpu`, and `LinuxGpu` each select `H.noCluster container`
+  because MCTS has no project cluster or host daemon lifecycle.
+- The shared container model keeps `dockerfile = "docker/Dockerfile"` and no
+  lifecycle flags; cluster commands are intentionally unsupported for this
+  project.
 - The default `.mcts-cache/` root is persisted across one-shot hostbootstrap runs
   through the target's `mounts` list. The mount is limited to operator cache state;
   it is not a bind-mounted workspace or a profile/build artifact escape hatch.
@@ -277,9 +277,9 @@ container model and the `hostbootstrap run <mcts-args>` command shape.
 
 ### Validation
 
-- `hostbootstrap run --no-pull commands --tree` exits 0 under the refactored
-  `hostbootstrap.dhall` target schema and renders `inspect - Browse transcript
-  cache`.
+- `hostbootstrap run --no-pull commands --tree` exits 0 under the
+  substrate-keyed `NoCluster` `hostbootstrap.dhall` schema and renders the
+  inspect command entry for cached transcripts.
 - `hostbootstrap run --no-pull play` from a non-TTY exits 1 with the explicit
   interactive-terminal guard instead of reaching the historical batch fallback.
 - `hostbootstrap run --no-pull play --max-plies 2 --sims 1` from a real PTY opens

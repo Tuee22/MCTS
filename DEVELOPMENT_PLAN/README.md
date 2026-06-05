@@ -745,9 +745,10 @@ for descriptive cached-game rows and recorded-position recompute; Phase `7`
 reclosed Sprint `7.12` for the shared session model and PTY smoke evidence. Phase
 `0` reclosed Sprint `0.5`, and Phases `3`, `4`, `5`, `6`, and `8` remain closed
 on their previously owned surfaces. Sprint `9.4` is `✅ Done`: the root
-`hostbootstrap.dhall` uses `targets` with a single `H.Accel.Cpu` container target,
-the scoped `.mcts-cache/` mount persists operator cache state across one-shot runs,
-and hostbootstrap forwards stdin/TTY only for labelled interactive command paths.
+`hostbootstrap.dhall` uses substrate-keyed `NoCluster` entries that share the
+same container model, the scoped `.mcts-cache/` mount persists operator cache
+state across one-shot runs, and hostbootstrap forwards stdin/TTY only for
+labelled interactive command paths.
 The Pending Removal table in
 [legacy-tracking-for-deletion.md](./legacy-tracking-for-deletion.md) has no open row
 for the stale hash-printing, cache, or host-entry config surfaces reopened by this

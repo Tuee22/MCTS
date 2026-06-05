@@ -140,8 +140,8 @@ the reproducible Docker development environment that every later sprint builds o
   under `src/MCTS/`.
 - `docker/Dockerfile` inherits `FROM ${BASE_IMAGE}` per
   [phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md) (the
-  `hostbootstrap` CLI passes the arch-specific tag
-  `docker.io/tuee22/hostbootstrap:basecontainer-cpu-<arch>`), which ships GHC
+  `hostbootstrap` CLI passes the base image selected for the active substrate),
+  which ships GHC
   `9.12.4` and Cabal `3.16.1.0`, one LLVM version shared by GHC's `-fllvm`
   backend and BOLT post-link (`19`), `clang-19`,
   `libclang-rt-19-dev`, Rust `1.95.0`, `mimalloc`, fourmolu `0.19.0.1`,
