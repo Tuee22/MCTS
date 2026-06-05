@@ -299,6 +299,8 @@ exerciseCommandParserSurface = do
             , "haskell"
             , "omit --vs for human play"
             , "spectator mode"
+            , "Move notation"
+            , ":save writes a transcript"
             ]
         )
     assert
@@ -312,10 +314,17 @@ exerciseCommandParserSurface = do
                     , "cpp-imperative"
                     , "human plays the opposite side"
                     , "spectator mode"
+                    , "Human plays Hero"
+                    , ":undo rewinds one ply"
                     ]
                     && focusedHelpContains
                         ["play"]
-                        ["--backend BACKEND", "--side hero|villain", "cpp-imperative", "spectator mode"]
+                        [ "--backend BACKEND"
+                        , "--side hero|villain"
+                        , "cpp-imperative"
+                        , "spectator mode"
+                        , "*(x,y)"
+                        ]
             _ -> False
         )
     assert
@@ -2440,6 +2449,8 @@ exerciseCommandRenderers = do
             && "Accepted backend values are cpp-legacy, cpp-imperative, cpp-functional, rust, and haskell."
                 `contains` renderCommandMarkdown
             && "press Space in the TUI to advance AI turns" `contains` renderCommandMarkdown
+            && "Move notation: *(x,y)" `contains` renderCommandMarkdown
+            && ":save writes a transcript" `contains` renderCommandMarkdown
         )
     assert
         "generated command docs do not call rollouts random-rollout"

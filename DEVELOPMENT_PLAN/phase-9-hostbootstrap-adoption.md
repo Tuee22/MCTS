@@ -31,48 +31,51 @@
 
 ## Phase Status
 
-✅ **Done.** Sprints `9.1`, `9.2`, and `9.3` are **Done** as of
+🔄 **Active.** Sprints `9.1`, `9.2`, and `9.3` are **Done** as of
 2026-06-04: the hostbootstrap doctrine has landed,
 `hostbootstrap.dhall` exists at repo root, `docker/Dockerfile` inherits
 `FROM ${BASE_IMAGE}`, `compose.yaml` is deleted, and the project builds
 and runs through `hostbootstrap run <mcts-args>`. Sprint `9.3`
-closed by proving the canonical post-migration `hostbootstrap run
-test all` gate emits a non-pending report card and passes Q3/Q4/Q6/Q7
-under the new image. Phase 1 Sprints `1.14`, `1.15`, and `1.16` are
-reclosed; Phase 0 Sprint `0.5` is reclosed. Phases 2–8 remain closed
-on their owned surfaces.
+closed by proving the canonical post-migration `hostbootstrap run test all` gate
+emits a non-pending report card and passes Q3/Q4/Q6/Q7 under the new image. Sprint
+`9.4` reopened on 2026-06-05 after operator use and the refactored hostbootstrap
+schema showed that MCTS must move `hostbootstrap.dhall` from host-named entries to
+`targets`, use one `H.target H.Accel.Cpu` container target, add the
+scoped `.mcts-cache/` mount now supported by container models, and still consume
+hostbootstrap TTY/stdin support for interactive `play` and `inspect`. Phase 1
+Sprints `1.14`, `1.15`, and `1.16` are reclosed; Phase 0 Sprint `0.5` is
+reclosed. Phases `3`, `4`, `5`, `6`, and `8` remain closed on their owned
+backend/performance surfaces.
 
 ## Doctrine Scope
 
 **In scope (Phase 9):**
 
-- `hostbootstrap` as a host-installed Python CLI providing substrate
-  detection, prerequisite validation, base-image pull, project-image
-  build, and one-shot `docker run --rm` dispatch. Installed once per
+- `hostbootstrap` as a host-installed Python CLI providing host capability
+  detection, prerequisite validation, base-image pull, project-image build, and
+  one-shot `docker run --rm` dispatch. Installed once per
   host with `pipx`; on Apple Silicon this means `brew install pipx`,
   `pipx ensurepath`, and `pipx install
   "git+https://github.com/tuee22/hostbootstrap.git#egg=hostbootstrap"`.
   On Ubuntu 24.04 this means `sudo apt install -y pipx`, `pipx
   ensurepath`, and the same `pipx install …` command. Validated with
   `hostbootstrap doctor`.
-- `hostbootstrap.dhall` at repo root: typed project config carrying
-  `H.Substrate.AppleSilicon`, `H.Substrate.LinuxCpu`, and
-  `H.Substrate.LinuxGpu` entries, all mapped to the same
-  `H.Model.Container` model with `service = False` and
-  `dockerfile = "docker/Dockerfile"`. The schema is injected by the CLI
-  as `H`; no import line. The installed hostbootstrap `0.1.0` CLI
-  detects macOS arm64 as `AppleSilicon`, so the Apple Silicon entry is
-  required even though MCTS still runs inside a Linux Docker container.
+- Sprint `9.4` target shape for `hostbootstrap.dhall`: typed project config carrying
+  `targets = [ H.target H.Accel.Cpu container ]`, where `container` is
+  `H.Model.Container` with `service = False`, `dockerfile =
+  "docker/Dockerfile"`, and a scoped `.mcts-cache/` mount. The schema is injected
+  by the CLI as `H`; no import line. Hostbootstrap selects this CPU target on
+  Apple Silicon, Linux CPU, and Linux GPU hosts because CPU targets run on every
+  supported host capability set. MCTS does not name specific host classes in the
+  project config.
 - `docker/Dockerfile` inherits `FROM ${BASE_IMAGE}` — the CLI passes the
   arch-specific tag
   `docker.io/tuee22/hostbootstrap:basecontainer-cpu-<arch>` — and adds
   only the project-specific layers: source copy, the seven Cabal exe
   builds, and the four `mcts build <backend>` invocations that produce
   the foreign backend `.so` artifacts.
-- MCTS uses the same CPU container model on every declared substrate.
-  Apple Silicon developers run the `apple-silicon` substrate against
-  Docker's `linux/arm64` base image; Linux CPU/GPU hosts run the
-  corresponding Linux substrate entries. The project does not request
+- MCTS uses the same CPU container model on every host. Hostbootstrap derives the
+  CPU base-image family from `H.Accel.Cpu`; the project does not request
   GPU-specific runtime behavior.
 
 **Out of scope (owned by Phase 1 reopen sprints, or deferred):**
@@ -83,15 +86,11 @@ on their owned surfaces.
   owned by [Sprint 1.15](phase-1-haskell-cli-surface.md#sprint-115-canonical-command-shape--hostbootstrap-run-mcts-command).
 - The lint stack architecture (formatter-tools GHC unified with project
   GHC) — owned by [Sprint 1.16](phase-1-haskell-cli-surface.md#sprint-116-lint-stack--formatter-tools-ghc-unified-with-project-ghc).
-- Apple-silicon host-native execution (MCTS runs in Docker on every
-  substrate).
-- Bind mounts for `transcripts/`, `.mcts-cache/`, `bench-profiles/` —
-  the legacy `compose.yaml` mounted nothing; the v1 `hostbootstrap.dhall`
-  preserves that behavior. A future revision may revisit.
-- `mcts play` (TUI) under the new entrypoint —
-  `hostbootstrap run` does not pass `-t`/`-i`; an upstream `hostbootstrap`
-  change is needed before `mcts play` runs that way. Not blocking
-  Phase 9 closure; `mcts test all` does not exercise `mcts play`.
+- Apple-silicon host-native execution (MCTS runs in Docker on every host).
+- General bind-mounted workspaces and generated profile roots remain out
+  of scope. Sprint `9.4` admits only the `hostbootstrap.dhall` container mount for
+  the operator `.mcts-cache/` root so one-shot `play` and `inspect` commands share
+  cached games.
 
 ## Documentation Requirements
 
@@ -99,23 +98,24 @@ on their owned surfaces.
 |---|---|
 | [`../CLAUDE.md`](../CLAUDE.md), [`../AGENTS.md`](../AGENTS.md) | New paragraph naming `hostbootstrap` as the host-installed orchestrator, the `pipx` install command, and `hostbootstrap doctor` for prerequisite validation (Sprint 9.1). The canonical command shape sentence in those files is owned by Sprint 1.15; the toolchain pin sentence is owned by Sprint 1.14; the lint stack sentence is owned by Sprint 1.16. |
 | [`../HASKELL_CLI_TOOL.md`](../HASKELL_CLI_TOOL.md) | New paragraph naming `hostbootstrap` as the orchestrator and the base image as the toolchain source (Sprint 9.1). The pin block sweep is owned by Sprint 1.14. |
-| [`../README.md`](../README.md) | New onboarding lines naming `pipx install hostbootstrap` and `hostbootstrap doctor` (Sprint 9.1). The operator command syntax sweep is owned by Sprint 1.15. |
-| [`README.md`](README.md) | Phase 9 row in phase index; Phase 9 paragraph in closure-status block (Sprint 9.1). |
-| [`00-overview.md`](00-overview.md) | Phase 9 paragraph in Current Handoff Status section; Phase 9 bullet in Doctrine Scope; line 960 layout row update to name `hostbootstrap.dhall` (Sprint 9.1). The entrypoint-doctrine sweep is owned by Sprint 1.15; the pin sweep is owned by Sprint 1.14; the lint stack annotation is owned by Sprint 1.16. |
-| [`system-components.md`](system-components.md) | Docker development environment row at line 301 fully rewritten to name `hostbootstrap.dhall`, the slim `docker/Dockerfile`, and the inherited base image (Sprint 9.1). The toolchain-version sweep is owned by Sprint 1.14; the Rust pin annotation is owned by Sprint 9.1. |
-| [`legacy-tracking-for-deletion.md`](legacy-tracking-for-deletion.md) | Completed rows for the heavy multi-language toolchain layers, deleted `compose.yaml`, source pin update, and retired formatter-tools GHC install layer (Sprint 9.2 closure). |
+| [`../README.md`](../README.md) | New onboarding lines naming `pipx install hostbootstrap` and `hostbootstrap doctor` (Sprint 9.1). Sprint `9.4` updates the operator gap so it names the refactored target-schema cache mount separately from TTY/stdin. The operator command syntax sweep is owned by Sprint 1.15. |
+| [`README.md`](README.md) | Phase 9 row in phase index; Phase 9 paragraph in closure-status block (Sprint 9.1). Sprint `9.4` updates the phase status and closure summary for the `targets` / `H.Accel.Cpu` config and scoped cache mount. |
+| [`00-overview.md`](00-overview.md) | Phase 9 paragraph in Current Handoff Status section; Phase 9 bullet in Doctrine Scope; line 960 layout row update to name `hostbootstrap.dhall` (Sprint 9.1). Sprint `9.4` updates those surfaces for the refactored target schema and cache mount. The entrypoint-doctrine sweep is owned by Sprint 1.15; the pin sweep is owned by Sprint 1.14; the lint stack annotation is owned by Sprint 1.16. |
+| [`system-components.md`](system-components.md) | Docker development environment row at line 301 fully rewritten to name `hostbootstrap.dhall`, the slim `docker/Dockerfile`, and the inherited base image (Sprint 9.1). Sprint `9.4` updates the row to name `targets`, `H.Accel.Cpu`, and the scoped `.mcts-cache/` mount. The toolchain-version sweep is owned by Sprint 1.14; the Rust pin annotation is owned by Sprint 9.1. |
+| [`legacy-tracking-for-deletion.md`](legacy-tracking-for-deletion.md) | Completed rows for the heavy multi-language toolchain layers, deleted `compose.yaml`, source pin update, and retired formatter-tools GHC install layer (Sprint 9.2 closure). Sprint `9.4` tracks the stale host-entry config/cache gap until the refactored target/mount config is implemented. |
+| [`../documents/engineering/cli_command_surface.md`](../documents/engineering/cli_command_surface.md), [`../documents/engineering/README.md`](../documents/engineering/README.md) | Sprint `9.4` names the hostbootstrap TTY gap and the refactored `hostbootstrap.dhall` target/mount adoption without duplicating Phase 9's config doctrine. |
 
 ## Sprint 9.1: hostbootstrap as host-side orchestrator ✅
 
 **Status**: Done
-**Implementation**: doctrine paragraphs added to `CLAUDE.md`, `AGENTS.md`, `HASKELL_CLI_TOOL.md`, `README.md`, `DEVELOPMENT_PLAN/README.md`, `DEVELOPMENT_PLAN/00-overview.md`, `DEVELOPMENT_PLAN/system-components.md`; new `phase-9-hostbootstrap-adoption.md` (this file); `hostbootstrap` installed on this host with `pipx`; root `hostbootstrap.dhall` landed with Apple Silicon, Linux CPU, and Linux GPU container entries.
+**Implementation**: doctrine paragraphs added to `CLAUDE.md`, `AGENTS.md`, `HASKELL_CLI_TOOL.md`, `README.md`, `DEVELOPMENT_PLAN/README.md`, `DEVELOPMENT_PLAN/00-overview.md`, `DEVELOPMENT_PLAN/system-components.md`; new `phase-9-hostbootstrap-adoption.md` (this file); `hostbootstrap` installed on this host with `pipx`; root `hostbootstrap.dhall` landed with the then-current hostbootstrap container config, with the refactored `targets` schema tracked by Sprint `9.4`.
 **Blocked by**: N/A
 **Docs to update**: [../CLAUDE.md](../CLAUDE.md), [../AGENTS.md](../AGENTS.md), [../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md), [../README.md](../README.md), [README.md](README.md), [00-overview.md](00-overview.md), [system-components.md](system-components.md), [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md).
 
 ### Objective
 
 Establish `hostbootstrap` as the host-installed orchestrator that
-substrate-detects, validates prerequisites, builds the project image
+detects host capabilities, validates prerequisites, builds the project image
 against the pinned base, and passes `<mcts-args>` to the image's
 tini-wrapped `mcts` ENTRYPOINT inside a one-shot container. Declare the
 typed `hostbootstrap.dhall` project config, the `FROM ${BASE_IMAGE}`
@@ -171,24 +171,9 @@ formatter-tools GHC install is collapsed into the project GHC.
 
 ### Deliverables
 
-- `hostbootstrap.dhall` at repo root per Sprint 9.1 schema:
-  ```dhall
-  let container =
-        H.Model.Container
-          H.Container::{
-          , dockerfile = "docker/Dockerfile"
-          , service = False
-          }
-
-  in  H.config
-        { project = "mcts"
-        , substrates =
-          [ H.entry H.Substrate.AppleSilicon container
-          , H.entry H.Substrate.LinuxCpu container
-          , H.entry H.Substrate.LinuxGpu container
-          ]
-        }
-  ```
+- `hostbootstrap.dhall` at repo root with the project container model; Sprint `9.4`
+  owns adapting that file to the refactored hostbootstrap `targets` schema and
+  adding the scoped `.mcts-cache/` mount.
 - `docker/Dockerfile` rewritten per the Sprint 9.1 inheritance pattern:
   `FROM ${BASE_IMAGE}`; copies source; builds the seven Cabal exes
   (`mcts-haskell-style`, `mcts-unit`, `mcts-integration`,
@@ -235,8 +220,7 @@ non-pending report card, and passes the Q3/Q4/Q6/Q7 invariants.
 - The phase plan records invariant/report-card closure, not hardcoded
   per-architecture throughput rates.
 - `hostbootstrap run test all` remains the source of truth for
-  live post-migration report-card numbers on whichever substrate runs
-  the gate.
+  live post-migration report-card numbers on whichever host runs the gate.
 - Cross-architecture report-card reruns remain permitted performance
   analysis, but they are not a Phase 9 closure prerequisite.
 
@@ -251,6 +235,69 @@ report-card verdict is a non-pending measurement label per the
 
 None.
 
+## Sprint 9.4: Target Schema, TTY, and Persistent Operator Cache 🔄
+
+**Status**: Active
+**Implementation**: `hostbootstrap.dhall`, upstream/local `hostbootstrap` run
+behavior as needed by the project; no repository shell wrappers.
+**Blocked by**: Upstream/local hostbootstrap support for interactive stdin/TTY
+forwarding. The refactored target schema and scoped cache mount are MCTS config
+work, not an upstream blocker.
+**Docs to update**: [../README.md](../README.md), [README.md](README.md),
+[00-overview.md](00-overview.md), [system-components.md](system-components.md),
+[legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md),
+[../documents/engineering/cli_command_surface.md](../documents/engineering/cli_command_surface.md),
+[../documents/engineering/unit_testing_policy.md](../documents/engineering/unit_testing_policy.md).
+
+### Objective
+
+Make `hostbootstrap.dhall` compatible with the refactored hostbootstrap schema and
+make `hostbootstrap run play` and `hostbootstrap run inspect` usable as the
+canonical host-side interactive operator commands while preserving the one-shot
+container model and the `hostbootstrap run <mcts-args>` command shape.
+
+### Deliverables
+
+- `hostbootstrap.dhall` declares `targets`, not host-named entries: one
+  `H.target H.Accel.Cpu` container target covers Apple Silicon, Linux CPU, and
+  Linux GPU hosts because CPU capability is available on each supported host.
+- The container target keeps `dockerfile = "docker/Dockerfile"` and
+  `service = False`.
+- The default `.mcts-cache/` root is persisted across one-shot hostbootstrap runs
+  through the target's `mounts` list. The mount is limited to operator cache state;
+  it is not a bind-mounted workspace or a profile/build artifact escape hatch.
+- `hostbootstrap run` forwards interactive stdin and allocates a TTY when the
+  selected `mcts` command is interactive, so Brick/Vty can open normally.
+- Non-interactive commands keep their existing stdout/stderr behavior and do not
+  receive unnecessary TTY allocation.
+- `hostbootstrap run play` no longer reaches the accidental batch fallback when
+  the operator requested the interactive game UI.
+- `hostbootstrap run inspect` can see games saved by earlier `play` runs without
+  requiring an explicit host path on every invocation.
+
+### Validation
+
+- `hostbootstrap run play` opens the game TUI from a real terminal.
+- `hostbootstrap run play --backend haskell --side hero --vs rust --rng native --max-plies 200 --sims 1000`
+  opens AI-vs-AI spectator mode and accepts Space to advance one AI ply.
+- `hostbootstrap run commands --tree` succeeds under the refactored
+  `hostbootstrap.dhall` target schema.
+- A game saved through `play` appears in a later `hostbootstrap run inspect`
+  cache browser without passing `--cache-dir`.
+- `hostbootstrap run test all` still exits 0 and does not require a TTY for
+  non-interactive validation.
+- `hostbootstrap run docs check` and `hostbootstrap run check-code` pass.
+
+### Remaining Work
+
+- Update `hostbootstrap.dhall` from the retired host-entry schema to
+  `targets = [ H.target H.Accel.Cpu container ]`.
+- Add the scoped persistent `.mcts-cache/` mount to the project hostbootstrap
+  configuration.
+- Add or consume hostbootstrap support for interactive TTY/stdin forwarding.
+- Revalidate the non-interactive validation gates after the interactive path
+  lands.
+
 ## Closure status
 
 | Sprint | Status | As of |
@@ -258,10 +305,13 @@ None.
 | `9.1` hostbootstrap as host-side orchestrator | ✅ Done | 2026-06-04 |
 | `9.2` Implementation — code-side migration | ✅ Done | 2026-06-04 |
 | `9.3` Post-migration report-card closure | ✅ Done | 2026-06-04 |
+| `9.4` Target schema, TTY, and persistent operator cache | 🔄 Active | 2026-06-05 |
 
-Phase 9 is closed. Phase 1 is closed through Sprints `1.14`, `1.15`,
-and `1.16`; Phase 0 is closed through Sprint `0.5`; Phases 2–8 remain
-closed on their owned surfaces. The repository implementation handoff is
-complete under the hostbootstrap workflow. See
+Phase 9 is active again for Sprint `9.4`. Phase 1 is closed through Sprints
+`1.14`, `1.15`, and `1.16` but reopened separately for Sprint `1.18`; Phase 0 is
+closed through Sprint `0.5`; Phases `3`, `4`, `5`, `6`, and `8` remain closed on
+their owned backend/performance surfaces. The repository implementation handoff is
+incomplete until the refactored target schema, scoped cache mount, and interactive
+hostbootstrap workflow close. See
 [`README.md`](README.md) closure-status block for the canonical
 cross-phase summary.

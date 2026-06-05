@@ -7,6 +7,7 @@
 [00-overview.md](00-overview.md), [system-components.md](system-components.md),
 [phase-0-planning-documentation.md](phase-0-planning-documentation.md),
 [phase-1-haskell-cli-surface.md](phase-1-haskell-cli-surface.md),
+[phase-2-transcript-codec-and-determinism.md](phase-2-transcript-codec-and-determinism.md),
 [phase-4-cpp-legacy-port-and-ffi-bridge.md](phase-4-cpp-legacy-port-and-ffi-bridge.md),
 [phase-5-cpp-imperative-steelman.md](phase-5-cpp-imperative-steelman.md),
 [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md),
@@ -181,6 +182,16 @@ day with registry-backed leaf descriptions, focused play parser help, generated
 docs, README guidance, and semantic tests; the completed row below records the
 stale command-use text cleanup.
 
+The 2026-06-05 operator UI audit reopened Phase `9` Sprint `9.4`, Phase `1`
+Sprint `1.18`, Phase `2` Sprint `2.10`, and Phase `7` Sprint `7.12`. The stale
+surfaces are operator-facing: hostbootstrap does not yet provide TTY/stdin, the
+MCTS config still needs the refactored target/mount shape for persistent cache
+state, `play` can appear to succeed while only running the non-interactive
+hash-printing batch fallback, `inspect` remains hash-first, live play and saved
+replay are split UI implementations, foreign recompute can be misread as
+same-position comparison after divergent choices, and `mcts test all` does not
+yet cover real PTY play/spectate/inspect workflows.
+
 Two classes of entries populate this ledger over time:
 
 1. **Doctrine-deviation residue.** Any worktree behavior that the implemented code
@@ -228,9 +239,21 @@ Q3/Q4/Q6/Q7 PASS and `normalized_divergence_score = 0.0000`. Sprint
 live report card remains the source of truth for current performance
 measurements.
 
+**2026-06-05 — Operator play/inspect cleanup opens.** The Pending Removal
+rows below are active until Sprints `9.4`, `1.18`, `2.10`, and `7.12`
+close with aligned generated docs, the refactored `hostbootstrap.dhall`
+target/mount config, PTY interaction coverage, and hostbootstrap validation
+through `hostbootstrap run <mcts-args>`.
+
 | Item | Owner | Notes |
 |------|-------|-------|
-| _None_ | _n/a_ | No cleanup-removal rows are pending. |
+| Non-TTY `play` batch fallback exposed as operator play | Sprints `1.18`, `9.4` | `hostbootstrap run play ...` currently prints `played one logical game ... hash=...` instead of opening the TUI. The operator surface must either open the interactive UI or fail with an actionable message; any batch self-play path must be clearly named as non-interactive. |
+| Short-lived hostbootstrap cache hides saved games between runs | Sprints `9.4`, `2.10` | The checked-in MCTS `hostbootstrap.dhall` still lacks the refactored `targets` schema and scoped `.mcts-cache/` mount, so hashes printed by one run are not useful to later `inspect` runs without explicit cache wiring. Refactored hostbootstrap supports container mounts; Sprint `9.4` owns adopting that config shape, and Sprint `2.10` owns the cache catalog surfaced to operators. |
+| Hash-first inspect selection | Sprints `1.18`, `2.10` | `inspect list/show/replay` require hash-prefix oriented operation. No-argument `inspect` must open a selectable cached-game browser with parameter-derived names while retaining hash prefixes for exact/scripted references. |
+| Split live play and saved replay UI logic | Sprint `7.12` | Live `play` and `inspect replay` use separate interaction models. The target is one game-session state, board, timeline, and overlay path for human-vs-AI, AI-vs-AI observation, saved replay, and in-progress replay. |
+| Foreign recompute can be misread as same-position equity comparison | Sprints `2.10`, `7.12` | Foreign recompute evidence must evaluate the board at the selected recorded/live cursor. Divergent chosen moves are labels/evidence, not a license for later overlay rows to follow the foreign backend's alternative line when the UI promises same-position comparison. |
+| `mcts test all` omits real PTY play/spectate/inspect workflows | Sprint `7.12` | Current tests cover parser/help, pure TUI dispatch, replay renderers, sidecars, divergence, and non-interactive subprocesses, but not end-to-end terminal interactions. Sprint `7.12` adds PTY-backed no-golden interaction coverage and wires it into or explicitly through the aggregate plan. |
+| Generated/help docs overclaim host-side interactive play | Sprint `1.18` | Focused help and generated command docs must stop implying that the current `hostbootstrap run play ...` path opens a TUI until Sprint `9.4` closes. Generated docs must describe no-argument `play`/`inspect`, defaults, cache browser behavior, and non-TTY guardrails from `CommandSpec`. |
 
 ## Pending Removal Notes
 

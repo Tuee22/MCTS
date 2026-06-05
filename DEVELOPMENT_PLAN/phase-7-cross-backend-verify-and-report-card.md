@@ -17,8 +17,9 @@
 
 ## Phase Status
 
-✅ **Done** for the current Q1-Q7 metric-suite report-card refactor, including
-Sprint `7.11` Q7 semantic parity. The Phase 7 correctness
+🔄 **Active** for the operator UI/test surface. The current Q1-Q7 metric-suite
+report-card refactor remains Done, including Sprint `7.11` Q7 semantic parity.
+The Phase 7 correctness
 surface remains live: Q3 verifies `(ii)..(v)`, Q6 verifies the `(i)..(v)` legacy
 envelope, the report-card machinery measures Q1a terminal playout throughput,
 Q1b search-iteration throughput, Q2 played-game self-play throughput, and split
@@ -28,6 +29,13 @@ after Sprint `5.3` closed. Sprint `7.6` reclosed the inspect/replay/divergence
 evidence surface on 2026-05-21 so originator, foreign-view, unavailable, and
 live-recompute labels cannot be misread as stronger evidence than the matching
 backend/build actually provides.
+
+Sprint `7.12` reopened on 2026-06-05 after operator use exposed that the live play
+TUI, saved replay TUI, and test coverage are not one end-to-end operator surface:
+AI-vs-AI observation advances one ply at a time in the current dispatcher, but the
+documented host path cannot open the TUI, live games cannot be replayed with the
+same overlay controls as saved games, and `mcts test all` does not exercise real
+PTY play/spectate/inspect interactions.
 
 The 2026-05-19 report-card evidence remains useful smoke-baseline audit context:
 Q1 ST 0.05x,
@@ -54,6 +62,8 @@ summary and divergence matrix, end with observed-metric answers for Q1a-Q7, and
 expose the raw rows in JSON. Sprint `7.11` adds Q7 semantic parity for `(ii)..(v)`,
 removes empirical divergence thresholds from report-card wording, and replaces the
 divergence headline with a single normalized score derived from the matrix.
+Sprint `7.12` owns the shared live/replay game-session model and the interaction
+tests needed to prove that operator surface.
 
 ## Sprint 7.1: Cabal Test Organization ✅
 
@@ -514,14 +524,75 @@ because both reopened surfaces landed in the same worktree update.
 
 None.
 
+## Sprint 7.12: Unified Game Session UI and Interaction Coverage 🔄
+
+**Status**: Active
+**Implementation**: `src/MCTS/CLI/Tui/Play.hs`,
+`src/MCTS/CLI/Tui/Replay.hs`, `src/MCTS/CLI/Tui/Board.hs`,
+`src/MCTS/CLI/Inspect.hs`, `src/MCTS/App.hs`, `test/unit`,
+`test/integration`, optional new PTY-focused Cabal test stanza if needed.
+**Blocked by**: Sprint `9.4` for host-side TTY and refactored
+`hostbootstrap.dhall` cache-mount closure; Sprint `1.18`
+for no-argument command surfaces; Sprint `2.10` for cache catalog and
+recorded-position recompute semantics.
+**Docs to update**: `README.md`, `documents/engineering/cli_command_surface.md`,
+`documents/engineering/unit_testing_policy.md`,
+`documents/engineering/determinism_contract.md`,
+`documents/engineering/transcript_format.md`, `DEVELOPMENT_PLAN/README.md`,
+`DEVELOPMENT_PLAN/00-overview.md`, `DEVELOPMENT_PLAN/system-components.md`,
+`DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md`
+
+### Objective
+
+Unify live play, AI-vs-AI observation, saved replay, in-progress replay, and
+backend equity overlays under one DRY game-session UI and prove the operator
+interactions with PTY-backed tests.
+
+### Deliverables
+
+- A shared game-session state model represents both saved transcripts and live games:
+  board timeline, current cursor, live cursor, player control map, transcript metadata,
+  loaded overlay columns, unavailable backend evidence, and save status.
+- Human-vs-AI and AI-vs-AI observed games use the same board/timeline/replay widgets
+  as saved `inspect replay`. The operator can rewind through already-played plies,
+  step forward, return to the live cursor, save, and continue the live game.
+- Spectator mode advances one AI ply per Space by default. It does not fly through the
+  entire game unless a future explicit auto-advance control is added.
+- On-demand backend equity overlays work from both saved replay and live replay
+  cursors, using the recorded-position recompute contract from Sprint `2.10`.
+- The implementation removes duplicated play-vs-replay board/status/timeline logic or
+  concentrates unavoidable differences at a small adapter boundary.
+- Tests cover user interactions rather than checked-in golden histories:
+  no-argument `play`, explicit human-vs-AI play, AI-vs-AI spectate, no-argument
+  `inspect`, cache-browser selection, saved replay, live replay/scrub, save and
+  reopen, on-demand overlay load, missing-backend unavailable labels, invalid input,
+  and non-TTY guardrail behavior.
+- `mcts test all` includes the new interaction tests or names the prebuilt
+  interaction stanza in its Plan/Apply sequence.
+
+### Validation
+
+- `hostbootstrap run test mcts-unit`
+- `hostbootstrap run test mcts-integration`
+- `hostbootstrap run test all`
+- `hostbootstrap run docs check`
+- `hostbootstrap run check-code`
+- PTY-backed tests synthesize all game histories and cache entries in temporary roots.
+
+### Remaining Work
+
+- Design and implement the shared game-session state model.
+- Refactor play/replay TUI modules onto the shared board/timeline/overlay path.
+- Add PTY-backed interaction coverage and wire it into `mcts test all`.
+
 ## Documentation Requirements
 
 **Engineering docs to create/update:**
 
 - `documents/engineering/cli_command_surface.md` — verify/test/play command surfaces plus
   Sprint `7.6` replay/divergence evidence labels and Sprint `7.8` report-card
-  metric units, plus Sprint `7.11` Q7 stanza routing and normalized divergence-score
-  wording.
+  metric units, Sprint `7.11` Q7 stanza routing and normalized divergence-score
+  wording, and Sprint `7.12` unified live/replay game-session behavior.
 - `documents/engineering/benchmark_metrics.md` — benchmark unit taxonomy and
   Q1-Q7 evidence mapping, including Sprint `7.8` metric units, Sprint `7.10`
   report-card term definitions and raw backend metric table semantics, and Sprint
@@ -532,7 +603,8 @@ None.
 - `documents/engineering/semantic_parity_contract.md` — Q7 semantic parity SSoT.
 - `documents/engineering/unit_testing_policy.md` — test stanza ownership and no generated
   validation data, plus the Sprint `7.10` report-card table layout and Sprint `7.11`
-  semantic-parity stanza.
+  semantic-parity stanza, plus Sprint `7.12` PTY-backed play/spectate/inspect
+  interaction coverage.
 
 **Product docs to create/update:**
 
@@ -546,7 +618,9 @@ None.
   completed after output labels and live recompute row coverage were reclosed, and
   records Sprint `7.10` report-card text-layout residue as completed; Sprint `7.11`
   records divergence-threshold renderer/comment residue as completed after the
-  normalized-score renderer and Q7 semantic-parity stanza landed.
+  normalized-score renderer and Q7 semantic-parity stanza landed. Sprint `7.12`
+  records the split live/replay UI and missing PTY interaction coverage as active
+  cleanup until the unified session closes.
 
 ## Related Documents
 

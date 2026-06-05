@@ -19,7 +19,7 @@
 
 ## Phase Status
 
-✅ **Done after focused reclosures.** A Cabal package, thin `app/Main.hs`,
+🔄 **Active after focused reclosures.** A Cabal package, thin `app/Main.hs`,
 `src/MCTS/` library layout, manual `CommandSpec` registry, parser, output/error
 boundary, typed `Subprocess` wrapper, Plan/Apply helpers, prerequisite skeleton,
 lint/docs commands, and `mcts-haskell-style` stanza exist;
@@ -58,7 +58,10 @@ leaf-command descriptions, play examples, notes, parser-help text, generated doc
 README guidance, and semantic renderer/help tests. Sprints `1.1` through `1.17`
 remain closed on their owned CLI surface, `CommandSpec`, self-describing
 introspection, command-use text, lint stack, and toolchain-baseline surfaces;
-their closure narratives are preserved.
+their closure narratives are preserved. Sprint `1.18` reopened on 2026-06-05 for
+the operator play/inspect surface: no-argument `play` and `inspect`, command
+defaults, cache-browser entry, generated help/docs alignment, and explicit
+non-TTY guardrails remain active work.
 
 ## Phase Summary
 
@@ -73,6 +76,9 @@ fully introspectable through `--help`, `mcts help`, `mcts commands --json`,
 generated docs, and completions. Sprint `1.17` makes the same surfaces
 action-oriented: command descriptions explain how to use a command, not only which
 flags exist, with the `mcts play` human/spectator substrate as the forcing case.
+Sprint `1.18` extends that operator contract so `play` and `inspect` both have
+useful no-argument entrypoints and the help surface no longer implies that a
+non-interactive host run opens a TUI.
 `Parser.hs` renders the top-level/subcommand topology from that registry while
 retaining explicit semantic parsers for leaf options.
 The phase adopts
@@ -1560,9 +1566,69 @@ None.
   text, and the play leaf plus parser help described valid backends,
   human-vs-AI side ownership, AI-vs-AI spectator mode, and the Space-to-advance
   interaction through the same registry-backed surfaces.
-- Phases `2` through `8` remain closed on their owned backend, transcript,
-  verification, report-card, and performance surfaces; the reopening touched only
-  Phase `1` command metadata, help, generated command artefacts, and governed docs.
+- At the time of Sprint `1.17` closure, Phases `2` through `8` stayed closed on
+  their owned backend, transcript, verification, report-card, and performance
+  surfaces; the reopening touched only Phase `1` command metadata, help, generated
+  command artefacts, and governed docs. The later Sprint `1.18` audit reopens the
+  operator play/inspect command surface.
+
+## Sprint 1.18: No-Argument Play/Inspect and Interactive Guardrails 🔄
+
+**Status**: Active
+**Implementation**: `src/MCTS/CLI/Spec.hs`, `src/MCTS/CLI/Parser.hs`,
+`src/MCTS/App.hs`, `src/MCTS/CLI/Inspect.hs`, `documents/cli/commands.md`,
+`share/man/man1/mcts.1`, `share/completion/{bash,zsh,fish}/`
+**Blocked by**: Sprint `9.4` for host-side TTY/stdin and the refactored
+`hostbootstrap.dhall` cache-mount closure;
+Sprint `2.10` for the descriptive cache catalog; Sprint `7.12` for the shared UI.
+**Docs to update**: `README.md`, `documents/engineering/cli_command_surface.md`,
+`documents/engineering/unit_testing_policy.md`, `DEVELOPMENT_PLAN/README.md`,
+`DEVELOPMENT_PLAN/00-overview.md`, `DEVELOPMENT_PLAN/system-components.md`,
+`DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md`
+
+### Objective
+
+Make `play` and `inspect` usable without required flags, align generated help/docs
+with the real host workflow, and prevent the current non-TTY batch fallback from
+looking like a successful interactive game.
+
+### Deliverables
+
+- `mcts play` with no arguments opens the unified game UI using documented defaults
+  and in-UI setup controls. Explicit flags remain available for scripted or direct
+  setup: backend, side, opponent backend, RNG, seed, max plies, sims, and cache root.
+- `mcts inspect` with no arguments opens the cached-game browser supplied by
+  Sprint `2.10`. Existing scriptable leaves (`inspect list`, `inspect show`,
+  `inspect replay`, `inspect divergence`, and `inspect cache ...`) remain intact.
+- Focused help, `commands --json`, generated Markdown, manpages, and completions
+  explain the no-argument paths, backend identifiers, defaults, side ownership,
+  spectator mode, replay controls, and cache-browser behavior from the same
+  `CommandSpec` registry.
+- Runtime behavior is explicit when no TTY is available: interactive `play` fails
+  with an actionable message that points to the supported interactive host path or a
+  deliberate batch/self-play command, rather than silently running one logical game
+  and printing only a hash.
+- The existing batch game path is either moved behind a clearly named non-interactive
+  command or documented as an internal/test helper, not as the operator play command.
+
+### Validation
+
+- `hostbootstrap run docs generate`
+- `hostbootstrap run docs check`
+- `hostbootstrap run test mcts-unit`
+- `hostbootstrap run check-code`
+- `hostbootstrap run help play`
+- `hostbootstrap run help inspect`
+- A non-TTY probe of `hostbootstrap run play` fails with the expected actionable
+  message once the guardrail lands.
+
+### Remaining Work
+
+- Add no-argument parser/default behavior for `play` and `inspect`.
+- Decide whether the current batch fallback becomes a named batch command or an
+  internal-only runner.
+- Regenerate and validate generated docs/manpages/completions after parser and
+  registry changes.
 
 ## Documentation Requirements
 
@@ -1570,7 +1636,8 @@ None.
 
 - `documents/engineering/cli_command_surface.md` — fill in the MCTS-specific command
   matrix derived from `CommandSpec`, add the self-describing CLI introspection
-  contract, and defer to the doctrine on Command Topology and Progressive
+  contract, document Sprint `1.18` no-argument `play`/`inspect` and non-TTY
+  guardrails, and defer to the doctrine on Command Topology and Progressive
   Introspection.
 - `documents/engineering/code_quality.md` — describe `mcts check-code` /
   `mcts lint *` / `mcts docs check`; defer to the doctrine on Lint, Format,
@@ -1590,7 +1657,8 @@ None.
 **Product docs to create/update:**
 
 - `README.md` — link operators to the implemented self-describing CLI contract plus the
-  current backend identifier table and the `mcts play` human/spectator workflow.
+  current backend identifier table, the active hostbootstrap interactive gap, and the
+  target no-argument `play` / `inspect` workflow.
 
 **Cross-references to add:**
 
@@ -1602,6 +1670,9 @@ None.
   metadata row as completed by Sprint `1.13`.
 - `legacy-tracking-for-deletion.md` records the thin play command-use text row as
   completed by Sprint `1.17`.
+- `legacy-tracking-for-deletion.md` records the non-TTY play fallback, hash-first
+  inspect selection, and generated/help overclaim rows as active until Sprint `1.18`
+  closes.
 
 ## Related Documents
 

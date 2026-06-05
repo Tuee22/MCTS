@@ -292,6 +292,8 @@ Open the interactive Brick TUI. Without --vs, --backend controls the side named 
 - Accepted backend values are cpp-legacy, cpp-imperative, cpp-functional, rust, and haskell.
 - For human-vs-AI play, omit --vs; the selected backend controls --side and the human controls the other side.
 - For AI-vs-AI spectating, pass --vs BACKEND; press Space in the TUI to advance AI turns when prompted.
+- Move notation: *(x,y) moves your pawn to a board cell with coordinates 0..8; H(x,y) places a horizontal wall with coordinates 0..7; V(x,y) places a vertical wall with coordinates 0..7.
+- In-game commands: :hint asks the selected backend for a move; :undo rewinds one ply; :save writes a transcript under .mcts-cache; :quit or :q exits the TUI; Esc exits immediately.
 
 **Examples**
 

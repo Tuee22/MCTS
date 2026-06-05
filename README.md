@@ -66,7 +66,8 @@ Then try the CLI:
 
 ```bash
 hostbootstrap run commands --tree
-hostbootstrap run play --backend haskell --side villain --rng native --max-plies 200 --sims 1000
+hostbootstrap run help play
+hostbootstrap run inspect --help
 ```
 
 `hostbootstrap run` builds or refreshes the pinned container image as needed and
@@ -75,61 +76,46 @@ passes arguments to the image's tini-wrapped `mcts` ENTRYPOINT. Do not repeat
 host `cabal`, `cargo`, `cmake`, `make`, formatter binaries, repository shell
 wrappers, or direct project `docker build` / `docker run` commands.
 
-## Play Against The Computer
+## Play, Spectate, And Inspect
 
-Use `mcts play` from a real terminal so the Brick TUI can open.
-Valid backend identifiers for play are `cpp-legacy`, `cpp-imperative`,
-`cpp-functional`, `rust`, and `haskell`; the same list appears in
-`hostbootstrap run help play`, generated command docs, command JSON, and
-shell completions.
+The supported host command shape is `hostbootstrap run <mcts-args>`, but the
+current `hostbootstrap run` path does not yet attach an interactive TTY, and the
+checked-in MCTS `hostbootstrap.dhall` still needs the refactored target-schema
+cache mount described in
+[Phase 9](DEVELOPMENT_PLAN/phase-9-hostbootstrap-adoption.md). Because of that,
+`hostbootstrap run play ...` currently takes the non-interactive fallback path and
+prints a transcript hash such as `played one logical game ... hash=...` instead of
+opening the Brick game UI. Treat that hash-printing behavior as a known gap, not
+as the intended play experience.
 
-To play as Hero against the Haskell computer opponent:
-
-```bash
-hostbootstrap run play --backend haskell --side villain --rng native --max-plies 200 --sims 1000
-```
-
-`--backend haskell --side villain` means the computer controls Villain, so you
-control the opposite side, Hero. Hero moves first from the bottom of the board,
-so you can start by typing a legal move such as:
-
-```text
-*(4,1)
-```
-
-To play as Villain instead, let the computer control Hero:
+The reopened plan targets this operator surface:
 
 ```bash
-hostbootstrap run play --backend haskell --side hero --rng native --max-plies 200 --sims 1000
+hostbootstrap run play
+hostbootstrap run inspect
 ```
 
-Move notation in the TUI:
+`hostbootstrap run play` will open one unified game UI. With no flags it will use
+documented defaults and allow setup from inside the UI; with flags it will still
+accept explicit backend, side, RNG, seed, ply cap, and simulation budget choices.
+The same UI will cover human-vs-AI play and AI-vs-AI observation. Live games will
+share the replay timeline with saved games, so operators can step through already
+played moves, resume the live cursor, save the transcript, and request on-demand
+equity recomputation from other backends.
+
+`hostbootstrap run inspect` will open a selectable browser of cached games. Cache
+entries will show descriptive names derived from game parameters instead of forcing
+operators to choose from raw SHA prefixes. Opening a game will use the same replay
+surface as live play, including move-by-move navigation and backend equity overlays.
+
+Valid backend identifiers remain `cpp-legacy`, `cpp-imperative`,
+`cpp-functional`, `rust`, and `haskell`. Move notation remains:
 
 | Input | Meaning | Coordinate range |
 |-------|---------|------------------|
 | `*(x,y)` | Move your pawn to a board cell | `0..8` for both coordinates |
 | `H(x,y)` | Place a horizontal wall | `0..7` for both coordinates |
 | `V(x,y)` | Place a vertical wall | `0..7` for both coordinates |
-
-Useful in-game commands:
-
-| Command | Effect |
-|---------|--------|
-| `:hint` | Ask the selected backend for a suggested move. |
-| `:undo` | Undo one ply. |
-| `:save` | Save the current game transcript under `.mcts-cache/`. |
-| `:quit` or `:q` | Exit the TUI. |
-| `Esc` | Exit immediately. |
-
-You can also spectate two computer players with `--vs`; the backend named by
-`--backend` controls `--side`, and the backend named by `--vs` controls the
-opposite side:
-
-```bash
-hostbootstrap run play --backend haskell --side hero --vs rust --rng native --max-plies 200 --sims 1000
-```
-
-In spectator mode, press Space to advance an AI turn when prompted.
 
 Every command surface is meant to be self-describing. Use
 `hostbootstrap run help <command-path>` for focused usage text and

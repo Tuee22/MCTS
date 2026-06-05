@@ -46,6 +46,17 @@ registry text, `mcts play` now explains valid backend identifiers, human-vs-AI
 side ownership, AI-vs-AI spectating with `--vs`, and the same text flows through
 focused help, enriched command metadata, generated docs, and completions. Sprint
 `1.13` remains the earlier value-introspection closure from 2026-06-03.
+The 2026-06-05 operator UI audit reopened Phase `9` for Sprint `9.4`, Phase `1`
+for Sprint `1.18`, Phase `2` for Sprint `2.10`, and Phase `7` for Sprint `7.12`.
+The gap is operator-facing, not backend-correctness-facing: documented play and
+inspect workflows promise an interactive game/replay experience through
+`hostbootstrap run`, while the current hostbootstrap entrypoint supplies no
+TTY/stdin and the checked-in MCTS config still needs the refactored
+`hostbootstrap.dhall` target-schema cache mount, `play` falls back to a
+hash-printing batch path, `inspect` requires hash-oriented subcommands, live play
+and saved replay use split UI logic, and `mcts test all` does not yet exercise
+real PTY operator workflows. Phases `3`, `4`, `5`, `6`, and `8` remain closed on their
+owned engine, FFI, backend-optimization, and performance-measurement surfaces.
 The 2026-05-21 evidence-surface audit reopened the phases whose governed docs
 or code overclaimed the implementation. Phase `1` reclosed Sprint `1.10` on
 2026-05-21 after generated-document metadata and lint/code-quality contract
@@ -413,8 +424,9 @@ valid backend identifiers, while `mcts help <path>` printed only a pointer and
 invalid enum parse errors omitted accepted values. Sprint `1.13` reclosed the
 same day with choice metadata, focused `optparse-applicative` help, enriched
 `commands --json`, generated docs, and completion updates that make the CLI usable
-through introspection alone. Phases `2`–`8` remain closed on their backend,
-transcript, verification, and performance surfaces.
+through introspection alone. At that point Phases `2`–`8` stayed closed on their
+backend, transcript, verification, and performance surfaces; the later 2026-06-05
+operator UI audit reopens Phases `1`, `2`, `7`, and `9`.
 
 The Sprint `1.13` Phase `1` reclosure was validated with
 `docker compose run --rm --build mcts mcts test mcts-unit`,
@@ -717,11 +729,10 @@ clang pivots plus full `gcc`/`g++` removal from `docker/Dockerfile` later
 closed through Sprints `4.6`, `6.11`, and `4.7`, validating that the
 (ii) pilot propagated cleanly.
 
-**Phase 9 — hostbootstrap adoption (Done, 2026-06-04):**
+**Phase 9 — hostbootstrap adoption (Reopened 2026-06-05):**
 Sprints `9.1` and `9.2` are `✅ Done`: `hostbootstrap` is the host-side
-orchestrator installed with `pipx`, `hostbootstrap.dhall` maps
-`AppleSilicon`, `LinuxCpu`, and
-`LinuxGpu` to the short-lived container model, `docker/Dockerfile` inherits
+orchestrator installed with `pipx`, root `hostbootstrap.dhall` declares the
+short-lived container model, `docker/Dockerfile` inherits
 `FROM ${BASE_IMAGE}`, and `compose.yaml` is deleted. Sprint `9.3` is also
 `✅ Done`: the post-migration `hostbootstrap run test all` gate emits a
 non-pending report-card measurement and passes Q3/Q4/Q6/Q7 without requiring
@@ -730,13 +741,19 @@ checked-in arm64/amd64 throughput anchors. Phase `1` reclosed Sprints `1.14`
 (canonical invocation shape — `hostbootstrap run <mcts-args>`), and `1.16`
 (lint stack — formatter-tools GHC unified with project GHC). Phase `0`
 reclosed Sprint `0.5`. Phases `2`, `3`, `4`, `5`, `6`, `7`, and `8` remain
-closed on their owned surfaces. The implementation handoff is complete.
-The Pending Removal table in
-[legacy-tracking-for-deletion.md](./legacy-tracking-for-deletion.md) is empty.
+closed on their previously owned surfaces. Sprint `9.4` is now Active: it owns
+the refactored `hostbootstrap.dhall` shape (`targets` with a single
+`H.Accel.Cpu` container target), the scoped `.mcts-cache/` mount enabled by that
+schema, and interactive TTY/stdin forwarding for the one-shot hostbootstrap
+model. The implementation handoff is incomplete until
+`hostbootstrap run play` can open the shared TUI and `hostbootstrap run inspect`
+can see cached games across invocations. The Pending Removal table in
+[legacy-tracking-for-deletion.md](./legacy-tracking-for-deletion.md) tracks the
+stale hash-printing, cache, and split-UI surfaces reopened by this audit.
 See
 [phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md),
 [phase-1-haskell-cli-surface.md](phase-1-haskell-cli-surface.md) Sprints
-`1.14`–`1.16`, and
+`1.14`–`1.18`, and
 [phase-0-planning-documentation.md](phase-0-planning-documentation.md)
 Sprint `0.5` for the doctrine.
 
@@ -832,15 +849,15 @@ A sprint can move to `Done` only when all of the following are true:
 | Phase | Name | Status | Document |
 |-------|------|--------|----------|
 | 0 | Planning and Documentation Topology | ✅ Done (Sprint `0.4` README-authority citation cleanup closed 2026-05-27) | [phase-0-planning-documentation.md](phase-0-planning-documentation.md) |
-| 1 | Haskell CLI Surface, `CommandSpec`, Lint Stack | ✅ Done (Sprint `1.17` action-oriented leaf command-use text closed 2026-06-04 after Sprint `1.13` enum values/focused help closure) | [phase-1-haskell-cli-surface.md](phase-1-haskell-cli-surface.md) |
-| 2 | Transcript Codec, RNG, and Determinism Contract | ✅ Done (Sprint `2.9` transcript/envelope doctrine realignment closed 2026-05-24) | [phase-2-transcript-codec-and-determinism.md](phase-2-transcript-codec-and-determinism.md) |
+| 1 | Haskell CLI Surface, `CommandSpec`, Lint Stack | 🔄 Active (Sprint `1.18` owns no-argument `play`/`inspect`, interactive guardrails, generated help/docs alignment, and command defaults after Sprint `1.17` closed action-oriented command text) | [phase-1-haskell-cli-surface.md](phase-1-haskell-cli-surface.md) |
+| 2 | Transcript Codec, RNG, and Determinism Contract | 🔄 Active (Sprint `2.10` owns descriptive cached-game catalog entries and recorded-position backend equity recompute semantics after Sprint `2.9` closed transcript/envelope doctrine) | [phase-2-transcript-codec-and-determinism.md](phase-2-transcript-codec-and-determinism.md) |
 | 3 | Backend (v) Haskell Engine | ✅ Done (Sprint `3.8` benchmark metric primitives closed 2026-05-24) | [phase-3-haskell-engine.md](phase-3-haskell-engine.md) |
 | 4 | Backend (i) C++ Legacy Port and FFI Bridge | ✅ Done (Sprint `4.7` Dockerfile gcc/g++ scrub closed 2026-05-30 after Sprint `4.6` cpp-legacy compiler pivot to `clang++-19` closed the same day; Sprints `4.1`–`4.5` remain closed for their delivered surfaces) | [phase-4-cpp-legacy-port-and-ffi-bridge.md](phase-4-cpp-legacy-port-and-ffi-bridge.md) |
 | 5 | Backend (ii) C++ Imperative Steelman with PGO+BOLT | ✅ Done (Sprints `5.9`/`5.10` closed 2026-05-29 after Sprint `5.8`: backend (ii) now builds with `clang++-19`, uses LLVM `.profraw` → merged `.profdata` PGO, keeps PGO+BOLT after the clang A/B, and retains the Sprint `5.8` residual hot-path squeeze) | [phase-5-cpp-imperative-steelman.md](phase-5-cpp-imperative-steelman.md) |
 | 6 | Backends (iii) C++ Functional-Core and (iv) Rust | ✅ Done (Sprint `6.11` closed 2026-05-30: backend (iii) cpp-functional compiler pivot to `clang++-19` + LLVM `.profraw` PGO flow, mirroring backend (ii) Sprint `5.9`. Sprints `6.1`–`6.10` remain closed for their delivered surfaces; cohort ranking is `rust ≥ cpp-functional ≈ cpp-imperative > haskell`) | [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md) |
-| 7 | Cross-Backend Verify, Test Stanzas, POC Report Card | ✅ Done (Sprint `7.11` Q7 semantic parity and normalized divergence score closed) | [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md) |
+| 7 | Cross-Backend Verify, Test Stanzas, POC Report Card | 🔄 Active (Sprint `7.12` owns the unified live/replay game-session UI plus PTY-backed play/spectate/inspect interaction coverage; Sprint `7.11` remains closed for Q7 semantic parity) | [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md) |
 | 8 | Haskell Performance Parity Closure and Five-Backend Restoration | ✅ Done (Sprint `8.19` closed 2026-05-30 with the Dockerfile-level aarch64 `-mcpu=apple-m1` unblock `measured but rejected`; Sprint `8.18` accepted `unsafeRead`/`unsafeWrite` arena helpers and recorded arm64 `85.6%` / amd64 `29.5%` cross-host evidence; the post-`4.7` unified-clang aggregate recorded `Verdict: Trails parity band by 69.1%`. Q3/Q4/Q6/Q7 PASS throughout with `normalized_divergence_score=0.0000`; Sprints `8.1`–`8.19` are closed for their delivered surfaces) | [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md) |
-| 9 | hostbootstrap Adoption | ✅ Done (Sprints `9.1`, `9.2`, and `9.3` closed 2026-06-04: hostbootstrap orchestrator, root `hostbootstrap.dhall`, slim `FROM ${BASE_IMAGE}` Dockerfile, deleted `compose.yaml`, and post-migration `hostbootstrap run test all` report-card closure without checked-in arm64/amd64 throughput anchors. Phase `1` Sprints `1.14`, `1.15`, `1.16` and Phase `0` Sprint `0.5` reclosed. Phases `2`–`8` remain closed on their owned surfaces.) | [phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md) |
+| 9 | hostbootstrap Adoption | 🔄 Active (Sprint `9.4` owns the refactored `hostbootstrap.dhall` target-schema update, scoped `.mcts-cache/` mount, and TTY/stdin forwarding for interactive `play` / no-argument `inspect`; Sprints `9.1`–`9.3` remain closed for base-image adoption and report-card closure) | [phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md) |
 
 ## Current Plan Status
 

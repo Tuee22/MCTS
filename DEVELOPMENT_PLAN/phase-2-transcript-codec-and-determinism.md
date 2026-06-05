@@ -16,7 +16,7 @@
 
 ## Phase Status
 
-✅ **Done.** The 2026-05-19 alignment sweep reclosed the Phase `2` owned
+🔄 **Active.** The 2026-05-19 alignment sweep reclosed the Phase `2` owned
 transcript/cache/envelope surface, and Sprint `2.8` reclosed the 2026-05-21
 evidence-surface audit findings for the transcript and sidecar contracts. The
 v1 transcript version handling is explicit, the single-byte action-domain docs
@@ -33,7 +33,11 @@ Focused Phase `2` validation passed on 2026-05-21 with
 `docker compose run --rm mcts mcts check-code`, and `git diff --check`.
 Sprint `8.8` later removed checked-in transcript, renderer, report-card, and
 backend-fixture dependencies from the normal clean-clone suite; Phase `2`
-continues to rely on in-memory and temporary-root codec/cache tests.
+continues to rely on in-memory and temporary-root codec/cache tests. Sprint
+`2.10` reopened on 2026-06-05 for operator cache identity and replay-equity
+semantics: cached games need descriptive parameter-derived names, and backend
+equity overlays must recompute from the same recorded/cursor position rather
+than following a foreign backend's alternative line after divergence.
 
 ## Phase Summary
 
@@ -46,6 +50,9 @@ output independent of worker count and scheduling order, the `--rng native` vs
 `.mcts-cache/transcripts/`. It also lands the non-interactive `mcts inspect list` and
 `mcts inspect show` commands plus the git-style hash-prefix lookup. No engine and no
 backend lands yet; this phase is the format spec the engine writes into.
+Sprint `2.10` adds the operator-facing cache catalog layer above the existing
+hash-addressed files without replacing hash-prefix lookup for exact/scripted
+references.
 
 ## Sprint 2.1: Wire-Format Header and Per-Move Record Codec ✅
 
@@ -760,6 +767,64 @@ None.
 Closed on 2026-05-24 after the envelope gate, wire-format docs, and unit coverage
 were brought back into agreement.
 
+## Sprint 2.10: Descriptive Game Catalog and Recorded-Position Recompute 🔄
+
+**Status**: Active
+**Implementation**: `src/MCTS/Transcript.hs`, `src/MCTS/Transcript/Cache.hs`,
+`src/MCTS/Transcript/Lookup.hs`, `src/MCTS/Transcript/EquitySidecar.hs`,
+`src/MCTS/Engine/Recompute.hs`, `src/MCTS/Engine/ForeignRecompute.hs`,
+`src/MCTS/Verify/Divergence.hs`, `test/unit`, `test/integration`
+**Blocked by**: Sprint `9.4` for persistent host cache visibility; Sprint `7.12`
+for final UI integration.
+**Docs to update**: `documents/engineering/transcript_format.md`,
+`documents/engineering/determinism_contract.md`,
+`documents/engineering/cli_command_surface.md`,
+`documents/engineering/unit_testing_policy.md`, `DEVELOPMENT_PLAN/README.md`,
+`DEVELOPMENT_PLAN/00-overview.md`, `DEVELOPMENT_PLAN/system-components.md`,
+`DEVELOPMENT_PLAN/legacy-tracking-for-deletion.md`
+
+### Objective
+
+Give the operator cache a descriptive game identity layer while preserving
+content-addressed transcript files, and make equity recomputation compare every
+backend from the same selected board position.
+
+### Deliverables
+
+- A cache catalog entry exists for each saved or batch-produced game. The catalog
+  derives a stable display name from parameters such as backend, opponent backend,
+  side ownership, human/spectator mode, RNG, seed, sims, max plies, winner, total
+  moves, and modification time.
+- `inspect` browser rows and non-interactive list output can show descriptive names
+  first while retaining hash prefixes and paths for exact/scripted references.
+- Hash-prefix lookup remains git-style and remains the exact reference mechanism for
+  `inspect show <hash-prefix>`, `inspect replay <hash-prefix>`, and scripted uses.
+- Equity recomputation for overlays evaluates the board state at the selected
+  transcript/live cursor for every requested backend. Foreign chosen-action
+  disagreement is labelled as divergence evidence; subsequent cursor rows do not
+  silently follow the foreign backend's alternative line when the UI claims
+  same-position comparison.
+- Sidecar identity continues to distinguish originator, originator build-mismatch,
+  foreign-view, unavailable, verified, and diverged evidence.
+
+### Validation
+
+- `hostbootstrap run test mcts-unit`
+- `hostbootstrap run test mcts-integration`
+- `hostbootstrap run docs check`
+- `hostbootstrap run check-code`
+- Unit tests synthesize multiple cached games with colliding backend/seed prefixes and
+  assert descriptive browser/list labels plus exact hash lookup behavior.
+- Recompute tests synthesize a divergence and assert that every backend is evaluated
+  from the selected recorded board position.
+
+### Remaining Work
+
+- Define and implement the cache catalog schema or derived-index strategy.
+- Update list/browser renderers to show names without dropping hash references.
+- Adjust foreign recompute flow so replay overlays stay on the recorded/cursor line
+  for same-position comparison.
+
 ## Documentation Requirements
 
 **Engineering docs to create/update:**
@@ -768,8 +833,9 @@ were brought back into agreement.
   the engine-envelope block placed at `envelope_offset` and excluded from the
   backend-specific `sha256(RunConfig)` cache key), the single-byte action enumeration,
   the content-addressing scheme, the cache root resolution including the per-transcript
-  sidecar directory layout, the equity sidecar `.eq` / `.envelope` wire format, and the
-  git-style hash-prefix lookup contract.
+  sidecar directory layout, the equity sidecar `.eq` / `.envelope` wire format, the
+  Sprint `2.10` descriptive cache catalog, and the git-style hash-prefix lookup
+  contract.
 - `documents/engineering/determinism_contract.md` — fill in the full determinism
   contract per the README. The eleven owned sections are: the `--rng native` vs
   `--rng cpp` split (and the verify-subtree pin); the per-game
@@ -783,7 +849,8 @@ were brought back into agreement.
   `u64`s per rollout, Haskell signed-`Int` modulo legal-move selection, no
   rejection sampling unless identical); the backprop traversal contract (same
   path order, same logical step for visit-count and value-sum updates); the
-  move-shape and tie-breaking contract (adjacent unoccupied pawn moves only,
+  recorded-position equity recompute contract for Sprint `2.10`; the move-shape and
+  tie-breaking contract (adjacent unoccupied pawn moves only,
   no jump moves, no overlapping/crossing walls, first 12 canonical wall moves,
   UCT score ties by action ID, final root choice by visit count then action
   ID); the verify mismatch output protocol (digest-equality first, then
@@ -796,7 +863,8 @@ were brought back into agreement.
   `--rng`, `--cache-dir`, `--top`, `--with-equity`, `--format`, `--color`,
   `--no-color` flags. Sprint `2.8` and Sprint `7.6` keep `inspect show
   --with-equity` originator/foreign-view language synchronized with the corrected
-  sidecar identity contract.
+  sidecar identity contract; Sprint `2.10` adds the descriptive `inspect` cache
+  browser contract.
 
 **Product docs to create/update:**
 
@@ -808,6 +876,8 @@ were brought back into agreement.
   transcript/cache/envelope baseline.
 - `legacy-tracking-for-deletion.md` carries Sprint `2.8` transcript/sidecar doctrine
   residue until the strict v1 and sidecar-identity work closes.
+- `legacy-tracking-for-deletion.md` carries Sprint `2.10` cache-catalog and
+  same-position recompute rows until those operator surfaces close.
 
 ## Related Documents
 

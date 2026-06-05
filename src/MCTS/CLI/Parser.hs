@@ -17,6 +17,7 @@ import MCTS.Error (AppError (..))
 import MCTS.Plan (PlanOptions (..))
 import MCTS.Types
 import qualified Options.Applicative as OA
+import qualified Options.Applicative.Help.Pretty as Pretty
 import System.Exit (ExitCode (..))
 
 parseCommand :: [String] -> Either AppError Command
@@ -87,8 +88,32 @@ targetParserInfo target =
         Just spec ->
             OA.info
                 (nodeParser target spec <**> OA.helper)
-                (OA.fullDesc <> OA.progDesc (Spec.summary spec))
+                (OA.fullDesc <> OA.progDesc (commandDescription spec) <> commandFooter spec)
         Nothing -> commandParserInfo
+
+commandDescription :: Spec.CommandSpec -> String
+commandDescription (Spec.CommandSpec _ _ commandDescriptionValue _ _ _ _ _) = commandDescriptionValue
+
+commandFooter :: Spec.CommandSpec -> OA.InfoMod Command
+commandFooter spec =
+    case footerLines spec of
+        [] -> mempty
+        rows -> OA.footerDoc (Just (Pretty.vcat (map Pretty.pretty rows)))
+
+footerLines :: Spec.CommandSpec -> [String]
+footerLines spec =
+    notesLines <> examplesLines
+  where
+    notesLines
+        | null (Spec.notes spec) = []
+        | otherwise = "" : "Notes:" : map ("  - " <>) (Spec.notes spec)
+    examplesLines
+        | null (Spec.examples spec) = []
+        | otherwise = "" : "Examples:" : concatMap renderExample (Spec.examples spec)
+    renderExample example =
+        [ "  " <> Spec.exampleDescription example
+        , "    " <> Spec.exampleInvocation example
+        ]
 
 programName :: [String] -> String
 programName [] = "mcts"

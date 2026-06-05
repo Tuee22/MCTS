@@ -122,7 +122,9 @@ operator failure: `BACKEND` metavars needed explicit backend identifiers, and
 help/generated docs needed to explain human-vs-AI side ownership and AI-vs-AI
 spectator mode. Sprint `1.17` reclosed the same day with action-oriented registry
 descriptions, parser-help text, generated docs, README guidance, and semantic tests.
-Phases `2` through `8` remain closed on their owned surfaces.
+That reopening touched only Phase `1` command metadata, help, generated command
+artefacts, and governed docs. The later 2026-06-05 operator UI audit reopens
+Phases `1`, `2`, `7`, and `9` as described below.
 
 The 2026-05-19 report card remains useful smoke-baseline audit evidence, and the
 2026-05-21 optimized-C++ report-card refresh remains historical evidence against
@@ -344,13 +346,31 @@ measurement and passes Q3/Q4/Q6/Q7 without requiring checked-in arm64/amd64
 throughput anchors. Phase `1` reclosed Sprints `1.14` (toolchain pin update to
 GHC `9.12.4` + Cabal `3.16.1.0`), `1.15` (canonical hostbootstrap invocation),
 and `1.16` (formatter-tools GHC unified with project GHC). Phase `0` reclosed
-Sprint `0.5`. Phases `2`–`8` remain closed on their owned surfaces. The
-implementation handoff is complete.
+Sprint `0.5`. This was the Phase 9 closure state before the 2026-06-05 operator
+UI audit reopened Sprint `9.4`; the implementation handoff is now incomplete
+until interactive hostbootstrap play/inspect, the refactored
+`hostbootstrap.dhall` target schema, and persistent cache mount support close.
 See [phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md),
 [phase-1-haskell-cli-surface.md](phase-1-haskell-cli-surface.md)
 Sprints `1.14`–`1.16`, and
 [phase-0-planning-documentation.md](phase-0-planning-documentation.md)
 Sprint `0.5` for the doctrine.
+
+**2026-06-05 — Operator play/inspect audit reopens UI, cache, and hostbootstrap
+surfaces.** The current implementation does not yet deliver the documented
+operator workflow: `hostbootstrap run play ...` enters a non-TTY batch fallback and
+prints a transcript hash, the current MCTS hostbootstrap config lacks the
+refactored target-schema `.mcts-cache/` mount, `inspect` requires hash-oriented
+subcommands instead of opening a cached-game browser, live play and saved replay
+use separate UI logic, and `mcts test all` does not exercise PTY-backed
+play/spectate/inspect flows. Phase `9` Sprint `9.4` owns TTY/stdin forwarding
+plus the `targets`/`H.Accel.Cpu` config and persistent cache mount; Phase `1`
+Sprint `1.18` owns no-argument `play`/`inspect`, command defaults, and runtime
+guardrails; Phase `2`
+Sprint `2.10` owns descriptive cached-game catalog entries and recorded-position
+equity recompute semantics; Phase `7` Sprint `7.12` owns the unified live/replay
+game-session UI and interaction tests. Phases `3`, `4`, `5`, `6`, and `8` remain
+closed on their owned backend and performance-measurement surfaces.
 
 ## Target Outcome
 
@@ -645,19 +665,21 @@ sprint may schedule adoption of an out-of-scope section.
 - Project Structure (library-first layout) — `app/Main.hs` thin, logic under
   `src/MCTS/`.
 - hostbootstrap adoption (Phase 9) — `hostbootstrap` as the `pipx`-installed
-  host Python CLI orchestrating substrate detection, prerequisite validation,
+  host Python CLI orchestrating host capability detection, prerequisite validation,
   base-image pull, project-image build, and `<mcts-args>` dispatch to the
   image's tini-wrapped `mcts` ENTRYPOINT in a one-shot `docker run --rm`
-  container; typed `hostbootstrap.dhall` at repo
-  root declaring `AppleSilicon`, `LinuxCpu`, and `LinuxGpu` substrates
-  with the same `Container` model;
+  container; typed `hostbootstrap.dhall` at repo root declaring `targets` with
+  one `H.target H.Accel.Cpu` container model and a scoped `.mcts-cache/` mount;
   `docker/Dockerfile` inheriting `FROM ${BASE_IMAGE}` from the prebuilt
   base image `docker.io/tuee22/hostbootstrap:basecontainer-cpu-<arch>`,
   adding only what the base does not ship (pinned formatter tools, source
   build, foreign-backend builds). See
   [phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md);
   the canonical invocation shape (`hostbootstrap run <mcts-args>`) is
-  Phase 1 reopen Sprint `1.15`'s doctrine.
+  Phase 1 reopen Sprint `1.15`'s doctrine. Sprint `9.4` adapts the project config
+  to the refactored target schema, uses the schema's container mount support for
+  `.mcts-cache/`, and keeps interactive TTY/stdin support as the remaining
+  hostbootstrap runtime prerequisite.
 
 **Out of scope (informational only — no sprint may schedule adoption):**
 
@@ -875,7 +897,10 @@ referenceability.
     (Phase 1 reopen Sprint `1.15`). There is no long-running daemon
     container, bind-mounted workspace, repository
     `.sh` workflow wrapper, or `bootstrap/` helper; host-level `.build/`
-    artefacts are unsupported.
+    artefacts are unsupported. Sprint `9.4` admits one scoped exception to the
+    no-workspace-mount baseline: a `hostbootstrap.dhall` container mount for the
+    operator `.mcts-cache/` root so one-shot `play` and `inspect` commands share
+    cached games.
 32. Move notation matches the legacy engine: `*(x,y)` for pawn moves, `H(x,y)` for
     horizontal walls, `V(x,y)` for vertical walls, x,y ∈ [0,8] for pawns and ∈ [0,7]
     for walls. `inspect show` / `inspect replay` and the `play` TUI render in this
@@ -958,6 +983,27 @@ referenceability.
     search rejection under generated histories. It does not include backend `(i)`, does
     not weaken Q3, and does not use the normalized divergence score as a tolerance for
     failed semantic invariants.
+42. `hostbootstrap run play` and `hostbootstrap run inspect` are the intended
+    operator entrypoints for interactive game work. `play` and `inspect` must both
+    work without required flags: `play` opens the unified game session with documented
+    defaults and in-UI setup controls; `inspect` opens a selectable cached-game browser.
+    Raw SHA prefixes remain valid exact references for scripted subcommands but are not
+    the primary human selection UI.
+43. Live human-vs-AI play, live AI-vs-AI observation, saved transcript replay, and
+    in-progress game replay use one shared game-session model and one shared board /
+    timeline / overlay rendering path. Operators can advance AI turns one ply at a
+    time, rewind through already-played moves, return to the live cursor, save the
+    game, and request backend equity overlays from either live or saved replay cursors.
+44. Backend equity recomputation for overlays is a recorded-position comparison:
+    every backend is evaluated from the board state at the selected transcript/live
+    cursor. A foreign backend's different chosen move is labelled as divergence
+    evidence, but recomputation for the next displayed cursor must not silently follow
+    that backend's alternative line when the UI promises same-position comparison.
+45. Interactive operator tests must not rely on checked-in golden histories. PTY-backed
+    tests synthesize games and cache entries in temporary roots, exercise no-argument
+    `play`, human-vs-AI play, AI-vs-AI spectate, no-argument `inspect`, cache-browser
+    selection, live replay/scrub, saved replay, and on-demand overlays, and are included
+    in or explicitly planned by `mcts test all`.
 
 ## Dependency Chain
 
