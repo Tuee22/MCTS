@@ -50,12 +50,13 @@ The 2026-06-05 operator UI audit reopened and reclosed Phase `9` Sprint `9.4`,
 Phase `1` Sprint `1.18`, Phase `2` Sprint `2.10`, and Phase `7` Sprint `7.12`.
 The closure is operator-facing, not backend-correctness-facing: `hostbootstrap run`
 now supports labelled interactive command paths, the project config uses the
-refactored `targets` schema with a scoped `.mcts-cache/` mount, `play` has
-no-argument defaults and a non-TTY guardrail instead of the historical hash-printing
-fallback, `inspect` has a no-argument cached-game browser/list fallback with
-descriptive rows, replay recompute stays on the recorded cursor position, and play
-and replay share a `GameSessionState` status model. Phases `3`, `4`, `5`, `6`, and
-`8` remain closed on their owned engine, FFI, backend-optimization, and
+substrate-keyed `NoCluster` schema with a scoped `.mcts-cache/` mount, `play`
+has no-argument defaults and a non-TTY guardrail instead of the historical
+hash-printing fallback, `inspect` has a no-argument cached-game browser/list
+fallback with descriptive rows, replay recompute stays on the recorded cursor
+position, and play and replay share a `GameSessionState` status model. Phases
+`3`, `4`, `5`, `6`, and `8` remain closed on their owned engine, FFI,
+backend-optimization, and
 performance-measurement surfaces.
 The 2026-05-21 evidence-surface audit reopened the phases whose governed docs
 or code overclaimed the implementation. Phase `1` reclosed Sprint `1.10` on
@@ -860,7 +861,7 @@ A sprint can move to `Done` only when all of the following are true:
 | 6 | Backends (iii) C++ Functional-Core and (iv) Rust | ✅ Done (Sprint `6.11` closed 2026-05-30: backend (iii) cpp-functional compiler pivot to `clang++-19` + LLVM `.profraw` PGO flow, mirroring backend (ii) Sprint `5.9`. Sprints `6.1`–`6.10` remain closed for their delivered surfaces; cohort ranking is `rust ≥ cpp-functional ≈ cpp-imperative > haskell`) | [phase-6-cpp-functional-and-rust.md](phase-6-cpp-functional-and-rust.md) |
 | 7 | Cross-Backend Verify, Test Stanzas, POC Report Card | ✅ Done (Sprint `7.12` closed the shared live/replay game-session model and PTY play/inspect smoke coverage on 2026-06-05; Sprint `7.11` remains closed for Q7 semantic parity) | [phase-7-cross-backend-verify-and-report-card.md](phase-7-cross-backend-verify-and-report-card.md) |
 | 8 | Haskell Performance Parity Closure and Five-Backend Restoration | ✅ Done (Sprint `8.19` closed 2026-05-30 with the Dockerfile-level aarch64 `-mcpu=apple-m1` unblock `measured but rejected`; Sprint `8.18` accepted `unsafeRead`/`unsafeWrite` arena helpers and recorded arm64 `85.6%` / amd64 `29.5%` cross-host evidence; the post-`4.7` unified-clang aggregate recorded `Verdict: Trails parity band by 69.1%`. Q3/Q4/Q6/Q7 PASS throughout with `normalized_divergence_score=0.0000`; Sprints `8.1`–`8.19` are closed for their delivered surfaces) | [phase-8-haskell-performance-parity-closure.md](phase-8-haskell-performance-parity-closure.md) |
-| 9 | hostbootstrap Adoption | ✅ Done (Sprint `9.4` closed the refactored `hostbootstrap.dhall` target-schema update, scoped `.mcts-cache/` mount, and TTY/stdin forwarding for interactive `play` / no-argument `inspect` on 2026-06-05) | [phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md) |
+| 9 | hostbootstrap Adoption | ✅ Done (Sprint `9.4` closed the substrate-keyed `NoCluster` `hostbootstrap.dhall` schema update, scoped `.mcts-cache/` mount, and TTY/stdin forwarding for interactive `play` / no-argument `inspect` on 2026-06-05) | [phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md) |
 
 ## Current Plan Status
 

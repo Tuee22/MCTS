@@ -118,6 +118,7 @@ DEVELOPMENT_PLAN/
 ├── phase-6-cpp-functional-and-rust.md
 ├── phase-7-cross-backend-verify-and-report-card.md
 ├── phase-8-haskell-performance-parity-closure.md
+├── phase-9-hostbootstrap-adoption.md
 ├── legacy-tracking-for-deletion.md
 └── system-components.md
 ```

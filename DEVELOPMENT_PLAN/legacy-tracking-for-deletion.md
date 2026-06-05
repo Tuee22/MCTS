@@ -239,9 +239,10 @@ measurements.
 
 **2026-06-05 — Operator play/inspect cleanup closed.** No Pending Removal row
 remains for the operator audit. Sprints `9.4`, `1.18`, `2.10`, and `7.12` closed
-with aligned generated docs, the refactored `hostbootstrap.dhall` target/mount
-config, hostbootstrap PTY smoke evidence, no-argument `play`/`inspect`, descriptive
-cache rows, recorded-position recompute, and shared play/replay session status.
+with aligned generated docs, the substrate-keyed `hostbootstrap.dhall`
+`NoCluster` config/mount, hostbootstrap PTY smoke evidence, no-argument
+`play`/`inspect`, descriptive cache rows, recorded-position recompute, and shared
+play/replay session status.
 
 ## Pending Removal Notes
 

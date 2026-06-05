@@ -72,8 +72,8 @@ verification, or performance ownership.
 The 2026-06-05 operator UI audit reopened and reclosed Phase `9` Sprint `9.4`,
 Phase `1` Sprint `1.18`, Phase `2` Sprint `2.10`, and Phase `7` Sprint `7.12`:
 hostbootstrap now attaches stdin/TTY for labelled interactive paths, the MCTS
-config uses the refactored `targets` schema with a scoped `.mcts-cache/` mount,
-`play` has no-argument defaults and a non-TTY guardrail, `inspect` has a
+config uses the substrate-keyed `NoCluster` schema with a scoped `.mcts-cache/`
+mount, `play` has no-argument defaults and a non-TTY guardrail, `inspect` has a
 no-argument cached-game browser/list fallback with descriptive names, replay
 recompute stays on the recorded cursor position, and play/replay share a
 `GameSessionState` status model.

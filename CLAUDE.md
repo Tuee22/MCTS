@@ -20,7 +20,7 @@ All supported project build, run, validation, formatting, linting, documentation
 hostbootstrap run <mcts-args>   # canonical shape; Dockerfile ENTRYPOINT supplies mcts
 ```
 
-`hostbootstrap run` is the canonical host-side entrypoint. It reads `hostbootstrap.dhall` at the repo root, idempotently builds the project image against the pinned base (`docker.io/tuee22/hostbootstrap:basecontainer-cpu-<arch>`), and passes `<mcts-args>` to the image's tini-wrapped `mcts` ENTRYPOINT inside a one-shot `docker run --rm` container. The base image owns GHC `9.12.4` (Phase 1 reopen Sprint `1.14`), Cabal `3.16.1.0`, LLVM `19` + BOLT, clang-19, Rust `1.95.0`, fourmolu `0.19.0.1`, hlint `3.10`, and the warm Cabal store; the project Dockerfile owns the MCTS source build, the `ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/mcts"]`, and the four foreign backend `.so` artifacts.
+`hostbootstrap run` is the canonical host-side entrypoint. It reads `hostbootstrap.dhall` at the repo root, selects the substrate-keyed `NoCluster` container model, idempotently builds the project image against the hostbootstrap base for that substrate, and passes `<mcts-args>` to the image's tini-wrapped `mcts` ENTRYPOINT inside a one-shot `docker run --rm` container. The base image owns GHC `9.12.4` (Phase 1 reopen Sprint `1.14`), Cabal `3.16.1.0`, LLVM `19` + BOLT, clang-19, Rust `1.95.0`, fourmolu `0.19.0.1`, hlint `3.10`, and the warm Cabal store; the project Dockerfile owns the MCTS source build, the `ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/mcts"]`, and the four foreign backend `.so` artifacts. MCTS has no project cluster lifecycle; `hostbootstrap cluster up/down/delete` is intentionally unsupported here.
 
 Install `hostbootstrap` once per host:
 

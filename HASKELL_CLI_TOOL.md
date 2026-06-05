@@ -57,10 +57,9 @@ Cabal 3.16.1.0
 
 These are not floors or recommendations. The `.cabal` file declares
 `tested-with: ghc ==9.12.4`. A `cabal.project` (or equivalent) pins
-`with-compiler: ghc-9.12.4`. The container/CI path uses the same versions —
-the pinned base image
-(`docker.io/tuee22/hostbootstrap:basecontainer-cpu-<arch>`) ships exactly this
-GHC + Cabal pair with a warm Cabal store, per
+`with-compiler: ghc-9.12.4`. The container/CI path uses the same versions:
+the hostbootstrap base image selected for the active substrate ships exactly
+this GHC + Cabal pair with a warm Cabal store, per
 [`DEVELOPMENT_PLAN/phase-9-hostbootstrap-adoption.md`](DEVELOPMENT_PLAN/phase-9-hostbootstrap-adoption.md).
 Under Phase 1 reopen Sprint `1.16` the formatter tools (`fourmolu-0.19.0.1`,
 `hlint-3.10`) share the project GHC `9.12.4`. Host-level `.build/` tool

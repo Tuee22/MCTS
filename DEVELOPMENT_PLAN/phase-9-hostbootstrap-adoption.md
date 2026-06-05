@@ -105,7 +105,7 @@ backend/performance surfaces.
 ## Sprint 9.1: hostbootstrap as host-side orchestrator ✅
 
 **Status**: Done
-**Implementation**: doctrine paragraphs added to `CLAUDE.md`, `AGENTS.md`, `HASKELL_CLI_TOOL.md`, `README.md`, `DEVELOPMENT_PLAN/README.md`, `DEVELOPMENT_PLAN/00-overview.md`, `DEVELOPMENT_PLAN/system-components.md`; new `phase-9-hostbootstrap-adoption.md` (this file); `hostbootstrap` installed on this host with `pipx`; root `hostbootstrap.dhall` landed with the then-current hostbootstrap container config, with the refactored `targets` schema tracked by Sprint `9.4`.
+**Implementation**: doctrine paragraphs added to `CLAUDE.md`, `AGENTS.md`, `HASKELL_CLI_TOOL.md`, `README.md`, `DEVELOPMENT_PLAN/README.md`, `DEVELOPMENT_PLAN/00-overview.md`, `DEVELOPMENT_PLAN/system-components.md`; new `phase-9-hostbootstrap-adoption.md` (this file); `hostbootstrap` installed on this host with `pipx`; root `hostbootstrap.dhall` landed with the then-current hostbootstrap container config, with the later substrate-keyed `NoCluster` schema tracked by Sprint `9.4`.
 **Blocked by**: N/A
 **Docs to update**: [../CLAUDE.md](../CLAUDE.md), [../AGENTS.md](../AGENTS.md), [../HASKELL_CLI_TOOL.md](../HASKELL_CLI_TOOL.md), [../README.md](../README.md), [README.md](README.md), [00-overview.md](00-overview.md), [system-components.md](system-components.md), [legacy-tracking-for-deletion.md](legacy-tracking-for-deletion.md).
 
@@ -169,8 +169,8 @@ formatter-tools GHC install is collapsed into the project GHC.
 ### Deliverables
 
 - `hostbootstrap.dhall` at repo root with the project container model; Sprint `9.4`
-  owns adapting that file to the refactored hostbootstrap `targets` schema and
-  adding the scoped `.mcts-cache/` mount.
+  owns adapting that file to the substrate-keyed `NoCluster` schema and adding the
+  scoped `.mcts-cache/` mount.
 - `docker/Dockerfile` rewritten per the Sprint 9.1 inheritance pattern:
   `FROM ${BASE_IMAGE}`; copies source; builds the seven Cabal exes
   (`mcts-haskell-style`, `mcts-unit`, `mcts-integration`,
