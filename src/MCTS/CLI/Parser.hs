@@ -150,11 +150,18 @@ childrenParser prefix spec =
 nodeParser :: [String] -> Spec.CommandSpec -> OA.Parser Command
 nodeParser path spec
     | path == ["test"] = testParser
+    | path == ["inspect"] = inspectParser spec
     | null (Spec.children spec) =
         case leafParser path of
             Just parser -> withCommonOptions parser
             Nothing -> pure (Help (HelpOptions path))
     | otherwise = childrenParser path spec
+
+inspectParser :: Spec.CommandSpec -> OA.Parser Command
+inspectParser spec =
+    childrenParser ["inspect"] spec
+        <|> withCommonOptions
+            (Inspect . InspectBrowse <$> optionalStringOption "cache-dir" "DIR" "Transcript cache root")
 
 leafParser :: [String] -> Maybe (OA.Parser Command)
 leafParser path =
@@ -422,6 +429,8 @@ playParser =
             backendReader
             ( OA.long "backend"
                 <> OA.metavar "BACKEND"
+                <> OA.value Haskell
+                <> OA.showDefaultWith backendIdentifier
                 <> OA.help
                     ( choiceHelp
                         "AI backend that controls the side named by --side; omit --vs for human play"
@@ -432,6 +441,8 @@ playParser =
             sideReader
             ( OA.long "side"
                 <> OA.metavar "hero|villain"
+                <> OA.value Villain
+                <> OA.showDefaultWith renderSide
                 <> OA.help
                     ( choiceHelp
                         "Side controlled by --backend; the human plays the opposite side unless --vs is set"
@@ -471,6 +482,12 @@ playParser =
                     )
             )
         <*> optionalStringOption "cache-dir" "DIR" "Transcript cache root"
+
+renderSide :: Side -> String
+renderSide side =
+    case side of
+        Hero -> "hero"
+        Villain -> "villain"
 
 parseBackends :: String -> Either AppError [Backend]
 parseBackends raw =

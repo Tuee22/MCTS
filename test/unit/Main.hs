@@ -48,10 +48,13 @@ import MCTS.CLI.Docs
     , spliceMarkerRegion
     )
 import MCTS.CLI.Inspect
-    ( InspectRow (..)
+    ( InspectBrowserChoice (..)
+    , InspectRow (..)
     , prepareReplayOverlays
+    , renderInspectBrowserRows
     , renderInspectRows
     , renderTranscript
+    , resolveInspectBrowserChoice
     )
 import MCTS.CLI.Lint (ForbiddenPath (..), forbiddenPathPaths, forbiddenPathRegistry)
 import MCTS.CLI.Output (OutputFormat (..), OutputOptions (..), defaultOutputOptions)
@@ -76,6 +79,7 @@ import MCTS.CLI.Tui.Play
     , advanceAiState
     , applyUserInput
     , initialPlayState
+    , playSessionState
     , savePlayState
     )
 import MCTS.CLI.Tui.Replay
@@ -91,7 +95,9 @@ import MCTS.CLI.Tui.Replay
     , nextOverlayBackend
     , renderOverlayRowsText
     , replayBoardAt
+    , replaySessionState
     )
+import MCTS.CLI.Tui.Session (GameSessionState (..), SessionMode (..), sessionStatusLine)
 import MCTS.CLI.Verify (renderVerifyJson)
 import MCTS.Crypto.SHA256 (sha256Hex)
 import MCTS.Driver
@@ -449,6 +455,12 @@ exerciseCommandParserSurface = do
                 ]
             )
         )
+    assert
+        "play parser has no-argument defaults"
+        (parsesDefaultPlay (parseCommand ["play"]))
+    assert
+        "inspect parser has no-argument browser"
+        (parsesInspectBrowse (parseCommand ["inspect"]))
     assert
         "legacy fixture build parser"
         ( parsesLegacyFixtureBuild
@@ -849,6 +861,23 @@ parsesPlaySurface parsed =
                 && playSeed playOptions == Just 99
                 && playMaxPlies playOptions == 123
                 && playCacheDir playOptions == Just ".mcts-cache-play"
+        _ -> False
+
+parsesDefaultPlay :: Either AppError Command -> Bool
+parsesDefaultPlay parsed =
+    case parsed of
+        Right (Play playOptions) ->
+            playBackend playOptions == Haskell
+                && playSide playOptions == Villain
+                && playRng playOptions == NativeRng
+                && playSeed playOptions == Nothing
+                && playMaxPlies playOptions == 200
+        _ -> False
+
+parsesInspectBrowse :: Either AppError Command -> Bool
+parsesInspectBrowse parsed =
+    case parsed of
+        Right (Inspect (InspectBrowse Nothing)) -> True
         _ -> False
 
 parsesLegacyFixtureBuild :: Either AppError Command -> Bool
@@ -1564,7 +1593,8 @@ exerciseInspectListRenderer :: IO ()
 exerciseInspectListRenderer = do
     let rows =
             [ InspectRow
-                { rowHash = "abc12345"
+                { rowName = "haskell selfplay rng-cpp seed-13 sims-6:6 plies-8 winner-hero moves-8"
+                , rowHash = "abc12345"
                 , rowBackend = "haskell"
                 , rowSeed = "13"
                 , rowGames = "1"
@@ -1577,8 +1607,24 @@ exerciseInspectListRenderer = do
             ]
         rendered = renderInspectRows defaultOutputOptions{outputFormat = JsonFormat} rows
     assert "inspect list JSON decodes" (isJsonObjectOrArray (decodeJsonValue "inspect list" rendered))
+    assert "inspect list JSON includes name" ("haskell selfplay rng-cpp" `contains` rendered)
     assert "inspect list JSON includes hash" ("abc12345" `contains` rendered)
     assert "inspect list JSON includes backend" ("haskell" `contains` rendered)
+    let browser = renderInspectBrowserRows rows
+    assert "inspect browser lists numbered rows" ("1." `contains` browser)
+    assert "inspect browser lists descriptive names" ("haskell selfplay rng-cpp" `contains` browser)
+    assert
+        "inspect browser resolves numbered choice"
+        (resolveInspectBrowserChoice rows "1" == BrowserHash "abc12345")
+    assert
+        "inspect browser resolves hash prefix choice"
+        (resolveInspectBrowserChoice rows "abc1" == BrowserHash "abc1")
+    assert
+        "inspect browser blank choice quits"
+        (resolveInspectBrowserChoice rows " " == BrowserQuit)
+    assert
+        "inspect browser invalid number is labelled"
+        (case resolveInspectBrowserChoice rows "2" of BrowserInvalid _ -> True; _ -> False)
 
 -- | Sprint 2.7 verifies the binary equity sidecar codec round-trips
 -- arbitrary doubles (not just `0.0`), the leading magic is `MEQ1`, and the
@@ -2453,6 +2499,12 @@ exerciseCommandRenderers = do
             && ":save writes a transcript" `contains` renderCommandMarkdown
         )
     assert
+        "generated inspect docs describe no-argument browser"
+        ( "## `mcts inspect`" `contains` renderCommandMarkdown
+            && "Open the cached-game browser" `contains` renderCommandMarkdown
+            && "descriptive game names first" `contains` renderCommandMarkdown
+        )
+    assert
         "generated command docs do not call rollouts random-rollout"
         (not ("Random-rollout benchmark" `contains` renderCommandMarkdown))
     assert "commands --tree is deterministic" (renderCommandTree == renderCommandTree)
@@ -3014,6 +3066,10 @@ exerciseTuiPlayInput = do
             applyUserInput
                 "*(4,1)"
                 st0{playStateAiSide = Villain, playStateVsBackend = Just Rust}
+        sessionLine = sessionStatusLine (playSessionState st0)
+    assert "play session state marks live mode" (sessionMode (playSessionState st0) == LiveGame)
+    assert "play session line includes AI side" ("Villain=haskell" `isInfixOfStr` sessionLine)
+    assert "play session line includes human side" ("Hero=human" `isInfixOfStr` sessionLine)
     case quitOutcome of
         OutcomeQuit -> pure ()
         _ -> failTest "applyUserInput :quit must produce OutcomeQuit"
@@ -3155,6 +3211,11 @@ exerciseTuiReplayOverlay = do
         hashValue = replicate 64 '0'
         stream = (equityStreamForTranscript hashValue transcript){eqBuildId = "overlay-fixture"}
         stateAtStart = initialReplayStateWithOverlays hashValue transcript [stream]
+        replaySession = replaySessionState stateAtStart
+    assert "replay session state marks saved replay" (sessionMode replaySession == SavedReplay)
+    assert
+        "replay session tracks live cursor"
+        (sessionLiveCursor replaySession == length (gameMoves gameRec))
     -- Index 0: no current move, all overlay rows are empty.
     case currentOverlayRows stateAtStart of
         [row] -> do

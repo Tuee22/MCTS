@@ -1,16 +1,18 @@
 let container =
       H.Model.Container
-        H.Container::{
+        ( H.Container::{
         , dockerfile = "docker/Dockerfile"
         , service = False
+        , mounts =
+          [ H.Mount::{ host = ".mcts-cache", container = "/workspace/MCTS/.mcts-cache" }
+          ]
         }
+        )
 
 in  H.configWithDevelopment
       True
       { project = "mcts"
-      , substrates =
-        [ H.entry H.Substrate.AppleSilicon container
-        , H.entry H.Substrate.LinuxCpu container
-        , H.entry H.Substrate.LinuxGpu container
+      , targets =
+        [ H.target H.Accel.Cpu container
         ]
       }

@@ -7,8 +7,7 @@
 
 > **Purpose**: Describe the six current live Cabal test stanzas, including
 > `mcts-semantic-parity` for Q7, the `mcts test all` Plan/Apply command, the
-> pinned POC report-card workload, and the reopened interactive operator coverage
-> gap.
+> pinned POC report-card workload, and the interactive operator coverage split.
 > Defers to [../../HASKELL_CLI_TOOL.md](../../HASKELL_CLI_TOOL.md) for Testing
 > Doctrine, Test Categories, and Test Organization.
 
@@ -50,35 +49,33 @@ the test process.
 
 ## Interactive Operator Coverage
 
-The current test suite covers TUI board rendering, play input dispatch, replay
-navigation, replay overlays, and cache/sidecar semantics through pure or
-subprocess-oriented tests. It does not yet prove the end-to-end terminal workflows
-that operators run for `play`, AI-vs-AI spectate, no-argument `inspect`, or replay
-from a live game. Phase `7` Sprint `7.12` reopens this surface.
+The test suite covers TUI board rendering, play input dispatch, replay navigation,
+replay overlays, shared `GameSessionState` status rendering, no-argument
+play/inspect parsing, inspect browser selection, cache/sidecar semantics, and
+non-TTY guardrail behavior through pure or subprocess-oriented tests. Sprint `7.12`
+closed the host-terminal portion with hostbootstrap PTY smokes rather than a new
+Cabal stanza, because TTY allocation is owned by the host orchestrator and depends
+on the real host process descriptors.
 
-Sprint `7.12` interaction tests must exercise behavior rather than compare
-checked-in golden histories:
+Interactive coverage must exercise behavior rather than compare checked-in golden
+histories:
 
-- Generate any needed transcripts and cache entries in memory or under temporary
-  directories during the test run.
-- Run PTY-backed sessions for no-argument `play`, explicit human-vs-AI play,
-  AI-vs-AI spectate, no-argument `inspect`, cache-browser selection, saved-game
-  replay, and live-game replay/scrub.
-- Assert that Space advances one AI ply in spectator mode, typed legal moves are
-  accepted on human turns, illegal input is reported, rewind/forward navigation keeps
-  board state coherent, and returning to the live cursor resumes the in-progress
-  game.
-- Assert that backend equity overlays can be requested from both saved replay and
-  live replay cursors, and that missing backend libraries render unavailable
-  evidence rather than crashing or mislabelling originator evidence.
-- Cover non-TTY behavior explicitly: once Sprint `1.18` lands runtime guardrails,
-  `play` should fail with an actionable interactive-entrypoint message unless a
-  deliberate batch command is selected.
+- Generate any needed transcripts and cache entries in memory, under temporary
+  directories, or in ignored operator cache roots during the test/smoke run.
+- Keep TUI dispatcher behavior in `mcts-unit`: legal and illegal play input,
+  AI-vs-AI Space advancement, replay forward/back navigation, on-demand overlay
+  load results, unavailable backend labels, and shared session status text.
+- Keep subprocess/cache behavior in `mcts-integration`: recompute sidecars,
+  divergence labeling, foreign recompute EqStreams, and real binary determinism.
+- Use hostbootstrap PTY smokes for end-to-end terminal allocation: no-argument
+  `play` renders the Brick UI and shared live status line, no-argument `inspect`
+  renders the descriptive cache browser and exits cleanly, and non-TTY `play`
+  fails with the actionable guardrail.
 
-`mcts test all` should include the new interaction coverage or name a prebuilt
-interaction stanza in its plan. Until Sprint `7.12` closes, `mcts test all` means
-"all current non-interactive and semantic test stanzas plus the report-card gate";
-it does not prove every live TUI workflow.
+`mcts test all` remains the aggregate Cabal/report-card gate. It proves the
+prebuilt non-interactive and semantic stanzas; hostbootstrap PTY smoke evidence is
+recorded in the owning phase closures because it requires an actual terminal rather
+than only a Cabal test process.
 
 ## Test Stanzas
 

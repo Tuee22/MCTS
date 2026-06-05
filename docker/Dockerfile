@@ -7,6 +7,8 @@ WORKDIR /workspace/MCTS
 
 COPY . /workspace/MCTS
 
+LABEL org.hostbootstrap.interactive-command-paths="prefix:play; exact:inspect; prefix:inspect replay"
+
 RUN cabal build --enable-tests --enable-benchmarks all \
     && cabal build --enable-tests --enable-benchmarks \
         test:mcts-haskell-style \

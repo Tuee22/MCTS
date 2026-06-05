@@ -21,15 +21,11 @@ import MCTS.CLI.Tree (renderCommandList, renderCommandTree)
 import qualified MCTS.CLI.Tui.Play as TuiPlay
 import MCTS.CLI.Verify (runVerifyCommand)
 import MCTS.CheckCode (runCheckCode)
-import MCTS.Driver (defaultRunInputs)
-import qualified MCTS.Driver as Driver
-import MCTS.Driver.Dispatch (runBatchDispatch)
 import qualified MCTS.Env as Env
-import MCTS.Types (Backend, backendIdentifier, simPerMove)
-import qualified MCTS.Types as Types
+import MCTS.Types (simPerMove)
 import System.Environment (getArgs)
 import System.Exit (ExitCode (..), exitWith)
-import System.IO (IOMode (ReadMode), hIsTerminalDevice, stdin, withBinaryFile)
+import System.IO (IOMode (ReadMode), hIsTerminalDevice, stdin, stdout, withBinaryFile)
 
 main :: IO ()
 main = do
@@ -83,14 +79,11 @@ runCommand command =
 
 runPlay :: PlayOptions -> Env.App ExitCode
 runPlay options = do
-    interactive <- liftIO (hIsTerminalDevice stdin)
+    interactive <- liftIO ((&&) <$> hIsTerminalDevice stdin <*> hIsTerminalDevice stdout)
     if interactive
         then runPlayInteractive options
-        else runPlayBatch options
+        else runPlayNonInteractive
 
--- | Sprint 7.4 hookup: when stdin is a TTY, run the interactive
--- `brick` event loop in `MCTS.CLI.Tui.Play`. Otherwise fall back to
--- the non-interactive batch smoke that the harness exercises.
 runPlayInteractive :: PlayOptions -> Env.App ExitCode
 runPlayInteractive options = do
     seed <- liftIO (resolvePlaySeed options)
@@ -109,37 +102,16 @@ runPlayInteractive options = do
             )
     pure ExitSuccess
 
-runPlayBatch :: PlayOptions -> Env.App ExitCode
-runPlayBatch options = do
-    seed <- liftIO (resolvePlaySeed options)
-    let seedWord = seed
-        inputs =
-            defaultRunInputs
-                { Driver.inputBackend = playBackend options
-                , Driver.inputWorkload = Types.Selfplay
-                , Driver.inputRng = playRng options
-                , Driver.inputGames = 1
-                , Driver.inputSeed = seedWord
-                , Driver.inputSims = playSims options
-                , Driver.inputMaxPlies = playMaxPlies options
-                , Driver.inputCacheDir = playCacheDir options
-                }
-    result <- liftIO (runBatchDispatch inputs)
-    case result of
-        Left message -> liftIO (outputLine message) >> pure (ExitFailure 1)
-        Right batch ->
-            liftIO
-                ( outputLine
-                    ( "played one logical game with "
-                        <> backendIdentifier (playBackend options)
-                        <> " side="
-                        <> show (playSide options)
-                        <> renderVs (playVs options)
-                        <> " hash="
-                        <> Driver.batchHash batch
-                    )
-                )
-                >> pure ExitSuccess
+runPlayNonInteractive :: Env.App ExitCode
+runPlayNonInteractive =
+    liftIO
+        ( outputLine
+            ( "mcts play requires an interactive terminal. Run it from a TTY with "
+                <> "`hostbootstrap run play`; use `mcts bench selfplay` or `mcts verify selfplay` "
+                <> "for deliberate non-interactive game generation."
+            )
+        )
+        >> pure (ExitFailure 1)
 
 exitCodeToInt :: ExitCode -> Int
 exitCodeToInt ExitSuccess = 0
@@ -159,10 +131,3 @@ randomWord64 =
   where
     appendByte acc byte =
         (acc `shiftL` 8) .|. fromIntegral (byte :: Word8)
-
-renderVs :: Maybe Backend -> String
-renderVs Nothing = ""
-renderVs (Just backend) = " vs=" <> backendIdentifier backend
-
-_keepBackend :: Backend -> Backend
-_keepBackend = id

@@ -15,6 +15,7 @@ module MCTS.CLI.Tui.Play
     , applyUserInput
     , savePlayState
     , advanceAiState
+    , playSessionState
     , UserInputOutcome (..)
     ) where
 
@@ -32,6 +33,11 @@ import qualified Graphics.Vty as V
 import System.Directory (doesFileExist)
 
 import MCTS.CLI.Tui.Board (renderBoard, renderStatus)
+import MCTS.CLI.Tui.Session
+    ( GameSessionState
+    , sessionFromLive
+    , sessionStatusLine
+    )
 import MCTS.Driver (makeLogicalEnvelope, uctChooseMove)
 import MCTS.Driver.ForeignSearch (ForeignSearchOpener, foreignSearchMove)
 import MCTS.Engine
@@ -249,6 +255,7 @@ drawUi st =
                 "play"
                 (playStateMoveCount st)
                 (fromIntegral (playStateMaxPlies st))
+        , str (sessionStatusLine (playSessionState st))
         , withAttr (A.attrName "message") (str (playStateMessage st))
         , str ("> " <> playStateInput st)
         , case playStateLastHint st of
@@ -259,6 +266,19 @@ drawUi st =
             Just winner -> withAttr (A.attrName "winner") (str ("Game over: " <> show winner))
         ]
     ]
+
+playSessionState :: PlayState -> GameSessionState
+playSessionState st =
+    sessionFromLive
+        (playStateBoard st)
+        (playStateMoveCount st)
+        (playStateAiSide st)
+        (playStateBackend st)
+        (playStateVsBackend st)
+        (saveStatus <$> playStateDone st)
+        (playStateMessage st)
+  where
+    saveStatus winner = "terminal " <> show winner
 
 handleEvent :: BrickEvent String () -> EventM String PlayState ()
 handleEvent (VtyEvent (V.EvKey key _mods)) =

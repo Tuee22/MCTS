@@ -19,7 +19,7 @@
 
 ## Phase Status
 
-🔄 **Active after focused reclosures.** A Cabal package, thin `app/Main.hs`,
+✅ **Done after focused reclosures.** A Cabal package, thin `app/Main.hs`,
 `src/MCTS/` library layout, manual `CommandSpec` registry, parser, output/error
 boundary, typed `Subprocess` wrapper, Plan/Apply helpers, prerequisite skeleton,
 lint/docs commands, and `mcts-haskell-style` stanza exist;
@@ -58,10 +58,11 @@ leaf-command descriptions, play examples, notes, parser-help text, generated doc
 README guidance, and semantic renderer/help tests. Sprints `1.1` through `1.17`
 remain closed on their owned CLI surface, `CommandSpec`, self-describing
 introspection, command-use text, lint stack, and toolchain-baseline surfaces;
-their closure narratives are preserved. Sprint `1.18` reopened on 2026-06-05 for
-the operator play/inspect surface: no-argument `play` and `inspect`, command
-defaults, cache-browser entry, generated help/docs alignment, and explicit
-non-TTY guardrails remain active work.
+their closure narratives are preserved. Sprint `1.18` reopened and reclosed on
+2026-06-05 for the operator play/inspect surface: no-argument `play` and
+`inspect`, command defaults, cache-browser entry, generated help/docs alignment,
+and explicit non-TTY guardrails are implemented and validated through the
+hostbootstrap entrypoint.
 
 ## Phase Summary
 
@@ -1569,18 +1570,16 @@ None.
 - At the time of Sprint `1.17` closure, Phases `2` through `8` stayed closed on
   their owned backend, transcript, verification, report-card, and performance
   surfaces; the reopening touched only Phase `1` command metadata, help, generated
-  command artefacts, and governed docs. The later Sprint `1.18` audit reopens the
-  operator play/inspect command surface.
+  command artefacts, and governed docs. Sprint `1.18` later reclosed the
+  no-argument play/inspect command surface.
 
-## Sprint 1.18: No-Argument Play/Inspect and Interactive Guardrails 🔄
+## Sprint 1.18: No-Argument Play/Inspect and Interactive Guardrails ✅
 
-**Status**: Active
+**Status**: Done
 **Implementation**: `src/MCTS/CLI/Spec.hs`, `src/MCTS/CLI/Parser.hs`,
 `src/MCTS/App.hs`, `src/MCTS/CLI/Inspect.hs`, `documents/cli/commands.md`,
 `share/man/man1/mcts.1`, `share/completion/{bash,zsh,fish}/`
-**Blocked by**: Sprint `9.4` for host-side TTY/stdin and the refactored
-`hostbootstrap.dhall` cache-mount closure;
-Sprint `2.10` for the descriptive cache catalog; Sprint `7.12` for the shared UI.
+**Blocked by**: N/A
 **Docs to update**: `README.md`, `documents/engineering/cli_command_surface.md`,
 `documents/engineering/unit_testing_policy.md`, `DEVELOPMENT_PLAN/README.md`,
 `DEVELOPMENT_PLAN/00-overview.md`, `DEVELOPMENT_PLAN/system-components.md`,
@@ -1589,14 +1588,15 @@ Sprint `2.10` for the descriptive cache catalog; Sprint `7.12` for the shared UI
 ### Objective
 
 Make `play` and `inspect` usable without required flags, align generated help/docs
-with the real host workflow, and prevent the current non-TTY batch fallback from
-looking like a successful interactive game.
+with the real host workflow, and prevent non-TTY host invocations from looking like
+successful interactive games.
 
 ### Deliverables
 
-- `mcts play` with no arguments opens the unified game UI using documented defaults
-  and in-UI setup controls. Explicit flags remain available for scripted or direct
-  setup: backend, side, opponent backend, RNG, seed, max plies, sims, and cache root.
+- `mcts play` with no arguments opens the Brick game UI from a TTY using documented
+  defaults: Haskell controls Villain, the human controls Hero, native RNG, 200 max
+  plies, and 1000 simulations. Explicit flags remain available for direct setup:
+  backend, side, opponent backend, RNG, seed, max plies, sims, and cache root.
 - `mcts inspect` with no arguments opens the cached-game browser supplied by
   Sprint `2.10`. Existing scriptable leaves (`inspect list`, `inspect show`,
   `inspect replay`, `inspect divergence`, and `inspect cache ...`) remain intact.
@@ -1604,31 +1604,43 @@ looking like a successful interactive game.
   explain the no-argument paths, backend identifiers, defaults, side ownership,
   spectator mode, replay controls, and cache-browser behavior from the same
   `CommandSpec` registry.
-- Runtime behavior is explicit when no TTY is available: interactive `play` fails
+- Runtime behavior is explicit when no TTY is available: `play` fails
   with an actionable message that points to the supported interactive host path or a
   deliberate batch/self-play command, rather than silently running one logical game
   and printing only a hash.
-- The existing batch game path is either moved behind a clearly named non-interactive
-  command or documented as an internal/test helper, not as the operator play command.
+- Deliberate non-interactive game generation remains under named batch surfaces such
+  as `bench selfplay` and `verify selfplay`, not under the operator `play` command.
 
 ### Validation
 
-- `hostbootstrap run docs generate`
-- `hostbootstrap run docs check`
-- `hostbootstrap run test mcts-unit`
-- `hostbootstrap run check-code`
-- `hostbootstrap run help play`
-- `hostbootstrap run help inspect`
-- A non-TTY probe of `hostbootstrap run play` fails with the expected actionable
-  message once the guardrail lands.
+- `hostbootstrap run --no-pull docs generate` passed on 2026-06-05 and rewrote the
+  generated Markdown, manpage, completions, and command matrix.
+- `hostbootstrap run --no-pull docs check` passed on 2026-06-05.
+- `hostbootstrap run --no-pull test mcts-unit` passed on 2026-06-05 with all 29
+  tests passing.
+- `hostbootstrap run --no-pull help play` passed on 2026-06-05 and showed the
+  Haskell/Villain defaults plus human/spectator mode notes.
+- `hostbootstrap run --no-pull help inspect` passed on 2026-06-05 and showed the
+  no-subcommand browser surface plus row-number/hash-prefix selection.
+- A non-TTY probe of `hostbootstrap run --no-pull play` exited 1 on 2026-06-05 with
+  the actionable guardrail message.
+- `hostbootstrap run --no-pull inspect` exited 0 in non-TTY mode on 2026-06-05 and
+  rendered the cache table fallback.
 
 ### Remaining Work
 
-- Add no-argument parser/default behavior for `play` and `inspect`.
-- Decide whether the current batch fallback becomes a named batch command or an
-  internal-only runner.
-- Regenerate and validate generated docs/manpages/completions after parser and
-  registry changes.
+None.
+
+### Closure Notes
+
+Closed on 2026-06-05. `parseCommand ["play"]` now yields a playable default
+configuration instead of requiring `--backend` and `--side`, and `parseCommand
+["inspect"]` dispatches to the cached-game browser/list fallback rather than a
+subcommand error. The historical `play` batch fallback was removed from the
+operator path; non-interactive generation is available through explicitly named
+benchmark and verify commands. Generated docs, manpage, completions, focused help,
+and parser/unit coverage were regenerated and revalidated through
+`hostbootstrap run`.
 
 ## Documentation Requirements
 
@@ -1656,16 +1668,16 @@ looking like a successful interactive game.
 
 **Product docs to create/update:**
 
-- `README.md` — link operators to the implemented self-describing CLI contract plus the
-  current backend identifier table, the active hostbootstrap interactive gap, and the
-  target no-argument `play` / `inspect` workflow.
+- `README.md` — link operators to the implemented self-describing CLI contract plus
+  the current backend identifier table and the no-argument `play` / `inspect`
+  workflow.
 
 **Cross-references to add:**
 
 - `documents/cli/commands.md` (generated by Sprint `1.3`) is reachable from the
   `documents/engineering/README.md` index.
-- `legacy-tracking-for-deletion.md` carries any Sprint `1.10` doctrine-deviation residue
-  until the generated-doc and style contracts are reclosed.
+- `legacy-tracking-for-deletion.md` carries any doctrine-deviation residue until the
+  owning sprint reclosure moves it to Completed.
 - `legacy-tracking-for-deletion.md` records the pointer-only help / missing enum-value
   metadata row as completed by Sprint `1.13`.
 - `legacy-tracking-for-deletion.md` records the thin play command-use text row as

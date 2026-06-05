@@ -28,6 +28,7 @@ module MCTS.CLI.Tui.Replay
     , replayBoardAt
     , currentOverlayRows
     , OverlayRow (..)
+    , replaySessionState
     ) where
 
 import qualified Brick.AttrMap as A
@@ -44,6 +45,11 @@ import qualified Graphics.Vty as V
 import Text.Printf (printf)
 
 import MCTS.CLI.Tui.Board (renderBoard, renderStatus)
+import MCTS.CLI.Tui.Session
+    ( GameSessionState
+    , sessionFromReplay
+    , sessionStatusLine
+    )
 import MCTS.Engine (Board, applyMove, initialBoard)
 import MCTS.Notation (renderMove)
 import MCTS.Transcript.EquitySidecar (EqRecord (..), EqStream (..))
@@ -293,12 +299,25 @@ drawUi st =
                     (replayHash st)
                     (replayMoveIndex st)
                     (length (flattenMoves (replayTranscript st)))
+                , str (sessionStatusLine (replaySessionState st))
                 , str ("move played: " <> currentMoveText st)
                 , overlayWidget (currentOverlayRows st)
                 , withAttr (A.attrName "message") (str (replayMessage st))
                 ]
         ]
     ]
+
+replaySessionState :: ReplayState -> GameSessionState
+replaySessionState st =
+    let (board, _) = boardWithCache (replayMoveIndex st) st
+     in sessionFromReplay
+            (replayHash st)
+            (replayTranscript st)
+            board
+            (replayMoveIndex st)
+            (replayOverlays st)
+            (replayUnavailableBackends st)
+            (replayMessage st)
 
 overlayWidget :: [OverlayRow] -> Widget String
 overlayWidget [] = str "" -- no sidecars cached; no overlay rendered

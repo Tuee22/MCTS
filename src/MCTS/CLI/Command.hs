@@ -84,7 +84,8 @@ verifyBackendsToBackends :: [VerifyBackend] -> [Backend]
 verifyBackendsToBackends = map verifyBackendToBackend
 
 data InspectCommand
-    = InspectList (Maybe FilePath)
+    = InspectBrowse (Maybe FilePath)
+    | InspectList (Maybe FilePath)
     | InspectShow ShowOptions
     | InspectReplay ReplayOptions
     | InspectCache CacheCommand

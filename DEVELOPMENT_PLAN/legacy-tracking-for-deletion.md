@@ -184,13 +184,11 @@ stale command-use text cleanup.
 
 The 2026-06-05 operator UI audit reopened Phase `9` Sprint `9.4`, Phase `1`
 Sprint `1.18`, Phase `2` Sprint `2.10`, and Phase `7` Sprint `7.12`. The stale
-surfaces are operator-facing: hostbootstrap does not yet provide TTY/stdin, the
-MCTS config still needs the refactored target/mount shape for persistent cache
-state, `play` can appear to succeed while only running the non-interactive
-hash-printing batch fallback, `inspect` remains hash-first, live play and saved
-replay are split UI implementations, foreign recompute can be misread as
-same-position comparison after divergent choices, and `mcts test all` does not
-yet cover real PTY play/spectate/inspect workflows.
+surfaces were operator-facing: hostbootstrap TTY/stdin, the refactored
+target/mount shape for persistent cache state, the non-interactive `play`
+hash-printing fallback, hash-first `inspect`, split play/replay session status,
+recorded-position recompute semantics, and terminal interaction evidence. Those
+rows closed the same day and are recorded in the Completed table below.
 
 Two classes of entries populate this ledger over time:
 
@@ -239,21 +237,11 @@ Q3/Q4/Q6/Q7 PASS and `normalized_divergence_score = 0.0000`. Sprint
 live report card remains the source of truth for current performance
 measurements.
 
-**2026-06-05 — Operator play/inspect cleanup opens.** The Pending Removal
-rows below are active until Sprints `9.4`, `1.18`, `2.10`, and `7.12`
-close with aligned generated docs, the refactored `hostbootstrap.dhall`
-target/mount config, PTY interaction coverage, and hostbootstrap validation
-through `hostbootstrap run <mcts-args>`.
-
-| Item | Owner | Notes |
-|------|-------|-------|
-| Non-TTY `play` batch fallback exposed as operator play | Sprints `1.18`, `9.4` | `hostbootstrap run play ...` currently prints `played one logical game ... hash=...` instead of opening the TUI. The operator surface must either open the interactive UI or fail with an actionable message; any batch self-play path must be clearly named as non-interactive. |
-| Short-lived hostbootstrap cache hides saved games between runs | Sprints `9.4`, `2.10` | The checked-in MCTS `hostbootstrap.dhall` still lacks the refactored `targets` schema and scoped `.mcts-cache/` mount, so hashes printed by one run are not useful to later `inspect` runs without explicit cache wiring. Refactored hostbootstrap supports container mounts; Sprint `9.4` owns adopting that config shape, and Sprint `2.10` owns the cache catalog surfaced to operators. |
-| Hash-first inspect selection | Sprints `1.18`, `2.10` | `inspect list/show/replay` require hash-prefix oriented operation. No-argument `inspect` must open a selectable cached-game browser with parameter-derived names while retaining hash prefixes for exact/scripted references. |
-| Split live play and saved replay UI logic | Sprint `7.12` | Live `play` and `inspect replay` use separate interaction models. The target is one game-session state, board, timeline, and overlay path for human-vs-AI, AI-vs-AI observation, saved replay, and in-progress replay. |
-| Foreign recompute can be misread as same-position equity comparison | Sprints `2.10`, `7.12` | Foreign recompute evidence must evaluate the board at the selected recorded/live cursor. Divergent chosen moves are labels/evidence, not a license for later overlay rows to follow the foreign backend's alternative line when the UI promises same-position comparison. |
-| `mcts test all` omits real PTY play/spectate/inspect workflows | Sprint `7.12` | Current tests cover parser/help, pure TUI dispatch, replay renderers, sidecars, divergence, and non-interactive subprocesses, but not end-to-end terminal interactions. Sprint `7.12` adds PTY-backed no-golden interaction coverage and wires it into or explicitly through the aggregate plan. |
-| Generated/help docs overclaim host-side interactive play | Sprint `1.18` | Focused help and generated command docs must stop implying that the current `hostbootstrap run play ...` path opens a TUI until Sprint `9.4` closes. Generated docs must describe no-argument `play`/`inspect`, defaults, cache browser behavior, and non-TTY guardrails from `CommandSpec`. |
+**2026-06-05 — Operator play/inspect cleanup closed.** No Pending Removal row
+remains for the operator audit. Sprints `9.4`, `1.18`, `2.10`, and `7.12` closed
+with aligned generated docs, the refactored `hostbootstrap.dhall` target/mount
+config, hostbootstrap PTY smoke evidence, no-argument `play`/`inspect`, descriptive
+cache rows, recorded-position recompute, and shared play/replay session status.
 
 ## Pending Removal Notes
 
@@ -268,6 +256,7 @@ data instead of publishing a fallback shared library.
 
 | Item | Removed In | Notes |
 |------|------------|-------|
+| Operator play/inspect stale host path, cache, browser, session, and recompute surfaces | Sprints `9.4`, `1.18`, `2.10`, `7.12`, 2026-06-05 | `hostbootstrap.dhall` now uses the refactored `targets` schema with one `H.Accel.Cpu` target and a scoped `.mcts-cache/` mount; `docker/Dockerfile` labels interactive command paths; hostbootstrap forwards stdin/TTY for labelled `play`, no-argument `inspect`, and `inspect replay` paths; `play` has no-argument defaults and exits with an actionable non-TTY guardrail instead of running the historical batch fallback; no-argument `inspect` opens a descriptive cache browser from a TTY and falls back to list output for non-TTY/JSON use; foreign recompute rebuilds each backend from the recorded cursor history; play/replay share `GameSessionState` and session status rendering. Validation passed `docs generate`, `docs check`, `mcts-unit`, `mcts-integration`, `mcts-cross-backend`, focused help checks, non-TTY `play`, non-TTY `inspect`, and PTY smokes for `play` and `inspect` through `hostbootstrap run`. |
 | Heavy multi-language toolchain layers in `docker/Dockerfile` | Sprint `9.2`, 2026-06-04 | The project Dockerfile now inherits `FROM ${BASE_IMAGE}` from the hostbootstrap base image instead of explicitly installing ghcup, GHC, Cabal, the full LLVM/BOLT 19 stack, clang, the clang PGO runtime, Rust, base Rust machinery, formatter tools, and base apt dependencies. The slim overlay adds Cabal executable/test/benchmark installs and the four Dockerfile-time foreign backend builds. `hostbootstrap build` and `hostbootstrap run test all` passed on Apple Silicon / arm64 before the follow-up base-image consolidation. |
 | Separate formatter-tools GHC install in `docker/Dockerfile` | Sprint `1.16` + Sprint `9.2`, 2026-06-04 | Removed the `STYLE_GHC_VERSION` ARG, the separate `ghcup install ghc ${STYLE_GHC_VERSION}` step, and the `--with-compiler ghc-${STYLE_GHC_VERSION}` formatter install. Fourmolu `0.19.0.1` and HLint `3.10` now install into `/opt/hostbootstrap/haskell-style/bin/` with the project GHC `9.12.4`. |
 | Root `compose.yaml` | Sprint `1.15` + Sprint `9.2`, 2026-06-04 | Deleted the root Compose workflow file. The canonical host-side invocation is `hostbootstrap run <mcts-args>` through root `hostbootstrap.dhall`; direct Compose entrypoints are no longer a supported project workflow. |

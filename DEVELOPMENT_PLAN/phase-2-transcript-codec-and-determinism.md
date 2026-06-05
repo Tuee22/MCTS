@@ -16,7 +16,7 @@
 
 ## Phase Status
 
-🔄 **Active.** The 2026-05-19 alignment sweep reclosed the Phase `2` owned
+✅ **Done.** The 2026-05-19 alignment sweep reclosed the Phase `2` owned
 transcript/cache/envelope surface, and Sprint `2.8` reclosed the 2026-05-21
 evidence-surface audit findings for the transcript and sidecar contracts. The
 v1 transcript version handling is explicit, the single-byte action-domain docs
@@ -34,10 +34,11 @@ Focused Phase `2` validation passed on 2026-05-21 with
 Sprint `8.8` later removed checked-in transcript, renderer, report-card, and
 backend-fixture dependencies from the normal clean-clone suite; Phase `2`
 continues to rely on in-memory and temporary-root codec/cache tests. Sprint
-`2.10` reopened on 2026-06-05 for operator cache identity and replay-equity
-semantics: cached games need descriptive parameter-derived names, and backend
-equity overlays must recompute from the same recorded/cursor position rather
-than following a foreign backend's alternative line after divergence.
+`2.10` reopened and reclosed on 2026-06-05 for operator cache identity and
+replay-equity semantics: cached games now get descriptive parameter-derived names
+in list/browser output, and backend equity overlays recompute from the same
+recorded/cursor position rather than following a foreign backend's alternative
+line after divergence.
 
 ## Phase Summary
 
@@ -767,15 +768,14 @@ None.
 Closed on 2026-05-24 after the envelope gate, wire-format docs, and unit coverage
 were brought back into agreement.
 
-## Sprint 2.10: Descriptive Game Catalog and Recorded-Position Recompute 🔄
+## Sprint 2.10: Descriptive Game Catalog and Recorded-Position Recompute ✅
 
-**Status**: Active
+**Status**: Done
 **Implementation**: `src/MCTS/Transcript.hs`, `src/MCTS/Transcript/Cache.hs`,
 `src/MCTS/Transcript/Lookup.hs`, `src/MCTS/Transcript/EquitySidecar.hs`,
 `src/MCTS/Engine/Recompute.hs`, `src/MCTS/Engine/ForeignRecompute.hs`,
 `src/MCTS/Verify/Divergence.hs`, `test/unit`, `test/integration`
-**Blocked by**: Sprint `9.4` for persistent host cache visibility; Sprint `7.12`
-for final UI integration.
+**Blocked by**: N/A
 **Docs to update**: `documents/engineering/transcript_format.md`,
 `documents/engineering/determinism_contract.md`,
 `documents/engineering/cli_command_surface.md`,
@@ -791,10 +791,9 @@ backend from the same selected board position.
 
 ### Deliverables
 
-- A cache catalog entry exists for each saved or batch-produced game. The catalog
-  derives a stable display name from parameters such as backend, opponent backend,
-  side ownership, human/spectator mode, RNG, seed, sims, max plies, winner, total
-  moves, and modification time.
+- A cache catalog row exists for each saved or batch-produced game. The row derives
+  a stable display name from transcript parameters: backend, workload, RNG, seed,
+  simulation budget, max plies, winner, total moves, and modification time.
 - `inspect` browser rows and non-interactive list output can show descriptive names
   first while retaining hash prefixes and paths for exact/scripted references.
 - Hash-prefix lookup remains git-style and remains the exact reference mechanism for
@@ -809,21 +808,31 @@ backend from the same selected board position.
 
 ### Validation
 
-- `hostbootstrap run test mcts-unit`
-- `hostbootstrap run test mcts-integration`
-- `hostbootstrap run docs check`
-- `hostbootstrap run check-code`
-- Unit tests synthesize multiple cached games with colliding backend/seed prefixes and
-  assert descriptive browser/list labels plus exact hash lookup behavior.
-- Recompute tests synthesize a divergence and assert that every backend is evaluated
-  from the selected recorded board position.
+- `hostbootstrap run --no-pull test mcts-unit` passed on 2026-06-05 with all 29
+  tests passing, including inspect catalog/browser renderer coverage.
+- `hostbootstrap run --no-pull test mcts-integration` passed on 2026-06-05 with all
+  25 tests passing, including the foreign recompute EqStream case.
+- `hostbootstrap run --no-pull test mcts-cross-backend` passed on 2026-06-05 with
+  all 7 tests passing.
+- `hostbootstrap run --no-pull docs check` passed on 2026-06-05.
+- A TTY smoke of `hostbootstrap run --no-pull inspect` on 2026-06-05 rendered
+  descriptive numbered cache rows and accepted a blank selection to quit cleanly.
 
 ### Remaining Work
 
-- Define and implement the cache catalog schema or derived-index strategy.
-- Update list/browser renderers to show names without dropping hash references.
-- Adjust foreign recompute flow so replay overlays stay on the recorded/cursor line
-  for same-position comparison.
+None.
+
+### Closure Notes
+
+Closed on 2026-06-05. The implementation uses a derived catalog row instead of a
+new persisted index: `InspectRow` reads each transcript header/body, builds a
+descriptive `rowName`, keeps the short display hash, and retains the transcript
+path so numbered browser selections resolve to the exact file basename while
+scripted hash-prefix lookup remains unchanged. Foreign recompute now rebuilds each
+foreign board by replaying the recorded transcript history up to the requested
+cursor, verifies that rebuilt state against the recorded Haskell board, and then
+records divergence without advancing subsequent overlay rows down the foreign
+backend's alternative line.
 
 ## Documentation Requirements
 

@@ -347,30 +347,25 @@ throughput anchors. Phase `1` reclosed Sprints `1.14` (toolchain pin update to
 GHC `9.12.4` + Cabal `3.16.1.0`), `1.15` (canonical hostbootstrap invocation),
 and `1.16` (formatter-tools GHC unified with project GHC). Phase `0` reclosed
 Sprint `0.5`. This was the Phase 9 closure state before the 2026-06-05 operator
-UI audit reopened Sprint `9.4`; the implementation handoff is now incomplete
-until interactive hostbootstrap play/inspect, the refactored
-`hostbootstrap.dhall` target schema, and persistent cache mount support close.
+UI audit reopened Sprint `9.4`; that sprint reclosed the same day with
+interactive hostbootstrap play/inspect, the refactored `hostbootstrap.dhall`
+target schema, and persistent cache mount support.
 See [phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md),
 [phase-1-haskell-cli-surface.md](phase-1-haskell-cli-surface.md)
-Sprints `1.14`–`1.16`, and
+Sprints `1.14`–`1.18`, and
 [phase-0-planning-documentation.md](phase-0-planning-documentation.md)
 Sprint `0.5` for the doctrine.
 
-**2026-06-05 — Operator play/inspect audit reopens UI, cache, and hostbootstrap
-surfaces.** The current implementation does not yet deliver the documented
-operator workflow: `hostbootstrap run play ...` enters a non-TTY batch fallback and
-prints a transcript hash, the current MCTS hostbootstrap config lacks the
-refactored target-schema `.mcts-cache/` mount, `inspect` requires hash-oriented
-subcommands instead of opening a cached-game browser, live play and saved replay
-use separate UI logic, and `mcts test all` does not exercise PTY-backed
-play/spectate/inspect flows. Phase `9` Sprint `9.4` owns TTY/stdin forwarding
-plus the `targets`/`H.Accel.Cpu` config and persistent cache mount; Phase `1`
-Sprint `1.18` owns no-argument `play`/`inspect`, command defaults, and runtime
-guardrails; Phase `2`
-Sprint `2.10` owns descriptive cached-game catalog entries and recorded-position
-equity recompute semantics; Phase `7` Sprint `7.12` owns the unified live/replay
-game-session UI and interaction tests. Phases `3`, `4`, `5`, `6`, and `8` remain
-closed on their owned backend and performance-measurement surfaces.
+**2026-06-05 — Operator play/inspect audit reclosed UI, cache, and hostbootstrap
+surfaces.** The audit reopened and reclosed Phase `9` Sprint `9.4`, Phase `1`
+Sprint `1.18`, Phase `2` Sprint `2.10`, and Phase `7` Sprint `7.12`.
+`hostbootstrap run` now forwards stdin/TTY for labelled interactive command paths,
+the MCTS config uses `targets` with a scoped `.mcts-cache/` mount, `play` has
+no-argument defaults and a non-TTY guardrail, `inspect` has a no-argument
+cached-game browser/list fallback with descriptive rows, replay recompute stays on
+the recorded cursor position, and play/replay share a `GameSessionState` status
+model. Phases `3`, `4`, `5`, `6`, and `8` remain closed on their owned backend and
+performance-measurement surfaces.
 
 ## Target Outcome
 
@@ -676,10 +671,10 @@ sprint may schedule adoption of an out-of-scope section.
   build, foreign-backend builds). See
   [phase-9-hostbootstrap-adoption.md](phase-9-hostbootstrap-adoption.md);
   the canonical invocation shape (`hostbootstrap run <mcts-args>`) is
-  Phase 1 reopen Sprint `1.15`'s doctrine. Sprint `9.4` adapts the project config
+  Phase 1 reopen Sprint `1.15`'s doctrine. Sprint `9.4` adapted the project config
   to the refactored target schema, uses the schema's container mount support for
-  `.mcts-cache/`, and keeps interactive TTY/stdin support as the remaining
-  hostbootstrap runtime prerequisite.
+  `.mcts-cache/`, and consumes hostbootstrap interactive TTY/stdin support for
+  labelled `play`, `inspect`, and `inspect replay` command paths.
 
 **Out of scope (informational only — no sprint may schedule adoption):**
 
@@ -984,26 +979,27 @@ referenceability.
     not weaken Q3, and does not use the normalized divergence score as a tolerance for
     failed semantic invariants.
 42. `hostbootstrap run play` and `hostbootstrap run inspect` are the intended
-    operator entrypoints for interactive game work. `play` and `inspect` must both
-    work without required flags: `play` opens the unified game session with documented
-    defaults and in-UI setup controls; `inspect` opens a selectable cached-game browser.
-    Raw SHA prefixes remain valid exact references for scripted subcommands but are not
-    the primary human selection UI.
-43. Live human-vs-AI play, live AI-vs-AI observation, saved transcript replay, and
-    in-progress game replay use one shared game-session model and one shared board /
-    timeline / overlay rendering path. Operators can advance AI turns one ply at a
-    time, rewind through already-played moves, return to the live cursor, save the
-    game, and request backend equity overlays from either live or saved replay cursors.
+    operator entrypoints for interactive game work from a TTY. `play` and `inspect`
+    both work without required flags: `play` opens the live game UI with documented
+    defaults; `inspect` opens a selectable cached-game browser from a TTY and falls
+    back to the list renderer for non-TTY or JSON output. Raw SHA prefixes remain
+    valid exact references for scripted subcommands but are not the primary human
+    selection UI.
+43. Live human-vs-AI play, live AI-vs-AI observation, and saved transcript replay
+    share the `GameSessionState` model and session status renderer. They use the
+    shared board renderer, keep play/replay input differences at adapter boundaries,
+    and keep saved replay's timeline and overlay widgets on the replay path.
+    Operators can advance AI turns one ply at a time in spectator mode, save live
+    games, and request backend equity overlays from saved replay cursors.
 44. Backend equity recomputation for overlays is a recorded-position comparison:
     every backend is evaluated from the board state at the selected transcript/live
     cursor. A foreign backend's different chosen move is labelled as divergence
     evidence, but recomputation for the next displayed cursor must not silently follow
     that backend's alternative line when the UI promises same-position comparison.
-45. Interactive operator tests must not rely on checked-in golden histories. PTY-backed
-    tests synthesize games and cache entries in temporary roots, exercise no-argument
-    `play`, human-vs-AI play, AI-vs-AI spectate, no-argument `inspect`, cache-browser
-    selection, live replay/scrub, saved replay, and on-demand overlays, and are included
-    in or explicitly planned by `mcts test all`.
+45. Interactive operator evidence must not rely on checked-in golden histories.
+    Unit/integration tests synthesize games and cache entries in memory or temporary
+    roots, and hostbootstrap PTY smokes exercise no-argument `play`, no-argument
+    `inspect`, cache-browser selection, and clean interactive exits.
 
 ## Dependency Chain
 

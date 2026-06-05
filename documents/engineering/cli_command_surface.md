@@ -5,8 +5,8 @@
 **Referenced by**: ../../README.md, ../../DEVELOPMENT_PLAN/README.md, ../../DEVELOPMENT_PLAN/00-overview.md, ../../DEVELOPMENT_PLAN/system-components.md, ../../DEVELOPMENT_PLAN/phase-1-haskell-cli-surface.md, ../../DEVELOPMENT_PLAN/phase-2-transcript-codec-and-determinism.md, ../../DEVELOPMENT_PLAN/phase-3-haskell-engine.md, ../../DEVELOPMENT_PLAN/phase-4-cpp-legacy-port-and-ffi-bridge.md, ../../DEVELOPMENT_PLAN/phase-5-cpp-imperative-steelman.md, ../../DEVELOPMENT_PLAN/phase-6-cpp-functional-and-rust.md, ../../DEVELOPMENT_PLAN/phase-7-cross-backend-verify-and-report-card.md, ../documentation_standards.md, ./README.md, ./benchmark_metrics.md, ./semantic_parity_contract.md
 **Generated sections**: command-matrix
 
-> **Purpose**: Operator-facing `mcts` command matrix and reopened play/inspect UI
-> contract. Defers to
+> **Purpose**: Operator-facing `mcts` command matrix and implemented play/inspect
+> host workflow. Defers to
 > [../../HASKELL_CLI_TOOL.md](../../HASKELL_CLI_TOOL.md) for Command Topology,
 > `CommandSpec`, and Progressive Introspection.
 
@@ -70,10 +70,10 @@ notes, and completion metadata; enum readers consume the same value sets that ap
 in help, JSON, manpages, Markdown, completions, and parse-error diagnostics. Phase `1`
 Sprint `1.13` closed the value-discovery and focused-help surface on 2026-06-03;
 Sprint `1.17` closed the follow-up command-use narrative surface on 2026-06-04.
-The 2026-06-05 operator UI audit reopened Phase `1` for Sprint `1.18` because the
-generated/help surface overclaims the currently supported host path for `play` and
-`inspect`: `hostbootstrap run play ...` enters the non-TTY batch fallback, and
-the no-argument `inspect` cache browser does not yet exist.
+Sprint `1.18` closed the no-argument play/inspect and non-TTY guardrail surface on
+2026-06-05: `play` has documented defaults and fails explicitly without a TTY, and
+no-argument `inspect` opens the cache browser from a TTY or falls back to list-style
+output for non-TTY/JSON use.
 
 ## Command Matrix
 
@@ -97,6 +97,7 @@ From the host, run any listed logical command as
 | `mcts verify legacy-parity rollouts [opts]` | Legacy-envelope rollout liveness across all five backend slots |
 | `mcts verify legacy-parity selfplay [opts]` | Legacy-envelope self-play liveness across all five backend slots |
 | `mcts play [opts]` | Interactive `brick` TUI; human vs AI or AI vs AI spectate |
+| `mcts inspect [opts]` | Interactive cached-game browser for the local transcript cache |
 | `mcts inspect list` | Non-interactive enumeration of the local transcript cache |
 | `mcts inspect show <hash-prefix> [opts]` | Non-interactive transcript dump in legacy notation |
 | `mcts inspect replay <hash-prefix> [opts]` | Interactive `brick` TUI for forward/back navigation with multi-backend equity overlay |
@@ -180,15 +181,12 @@ output root, seed, game count, and simulation count as explicit flags. Its outpu
 must be directed to an external or ignored artifact root and is not a normal
 `mcts test all` input. All five backend identifiers remain first-class CLI values.
 
-Current operator gap: the hostbootstrap entrypoint is currently one-shot and
-non-interactive. `hostbootstrap run play ...` therefore runs the batch fallback and
-prints a transcript hash rather than opening the `brick` UI, and the checked-in
-MCTS `hostbootstrap.dhall` has not yet adopted the refactored `targets` schema
-with a scoped `.mcts-cache/` mount. Phase `9` Sprint `9.4` owns TTY/stdin support
-and the target-schema/mount config update. Phase `1` Sprint `1.18` owns the
-CLI/help/runtime guardrails; Phase `7` Sprint
-`7.12` owns the shared live/replay UI; Phase `2` Sprint `2.10` owns the cache
-catalog and recorded-position equity contract.
+Operator host path: `hostbootstrap run <mcts-args>` uses the refactored
+`hostbootstrap.dhall` target schema with one CPU target and a scoped `.mcts-cache/`
+mount. The Dockerfile labels interactive paths so hostbootstrap forwards stdin and
+allocates a TTY for `play`, no-argument `inspect`, and `inspect replay` when the
+host invocation itself has a TTY. Non-interactive commands keep ordinary stdout and
+stderr behavior.
 
 ## Typed Source of Truth
 
@@ -212,9 +210,9 @@ set of common invocations.
 
 | Flag | Commands | Default | Notes |
 |------|----------|---------|-------|
-| `--backend <list>` | `bench`, `verify`, `play` | required | Comma-separated `NonEmpty Backend` for bench/verify; single `Backend` for play. Valid backend identifiers are listed in [Backend Identifiers](#backend-identifiers); `--help`, parse errors, completions, JSON, manpages, and generated Markdown enumerate the accepted values from one typed choice set. |
+| `--backend <list>` | `bench`, `verify`, `play` | required for bench/verify; `haskell` for play | Comma-separated `NonEmpty Backend` for bench/verify; single `Backend` for play. Valid backend identifiers are listed in [Backend Identifiers](#backend-identifiers); `--help`, parse errors, completions, JSON, manpages, and generated Markdown enumerate the accepted values from one typed choice set. |
 | `--vs <backend>` | `play` | `Nothing` (human plays) | When set, AI-vs-AI spectator mode. |
-| `--side hero\|villain` | `play` | required | Side controlled by `--backend`; with `--vs`, the `--vs` backend controls the opposite side and the human spectates. |
+| `--side hero\|villain` | `play` | `villain` | Side controlled by `--backend`; with `--vs`, the `--vs` backend controls the opposite side and the human spectates. |
 | `--threading single\|multi` | `bench`, `verify` | `multi` for `bench`, `single` for `verify` | Threading mode for the batch dispatcher. Primitive benchmark leaves use the same threading flags and default to 8 workers when multi-threaded. |
 | `--workers N` | `bench` (when `--threading multi`) | `8` | Worker count for the batch pool. |
 | `--rng native\|cpp` | `bench`, `play` | `native` | Pinned to `cpp` on the `verify` subtree at parse time. |
@@ -270,8 +268,8 @@ AI-vs-AI observation. The valid `--backend` and `--vs` values are the five backe
 identifiers above: `cpp-legacy`, `cpp-imperative`, `cpp-functional`, `rust`, and
 `haskell`.
 
-With no flags, `mcts play` should choose documented defaults and let the operator
-adjust game setup in the UI. With flags, human-vs-AI play omits `--vs`.
+With no flags, `mcts play` chooses documented defaults: Haskell controls Villain
+and the human controls Hero. With flags, human-vs-AI play omits `--vs`.
 `--backend <backend> --side <side>` means the selected backend controls the named
 side and the human controls the opposite side. To play Hero against the Haskell
 engine controlling Villain:
@@ -292,13 +290,10 @@ TUI to advance AI turns when prompted. The focused help surface
 `hostbootstrap run help play`, generated command reference, `mcts commands --json`,
 manpage, and completions must expose this same backend list and mode semantics.
 
-The live game UI and stored replay UI must be the same interaction model: the
-operator can move backward through already-played plies, move forward to the live
-cursor, advance one AI ply at a time in spectator mode, save the transcript, and
-load on-demand backend equity overlays without switching to a separate command.
-Until Sprint `9.4` closes, host runs through `hostbootstrap run play ...` are not
-expected to open this TUI and must not be documented as a working host-side
-interactive command.
+The live game UI and stored replay UI share `GameSessionState`, the shared board
+renderer, and the session status line. Play keeps the live input adapter (`:hint`,
+`:undo`, `:save`, Space for AI turns), while stored replay keeps timeline
+navigation and on-demand backend equity overlays.
 
 ## `mcts play` Transcript Saves
 
@@ -329,12 +324,11 @@ transcript. Beyond move-by-move navigation, it surfaces a per-move
 **equity overlay** that shows each backend's view of the position the
 cursor is on, with the originator marked.
 
-Target surface: no-argument `mcts inspect` opens a cache browser before entering
-replay. The browser lists cached games by descriptive names derived from run
-parameters such as backend pairing, human/spectator mode, side ownership, seed,
-budget, ply cap, winner, total moves, and modification time. Hashes remain
-available for exact references and scripting, but the primary selector is not a raw
-SHA list. Opening a game uses the same shared game-session UI as `mcts play`.
+No-argument `mcts inspect` opens a cache browser before entering replay when stdin
+and stdout are TTYs. The browser lists cached games by descriptive names derived
+from run parameters such as backend, workload, RNG, seed, budget, ply cap, winner,
+total moves, and modification time. Hashes remain available for exact references
+and scripting, and non-TTY/JSON invocations fall back to the list renderer.
 
 ### Status Line
 

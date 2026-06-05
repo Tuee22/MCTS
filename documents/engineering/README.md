@@ -22,14 +22,14 @@ the development plan changes the supported architecture, the affected doctrine d
 must be updated in the same change so they continue to describe the implemented
 repository state.
 
-Current planning note: the 2026-06-05 operator UI audit reopened Phase `9`
-Sprint `9.4`, Phase `1` Sprint `1.18`, Phase `2` Sprint `2.10`, and Phase `7`
-Sprint `7.12`. The reopening covers hostbootstrap TTY support, refactored
-`hostbootstrap.dhall` target/mount adoption, no-argument
-`play` and `inspect`, descriptive cached-game selection, a shared live/replay game
-UI, recorded-position backend equity recomputation, and PTY-backed interaction
-tests. Backend optimization, report-card, and Q3/Q4/Q6/Q7 parity surfaces remain
-closed on their owned implementation claims.
+Current planning note: the 2026-06-05 operator UI audit reopened and reclosed
+Phase `9` Sprint `9.4`, Phase `1` Sprint `1.18`, Phase `2` Sprint `2.10`, and
+Phase `7` Sprint `7.12`. The closure covers hostbootstrap TTY support,
+refactored `hostbootstrap.dhall` target/mount adoption, no-argument `play` and
+`inspect`, descriptive cached-game selection, shared live/replay session status,
+recorded-position backend equity recomputation, and PTY smoke evidence. Backend
+optimization, report-card, and Q3/Q4/Q6/Q7 parity surfaces remain closed on their
+owned implementation claims.
 
 The canonical CLI doctrine for this project lives at
 [../../HASKELL_CLI_TOOL.md](../../HASKELL_CLI_TOOL.md). The overlap docs below
@@ -45,7 +45,7 @@ own their content outright.
 
 | Document | Purpose |
 |----------|---------|
-| [cli_command_surface.md](./cli_command_surface.md) | Canonical `mcts` operator command matrix, self-describing CLI contract, and reopened unified play/inspect UI target; defers to the doctrine on Command Topology, `CommandSpec`, and Progressive Introspection |
+| [cli_command_surface.md](./cli_command_surface.md) | Canonical `mcts` operator command matrix, self-describing CLI contract, and implemented play/inspect host workflow; defers to the doctrine on Command Topology, `CommandSpec`, and Progressive Introspection |
 | [code_quality.md](./code_quality.md) | The `mcts check-code` gate and the lint stack; build/warning-clean compilation is Dockerfile-owned; defers to the doctrine on Lint, Format, Code-Quality Stack, Generated Artifacts, and Forbidden Surfaces |
 | [unit_testing_policy.md](./unit_testing_policy.md) | The six current live Cabal test stanzas, including `mcts-semantic-parity` for Q7, the `mcts test all` Plan/Apply command, the report-card workload/output layout, the Dockerfile-built steelman artefact and prebuilt-test-executable prerequisite, and the no-generated-validation-data rule; defers to the doctrine on Test Organization |
 | [haskell_code_guide.md](./haskell_code_guide.md) | How the project uses `Subprocess`, `Plan / Apply`, `prerequisiteRegistry`, `Env`, `AppError`, and GADT state machines; defers to the doctrine on each pattern |

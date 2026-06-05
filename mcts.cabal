@@ -26,6 +26,7 @@ library
         MCTS.CLI.Tui.Board
         MCTS.CLI.Tui.Play
         MCTS.CLI.Tui.Replay
+        MCTS.CLI.Tui.Session
         MCTS.CLI.Verify
         MCTS.CheckCode
         MCTS.Driver

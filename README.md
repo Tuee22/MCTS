@@ -78,35 +78,26 @@ wrappers, or direct project `docker build` / `docker run` commands.
 
 ## Play, Spectate, And Inspect
 
-The supported host command shape is `hostbootstrap run <mcts-args>`, but the
-current `hostbootstrap run` path does not yet attach an interactive TTY, and the
-checked-in MCTS `hostbootstrap.dhall` still needs the refactored target-schema
-cache mount described in
-[Phase 9](DEVELOPMENT_PLAN/phase-9-hostbootstrap-adoption.md). Because of that,
-`hostbootstrap run play ...` currently takes the non-interactive fallback path and
-prints a transcript hash such as `played one logical game ... hash=...` instead of
-opening the Brick game UI. Treat that hash-printing behavior as a known gap, not
-as the intended play experience.
-
-The reopened plan targets this operator surface:
+The supported host command shape is `hostbootstrap run <mcts-args>`. Run
+interactive commands from a real terminal so hostbootstrap can attach stdin and a
+TTY:
 
 ```bash
 hostbootstrap run play
 hostbootstrap run inspect
 ```
 
-`hostbootstrap run play` will open one unified game UI. With no flags it will use
-documented defaults and allow setup from inside the UI; with flags it will still
-accept explicit backend, side, RNG, seed, ply cap, and simulation budget choices.
-The same UI will cover human-vs-AI play and AI-vs-AI observation. Live games will
-share the replay timeline with saved games, so operators can step through already
-played moves, resume the live cursor, save the transcript, and request on-demand
-equity recomputation from other backends.
+`hostbootstrap run play` opens the Brick game UI. With no flags, Haskell controls
+Villain and the human controls Hero; flags still accept explicit backend, side,
+opponent backend, RNG, seed, ply cap, simulation budget, and cache root choices.
+From a non-interactive invocation, `play` exits with an explicit guardrail instead
+of silently generating a batch game.
 
-`hostbootstrap run inspect` will open a selectable browser of cached games. Cache
-entries will show descriptive names derived from game parameters instead of forcing
-operators to choose from raw SHA prefixes. Opening a game will use the same replay
-surface as live play, including move-by-move navigation and backend equity overlays.
+`hostbootstrap run inspect` opens a selectable browser of cached games from a TTY.
+Rows show descriptive names derived from game parameters and keep hash prefixes for
+exact references. In non-TTY or JSON mode, no-argument `inspect` falls back to the
+script-friendly cache list renderer. Opening a game uses the replay surface with
+move-by-move navigation and backend equity overlays.
 
 Valid backend identifiers remain `cpp-legacy`, `cpp-imperative`,
 `cpp-functional`, `rust`, and `haskell`. Move notation remains:

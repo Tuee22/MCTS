@@ -260,7 +260,7 @@ commandSpec =
                         ]
         , node
             "inspect"
-            "Inspect transcript cache"
+            "Browse transcript cache"
             [ leaf "list" "List cached transcripts" "mcts inspect list"
                 `withDescription` "List transcripts in the selected cache root with backend, seed, games, threading, sims, move count, mtime, and path metadata."
                 `withOptions` [cacheDirOption]
@@ -294,6 +294,15 @@ commandSpec =
                 `withPositionals` [hashPrefixArgument]
                 `withOptions` [cacheDirOption]
             ]
+            `withDescription` "Open the cached-game browser when no subcommand is supplied. Scripted subcommands remain available for exact hash-prefix show, replay, divergence, and sidecar-cache operations."
+            `withExamples` [ Example "mcts inspect" "Open the cached-game browser."
+                           , Example "mcts inspect --cache-dir .mcts-cache" "Browse a specific cache root."
+                           ]
+            `withOptions` (commonOptions <> [cacheDirOption])
+            `withNotes` [ "Browser rows show descriptive game names first and keep hash prefixes for exact scripted references."
+                        , "When run from a TTY, enter a row number or hash prefix to open replay; submit a blank choice to quit."
+                        , "Use mcts inspect replay <hash-prefix> to open a specific saved game directly."
+                        ]
         , node
             "test"
             "Run tests"
@@ -594,8 +603,8 @@ playOptions =
         Nothing
         (Just "BACKEND")
         "AI backend that controls the side named by --side"
-        True
-        Nothing
+        False
+        (Just "haskell")
         backendChoices
         Nothing
         ["Omit --vs for human play; the human controls the opposite side."]
@@ -604,8 +613,8 @@ playOptions =
         Nothing
         (Just "hero|villain")
         "Side controlled by --backend; the human plays the opposite side unless --vs is set"
-        True
-        Nothing
+        False
+        (Just "villain")
         sideChoices
         Nothing
         []
@@ -706,7 +715,7 @@ commandRows :: [(String, CommandSpec)]
 commandRows =
     [ (path, spec)
     | (path, spec) <- flatten [] commandSpec
-    , null (children spec)
+    , null (children spec) || not (null (examples spec))
     , path /= "mcts"
     ]
 

@@ -3,9 +3,12 @@
 
 module MCTS.CLI.Inspect
     ( runInspect
+    , InspectBrowserChoice (..)
     , InspectRow (..)
     , prepareReplayOverlays
+    , renderInspectBrowserRows
     , renderInspectRows
+    , resolveInspectBrowserChoice
     , renderTranscript
     ) where
 
@@ -36,7 +39,7 @@ import MCTS.Verify.Divergence
 import System.Directory (doesFileExist, getModificationTime)
 import System.Exit (ExitCode (..))
 import System.FilePath (takeBaseName)
-import System.IO (hIsTerminalDevice, stdin)
+import System.IO (hFlush, hIsTerminalDevice, stdin, stdout)
 
 runInspect :: InspectCommand -> Env.App ExitCode
 runInspect command = do
@@ -47,6 +50,7 @@ runInspect command = do
 inspectWithOutput :: OutputOptions -> InspectCommand -> IO Int
 inspectWithOutput output command =
     case command of
+        InspectBrowse cacheDir -> inspectBrowse output cacheDir
         InspectList cacheDir -> inspectList output cacheDir
         InspectShow options -> inspectShow output options
         InspectReplay options -> inspectReplay output options
@@ -58,44 +62,110 @@ intToExitCode :: Int -> ExitCode
 intToExitCode 0 = ExitSuccess
 intToExitCode n = ExitFailure n
 
+inspectBrowse :: OutputOptions -> Maybe FilePath -> IO Int
+inspectBrowse output cacheDir = do
+    interactive <- (&&) <$> hIsTerminalDevice stdin <*> hIsTerminalDevice stdout
+    if not interactive || outputFormat output == JsonFormat
+        then inspectList output cacheDir
+        else do
+            rows <- loadInspectRows cacheDir
+            case rows of
+                [] -> outputLine "No cached transcripts found." >> pure 0
+                _ -> do
+                    outputLine (renderInspectBrowserRows rows)
+                    putStr "Select game number or hash prefix (blank to quit): "
+                    hFlush stdout
+                    raw <- getLine
+                    case resolveInspectBrowserChoice rows raw of
+                        BrowserQuit -> outputLine "No game selected." >> pure 0
+                        BrowserInvalid message -> outputLine message >> pure 1
+                        BrowserHash prefix ->
+                            inspectReplay
+                                output
+                                ReplayOptions
+                                    { replayRef = prefix
+                                    , replayTopN = 10
+                                    , replayCacheStates = 20
+                                    , replayCacheDir = cacheDir
+                                    }
+
 inspectList :: OutputOptions -> Maybe FilePath -> IO Int
 inspectList output cacheDir = do
+    rows <- loadInspectRows cacheDir
+    outputLine (renderInspectRows output rows)
+    pure 0
+
+loadInspectRows :: Maybe FilePath -> IO [InspectRow]
+loadInspectRows cacheDir = do
     files <- listTranscriptFiles cacheDir
     rows <- mapM rowFor files
-    let sortedRows = reverse (sortOn rowMtime rows)
-    outputLine (renderInspectRows output sortedRows)
-    pure 0
-  where
-    rowFor path = do
-        mtime <- getModificationTime path
-        decoded <- readTranscriptFile path
-        let (backend, seed, games, threading, sims, totalMoves) =
-                case decoded of
-                    Right transcript ->
-                        ( backendIdentifier (runBackend (transcriptConfig transcript))
-                        , show (runMasterSeed (transcriptConfig transcript))
+    pure (reverse (sortOn rowMtime rows))
+
+rowFor :: FilePath -> IO InspectRow
+rowFor path = do
+    mtime <- getModificationTime path
+    decoded <- readTranscriptFile path
+    let (name, backend, seed, games, threading, sims, totalMoves) =
+            case decoded of
+                Right transcript ->
+                    let config = transcriptConfig transcript
+                        total = sum (map (length . gameMoves) (transcriptGames transcript))
+                     in ( catalogName transcript total
+                        , backendIdentifier (runBackend config)
+                        , show (runMasterSeed config)
                         , show (length (transcriptGames transcript))
-                        , threadingName (runThreading (transcriptConfig transcript))
-                        , show (runInitialSims (transcriptConfig transcript))
+                        , threadingName (runThreading config)
+                        , show (runInitialSims config)
                             <> ":"
-                            <> show (runPerMoveSims (transcriptConfig transcript))
-                        , show (sum (map (length . gameMoves) (transcriptGames transcript)))
+                            <> show (runPerMoveSims config)
+                        , show total
                         )
-                    Left _ -> ("<bad>", "?", "?", "?", "?", "?")
-        pure
-            ( InspectRow
-                (take 8 (takeBaseName path))
-                backend
-                seed
-                games
-                threading
-                sims
-                totalMoves
-                path
-                (show mtime)
-            )
+                Left _ -> ("unreadable-" <> take 8 (takeBaseName path), "<bad>", "?", "?", "?", "?", "?")
+    pure
+        ( InspectRow
+            { rowName = name
+            , rowHash = take 8 (takeBaseName path)
+            , rowBackend = backend
+            , rowSeed = seed
+            , rowGames = games
+            , rowThreading = threading
+            , rowSims = sims
+            , rowTotalMoves = totalMoves
+            , rowPath = path
+            , rowMtime = show mtime
+            }
+        )
+
+catalogName :: Transcript -> Int -> String
+catalogName transcript totalMoves =
+    intercalate
+        " "
+        [ backendIdentifier (runBackend config)
+        , catalogWorkloadName (runWorkload config)
+        , "rng-" <> renderRngSource (runRngSource config)
+        , "seed-" <> show (runMasterSeed config)
+        , "sims-" <> show (runInitialSims config) <> ":" <> show (runPerMoveSims config)
+        , "plies-" <> show (runMaxPlies config)
+        , winnerName
+        , "moves-" <> show totalMoves
+        ]
+  where
+    config = transcriptConfig transcript
+    winnerName =
+        case transcriptGames transcript of
+            [game] -> "winner-" <> renderWinner (gameWinner game)
+            [] -> "winner-none"
+            games -> "winner-multi-" <> show (length games)
+
+catalogWorkloadName :: Workload -> String
+catalogWorkloadName workload =
+    case workload of
+        Rollouts -> "rollouts"
+        Selfplay -> "selfplay"
+
 data InspectRow = InspectRow
-    { rowHash :: !String
+    { rowName :: !String
+    , rowHash :: !String
     , rowBackend :: !String
     , rowSeed :: !String
     , rowGames :: !String
@@ -113,7 +183,9 @@ renderInspectRows output rows =
             "["
                 <> intercalate
                     ","
-                    [ "{\"hash\":\""
+                    [ "{\"name\":\""
+                        <> rowName row
+                        <> "\",\"hash\":\""
                         <> rowHash row
                         <> "\",\"backend\":\""
                         <> rowBackend row
@@ -137,13 +209,47 @@ renderInspectRows output rows =
                 <> "]"
         _ ->
             unlines
-                ( "hash      backend          seed  games  thr  sims      moves  mtime                         path"
+                ( "name                                             hash      backend          seed  games  thr  sims      moves  mtime                         path"
                     : map renderInspectRow rows
                 )
 
+renderInspectBrowserRows :: [InspectRow] -> String
+renderInspectBrowserRows rows =
+    unlines $
+        "Cached games:"
+            : zipWith renderBrowserRow [1 :: Int ..] rows
+  where
+    renderBrowserRow idx row =
+        pad 4 (show idx <> ".")
+            <> pad 48 (rowName row)
+            <> "  "
+            <> rowHash row
+            <> "  "
+            <> rowMtime row
+
+data InspectBrowserChoice
+    = BrowserQuit
+    | BrowserHash !String
+    | BrowserInvalid !String
+    deriving (Eq, Show)
+
+resolveInspectBrowserChoice :: [InspectRow] -> String -> InspectBrowserChoice
+resolveInspectBrowserChoice rows raw =
+    case trim raw of
+        "" -> BrowserQuit
+        value ->
+            case reads value of
+                [(idx, "")] ->
+                    case indexAt (idx - 1) rows of
+                        Just row -> BrowserHash (takeBaseName (rowPath row))
+                        Nothing -> BrowserInvalid ("No cached game numbered " <> show idx <> ".")
+                _ -> BrowserHash value
+
 renderInspectRow :: InspectRow -> String
 renderInspectRow row =
-    rowHash row
+    pad 48 (rowName row)
+        <> "  "
+        <> rowHash row
         <> "  "
         <> pad 15 (rowBackend row)
         <> "  "
@@ -160,6 +266,19 @@ renderInspectRow row =
         <> pad 28 (rowMtime row)
         <> "  "
         <> rowPath row
+
+trim :: String -> String
+trim = dropWhile isSpaceLocal . reverse . dropWhile isSpaceLocal . reverse
+
+isSpaceLocal :: Char -> Bool
+isSpaceLocal ch = ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n'
+
+indexAt :: Int -> [a] -> Maybe a
+indexAt n _
+    | n < 0 = Nothing
+indexAt _ [] = Nothing
+indexAt 0 (value : _) = Just value
+indexAt n (_ : rest) = indexAt (n - 1) rest
 
 inspectShow :: OutputOptions -> ShowOptions -> IO Int
 inspectShow output options = do
@@ -325,7 +444,7 @@ inspectReplay output options = do
             case decoded of
                 Left err -> outputLine (renderErrorString output err) >> pure 1
                 Right transcript -> do
-                    interactive <- hIsTerminalDevice stdin
+                    interactive <- (&&) <$> hIsTerminalDevice stdin <*> hIsTerminalDevice stdout
                     if interactive
                         then runReplayInteractive options (takeBaseName path) transcript
                         else runReplayNonInteractive output options path transcript

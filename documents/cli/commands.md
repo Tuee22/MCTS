@@ -278,8 +278,8 @@ Open the interactive Brick TUI. Without --vs, --backend controls the side named 
 | `--format json|table|plain` | no | plain when stdout is not a TTY; table when stdout is a TTY | `json`, `table`, `plain` | Output format Global option parsed before command dispatch. |
 | `--color auto|always|never` | no | auto | `auto`, `always`, `never` | Color mode Global option parsed before command dispatch. |
 | `--no-color` | no | - | - | Alias for --color never |
-| `--backend BACKEND` | yes | - | `cpp-legacy`, `cpp-imperative`, `cpp-functional`, `rust`, `haskell` | AI backend that controls the side named by --side Omit --vs for human play; the human controls the opposite side. |
-| `--side hero|villain` | yes | - | `hero`, `villain` | Side controlled by --backend; the human plays the opposite side unless --vs is set |
+| `--backend BACKEND` | no | haskell | `cpp-legacy`, `cpp-imperative`, `cpp-functional`, `rust`, `haskell` | AI backend that controls the side named by --side Omit --vs for human play; the human controls the opposite side. |
+| `--side hero|villain` | no | villain | `hero`, `villain` | Side controlled by --backend; the human plays the opposite side unless --vs is set |
 | `--vs BACKEND` | no | - | `cpp-legacy`, `cpp-imperative`, `cpp-functional`, `rust`, `haskell` | Second AI backend for spectator mode; controls the side opposite --side When --vs is set, the operator watches instead of entering human moves. |
 | `--rng native|cpp` | no | native | `native`, `cpp` | RNG source |
 | `--sims N|A:B` | no | 1000 | - | Simulation budget Syntax: N for fixed sims, A:B for ramped sims. |
@@ -307,6 +307,41 @@ Open the interactive Brick TUI. Without --vs, --backend controls the side named 
 
   ```bash
   mcts play --backend haskell --side hero --vs rust --rng native --max-plies 200 --sims 1000
+  ```
+
+## `mcts inspect`
+
+Open the cached-game browser when no subcommand is supplied. Scripted subcommands remain available for exact hash-prefix show, replay, divergence, and sidecar-cache operations.
+
+**Usage**: `mcts inspect [options]`
+
+**Options**
+
+| Option | Required | Default | Values | Description |
+|--------|----------|---------|--------|-------------|
+| `--format json|table|plain` | no | plain when stdout is not a TTY; table when stdout is a TTY | `json`, `table`, `plain` | Output format Global option parsed before command dispatch. |
+| `--color auto|always|never` | no | auto | `auto`, `always`, `never` | Color mode Global option parsed before command dispatch. |
+| `--no-color` | no | - | - | Alias for --color never |
+| `--cache-dir DIR` | no | .mcts-cache | - | Transcript cache root |
+
+**Notes**
+
+- Browser rows show descriptive game names first and keep hash prefixes for exact scripted references.
+- When run from a TTY, enter a row number or hash prefix to open replay; submit a blank choice to quit.
+- Use mcts inspect replay <hash-prefix> to open a specific saved game directly.
+
+**Examples**
+
+- Open the cached-game browser.
+
+  ```bash
+  mcts inspect
+  ```
+
+- Browse a specific cache root.
+
+  ```bash
+  mcts inspect --cache-dir .mcts-cache
   ```
 
 ## `mcts inspect list`

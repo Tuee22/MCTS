@@ -23,7 +23,7 @@ _mcts_complete()
             words="auto always never"
             ;;
         *)
-            words="bench verify play inspect test lint docs commands help check-code build rollouts selfplay terminal-playouts search-iters rollouts selfplay rollouts selfplay play list show replay list prune divergence all parity-anchor <stanza> files docs haskell all check generate commands help check-code cpp-legacy cpp-imperative cpp-functional rust legacy-fixtures"
+            words="bench verify play inspect test lint docs commands help check-code build rollouts selfplay terminal-playouts search-iters rollouts selfplay rollouts selfplay play inspect list show replay list prune divergence all parity-anchor <stanza> files docs haskell all check generate commands help check-code cpp-legacy cpp-imperative cpp-functional rust legacy-fixtures"
             ;;
     esac
     COMPREPLY=( $(compgen -W "$words" -- "$cur") )

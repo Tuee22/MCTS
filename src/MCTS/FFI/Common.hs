@@ -160,6 +160,7 @@ data DynamicBenchmarkGame = DynamicBenchmarkGame
 data DynamicRecomputeGame = DynamicRecomputeGame
     { recomputeGameBoard :: !(Ptr ())
     , recomputeGameIsTerminal :: !(IO Bool)
+    , recomputeGameApplyAction :: !(Word8 -> IO (Either AppError ()))
     , recomputeGameRecomputeMove
         :: !(Word64 -> Word32 -> IO (Either AppError (Word8, [(Word8, Word32)], Double)))
     }
@@ -397,7 +398,8 @@ withDynamicBenchmarkGame backend libraryPath symbolPrefix body =
 -- the per-move visit vector, chosen action id, and chosen-action
 -- parent-perspective equity out of the foreign engine. Symbol set
 -- is `<prefix>_new_board`, `<prefix>_free_board`,
--- `<prefix>_is_terminal`, `<prefix>_recompute_move`.
+-- `<prefix>_is_terminal`, `<prefix>_apply_action`,
+-- `<prefix>_recompute_move`.
 withDynamicRecomputeGame
     :: Backend
     -> FilePath
@@ -410,8 +412,10 @@ withDynamicRecomputeGame backend libraryPath symbolPrefix body =
             newFun <- DL.dlsym library (symbolPrefix <> "_new_board")
             freeFun <- DL.dlsym library (symbolPrefix <> "_free_board")
             isTerminalFun <- DL.dlsym library (symbolPrefix <> "_is_terminal")
+            applyActionFun <- DL.dlsym library (symbolPrefix <> "_apply_action")
             recomputeFun <- DL.dlsym library (symbolPrefix <> "_recompute_move")
             let isTerminal board' = (/= 0) <$> mkDynamicIsTerminal isTerminalFun board'
+                applyAction' = mkDynamicApplyAction applyActionFun
                 recompute' = mkDynamicRecomputeMove recomputeFun
             withDynamicProfileFlush library symbolPrefix $
                 bracket (mkBoardNew newFun) (mkBoardFree freeFun) $ \board ->
@@ -419,6 +423,17 @@ withDynamicRecomputeGame backend libraryPath symbolPrefix body =
                         DynamicRecomputeGame
                             { recomputeGameBoard = board
                             , recomputeGameIsTerminal = isTerminal board
+                            , recomputeGameApplyAction = \actionId -> do
+                                ret <- applyAction' board actionId
+                                pure $
+                                    if ret == 0
+                                        then Right ()
+                                        else
+                                            Left $
+                                                FFIFailure
+                                                    backend
+                                                    (symbolPrefix <> "_apply_action")
+                                                    ("apply returned " <> show ret)
                             , recomputeGameRecomputeMove = \seed sims ->
                                 allocaArray actionCount $ \actionIdsBuf ->
                                     allocaArray actionCount $ \visitsBuf ->

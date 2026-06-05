@@ -37,6 +37,7 @@ import MCTS.Types
     , SimBudget (..)
     , Transcript (..)
     , actionFromId
+    , actionId
     , simPerMove
     )
 
@@ -66,23 +67,19 @@ foreignRecomputeEqStream backend transcriptHash buildId opener transcript = do
     -- the C ABI rejects with `-1` on the next `recompute_move`.
     perGameResults <-
         sequenceEither
-            [ opener $ \game ->
-                recomputeGameMoves strictRecompute backend game masterSeed rng sims gameRec
+            [ recomputeGameMoves strictRecompute backend opener masterSeed rng sims gameRec
             | gameRec <- transcriptGames transcript
             ]
     pure $ case perGameResults of
         Left err -> Left err
-        Right outers ->
-            case sequence outers of
-                Left err -> Left err
-                Right perGame ->
-                    Right
-                        EqStream
-                            { eqTranscriptHash = transcriptHash
-                            , eqBackend = backend
-                            , eqBuildId = buildId
-                            , eqRecords = concat perGame
-                            }
+        Right perGame ->
+            Right
+                EqStream
+                    { eqTranscriptHash = transcriptHash
+                    , eqBackend = backend
+                    , eqBuildId = buildId
+                    , eqRecords = concat perGame
+                    }
   where
     config = transcriptConfig transcript
     envelope = transcriptEnvelope transcript
@@ -105,15 +102,15 @@ foreignRecomputeEqStream backend transcriptHash buildId opener transcript = do
 recomputeGameMoves
     :: Bool
     -> Backend
-    -> DynamicRecomputeGame
+    -> ForeignRecomputeOpener
     -> Word64
     -> RngSource
     -> Word32
     -> GameTranscript
     -> IO (Either AppError [EqRecord])
-recomputeGameMoves strictRecompute backend game masterSeed rng sims gameTranscript =
+recomputeGameMoves strictRecompute backend opener masterSeed rng sims gameTranscript =
     let perGameSeed = mix masterSeed (fromIntegral (gameId gameTranscript))
-     in go perGameSeed initialBoard (gameMoves gameTranscript) 0 []
+     in go perGameSeed initialBoard [] (gameMoves gameTranscript) 0 []
   where
     salt = backendNativeSalt rng backend
 
@@ -121,16 +118,17 @@ recomputeGameMoves strictRecompute backend game masterSeed rng sims gameTranscri
         :: Word64
         -> Board
         -> [MoveRecord]
+        -> [MoveRecord]
         -> Word64
         -> [EqRecord]
         -> IO (Either AppError [EqRecord])
-    go !_ _ [] _ acc = pure (Right (reverse acc))
-    go !seed board (recorded : rest) !moveNo acc = do
+    go !_ _ _ [] _ acc = pure (Right (reverse acc))
+    go !seed board history (recorded : rest) !moveNo acc = do
         let effectiveSeed =
                 seed
                     `xor` salt
                     `xor` fromIntegral (moveNo * 257 + 1)
-        outcome <- recomputeGameRecomputeMove game effectiveSeed sims
+        outcome <- recomputeRecordedCursor board history effectiveSeed
         case outcome of
             Left err -> pure (Left err)
             Right (rawChosen, _rawVisits, equity) ->
@@ -176,8 +174,54 @@ recomputeGameMoves strictRecompute backend game masterSeed rng sims gameTranscri
                                             , eqChosen = chosenAction
                                             , eqEquity = equity
                                             }
-                                    nextBoard = applyMove chosenAction board
-                                 in go seed nextBoard rest (moveNo + 1) (record : acc)
+                                    -- Keep overlay recompute on the recorded line:
+                                    -- foreign disagreement is evidence for this row,
+                                    -- not the board state for subsequent rows.
+                                    nextBoard = applyMove (moveChosen recorded) board
+                                 in go seed nextBoard (history <> [recorded]) rest (moveNo + 1) (record : acc)
+
+    recomputeRecordedCursor
+        :: Board -> [MoveRecord] -> Word64 -> IO (Either AppError (Word8, [(Word8, Word32)], Double))
+    recomputeRecordedCursor board history seed =
+        flattenOpener =<< opener (recomputeFromFreshBoard board history seed)
+
+    recomputeFromFreshBoard
+        :: Board
+        -> [MoveRecord]
+        -> Word64
+        -> DynamicRecomputeGame
+        -> IO (Either AppError (Word8, [(Word8, Word32)], Double))
+    recomputeFromFreshBoard targetBoard history seed game = do
+        synced <- syncHistory game initialBoard history
+        case synced of
+            Left err -> pure (Left err)
+            Right rebuilt
+                | rebuilt /= targetBoard ->
+                    pure $
+                        Left $
+                            FFIFailure
+                                backend
+                                "foreignRecomputeEqStream"
+                                "Haskell board and replayed foreign history diverged"
+                | otherwise -> recomputeGameRecomputeMove game seed sims
+
+    flattenOpener
+        :: Either AppError (Either AppError (Word8, [(Word8, Word32)], Double))
+        -> IO (Either AppError (Word8, [(Word8, Word32)], Double))
+    flattenOpener opened =
+        pure $
+            case opened of
+                Left err -> Left err
+                Right inner -> inner
+
+    syncHistory :: DynamicRecomputeGame -> Board -> [MoveRecord] -> IO (Either AppError Board)
+    syncHistory _ board [] = pure (Right board)
+    syncHistory game board (record : rest) = do
+        let rawAction = foreignActionId board (moveChosen record)
+        applied <- recomputeGameApplyAction game rawAction
+        case applied of
+            Left err -> pure (Left err)
+            Right () -> syncHistory game (applyMove (moveChosen record) board) rest
 
 decodeVisits :: [(Word8, Word32)] -> Either Word8 [(Action, Word32)]
 decodeVisits raw =
@@ -212,6 +256,10 @@ applyFlip True aid
     | aid <= 144 = 225 - aid
     | aid <= 208 = fromIntegral (353 - fromIntegral aid :: Int)
     | otherwise = aid
+
+foreignActionId :: Board -> Action -> Word8
+foreignActionId board action =
+    applyFlip (needsFlip (boardSideToMove board)) (actionId action)
 
 -- | Sequence a list of `IO (Either e a)` into `IO (Either e [a])`,
 -- short-circuiting on the first `Left`.
