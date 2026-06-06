@@ -17,7 +17,9 @@
 
 ## Phase Status
 
-🔄 **Reopened on the planning-baseline sub-surface.** Sprint `0.1` (canonical
+✅ **Done.** The planning-baseline sub-surface reopened and reclosed across
+Sprints `0.3`–`0.5`; the phase is closed again as of Sprint `0.5` on
+2026-06-04. Sprint `0.1` (canonical
 plan suite bootstrap) and Sprint `0.2` (doctrine-driven scheduling audit)
 remain historical `Done` records. Sprint `0.3` restored `HASKELL_CLI_TOOL.md`
 as the root authoritative CLI doctrine on 2026-05-27, so the plan, governed
